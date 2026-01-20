@@ -1,0 +1,1080 @@
+ABUAD APP – FEATURE IDENTITY (CLEAN & PROFESSIONAL)
+Core Identity
+“ABUAD’s official digital campus for learning, communication, navigation, and student life.”
+Not a social app.
+Not a chat app.
+A campus operating system.
+ABUAD APP – FINAL FEATURE GROUPING (REFINED)
+1️⃣ Campus Feed (School Twitter)
+• Official announcements
+• Student posts
+• Media uploads
+• Verified accounts (lecturers, departments)
+• Trending campus topics
+• Moderated content
+2️⃣ Campus Chat
+• Student ↔ student
+• Student ↔ lecturer
+• Class groups
+• Department broadcasts
+• File sharing
+• Quiet hours enforcement
+3️⃣ Campus Map & Navigation
+• Faculty buildings
+• Lecture halls
+• Hostels
+• Offices
+• Smart directions
+• Emergency routes
+4️⃣ AI Study Assistant (Controlled)
+• Course explanations
+• Test prep
+• Revision plans
+• Academic reminders
+• No cheating logic
+• Usage limits
+5️⃣ Student Dashboard
+• Profile
+• Faculty & department
+• Course list
+• Tests & results (when enabled)
+• Points / badges
+• Settings
+ABUAD WEBSITE (OFFICIAL WEB PRESENCE)
+Public Website
+• About ABUAD App
+• App features
+• App download
+• Campus news
+Web App (Logged-in)
+• Feed
+• Chat
+• Profile verification
+• Staff dashboard
+Admin Portal
+• User verification
+• Post moderation
+• Announcements
+• Analytics
+• Feature toggles
+TECH REALITY (NO API – RECONFIRMED)
+If you are still in NO-API mode, then ABUAD App is:
+✔ Offline-first
+✔ Single-device persistent
+✔ Demo-ready
+✔ Pitch-ready
+But not yet:
+• Multi-user synced
+• Real-time
+• Institution-wide
+Which is acceptable at MVP stage.
+STRATEGIC ADVICE (STRAIGHT TALK)
+Build ABUAD App like this:
+Phase 1
+• Offline Flutter app
+• Clean UI
+• All screens functional
+• Local data
+• Strong demo
+Phase 2
+• Present to ABUAD
+• Secure approval
+• Introduce backend
+• Activate real-time features
+
+CORE NAVIGATION (Bottom Bar – 5 Tabs)
+1️⃣ Home (Social Feed – “School Twitter”)
+This is the heart of Antigravity.
+What it already has
+• Posts (text, images, videos)
+• Likes, comments, reposts
+• School-only visibility
+What you MUST add
+• Post categories: 
+• Announcements
+• Class Discussions
+• Events
+• Help Requests
+• Fun / Media
+• Pinned school posts (admin & teachers)
+• Verified badges (teachers, prefects, clubs)
+• Anonymous posting (optional) for safe feedback
+• Trending topics inside the school
+• Class-only feeds (SS1A, JSS3B, etc.)
+• Auto-moderation (AI) for bullying & abuse
+👉 Result:
+Students open Antigravity first thing in the morning — just like Twitter.
+2️⃣ Chat (Messaging Layer like snapchat)
+Not just chatting — school-safe communication.
+Features
+• 1-to-1 chat (students ↔ students, students ↔ teachers)
+• Group chats: 
+• Class groups
+• Club groups
+• Project teams
+• Teacher broadcast messages
+• Message reactions
+• Voice notes
+• File sharing (PDFs, images, assignments)
+• Read receipts (optional)
+• Do Not Disturb during class hours
+Advanced:
+• AI chat assistant inside chats
+(summarize conversations, extract tasks)
+3️⃣ Map (Smart School Navigation like Google maps)
+This should feel futuristic, not static.
+Core
+• Interactive school map
+• Direction routing (block → lab → hall)
+• “You are here” indicator
+Advanced ideas
+• Period-aware navigation
+→ “Your next class is here. Start walking now.”
+• Crowd heatmap
+→ Avoid busy corridors
+• Emergency routes
+• Lost & Found pins
+• Teacher office locator
+• Event pop-ups on map (debate in hall, football on field)
+This turns Antigravity into a daily movement assistant.
+4️⃣ AI Time (Your Differentiator like chatgpt)
+This is where Antigravity becomes untouchable.
+AI Features
+• Homework help (school-restricted answers)
+• Test preparation assistant
+• Assignment breakdowns
+• Study planner
+• Smart reminders
+• Note summarizer
+• Exam prediction insights (based on past tests)
+Personal AI Modes
+• “Explain like I’m 10”
+• “Short notes”
+• “Exam mode”
+• “Practice questions”
+Rules
+• No cheating
+• Teacher-controlled limits
+• Usage time caps during school hours
+5️⃣ Profile / Dashboard
+This is the student control center.
+What to show
+• Profile (photo, class, role)
+• Academic points / badges
+• Attendance
+• Tests & results
+• AI usage stats
+• Activity history
+• Club memberships
+Customization
+• Theme (light/dark)
+• Privacy controls
+• Notification controls
+• Status (Available / In Class)
+WEBSITE (Antigravity Web)
+The website is NOT optional. It’s your credibility layer.
+Public Website
+• Landing page
+• About Antigravity
+• School onboarding
+• App download
+• News & updates
+School Web Portal
+• Login (students, teachers, admins)
+• Web version of: 
+• Feed (Twitter-like)
+• Chat
+• Profile verification
+• User verification page
+→ Search student / teacher
+→ Confirm identity (name, role, badge)
+Admin Web Dashboard
+• Moderate posts
+• Verify users
+• Suspend accounts
+• Analytics
+• AI usage control
+• Announcement management
+ADDITIONAL POWER FEATURES (These Make It Elite)
+🔹 Clubs & Communities
+• School clubs have pages
+• Post events
+• Recruit members
+• Polls & voting
+🔹 Events System
+• School calendar
+• Event reminders
+• Attendance check-in
+• Live event feed
+🔹 Gamification
+• Reputation points
+• Contribution rewards
+• Leaderboards (academic & community)
+• Achievement badges
+🔹 Safety & Trust
+• Report system
+• AI bullying detection
+• Teacher oversight
+• Parent-view mode (optional)
+🔹 Offline Mode
+• Read posts offline
+• Cached maps
+• Notes available without internet
+BIG PICTURE (Tell It Like It Is)
+If Abuad app only:
+• Posts
+• Chat
+• Map
+• AI
+• Profile
+
+EXPANSION FEATURES (HIGH IMPACT)
+1️⃣ Digital School Identity (Antigravity ID)
+Every student and staff member has a single verified digital identity.
+Capabilities
+• QR-based school entry (optional)
+• Digital hall pass
+• Exam identity verification
+• Club membership proof
+• Library access
+• Event check-ins
+This makes Antigravity the official digital backbone of the school.
+2️⃣ Smart Timetable Engine
+Not just a timetable — an adaptive engine.
+Features
+• Auto-adjusts when classes change
+• Teacher absence rerouting
+• Push alerts before every period
+• “You’re late” warnings
+• Class conflict detection
+AI Layer:
+• Suggests best study time
+• Detects overload weeks
+• Recommends revision slots
+3️⃣ Assignment & Coursework Hub
+A serious academic core.
+Features
+• Assignment submission
+• Deadlines with countdown
+• Teacher feedback (text, voice, rubric)
+• Resubmission logic
+• Plagiarism detection (internal)
+AI:
+• Assignment clarity checker
+• Draft improvement suggestions
+• Grade predictor
+4️⃣ Micro-Learning System (School Shorts)
+Short, fast, addictive learning.
+Concept
+• 30–90 second videos
+• Teacher-approved content
+• Student-created explainers
+Think TikTok, but educational and controlled.
+5️⃣ Live Classroom Companion
+This is aggressive — but powerful.
+During class
+• Teacher launches live session
+• Students join silently
+• Polls, quizzes, questions
+• “I don’t understand” button
+• Attendance auto-logged
+No noise. No chaos. Full control.
+6️⃣ AI Behaviour & Performance Insights
+For staff — not students.
+Insights
+• Participation trends
+• Drop in engagement
+• At-risk student alerts
+• Academic decline signals
+Ethical guardrails:
+• No public exposure
+• Teacher-only visibility
+• Advisory, not punitive
+7️⃣ Parent Bridge (Controlled Access)
+Parents don’t invade — they observe.
+What parents see
+• Attendance summary
+• Announcements
+• Results
+• Behaviour notices
+What they don’t see:
+• Chats
+• Social feed
+• Private messages
+8️⃣ School Marketplace (Internal Economy)
+Keep it internal and safe.
+Use cases
+• Buy school merch
+• Club dues
+• Event tickets
+• Approved vendors only
+Optional:
+• School wallet
+• Reward points conversion
+9️⃣ Emergency & Safety System
+This builds trust instantly.
+Features
+• Panic button
+• Lockdown announcements
+• Safe route guidance
+• Roll-call verification
+• Silent alerts
+This alone can sell the platform.
+1️⃣0️⃣ Polls, Voting & Student Voice
+Real participation.
+Examples
+• Head boy/girl elections
+• Club decisions
+• Event planning
+• Anonymous surveys
+This creates ownership.
+ADVANCED SOCIAL LAYER
+1️⃣1️⃣ Status & Presence
+• In class
+• Studying
+• Free
+• Offline
+Respect time and attention.
+1️⃣2️⃣ School Trends & Analytics
+• Most discussed topics
+• Active classes
+• Event popularity
+• Engagement heatmaps
+Admin-only view.
+1️⃣3️⃣ Content Verification
+• Fact-check flags
+• Teacher validation tags
+• Misinformation warnings
+Critical thinking baked in.
+1️⃣4️⃣ Smart Search (Global)
+Search everything:
+• People
+• Posts
+• Files
+• Classes
+• Locations
+• Questions
+AI-powered, fast.
+TECH & EXPERIENCE ENHANCERS
+1️⃣5️⃣ Voice Commands
+• “Where is my next class?”
+• “Summarize today’s posts”
+• “Explain this topic”
+Hands-free usage.
+1️⃣6️⃣ Offline Mesh Mode (Experimental)
+• Bluetooth-based messaging
+• Emergency broadcasts
+• Map access without internet
+This is rare — and powerful.
+1️⃣7️⃣ Custom School Branding
+Each school:
+• Logo
+• Colors
+• Motto
+• Rules
+• Feature toggles
+Multi-school scalability.
+1️⃣8️⃣ AI Content Coach
+Before posting:
+• Tone check
+• Respect filter
+• Clarity suggestions
+This reduces toxicity without censorship.
+1️⃣9️⃣ Time-Aware Restrictions
+The app respects school discipline.
+• Social feed pauses during exams
+• Chat limits during class
+• AI mode restrictions
+Admins control it.
+2️⃣0️⃣ API & Integrations
+Future-proofing.
+• Google Classroom
+• LMS systems
+• Exam boards
+• Library software
+HARD TRUTH (No Sugar-Coating)
+If you stop at “features”, Antigravity becomes another app.
+If you focus on systems, Antigravity becomes unavoidable.
+You are not building for students only.
+You are building for:
+• Schools
+• Administrators
+• Parents
+• Regulators
+• Future scale
+
+✅ CORE OFFLINE PACKAGES (NO API)
+1️⃣ Local Database (Required)
+🔹 isar (RECOMMENDED)
+Best local database for complex apps.
+isar: ^3.1.0 isar_flutter_libs: ^3.1.0 path_provider: ^2.1.2 
+Use for
+• Users
+• Posts
+• Chats
+• Messages
+• AI history
+• Settings
+• Maps metadata
+Fast, encrypted, scalable.
+Alternative:
+• hive (simpler, less powerful)
+2️⃣ Authentication (Offline)
+🔹 local_auth
+Biometrics only — no server.
+local_auth: ^2.2.0 
+Use for
+• App lock
+• Profile protection
+• Student verification (device-based)
+⚠ Limitation:
+Login works only on the same device.
+3️⃣ Secure Storage
+🔹 flutter_secure_storage
+flutter_secure_storage: ^9.0.0 
+Use for
+• Password hashes
+• Tokens
+• Encryption keys
+• User ID
+4️⃣ Social Feed (Offline)
+No API means local feed only.
+Packages:
+flutter_quill: ^9.4.0 # rich text posts video_player: ^2.8.2 image_picker: ^1.0.7 
+Supports
+• Posts
+• Images
+• Videos
+• Likes (local)
+• Comments (local)
+5️⃣ Chat System (Offline)
+🔹 flutter_chat_ui
+flutter_chat_ui: ^1.6.10 flutter_chat_types: ^3.6.2 uuid: ^4.3.3 
+Reality
+• Works only on same device
+• No real-time sync
+• Good for demo, prototype, offline mode
+6️⃣ Map (NO Google, NO API)
+🔹 flutter_map + Offline Tiles
+flutter_map: ^6.1.0 latlong2: ^0.9.1 
+Use:
+• Custom school map image
+• Vector overlays
+• Indoor navigation (manual)
+Store map assets locally.
+7️⃣ AI (NO INTERNET)
+This is limited but possible.
+🔹 flutter_llm / llama_cpp
+(Local LLM, heavy)
+llama_cpp: ^0.2.0 
+OR simpler:
+ml_linalg: ^13.12.5 tflite_flutter: ^0.10.4 
+Can do
+• Rule-based AI
+• Flashcards
+• Q&A from stored notes
+• Pattern matching
+❌ Cannot do ChatGPT-level AI offline.
+8️⃣ File System & Downloads
+path_provider: ^2.1.2 open_filex: ^4.4.0 permission_handler: ^11.2.0 
+Use for:
+• PDFs
+• Videos
+• Notes
+• Cached content
+9️⃣ UI & Navigation
+go_router: ^13.2.0 flutter_animate: ^4.5.0 salomon_bottom_bar: ^3.3.2 
+Smooth, modern navigation.
+🔟 State Management
+🔹 riverpod (Recommended)
+flutter_riverpod: ^2.5.1 
+Offline-friendly, clean architecture.
+⚠ HARD LIMITATIONS (NO SUGAR-COATING)
+Without APIs: ❌ No cross-device sync
+❌ No real-time chat
+❌ No online AI
+❌ No school-wide feed
+❌ No verification across users
+You are building a local-first app, not a social network.
+🔁 SMART STRATEGY (THIS IS IMPORTANT)
+Phase 1 — Offline MVP
+• Use packages above
+• Build full UI/UX
+• Local demo
+• School pitch version
+Phase 2 — Hybrid (Optional Later)
+Add one backend:
+• Supabase OR Firebase
+• Keep offline mode
+• Sync when internet exists
+This is how serious products are built.
+
+ADMIN WEBSITE – CORE CONTROL SYSTEM
+1️⃣ Dual Verification System (Twitter-Style, but Smarter)
+🔵 Blue Verification — Students
+Granted to:
+• Registered ABUAD students
+• Valid matric number
+• Faculty & department confirmed
+Blue badge means
+• Real student
+• Can post publicly
+• Can create clubs
+• Can comment everywhere
+• Can gain followers
+Revocable anytime.
+🟡 Gold Verification — Staff / Authority
+Granted to:
+• Lecturers
+• HODs
+• Deans
+• Admin offices
+• Security & health units
+Gold badge means
+• Official voice
+• Posts appear higher in feed
+• Can pin announcements
+• Can moderate discussions
+• Can verify blue badges
+This instantly creates trust hierarchy.
+2️⃣ Verification Workflow (Admin Panel)
+Step-by-step
+• User applies for verification
+• Uploads: 
+• Student ID / Staff ID
+• Matric / Staff number
+• Admin reviews
+• Status options: 
+• Approved (Blue / Gold)
+• Rejected
+• Flagged
+• Badge applied instantly
+Audit log is mandatory.
+FOLLOWERS SYSTEM (CAMPUS SAFE)
+3️⃣ Followers & Following
+Twitter-like, but restricted.
+Rules
+• Students can follow: 
+• Students
+• Teachers
+• Departments
+• Teachers can follow: 
+• Students
+• Departments
+Features
+• Followers count
+• Following feed
+• Mutuals indicator
+• Follow requests (optional)
+Privacy:
+• Private accounts allowed
+• Block & mute support
+4️⃣ Profile Power Levels
+Reputation is earned, not cosmetic.
+Factors:
+• Verification status
+• Post quality
+• Reports received
+• Engagement
+• Academic contribution
+Admins can throttle reach based on trust score.
+STREAKS SYSTEM (SMART, NOT CHILDISH)
+5️⃣ Streaks (Attendance + Engagement)
+Types of Streaks
+• Login streak
+• Study streak
+• Class attendance streak
+• Contribution streak (helpful posts)
+Breaking streaks has consequences:
+• Reduced visibility
+• Loss of streak badge
+This subtly improves discipline.
+6️⃣ Streak Rewards (Non-Monetary)
+• Profile highlights
+• Priority in feeds
+• Custom badges
+• AI usage boost
+• Early feature access
+No gambling mechanics.
+ADVANCED ADMIN WEBSITE FEATURES
+7️⃣ Content Ranking Engine
+Admin controls:
+• Who trends
+• Which posts go viral
+• Department priority
+• Announcement dominance
+This prevents chaos.
+8️⃣ Moderation Command Center
+Tools
+• Keyword alerts
+• Mass post removal
+• Shadow banning
+• Temporary read-only mode
+• Auto-lock comments
+AI-assisted moderation preferred.
+9️⃣ User Risk & Trust Dashboard
+Admin sees:
+• Reports count
+• Toxicity score
+• Engagement pattern
+• Sudden behavior changes
+Early warning system.
+🔟 Department & Faculty Pages
+Verified Gold-only pages:
+• Faculty of Engineering
+• College of Medicine
+• Student Affairs
+Features:
+• Posts
+• Announcements
+• Events
+• Followers
+SOCIAL DEPTH FEATURES (SAFE & ADDICTIVE)
+1️⃣1️⃣ Reposts with Context
+• Quote reposts
+• Teacher annotations
+• Admin labels
+1️⃣2️⃣ Polls & Campus Voting
+Admins can:
+• Approve polls
+• Limit voters
+• Set deadlines
+• Publish results officially
+1️⃣3️⃣ Highlights & Stories (24h)
+• Verified users only
+• Academic or event-focused
+• No spam
+1️⃣4️⃣ Campus Leaderboard
+Categories:
+• Academic contribution
+• Helpfulness
+• Attendance
+• Club activity
+Visibility controlled.
+SECURITY & GOVERNANCE (CRITICAL)
+1️⃣5️⃣ Role-Based Access Control
+Roles:
+• Student
+• Verified Student
+• Lecturer
+• Admin
+• Super Admin
+Each feature tied to role.
+1️⃣6️⃣ Legal & Compliance Tools
+• Post history retention
+• Evidence export
+• Incident reports
+• Suspension documentation
+This protects the institution.
+MONETIZATION (OPTIONAL, CLEAN)
+1️⃣7️⃣ Premium Blue+ (Students)
+Not pay-to-win.
+Adds:
+• Profile customization
+• Advanced analytics
+• Bookmark folders
+• Higher media limits
+Verification remains free.
+HARD TRUTH (AGAIN)
+If you copy Twitter blindly, the school will reject it.
+If you adapt Twitter with control, the school will endorse it.
+What you’re designing now is:
+Twitter + LMS + Campus Control Panel
+That’s rare.
+
+ABUAD APP — SEARCH SYSTEM (FULL DESIGN)
+1️⃣ Global Smart Search (Top-Level)
+One search bar. Multiple domains.
+Searches across
+• Students
+• Lecturers
+• Departments
+• Posts
+• Videos
+• Chats (own only)
+• Courses
+• Locations (map)
+• Events
+• Files (PDFs, notes)
+Results grouped, not mixed.
+2️⃣ Search Filters (Mandatory)
+After typing, users refine.
+Filters
+• Type (People / Posts / Videos / Docs)
+• Role (Student / Lecturer / Admin)
+• Verification (Blue / Gold)
+• Faculty / Department
+• Date range
+• Popularity
+• Verified only
+Admins can enforce default filters.
+3️⃣ Verified-Priority Search Ranking
+Search is not neutral.
+Ranking order:
+• Gold verified (lecturers, departments)
+• Blue verified (students)
+• High-trust accounts
+• New accounts
+This prevents impersonation and spam.
+4️⃣ Campus Location Search (Map-Linked)
+Search → Navigate instantly.
+Examples:
+• “Mechanical Engineering Lab”
+• “Hostel A”
+• “ICT Office”
+Results include:
+• Directions
+• Distance
+• Opening hours
+• Responsible staff (gold verified)
+5️⃣ Course & Academic Search
+Academic-first logic.
+Search for:
+• Course codes
+• Lecturers
+• Past discussions
+• Shared notes
+• Exam tips
+AI-enhanced suggestions:
+• “Students usually ask this before exams”
+• “Related topics you should review”
+6️⃣ People Search (Advanced)
+Not just names.
+Search by:
+• Name
+• Matric number (restricted)
+• Faculty
+• Level
+• Club
+• Verification badge
+Admins control what fields are searchable.
+7️⃣ Hashtags & Topics
+Structured discovery.
+• #ENG101
+• #HostelLife
+• #ABUADEvents
+• #ExamWeek
+Admins can:
+• Promote hashtags
+• Ban hashtags
+• Convert hashtags into official topics
+8️⃣ Search Suggestions & Autocomplete
+As users type:
+• Trending searches
+• Faculty-based suggestions
+• Verified accounts first
+• Safe content only
+No raw chaos.
+9️⃣ Saved Searches & Alerts
+Power-user feature.
+• Save frequent searches
+• Get notified when: 
+• A lecturer posts
+• A keyword appears
+• A new file is uploaded
+Admin can disable this per role.
+🔟 AI-Assisted Search (Controlled)
+Search understands intent, not just keywords.
+Examples:
+• “Where is my next class?”
+• “Who teaches PHY102?”
+• “Notes for last week lecture”
+AI translates intent → structured query.
+ADMIN SEARCH CONTROLS (CRITICAL)
+1️⃣1️⃣ Search Governance Panel
+Admins can:
+• Blacklist keywords
+• Limit sensitive searches
+• Track search abuse
+• Review trending searches
+Search logs are anonymized, but auditable.
+1️⃣2️⃣ Trust-Aware Search Limits
+New accounts:
+• Limited search depth
+• No bulk discovery
+Verified accounts:
+• Full access
+This prevents stalking.
+1️⃣3️⃣ Emergency Search Override
+During emergencies:
+• Search prioritizes safety info
+• Displays evacuation points
+• Shows official instructions first
+SOCIAL SEARCH EXTENSIONS
+1️⃣4️⃣ Follower-Based Search Boost
+If you follow someone:
+• Their posts rank higher in your search
+• Their replies surface earlier
+Personalized, but controlled.
+1️⃣5️⃣ Content-Type Deep Search
+Inside each section:
+• Search only videos
+• Search only PDFs
+• Search only chats
+Fast and intentional.
+UX FEATURES (DO NOT SKIP)
+1️⃣6️⃣ Recent Searches & History
+• Local storage only
+• One-tap clear
+• Private mode search
+1️⃣7️⃣ Misspelling & Alias Handling
+• Nicknames
+• Course code variations
+• Building abbreviations
+No “no results” dead-ends.
+HARD TRUTH (NO SUGAR)
+A campus app without a strong search:
+• Feels slow
+• Feels messy
+• Feels amateur
+A strong search:
+• Reduces support tickets
+• Increases engagement
+• Makes content reusable
+
+1️⃣ GLOBAL NAVIGATION STRUCTURE (CROSS-PLATFORM)
+Bottom Navigation (Primary)
+5 tabs max. No compromise.
+TabIconPurposeHome🏠Campus feedChat💬MessagesMap🗺️Campus navigationSearch🔍Global discoveryProfile👤Dashboard 
+Rules
+• Persistent
+• Icon + label
+• Badge support (messages, alerts)
+Use:
+• Material 3 style (Android)
+• Cupertino spacing (iOS)
+2️⃣ SAFE AREA & RESPONSIVENESS (MANDATORY)
+Top Level Wrapper
+• Respect notch, status bar, gesture areas
+• No custom hacks
+Principles
+• Max width content container
+• Adaptive padding
+• Keyboard-aware layouts
+This ensures:
+• No clipped content
+• Smooth keyboard behavior
+• No overlap with system gestures
+3️⃣ HOME (CAMPUS FEED) LAYOUT
+Structure
+[ Status Bar ] [ App Bar ] - ABUAD logo (left) - Search icon (right) [ Filter Chips Row ] [ Feed List ] - Post Card - Media - Actions [ Bottom Nav ] 
+Post Card Anatomy
+• Avatar (verified badge overlay)
+• Name + role + timestamp
+• Content
+• Media (full-width, rounded)
+• Action row (Like, Comment, Repost, Save)
+Key rule
+• Vertical scroll only
+• No nested scroll chaos
+4️⃣ CHAT LAYOUT (MESSAGING-FIRST)
+Chat List Screen
+[ App Bar ] - Chats - New message icon [ Search Bar ] [ Chat List ] - Avatar - Name - Last message - Time [ Bottom Nav ] 
+Chat Thread Screen
+[ App Bar ] - User info [ Messages List ] [ Message Input ] - Attach - Text - Send 
+UX Rules
+• Keyboard pushes content, not overlays
+• Messages anchored to bottom
+• iOS-style swipe back
+• Android long-press actions
+5️⃣ MAP SCREEN LAYOUT
+Structure
+[ Fullscreen Map ] [ Floating Search Bar ] [ Bottom Sheet ] - Directions - Distance - Actions 
+Behavior
+• Map is full screen
+• Controls float above map
+• Bottom sheet draggable (iOS feel)
+6️⃣ SEARCH SCREEN (POWER USER)
+Layout
+[ App Bar ] - Search input (focused) [ Filter Tabs ] - People | Posts | Courses | Locations [ Results List ] 
+Rules
+• Instant feedback
+• Clear empty states
+• Highlight matches
+7️⃣ PROFILE / DASHBOARD LAYOUT
+Structure
+[ Profile Header ] - Avatar - Name + verification badge - Faculty / Role [ Stats Row ] - Followers | Following | Streaks [ Quick Actions ] - Edit profile - Settings [ Tabs ] - Posts | Media | Activity 
+8️⃣ ADMIN / MODERATOR SCREENS (MOBILE)
+Admin Dashboard
+[ App Bar ] [ Metrics Cards ] [ Action List ] - Verify users - Reports - Announcements 
+Keep admin actions:
+• Minimal
+• Confirmed
+• Logged
+9️⃣ PLATFORM-SPECIFIC ADAPTATION
+Android
+• Material 3
+• Ripple effects
+• Back button support
+• FAB for create post
+iOS
+• Cupertino animations
+• Swipe gestures
+• No FAB
+• Bottom sheets instead of dialogs
+Same logic, different feel.
+🔟 DESIGN SYSTEM (DO NOT SKIP)
+Typography
+• Large titles
+• Clear hierarchy
+• No decorative fonts
+Colors
+• Neutral base
+• School accent
+• Verification colors: 
+• Blue = student
+• Gold = staff
+Icons
+• Consistent set
+• No mixing random icon packs
+HARD UX TRUTHS
+• More than 5 tabs = bad app
+• Nested scrolling = poor UX
+• Over-custom UI = maintenance nightmare
+• Platform respect = user trust
+
+ABUAD ADMIN WEBSITE — MASTER LAYOUT
+1️⃣ GLOBAL STRUCTURE (ALL PAGES)
+┌──────────────────────────────────────────┐ │ Top Bar │ │ ABUAD Admin | Search | Alerts | Profile │ ├───────────────┬──────────────────────────┤ │ Sidebar │ Main Content Area │ │ │ │ │ Dashboard │ Page-specific content │ │ Users │ │ │ Verification │ │ │ Posts │ │ │ Reports │ │ │ Search Ctrl │ │ │ Streaks │ │ │ Analytics │ │ │ Settings │ │ └───────────────┴──────────────────────────┘ 
+Design rules
+• Fixed sidebar (collapsible)
+• Sticky top bar
+• Content scrolls, not layout
+• Keyboard-first navigation
+2️⃣ TOP BAR (GLOBAL)
+Left
+• ABUAD Admin logo
+• Environment badge (Live / Test)
+Center
+• Global Admin Search 
+• Users
+• Posts
+• Reports
+• IDs
+Right
+• Notifications (verification requests, reports)
+• Emergency broadcast shortcut
+• Admin profile menu
+3️⃣ SIDEBAR NAVIGATION (CORE)
+Main Sections
+• Dashboard
+• User Management
+• Verification System
+• Followers & Streaks
+• Content & Posts
+• Reports & Moderation
+• Search Control
+• Analytics
+• Emergency & Safety
+• Settings
+Each section expands with sub-pages.
+PAGE-BY-PAGE LAYOUT (EVERYTHING YOU NEED)
+4️⃣ DASHBOARD (CONTROL CENTER)
+Layout
+[ KPI Cards ] - Total Users - Verified Students (Blue) - Verified Staff (Gold) - Active Today [ Live Activity Feed ] - New posts - New reports - Verification actions [ System Status ] - AI usage - Search health - Moderation queue 
+Purpose: instant situational awareness.
+5️⃣ USER MANAGEMENT
+Users List Page
+[ Filters ] - Role - Faculty - Verification - Status [ User Table ] - Name - Role - Badge - Followers - Risk Score - Actions 
+User Profile (Admin View)
+[ User Header ] - Photo - Name - Matric / Staff ID - Verification badge [ Tabs ] - Activity - Posts - Reports - Streaks - Admin Actions 
+Actions:
+• Suspend / Ban
+• Limit posting
+• Reset streaks
+• Revoke badge
+6️⃣ VERIFICATION SYSTEM (TWITTER-STYLE)
+Verification Queue
+[ Tabs ] - Pending - Approved - Rejected [ Request Card ] - User details - Submitted documents - Apply Blue / Gold - Notes 
+Badge Rules Page
+• Blue badge criteria
+• Gold badge criteria
+• Automatic revocation rules
+7️⃣ FOLLOWERS & STREAKS CONTROL
+Followers Oversight
+• Detect follower abuse
+• Fake growth alerts
+• Manual follower reset
+Streak Management
+[ Streak Types ] - Login - Attendance - Contribution [ Controls ] - Enable / Disable - Thresholds - Rewards 
+Admins define behavioral incentives here.
+8️⃣ CONTENT & POSTS MANAGEMENT
+Posts Dashboard
+[ Filters ] - Date - Type - Verification level - Reports count [ Post List ] - Content preview - Author - Reach - Flags 
+Actions:
+• Remove
+• Lock comments
+• Shadow ban
+• Pin (Gold only)
+9️⃣ REPORTS & MODERATION HUB
+Reports Queue
+[ Severity Tabs ] - Low - Medium - High - Emergency [ Report Detail ] - Reporter - Content - History - Action log 
+Every action is logged permanently.
+🔟 SEARCH CONTROL PANEL
+This is rare — and powerful.
+Keyword Governance
+• Blacklisted terms
+• Restricted phrases
+• Faculty-specific blocks
+Search Ranking Rules
+• Gold priority
+• Blue priority
+• Freshness vs authority
+Abuse Detection
+• Excessive searches
+• Stalking patterns
+1️⃣1️⃣ ANALYTICS & INSIGHTS
+Sections
+• User growth
+• Engagement
+• Search trends
+• Post reach
+• AI usage
+• Reports trends
+Charts:
+• Time-series
+• Heatmaps
+• Leaderboards
+1️⃣2️⃣ EMERGENCY & SAFETY PANEL
+Features
+• Emergency broadcast
+• Lock feed
+• Override search
+• Display safety instructions
+This panel must be one click away.
+1️⃣3️⃣ SETTINGS (SYSTEM CONTROL)
+Categories
+• Roles & permissions
+• Feature toggles
+• Time-based restrictions
+• Privacy rules
+• API keys (future)
+• Backup & export
+CORE UI COMPONENTS (REUSABLE)
+• Data table
+• Status badges (Blue / Gold)
+• Confirmation modals
+• Toast notifications
+• Audit log viewer
+• Filter drawers
+Build once. Reuse everywhere.
+DATA FLOW (JS FRAMEWORK FRIENDLY)
+State
+• Global store (Redux / Zustand / Pinia)
+API Layer
+• Service modules
+• Optimistic updates
+Security
+• Role-based rendering
+• Action confirmation
+• Immutable audit logs
+UX NON-NEGOTIABLES
+• Destructive actions require confirmation
+• No silent changes
+• Every admin action is traceable
+• Fast keyboard navigation
+• Dark mode by default (admins prefer it)
+FINAL TRUTH
+This admin website is not “supporting” ABUAD App.
+It controls ABUAD App.
+If this panel is weak, the entire ecosystem fails.
