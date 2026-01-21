@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import '../data/ai_service.dart';
 
 class AiMessage {
   final String content;
@@ -23,6 +24,19 @@ class AiMessage {
   }
 }
 
+enum AiMode {
+  general('General', Icons.auto_awesome, Colors.blue),
+  academic('Academic Advisor', Icons.school, Colors.brown),
+  guide('Campus Guide', Icons.map, Colors.green),
+  buddy('Study Buddy', Icons.people, Colors.orange);
+
+  final String label;
+  final IconData icon;
+  final Color color;
+
+  const AiMode(this.label, this.icon, this.color);
+}
+
 class AiScreen extends ConsumerStatefulWidget {
   const AiScreen({super.key});
 
@@ -33,16 +47,21 @@ class AiScreen extends ConsumerStatefulWidget {
 class _AiScreenState extends ConsumerState<AiScreen> {
   final _inputController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  AiMode _currentMode = AiMode.general;
 
   List<AiMessage> _messages = [
     const AiMessage(
       content:
-          "Hello! I'm your ABUAD AI Assistant. 🎓\n\nI can help you with:\n- Finding classrooms\n- Exam schedules\n- Campus news\n\nHow can I help you today?",
+          "Hello! I'm your ABUAD AI Assistant. 🎓\n\nHow can I help you today?",
       isUser: false,
     ),
   ];
 
   bool _isTyping = false;
+
+  final _aiService = AiService();
+
+  // existing state variables...
 
   Future<void> _sendMessage() async {
     final text = _inputController.text.trim();
@@ -56,31 +75,44 @@ class _AiScreenState extends ConsumerState<AiScreen> {
 
     _scrollToBottom();
 
-    // Mock AI Response Streaming
-    await Future.delayed(
-      const Duration(seconds: 1),
-    ); // Network delay simulation
-
-    final responseText = _getMockResponse(text);
-
-    // Start streaming response
+    // Prepare response message container
     setState(() {
       _messages.add(
         const AiMessage(content: "", isUser: false, isStreaming: true),
       );
     });
 
-    for (int i = 0; i < responseText.length; i++) {
-      await Future.delayed(const Duration(milliseconds: 30)); // Typing speed
-      if (!mounted) return;
+    try {
+      // Send optional system prompt context first if it's a new session or mode switch
+      // For simplicity in this demo, we just send user message.
+      // In a real app, you might prepend the system prompt to the history or strictly use the system instruction API if available.
 
+      String accumulatedText = "";
+
+      // We'll wrap the user's input with the mode context for better one-shot responses in this simple implementation
+      final contextPrompt =
+          "${AiService.getSystemPrompt(_currentMode.label)}\n\nUser: $text";
+
+      await for (final chunk in _aiService.streamChat(contextPrompt)) {
+        if (!mounted) return;
+
+        accumulatedText += chunk;
+
+        setState(() {
+          final lastMsg = _messages.last;
+          _messages[_messages.length - 1] = lastMsg.copyWith(
+            content: accumulatedText,
+          );
+        });
+        _scrollToBottom();
+      }
+    } catch (e) {
       setState(() {
         final lastMsg = _messages.last;
         _messages[_messages.length - 1] = lastMsg.copyWith(
-          content: lastMsg.content + responseText[i],
+          content: "Connection Error. Please try again.",
         );
       });
-      _scrollToBottom();
     }
 
     if (mounted) {
@@ -90,20 +122,6 @@ class _AiScreenState extends ConsumerState<AiScreen> {
         _isTyping = false;
       });
     }
-  }
-
-  String _getMockResponse(String input) {
-    final lower = input.toLowerCase();
-    if (lower.contains('map') ||
-        lower.contains('class') ||
-        lower.contains('where')) {
-      return "You can find campus locations in the Map tab. The College of Engineering is located in the northern sector, while the Law College is closer to the main gate. Would you like me to open the map?";
-    } else if (lower.contains('exam') || lower.contains('timetable')) {
-      return "The provisional exam timetable for this semester is out. Check the student portal or the Feed for the latest PDF download.";
-    } else if (lower.contains('library') || lower.contains('book')) {
-      return "The ABUAD Central Library is open from 8:00 AM to 9:00 PM on weekdays. Remember to bring your Student ID!";
-    }
-    return "That's an interesting question about $input. As an AI, I'm constantly learning about ABUAD activities. Could you be more specific?";
   }
 
   void _scrollToBottom() {
@@ -122,11 +140,45 @@ class _AiScreenState extends ConsumerState<AiScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.auto_awesome, color: Colors.purple),
-            SizedBox(width: 8),
-            Text('ABUAD AI'),
+            Icon(_currentMode.icon, color: _currentMode.color),
+            const SizedBox(width: 8),
+            PopupMenuButton<AiMode>(
+              initialValue: _currentMode,
+              onSelected: (mode) {
+                setState(() {
+                  _currentMode = mode;
+                  _messages.add(
+                    AiMessage(
+                      content: "Switched to ${mode.label} mode.",
+                      isUser: false,
+                    ),
+                  );
+                });
+              },
+              child: Row(
+                children: [
+                  Text(
+                    _currentMode.label,
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                  const Icon(Icons.arrow_drop_down),
+                ],
+              ),
+              itemBuilder: (context) => AiMode.values.map((mode) {
+                return PopupMenuItem(
+                  value: mode,
+                  child: Row(
+                    children: [
+                      Icon(mode.icon, color: mode.color, size: 20),
+                      const SizedBox(width: 8),
+                      Text(mode.label),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
           ],
         ),
         actions: [
@@ -134,7 +186,7 @@ class _AiScreenState extends ConsumerState<AiScreen> {
             icon: const Icon(Icons.refresh),
             onPressed: () {
               setState(() {
-                _messages = [_messages.first]; // Reset
+                _messages = [_messages.first];
               });
             },
           ),
@@ -160,9 +212,7 @@ class _AiScreenState extends ConsumerState<AiScreen> {
                     ),
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: msg.isUser
-                          ? const Color(0xFF0D47A1)
-                          : Colors.white,
+                      color: msg.isUser ? _currentMode.color : Colors.white,
                       borderRadius: BorderRadius.only(
                         topLeft: const Radius.circular(20),
                         topRight: const Radius.circular(20),
@@ -189,21 +239,21 @@ class _AiScreenState extends ConsumerState<AiScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         if (!msg.isUser) ...[
-                          const Row(
+                          Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
-                                Icons.auto_awesome,
+                                _currentMode.icon,
                                 size: 14,
-                                color: Colors.purple,
+                                color: _currentMode.color,
                               ),
-                              SizedBox(width: 4),
+                              const SizedBox(width: 4),
                               Text(
-                                "Assistant",
+                                _currentMode.label,
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,
-                                  color: Colors.purple,
+                                  color: _currentMode.color,
                                 ),
                               ),
                             ],
@@ -263,7 +313,7 @@ class _AiScreenState extends ConsumerState<AiScreen> {
                     child: TextField(
                       controller: _inputController,
                       decoration: InputDecoration(
-                        hintText: 'Ask anything about campus...',
+                        hintText: 'Ask your ${_currentMode.label}...',
                         filled: true,
                         fillColor: Colors.grey[50],
                         border: OutlineInputBorder(
@@ -281,7 +331,7 @@ class _AiScreenState extends ConsumerState<AiScreen> {
                   const SizedBox(width: 8),
                   FloatingActionButton.small(
                     onPressed: _sendMessage,
-                    backgroundColor: const Color(0xFF0D47A1),
+                    backgroundColor: _currentMode.color,
                     elevation: 0,
                     child: const Icon(Icons.send, color: Colors.white),
                   ),

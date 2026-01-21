@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/feed/presentation/feed_screen.dart';
 import '../../features/feed/presentation/create_post_screen.dart';
+import '../../features/feed/presentation/post_detail_screen.dart';
 import '../../features/chat/presentation/chat_list_screen.dart';
 import '../../features/chat/presentation/chat_screen.dart';
 import '../../features/chat/presentation/user_search_screen.dart';
@@ -14,6 +15,8 @@ import '../../shared/widgets/scaffold_with_bottom_nav.dart';
 import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/presentation/signup_screen.dart';
 import '../../features/auth/data/auth_repository.dart';
+import '../../features/events/presentation/events_screen.dart';
+import '../../features/groups/presentation/groups_screen.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 final _feedNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'feed');
@@ -52,6 +55,16 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           return ProfileScreen(userId: userId);
         },
       ),
+      GoRoute(
+        path: '/events',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const EventsScreen(),
+      ),
+      GoRoute(
+        path: '/groups',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const GroupsScreen(),
+      ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {
           return ScaffoldWithBottomNav(navigationShell: navigationShell);
@@ -69,7 +82,21 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                   GoRoute(
                     path: 'create-post',
                     parentNavigatorKey: _rootNavigatorKey,
-                    builder: (context, state) => const CreatePostScreen(),
+                    builder: (context, state) {
+                      final extra = state.extra as String?;
+                      return CreatePostScreen(
+                        initialChannelId: extra ?? 'general',
+                      );
+                    },
+                  ),
+                  GoRoute(
+                    path: 'post-detail',
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (context, state) {
+                      final post =
+                          state.extra as dynamic; // casting to Post in real app
+                      return PostDetailScreen(post: post);
+                    },
                   ),
                 ],
               ),

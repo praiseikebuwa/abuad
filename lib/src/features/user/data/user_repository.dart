@@ -31,6 +31,9 @@ class AppUser {
   final int followingCount;
   final String status;
   final DateTime? lastSeen;
+  final String? college;
+  final String? department;
+  final String? phoneNumber;
 
   Map<String, dynamic> toMap() {
     return {
@@ -46,6 +49,9 @@ class AppUser {
       'status': status,
       'lastSeen': lastSeen?.millisecondsSinceEpoch,
       'createdAt': DateTime.now().millisecondsSinceEpoch,
+      'college': college,
+      'department': department,
+      'phoneNumber': phoneNumber,
     };
   }
 
@@ -65,6 +71,9 @@ class AppUser {
       lastSeen: map['lastSeen'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['lastSeen'])
           : null,
+      college: map['college'],
+      department: map['department'],
+      phoneNumber: map['phoneNumber'],
     );
   }
 }

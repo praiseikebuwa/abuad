@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ABUAD Admin Portal</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <div id="app">
+        <!-- Login Section -->
+        <section id="login-section" class="active-section">
+            <div class="login-container">
+                <div class="login-card">
+                    <div class="logo-area">
+                        <h1>🛡️ Admin Portal</h1>
+                        <p>Sign in to manage the ABUAD platform</p>
+                    </div>
+                    <form id="login-form">
+                        <div class="form-group">
+                            <label>Email</label>
+                            <input type="email" id="login-email" placeholder="admin@abuad.edu.ng" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Password</label>
+                            <input type="password" id="login-password" placeholder="••••••••" required>
+                        </div>
+                        <button type="submit" class="btn-primary">Login</button>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <!-- Dashboard Section -->
+        <section id="dashboard-section" class="hidden-section">
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <h2>ABUAD</h2>
+                    <span class="badge">ADMIN</span>
+                </div>
+                <nav class="sidebar-nav">
+                    <ul>
+                        <li class="active" data-tab="overview"><i class="fas fa-chart-pie"></i> Overview</li>
+                        <li data-tab="users"><i class="fas fa-users"></i> Users & Verify</li>
+                        <li data-tab="posts"><i class="fas fa-newspaper"></i> Content Feed</li>
+                        <li data-tab="chats"><i class="fas fa-comments"></i> Chat Channels</li>
+                        <li data-tab="broadcasts"><i class="fas fa-bullhorn"></i> Broadcasts</li>
+                        <li data-tab="presence"><i class="fas fa-satellite-dish"></i> Live Tracking</li>
+                    </ul>
+                </nav>
+                <div class="sidebar-footer">
+                    <button id="logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</button>
+                </div>
+            </aside>
+
+            <main class="main-content">
+                <!-- Overview Tab -->
+                <div id="overview-tab" class="tab-content active">
+                    <header class="content-header">
+                        <h1>Dashboard Overview</h1>
+                    </header>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon users"><i class="fas fa-user-friends"></i></div>
+                            <div class="stat-info">
+                                <h3>Total Users</h3>
+                                <p id="stat-total-users">Loading...</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon online"><i class="fas fa-circle"></i></div>
+                            <div class="stat-info">
+                                <h3>Online Now</h3>
+                                <p id="stat-online-users">Loading...</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon verified"><i class="fas fa-check-circle"></i></div>
+                            <div class="stat-info">
+                                <h3>Verified Users</h3>
+                                <p id="stat-verified-users">Loading...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Users Tab -->
+                <div id="users-tab" class="tab-content">
+                    <header class="content-header">
+                        <h1>User Management</h1>
+                        <div class="search-box">
+                            <i class="fas fa-search"></i>
+                            <input type="text" id="user-search" placeholder="Search by name or email...">
+                        </div>
+                    </header>
+                    <div class="table-container">
+                        <table id="users-table">
+                            <thead>
+                                <tr>
+                                    <th>User</th>
+                                    <th>Status</th>
+                                    <th>Verification</th>
+                                    <th>Joined</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Posts Tab -->
+                <div id="posts-tab" class="tab-content">
+                    <header class="content-header">
+                        <h1>Feed Content Moderation</h1>
+                    </header>
+                    <div class="info-banner" style="background: #fff3e0; color: #e65100; border: 1px solid #ffe0b2;">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <p>Moderation actions are irreversible. Review content carefully before deletion.</p>
+                    </div>
+                    <div class="table-container">
+                        <table id="posts-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 40%">Content</th>
+                                    <th>Author</th>
+                                    <th>Engagement</th>
+                                    <th>Posted</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Chats Tab -->
+                <div id="chats-tab" class="tab-content">
+                    <header class="content-header">
+                        <h1>Chat Moderation</h1>
+                    </header>
+                    <div class="info-banner">
+                        <i class="fas fa-info-circle"></i>
+                        <p>Caution: Deleting a channel is permanent.</p>
+                    </div>
+                    <div class="table-container">
+                        <table id="chats-table">
+                            <thead>
+                                <tr>
+                                    <th>Channel ID</th>
+                                    <th>Participants</th>
+                                    <th>Last Activity</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Broadcasts Tab -->
+                <div id="broadcasts-tab" class="tab-content">
+                    <header class="content-header">
+                        <h1>System Broadcasts</h1>
+                    </header>
+                    <div class="broadcast-layout">
+                        <div class="broadcast-form-container">
+                            <h3>Send New Announcement</h3>
+                            <form id="broadcast-form">
+                                <div class="form-group">
+                                    <label>Title</label>
+                                    <input type="text" id="broadcast-title" placeholder="e.g. Server Maintenance"
+                                        required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Type</label>
+                                    <select id="broadcast-type">
+                                        <option value="info">Information (Blue)</option>
+                                        <option value="warning">Warning (Orange)</option>
+                                        <option value="urgent">Urgent (Red)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Message Body</label>
+                                    <textarea id="broadcast-message" rows="4" placeholder="Type your message here..."
+                                        required></textarea>
+                                </div>
+                                <button type="submit" class="btn-primary">Send Broadcast</button>
+                            </form>
+                        </div>
+                        <div class="broadcast-history-container">
+                            <h3>Recent Broadcasts</h3>
+                            <div id="broadcast-history">
+                                <!-- Populated by JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Presence Tab -->
+                <div id="presence-tab" class="tab-content">
+                    <header class="content-header">
+                        <h1>Live Presence Tracking</h1>
+                    </header>
+                    <div class="live-grid" id="live-users-grid">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </main>
+        </section>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+    <!-- App Logic -->
+    <script src="js/firebase-config.js"></script>
+
+    <!-- Controllers -->
+    <script src="js/controllers/auth.js"></script>
+    <script src="js/controllers/users.js"></script>
+    <script src="js/controllers/posts.js"></script>
+    <script src="js/controllers/chats.js"></script>
+    <script src="js/controllers/broadcasts.js"></script>
+
+    <!-- Main Entry -->
+    <script src="js/app.js"></script>
+</body>
+
+</html>

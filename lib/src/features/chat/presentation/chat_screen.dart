@@ -65,51 +65,68 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     final message = messages[index];
                     final isMe = message.senderId == repo.currentUserId;
 
+                    // Snapchat Style: Minimal
+                    // Sender: Right, Red vertical line indicator
+                    // Receiver: Left, Blue vertical line indicator
+                    // No bubbles, just text next to the line.
+
                     return Align(
                       alignment: isMe
                           ? Alignment.centerRight
                           : Alignment.centerLeft,
                       child: Container(
                         constraints: BoxConstraints(
-                          maxWidth: MediaQuery.of(context).size.width * 0.75,
+                          maxWidth: MediaQuery.of(context).size.width * 0.8,
                         ),
                         margin: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 4,
+                          horizontal: 16,
+                          vertical: 2,
                         ),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: isMe
-                              ? const Color(0xFF0D47A1)
-                              : Colors.grey[200],
-                          borderRadius: BorderRadius.only(
-                            topLeft: const Radius.circular(16),
-                            topRight: const Radius.circular(16),
-                            bottomLeft: isMe
-                                ? const Radius.circular(16)
-                                : Radius.zero,
-                            bottomRight: isMe
-                                ? Radius.zero
-                                : const Radius.circular(16),
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
+                        child: Row(
+                          mainAxisAlignment: isMe
+                              ? MainAxisAlignment.end
+                              : MainAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment
+                              .center, // Center vertically with line
                           children: [
-                            Text(
-                              message.content,
-                              style: TextStyle(
-                                color: isMe ? Colors.white : Colors.black87,
-                                fontSize: 16,
+                            if (!isMe) ...[
+                              Container(
+                                width: 2,
+                                height: 24, // Approx height of text
+                                color: const Color(
+                                  0xFF0D47A1,
+                                ), // Blue for Received
+                              ),
+                              const SizedBox(width: 8),
+                            ],
+
+                            Flexible(
+                              child: GestureDetector(
+                                onTap: () {
+                                  // Show time/status on tap logic could go here
+                                },
+                                child: Text(
+                                  message.content,
+                                  style: TextStyle(
+                                    color: Colors.black87,
+                                    fontSize: 16,
+                                    fontFamily: 'Avenir', // Snap font vibe
+                                    fontWeight: isMe
+                                        ? FontWeight.w500
+                                        : FontWeight.w400,
+                                  ),
+                                ),
                               ),
                             ),
-                            Text(
-                              timeago.format(message.timestamp),
-                              style: TextStyle(
-                                color: isMe ? Colors.white70 : Colors.grey[600],
-                                fontSize: 10,
+
+                            if (isMe) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                width: 2,
+                                height: 24, // Approx height of text
+                                color: const Color(0xFFF23C57), // Red for Sent
                               ),
-                            ),
+                            ],
                           ],
                         ),
                       ),

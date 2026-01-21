@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:toastification/toastification.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'src/core/router/app_router.dart';
 import 'src/core/database/local_database.dart';
 import 'src/core/theme/app_theme.dart';
 
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'src/features/utilities/broadcast_listener.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -35,13 +40,88 @@ class MyApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final goRouter = ref.watch(goRouterProvider);
 
-    return MaterialApp.router(
-      title: 'ABUAD App',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.system,
-      routerConfig: goRouter,
+    return ToastificationWrapper(
+      child: MaterialApp.router(
+        title: 'ABUAD App',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        themeMode: ThemeMode.system,
+        routerConfig: goRouter,
+        builder: (context, child) {
+          return _ConnectivityListener(child: child);
+        },
+      ),
     );
+  }
+}
+
+class _ConnectivityListener extends StatefulWidget {
+  final Widget? child;
+  const _ConnectivityListener({required this.child});
+
+  @override
+  State<_ConnectivityListener> createState() => _ConnectivityListenerState();
+}
+
+class _ConnectivityListenerState extends State<_ConnectivityListener>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _updateStatus('online');
+    Connectivity().onConnectivityChanged.listen((result) {
+      if (result.contains(ConnectivityResult.none)) {
+        toastification.show(
+          context: context,
+          type: ToastificationType.error,
+          style: ToastificationStyle.fillColored,
+          title: const Text("No Internet Connection"),
+          description: const Text("Please check your network settings."),
+          alignment: Alignment.bottomCenter,
+          autoCloseDuration: const Duration(seconds: 4),
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _updateStatus('offline');
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _updateStatus('online');
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _updateStatus('offline');
+    }
+  }
+
+  Future<void> _updateStatus(String status) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .update({
+              'status': status,
+              'lastSeen': DateTime.now().millisecondsSinceEpoch,
+            });
+      }
+    } catch (e) {
+      debugPrint("Error updating status: $e");
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BroadcastListener(child: widget.child ?? const SizedBox.shrink());
   }
 }

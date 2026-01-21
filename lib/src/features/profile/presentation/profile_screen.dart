@@ -36,7 +36,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return Scaffold(
       body: userAsync.when(
         data: (user) {
-          if (user == null) return const Center(child: Text("User not found"));
+          if (user == null) {
+            // If data is null but it might be loading or valid null, check context
+            return const Center(child: Text("User not found"));
+          }
           final isCurrentUser = currentUserId == user.uid;
 
           return DefaultTabController(

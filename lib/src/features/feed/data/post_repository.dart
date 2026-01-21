@@ -125,30 +125,43 @@ class PostRepository {
     await postRef.update({'commentsCount': FieldValue.increment(-1)});
   }
 
-  Future<void> generateDummyData() async {
-    final postsCollection = _firestore.collection('posts');
-    final snapshot = await postsCollection.limit(1).get();
+  Future<void> repost(Post originalPost, String commentary) async {
+    final userId = currentUserId;
+    if (userId == null) return;
 
-    // Only generate if empty
-    if (snapshot.docs.isNotEmpty) return;
+    final userDoc = await _firestore.collection('users').doc(userId).get();
+    final userName = userDoc.data()?['displayName'] ?? 'Student';
+    final userHandle = userDoc.data()?['handle'] ?? '@student';
 
     final uuid = const Uuid();
+    final newPostId = uuid.v4();
 
-    for (int i = 0; i < 5; i++) {
-      final id = uuid.v4();
-      final post = Post(
-        id: id,
-        authorId: 'dummy_user_$i',
-        authorName: 'Student ${i + 1}',
-        authorHandle: '@student${i + 1}',
-        content: 'This is a sample live post #$i from Firestore!',
-        timestamp: DateTime.now().subtract(Duration(minutes: i * 10)),
-        likesCount: i * 5,
-        commentsCount: i,
-        isVerified: i % 2 == 0,
-      );
+    // Create the repost data structure (snapshot of original post)
+    final repostData = {
+      'id': originalPost.id,
+      'authorName': originalPost.authorName,
+      'authorHandle': originalPost.authorHandle,
+      'content': originalPost.content,
+      'mediaUrl': originalPost.mediaUrl,
+      'timestamp': originalPost.timestamp.toIso8601String(),
+    };
 
-      await addPost(post);
-    }
+    final newPost = Post(
+      id: newPostId,
+      authorId: userId,
+      authorName: userName,
+      authorHandle: userHandle,
+      content: commentary,
+      timestamp: DateTime.now(),
+      repostData: repostData,
+      channelId: originalPost.channelId,
+    );
+
+    await addPost(newPost);
+
+    // Increment share/repost count on the original post
+    await _firestore.collection('posts').doc(originalPost.id).update({
+      'repostCount': FieldValue.increment(1),
+    });
   }
 }

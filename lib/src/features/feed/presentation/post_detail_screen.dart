@@ -100,7 +100,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
       appBar: AppBar(title: const Text('Post')),
       body: Column(
         children: [
-          // Original Post
+          // Original Post (Twitter Style)
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -110,21 +110,26 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Header (User Info)
                 Row(
                   children: [
                     CircleAvatar(
-                      backgroundColor: Theme.of(
-                        context,
-                      ).primaryColor.withOpacity(0.1),
-                      child: Text(
-                        widget.post.authorName.isNotEmpty
-                            ? widget.post.authorName[0].toUpperCase()
-                            : '?',
-                        style: TextStyle(
-                          color: Theme.of(context).primaryColor,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      radius: 20,
+                      backgroundColor: Colors.grey[200],
+                      backgroundImage: widget.post.authorAvatarUrl != null
+                          ? NetworkImage(widget.post.authorAvatarUrl!)
+                          : null,
+                      child: widget.post.authorAvatarUrl == null
+                          ? Text(
+                              widget.post.authorName.isNotEmpty
+                                  ? widget.post.authorName[0].toUpperCase()
+                                  : '?',
+                              style: TextStyle(
+                                color: Theme.of(context).primaryColor,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            )
+                          : null,
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -160,35 +165,104 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                         ],
                       ),
                     ),
+                    IconButton(
+                      icon: const Icon(Icons.more_horiz),
+                      onPressed: () {}, // Todo: Report/Block menu
+                      color: Colors.grey,
+                    ),
                   ],
                 ),
+
                 const SizedBox(height: 16),
-                Text(widget.post.content, style: const TextStyle(fontSize: 16)),
-                const SizedBox(height: 12),
+
+                // Content
                 Text(
-                  timeago.format(widget.post.timestamp),
-                  style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                  widget.post.content,
+                  style: const TextStyle(fontSize: 18, height: 1.3),
                 ),
+
+                // Media Placeholder (if any)
+                if (widget.post.mediaUrl != null) ...[
+                  const SizedBox(height: 12),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.network(
+                      widget.post.mediaUrl!,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const SizedBox(),
+                    ),
+                  ),
+                ],
+
                 const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Text(
-                      '${widget.post.likesCount} likes',
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(width: 16),
-                    StreamBuilder<List<Map<String, dynamic>>>(
-                      stream: commentsStream,
-                      builder: (context, snapshot) {
-                        final count =
-                            snapshot.data?.length ?? widget.post.commentsCount;
-                        return Text(
-                          '$count comments',
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        );
-                      },
-                    ),
-                  ],
+
+                // Timestamp
+                Text(
+                  // Formatting like "10:21 AM · Jan 21, 2025" logic would go here
+                  // Using simplistic one for now
+                  "${widget.post.timestamp.hour}:${widget.post.timestamp.minute.toString().padLeft(2, '0')} · ${widget.post.timestamp.day}/${widget.post.timestamp.month}/${widget.post.timestamp.year}",
+                  style: TextStyle(color: Colors.grey[600], fontSize: 15),
+                ),
+
+                const SizedBox(height: 16),
+                Divider(height: 1, color: Colors.grey[200]),
+
+                // Stats Row
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12.0),
+                  child: Row(
+                    children: [
+                      _StatLabel(count: widget.post.likesCount, label: "Likes"),
+                      const SizedBox(width: 16),
+                      StreamBuilder<List<Map<String, dynamic>>>(
+                        stream: commentsStream,
+                        builder: (context, snapshot) {
+                          final count =
+                              snapshot.data?.length ??
+                              widget.post.commentsCount;
+                          return _StatLabel(count: count, label: "Replies");
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+
+                Divider(height: 1, color: Colors.grey[200]),
+
+                // Action Buttons Row (Twitter Style)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.chat_bubble_outline),
+                        onPressed: () {
+                          // Focus comment field
+                          // Implementation detail
+                        },
+                        color: Colors.grey[600],
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.repeat),
+                        onPressed: () {},
+                        color: Colors.grey[600],
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.favorite_border),
+                        onPressed: () {
+                          repo.toggleLike(widget.post.id);
+                        },
+                        color: Colors.grey[600],
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.share_outlined),
+                        onPressed: () {},
+                        color: Colors.grey[600],
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -386,6 +460,30 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _StatLabel extends StatelessWidget {
+  final int count;
+  final String label;
+
+  const _StatLabel({required this.count, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Text(
+          '',
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: TextStyle(color: Colors.grey[600], fontSize: 15),
+        ),
+      ],
     );
   }
 }

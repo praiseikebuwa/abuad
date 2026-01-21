@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
   // Brand Colors
@@ -23,24 +24,30 @@ class AppTheme {
       scaffoldBackgroundColor: _lightSurface,
 
       // Typography
-      fontFamily: 'Inter', // Assuming standard system font or if added later
-      textTheme: const TextTheme(
-        displayLarge: TextStyle(
-          fontWeight: FontWeight.bold,
-          letterSpacing: -1.0,
-          color: Colors.black87,
+      fontFamily: GoogleFonts.outfit().fontFamily,
+      textTheme: GoogleFonts.outfitTextTheme(
+        const TextTheme(
+          displayLarge: TextStyle(
+            fontWeight: FontWeight.bold,
+            letterSpacing: -1.0,
+            color: Colors.black87,
+          ),
+          displayMedium: TextStyle(
+            fontWeight: FontWeight.bold,
+            letterSpacing: -0.5,
+            color: Colors.black87,
+          ),
+          titleLarge: TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 20,
+            color: Colors.black87,
+          ),
+          bodyLarge: TextStyle(
+            fontSize: 16,
+            height: 1.5,
+            color: Colors.black87,
+          ),
         ),
-        displayMedium: TextStyle(
-          fontWeight: FontWeight.bold,
-          letterSpacing: -0.5,
-          color: Colors.black87,
-        ),
-        titleLarge: TextStyle(
-          fontWeight: FontWeight.w700,
-          fontSize: 20,
-          color: Colors.black87,
-        ),
-        bodyLarge: TextStyle(fontSize: 16, height: 1.5, color: Colors.black87),
       ),
 
       // AppBar

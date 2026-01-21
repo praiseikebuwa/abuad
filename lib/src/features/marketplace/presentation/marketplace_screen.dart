@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/marketplace_repository.dart';
 
@@ -82,14 +83,11 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
                   );
                 }
 
-                return GridView.builder(
+                return MasonryGridView.count(
                   padding: const EdgeInsets.all(16),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    childAspectRatio: 0.75,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                  ),
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
                   itemCount: items.length,
                   itemBuilder: (context, index) {
                     final item = items[index];
