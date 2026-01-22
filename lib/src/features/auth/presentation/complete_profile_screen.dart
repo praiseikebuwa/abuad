@@ -103,7 +103,7 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
 
       String? photoUrl;
       if (_imageFile != null) {
-        photoUrl = await cloudinary.uploadImage(_imageFile!);
+        photoUrl = await cloudinary.uploadImage(XFile(_imageFile!.path));
       }
 
       await userRepo.updateUser(currentUser.uid, {
@@ -163,7 +163,7 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
               const SizedBox(height: 32),
 
               DropdownButtonFormField<String>(
-                value: _college,
+                initialValue: _college,
                 decoration: const InputDecoration(
                   labelText: 'College',
                   border: OutlineInputBorder(),
@@ -180,7 +180,7 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
-                value: _department,
+                initialValue: _department,
                 decoration: const InputDecoration(
                   labelText: 'Department',
                   border: OutlineInputBorder(),

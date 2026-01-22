@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../auth/data/auth_repository.dart';
 
 class AppUser {
   final String uid;
@@ -23,6 +24,9 @@ class AppUser {
     this.followingCount = 0,
     this.status = 'offline',
     this.lastSeen,
+    this.college,
+    this.department,
+    this.phoneNumber,
   });
 
   final String? bannerUrl;
@@ -135,6 +139,10 @@ class UserRepository {
     await _firestore.collection('users').doc(user.uid).set(user.toMap());
   }
 
+  Future<void> updateUser(String uid, Map<String, dynamic> data) async {
+    await _firestore.collection('users').doc(uid).update(data);
+  }
+
   // Get all users (for testing)
   Stream<List<AppUser>> getAllUsers() {
     return _firestore.collection('users').snapshots().map((snapshot) {
@@ -241,3 +249,16 @@ class UserRepository {
     return snapshot.docs.map((doc) => doc.id).toList();
   }
 }
+
+final currentUserProvider = StreamProvider<AppUser?>((ref) {
+  final authState = ref.watch(authStateChangesProvider);
+  final user = authState.value;
+
+  if (user == null) return Stream.value(null);
+
+  return FirebaseFirestore.instance
+      .collection('users')
+      .doc(user.uid)
+      .snapshots()
+      .map((doc) => doc.exists ? AppUser.fromMap(doc.id, doc.data()!) : null);
+});

@@ -10,6 +10,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'src/features/utilities/broadcast_listener.dart';
+import 'src/core/services/notification_service.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -22,8 +23,10 @@ void main() async {
         options: DefaultFirebaseOptions.currentPlatform,
       );
     }
+    // Initialize Notifications
+    await NotificationService().initialize();
   } catch (e) {
-    debugPrint("Firebase initialization failed: $e");
+    debugPrint("Initialization failed: $e");
   }
 
   final container = ProviderContainer();

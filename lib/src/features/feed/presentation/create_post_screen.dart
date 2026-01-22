@@ -4,9 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart'; // Requires dependency
 import 'package:uuid/uuid.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import '../data/post_repository.dart';
 import '../../user/data/user_repository.dart';
+import '../../../core/services/cloudinary_service.dart';
 import '../domain/post.dart';
 import '../../auth/data/auth_repository.dart';
 
@@ -21,8 +21,9 @@ class CreatePostScreen extends ConsumerStatefulWidget {
 class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   final _contentController = TextEditingController();
   final _picker = ImagePicker();
-  File? _selectedImage;
+  XFile? _selectedImage;
   bool _isPosting = false;
+  bool _isAnonymous = false;
   String _channelId = 'general';
 
   @override
@@ -37,32 +38,25 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
     if (pickedFile != null) {
       setState(() {
-        _selectedImage = File(pickedFile.path);
+        _selectedImage = pickedFile;
       });
     }
   }
 
-  Future<String> _uploadImage(File image) async {
-    // In a real app, use Firebase Storage
-    // For now, if we can't upload, we might return a dummy URL or fail
-    // Implementing actual storage upload:
+  Future<String> _uploadImage(XFile image) async {
     try {
-      final ref = FirebaseStorage.instance
-          .ref()
-          .child('post_images')
-          .child(DateTime.now().toIso8601String() + '.jpg');
-      await ref.putFile(image);
-      return await ref.getDownloadURL();
+      final cloudinary = CloudinaryService();
+      return await cloudinary.uploadImage(image);
     } catch (e) {
-      debugPrint("Storage Upload Error: $e");
-      // Fallback or rethrow
+      debugPrint("Cloudinary Upload Error: $e");
       return '';
     }
   }
 
   Future<void> _submitPost() async {
-    if (_contentController.text.trim().isEmpty && _selectedImage == null)
+    if (_contentController.text.trim().isEmpty && _selectedImage == null) {
       return;
+    }
 
     setState(() => _isPosting = true);
 
@@ -83,15 +77,18 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       final post = Post(
         id: const Uuid().v4(),
         authorId: user.uid,
-        authorName: appUser?.displayName ?? 'Anonymous',
-        authorHandle: appUser?.handle ?? '@anon',
-        authorAvatarUrl: appUser?.avatarUrl,
+        authorName: _isAnonymous
+            ? 'Anonymous'
+            : (appUser?.displayName ?? 'Anonymous'),
+        authorHandle: _isAnonymous ? '@hidden' : (appUser?.handle ?? '@anon'),
+        authorAvatarUrl: _isAnonymous ? null : appUser?.avatarUrl,
         content: _contentController.text.trim(),
         mediaUrl: mediaUrl,
         mediaType: mediaUrl.isNotEmpty ? MediaType.image : MediaType.none,
         timestamp: DateTime.now(),
         channelId: _channelId,
-        isVerified: appUser?.isVerified ?? false,
+        isVerified: _isAnonymous ? false : (appUser?.isVerified ?? false),
+        isAnonymous: _isAnonymous,
       );
 
       await ref.read(postRepositoryProvider).addPost(post);
@@ -186,7 +183,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                                   ClipRRect(
                                     borderRadius: BorderRadius.circular(16),
                                     child: Image.file(
-                                      _selectedImage!,
+                                      File(_selectedImage!.path),
                                       width: double.infinity,
                                       fit: BoxFit.cover,
                                     ),
@@ -241,6 +238,41 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                 IconButton(
                   icon: const Icon(Icons.poll_outlined, color: Colors.blue),
                   onPressed: () {}, // Todo
+                ),
+                // Anonymous Toggle
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _isAnonymous
+                        ? Colors.black.withOpacity(0.1)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(16),
+                    border: _isAnonymous
+                        ? Border.all(color: Colors.black54)
+                        : null,
+                  ),
+                  child: Row(
+                    children: [
+                      Text(
+                        "Anon",
+                        style: TextStyle(
+                          fontWeight: _isAnonymous
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                          fontSize: 12,
+                        ),
+                      ),
+                      Switch(
+                        value: _isAnonymous,
+                        onChanged: (val) => setState(() => _isAnonymous = val),
+                        activeColor: Colors.black,
+                      ),
+                    ],
+                  ),
                 ),
                 const Spacer(),
                 Text(

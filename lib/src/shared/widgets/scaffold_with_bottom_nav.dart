@@ -1,15 +1,33 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:salomon_bottom_bar/salomon_bottom_bar.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:badges/badges.dart' as badges;
+import '../../features/user/data/user_repository.dart';
 
-class ScaffoldWithBottomNav extends StatelessWidget {
+class ScaffoldWithBottomNav extends ConsumerWidget {
   const ScaffoldWithBottomNav({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Watch current user to enforce profile completion
+    ref.listen(currentUserProvider, (previous, next) {
+      if (next.value != null) {
+        final user = next.value!;
+        if (user.college == null ||
+            user.department == null ||
+            user.phoneNumber == null) {
+          // Check if we are already on the complete profile screen to avoid loop
+          final location = GoRouterState.of(context).uri.toString();
+          if (location != '/complete-profile') {
+            context.go('/complete-profile');
+          }
+        }
+      }
+    });
+
     return Scaffold(
       body: navigationShell,
       bottomNavigationBar: SafeArea(

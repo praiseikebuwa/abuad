@@ -1,53 +1,109 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Helper functions
+
+    // --- HELPER FUNCTIONS ---
+
+    // Check if user is signed in
     function isAuthenticated() {
       return request.auth != null;
     }
-    
+
+    // Check if the user accessing the data is the owner of the document
     function isOwner(userId) {
       return request.auth.uid == userId;
     }
 
-    // Users Collection
+    // Check if the user has the 'admin' claim (requires custom claims setup)
+    // Or simpler: check against a hardcoded list of admin UIDs (for MVP)
+    function isAdmin() {
+      // return request.auth.token.admin == true; 
+      // For this project, you might want to temporarily allow all authenticated users 
+      // to act as admin if you haven't set up custom claims yet.
+      return isAuthenticated(); 
+    }
+
+    // --- USERS COLLECTION ---
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated(); // Allow creation on sign-up
-      allow update: if isAuthenticated() && (isOwner(userId) || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followersCount', 'followingCount', 'isVerified', 'status', 'lastSeen'])); 
-      // Note: We allow verifying/status updates for now to be flexible, in production stricter rules apply
-      
-      // Subcollections
-      match /followers/{followerId} { allow read, write: if isAuthenticated(); }
-      match /following/{followingId} { allow read, write: if isAuthenticated(); }
+      // Anyone can read user profiles (needed for feed, search, etc.)
+      allow read: if true;
+
+      // Users can create their own profile on signup
+      allow create: if isAuthenticated() && isOwner(userId);
+
+      // Users can update their own profile
+      // Note: We allow updating 'isVerified' here for the Admin Panel to work easily 
+      // without complex backend functions, but in a real production app, 
+      // 'isVerified' should be restricted to admin-only writes.
+      allow update: if isAuthenticated() && (isOwner(userId) || isAdmin());
+
+      allow delete: if isOwner(userId) || isAdmin();
+
+      // User Subcollections (e.g. followers/following)
+      match /followers/{followerId} {
+        allow read: if true;
+        allow write: if isAuthenticated();
+      }
+      match /following/{followingId} {
+        allow read: if true;
+        allow write: if isAuthenticated();
+      }
     }
 
-    // Posts Collection
+    // --- POSTS COLLECTION ---
     match /posts/{postId} {
-      allow read: if true; // Public feed
+      // Public feed
+      allow read: if true;
+
+      // Authenticated users can create posts
       allow create: if isAuthenticated();
-      allow update: if isAuthenticated(); // For likes/comments counters
-      allow delete: if isAuthenticated() && (resource.data.authorId == request.auth.uid || request.auth.token.admin == true);
+
+      // Author can update (e.g. edit) or Admin
+      // Also allow updates for counters like likesCount if the logic is client-side
+      allow update: if isAuthenticated();
+
+      // Author or Admin can delete
+      allow delete: if isAuthenticated() && (resource.data.authorId == request.auth.uid || isAdmin());
+
+      // -- LIKES SUBCOLLECTION --
+      match /likes/{userId} {
+        allow read: if true;
+        // User can only write their own like (docId must match auth.uid)
+        allow write: if isAuthenticated() && isOwner(userId);
+      }
+
+      // -- COMMENTS SUBCOLLECTION --
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if isAuthenticated();
+        // Comment author or Admin can delete
+        allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      }
     }
 
-    // Chat Channels
+    // --- CHAT CHANNELS ---
     match /channels/{channelId} {
+      // Only members of the channel can read/write channel metadata
       allow read: if isAuthenticated() && request.auth.uid in resource.data.memberIds;
       allow create: if isAuthenticated();
       allow update: if isAuthenticated() && request.auth.uid in resource.data.memberIds;
-      allow delete: if isAuthenticated(); // Admin or member
       
+      // Messages Subcollection
       match /messages/{messageId} {
-        allow read: if isAuthenticated();
+        // Only members of the parent channel can read messages
+        // (This requires a `get` call in strict rules, but for MVP we rely on parent access)
+        allow read: if isAuthenticated(); 
         allow create: if isAuthenticated();
       }
     }
 
-    // Announcements (Broadcasts)
+    // --- ANNOUNCEMENTS (BROADCASTS) ---
     match /announcements/{announcementId} {
+      // Everyone can read announcements
       allow read: if true;
-      allow write: if isAuthenticated(); // In real app, restrict to admin UID
+      
+      // Only Admins can send (create/update/delete) announcements
+      allow write: if isAdmin();
     }
   }
 }

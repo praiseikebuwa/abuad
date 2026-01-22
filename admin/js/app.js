@@ -71,17 +71,76 @@ class NavigationController {
     }
 
     loadOverview() {
-        // Simple counters
+        // Fetch Users for Stats & Chart
         db.collection('users').get().then(snap => {
             document.getElementById('stat-total-users').innerText = snap.size;
             let verified = 0, online = 0;
+            const colleges = {};
+
             snap.forEach(doc => {
                 const d = doc.data();
                 if (d.isVerified) verified++;
                 if (d.status === 'online') online++;
+
+                // Chart Data: College Distribution
+                const col = d.college || 'Unknown';
+                colleges[col] = (colleges[col] || 0) + 1;
             });
             document.getElementById('stat-verified-users').innerText = verified;
             document.getElementById('stat-online-users').innerText = online;
+
+            this.renderUserChart(colleges);
+        });
+
+        // Fetch Posts for Chart
+        db.collection('posts').orderBy('timestamp', 'desc').limit(100).get().then(snap => {
+            const days = {};
+            snap.forEach(doc => {
+                const d = doc.data();
+                // Group by day (simple approximation)
+                if (d.timestamp) {
+                    const date = new Date(d.timestamp).toLocaleDateString(undefined, { weekday: 'short' });
+                    days[date] = (days[date] || 0) + 1;
+                }
+            });
+            this.renderPostChart(days);
+        });
+    }
+
+    renderUserChart(data) {
+        const ctx = document.getElementById('userChart').getContext('2d');
+        if (window.myUserChart) window.myUserChart.destroy();
+
+        window.myUserChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(data),
+                datasets: [{
+                    data: Object.values(data),
+                    backgroundColor: ['#4CAF50', '#2196F3', '#FFC107', '#E91E63', '#9C27B0', '#607D8B']
+                }]
+            },
+            options: { responsive: true }
+        });
+    }
+
+    renderPostChart(data) {
+        const ctx = document.getElementById('postChart').getContext('2d');
+        if (window.myPostChart) window.myPostChart.destroy();
+
+        window.myPostChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: Object.keys(data),
+                datasets: [{
+                    label: 'Recent Posts',
+                    data: Object.values(data),
+                    backgroundColor: '#0D47A1'
+                }]
+            },
+            options: {
+                scales: { y: { beginAtZero: true } }
+            }
         });
     }
 

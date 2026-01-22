@@ -4,6 +4,7 @@ class Post {
   final String id;
   final String authorId;
   final String authorName;
+  final String authorHandle;
   final String? authorAvatarUrl;
   final String content;
   final String mediaUrl;

@@ -1,6 +1,15 @@
 class UsersController {
     constructor() {
         this.tableBody = document.querySelector('#users-table tbody');
+        this.users = []; // Cache for search
+
+        // Search Listener
+        const searchInput = document.getElementById('user-search');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                this.filterUsers(e.target.value);
+            });
+        }
     }
 
     load() {
@@ -11,25 +20,42 @@ class UsersController {
 
         this.unsubscribe = db.collection('users')
             .orderBy('createdAt', 'desc')
-            .limit(50)
+            .limit(100)
             .onSnapshot(snap => {
-                this.render(snap);
+                this.users = [];
+                snap.forEach(doc => {
+                    this.users.push({ id: doc.id, ...doc.data() });
+                });
+                this.renderTable(this.users);
             }, err => {
                 console.error(err);
                 this.tableBody.innerHTML = `<tr><td colspan="5" class="error-text">Error loading users: ${err.message}</td></tr>`;
             });
     }
 
-    render(snap) {
+    filterUsers(query) {
+        if (!query) {
+            this.renderTable(this.users);
+            return;
+        }
+        const lower = query.toLowerCase();
+        const filtered = this.users.filter(u =>
+            (u.displayName && u.displayName.toLowerCase().includes(lower)) ||
+            (u.email && u.email.toLowerCase().includes(lower)) ||
+            (u.handle && u.handle.toLowerCase().includes(lower))
+        );
+        this.renderTable(filtered);
+    }
+
+    renderTable(userList) {
         this.tableBody.innerHTML = '';
 
-        if (snap.empty) {
-            this.tableBody.innerHTML = '<tr><td colspan="5">No users found.</td></tr>';
+        if (userList.length === 0) {
+            this.tableBody.innerHTML = '<tr><td colspan="5">No matching users found.</td></tr>';
             return;
         }
 
-        snap.forEach(doc => {
-            const user = doc.data();
+        userList.forEach(user => {
             const tr = document.createElement('tr');
 
             const initial = user.displayName ? user.displayName[0].toUpperCase() : '?';
@@ -62,12 +88,12 @@ class UsersController {
                 <td>
                     <div class="action-buttons">
                         <button class="btn-icon ${isVerified ? 'btn-revoke' : 'btn-approve'}" 
-                                onclick="window.usersController.toggleVerify('${doc.id}', ${!isVerified})"
+                                onclick="window.usersController.toggleVerify('${user.id}', ${!isVerified})"
                                 title="${isVerified ? 'Revoke Verification' : 'Verify User'}">
                             <i class="fas ${isVerified ? 'fa-times' : 'fa-check'}"></i>
                         </button>
                         <button class="btn-icon btn-delete" 
-                                onclick="window.usersController.deleteUser('${doc.id}')"
+                                onclick="window.usersController.deleteUser('${user.id}')"
                                 title="Delete User">
                             <i class="fas fa-trash"></i>
                         </button>
@@ -79,8 +105,14 @@ class UsersController {
 
         // Update stats counter if exists
         const totalCount = document.getElementById('stat-total-users');
-        if (totalCount) totalCount.innerText = snap.size + (snap.size === 50 ? '+' : '');
+        if (totalCount) totalCount.innerText = this.users.length + '+';
     }
+
+    // Keep render method for compatibility if needed, but load calls renderTable via onSnapshot callbacks now.
+    // Actually, I removed render() and replaced logic in load(). 
+    // I should remove the old render() method to avoid confusion? 
+    // Yes.
+    render(snap) { /* Deprecated */ }
 
     toggleVerify(uid, newStatus) {
         // Optimistic UI update could happen here, but Firestore listener handles it fast enough

@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../user/data/user_repository.dart';
-import '../../feed/presentation/feed_screen.dart'; // Reuse PostCard
 import '../../feed/data/post_repository.dart';
 import '../../feed/domain/post.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:flutter_animate/flutter_animate.dart';
+import '../../../core/services/cloudinary_service.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   final String? userId; // If null, shows current user
@@ -67,7 +68,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         IconButton(
                           icon: const Icon(Icons.settings_outlined),
                           onPressed: () {
-                            // Settings
+                            context.push('/profile/settings');
                           },
                         ),
                     ],
@@ -128,6 +129,39 @@ class _ProfileHeader extends ConsumerWidget {
     required this.currentUserId,
   });
 
+  Future<void> _updateProfileImage(BuildContext context, WidgetRef ref) async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+
+    if (pickedFile != null && context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Uploading image...')));
+
+      try {
+        final cloudinary = CloudinaryService();
+        final url = await cloudinary.uploadImage(pickedFile);
+
+        if (url.isNotEmpty && context.mounted) {
+          await ref.read(userRepositoryProvider).updateUser(user.uid, {
+            'avatarUrl': url,
+          });
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Profile picture updated!')),
+            );
+          }
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Error updating image: $e')));
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Padding(
@@ -173,9 +207,7 @@ class _ProfileHeader extends ConsumerWidget {
                   padding: const EdgeInsets.only(bottom: 8.0),
                   child: isCurrentUser
                       ? OutlinedButton(
-                          onPressed: () {
-                            // Edit Profile
-                          },
+                          onPressed: () => _updateProfileImage(context, ref),
                           style: OutlinedButton.styleFrom(
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(20),
@@ -225,6 +257,13 @@ class _ProfileHeader extends ConsumerWidget {
               _StatItem(count: user.followingCount, label: "Following"),
               const SizedBox(width: 16),
               _StatItem(count: user.followersCount, label: "Followers"),
+              if (user.college != null) ...[
+                const SizedBox(width: 16),
+                _StatItem(
+                  count: 0,
+                  label: user.college!,
+                ), // Reuse StatItem for simplicity or create new
+              ],
             ],
           ).animate().fadeIn(delay: 300.ms),
 
@@ -239,10 +278,20 @@ class _StatItem extends StatelessWidget {
   final int count;
   final String label;
 
+  // Hacky reuse: if count is 0 and label is long, maybe treat differently?
+  // But for now, standard.
   const _StatItem({required this.count, required this.label});
 
   @override
   Widget build(BuildContext context) {
+    if (count == 0 && (label.contains('Colege') || label.length > 10)) {
+      // Just show text for college if passed
+      return Text(
+        label,
+        style: TextStyle(color: Colors.grey[600], fontSize: 15),
+      );
+    }
+
     return Row(
       children: [
         Text(
@@ -300,8 +349,6 @@ class _UserPostsList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // TODO: Implement getPostsByUser in PostRepository
-    // For now, filtering client side from watchPosts, which is inefficient but works for V1
     final repo = ref.watch(postRepositoryProvider);
 
     return StreamBuilder<List<Post>>(
@@ -329,9 +376,7 @@ class _UserPostsList extends ConsumerWidget {
           separatorBuilder: (context, index) =>
               Divider(height: 1, color: Colors.grey[200]),
           itemBuilder: (context, index) {
-            // Reusing PostCard logic but possibly needing to expose it
-            // Since PostCard is private in feed_screen, we might need to duplicate or extract it
-            // extraction is better. For now, creating a simple card
+            // Reusing PostCard logic but possibly needing to expose it or duplicate
             final post = userPosts[index];
             return ListTile(
               title: Text(post.content),

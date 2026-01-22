@@ -76,6 +76,14 @@ dependencies:
   google_generative_ai: ^0.4.7
   geolocator: ^14.0.2
   shared_preferences: ^2.5.4
+  flutter_displaymode: ^0.7.0
+  gap: ^3.0.1
+  firebase_crashlytics: ^4.3.10
+  freezed_annotation: ^3.1.0
+  json_annotation: ^4.9.0
+  firebase_messaging: ^15.2.10
+  flutter_local_notifications: ^16.3.0
+  introduction_screen: ^3.1.12
 
 dev_dependencies:
   flutter_test:

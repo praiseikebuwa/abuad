@@ -87,24 +87,43 @@ class FeedScreen extends ConsumerWidget {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
-              child: Row(
+              child: Column(
                 children: [
-                  Expanded(
-                    child: _SocialFeatureCard(
-                      title: 'Events',
-                      icon: Icons.calendar_month,
-                      color: Colors.orange,
-                      onTap: () => context.push('/events'),
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _SocialFeatureCard(
+                          title: 'Events',
+                          icon: Icons.calendar_month,
+                          color: Colors.orange,
+                          onTap: () => context.push('/events'),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _SocialFeatureCard(
+                          title: 'Groups',
+                          icon: Icons.groups,
+                          color: Colors.purple,
+                          onTap: () => context.push('/groups'),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _SocialFeatureCard(
-                      title: 'Groups',
-                      icon: Icons.groups,
-                      color: Colors.purple,
-                      onTap: () => context.push('/groups'),
-                    ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _SocialFeatureCard(
+                          title: 'Resources',
+                          icon: Icons.library_books,
+                          color: Colors.teal,
+                          onTap: () => context.push('/resources'),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(child: SizedBox()), // Placeholder for balance
+                    ],
                   ),
                 ],
               ),
@@ -255,7 +274,6 @@ class _SocialFeatureCard extends StatelessWidget {
   final VoidCallback onTap;
 
   const _SocialFeatureCard({
-    super.key,
     required this.title,
     required this.icon,
     required this.color,

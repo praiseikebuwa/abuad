@@ -249,7 +249,7 @@ class PostCard extends ConsumerWidget {
                                   ),
                                 );
                               })
-                              .toList(),
+                              ,
                           const Text(
                             "Tap an option to vote",
                             style: TextStyle(fontSize: 12, color: Colors.grey),

@@ -182,18 +182,18 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                 ),
 
                 // Media Placeholder (if any)
-                if (widget.post.mediaUrl != null) ...[
-                  const SizedBox(height: 12),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.network(
-                      widget.post.mediaUrl!,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const SizedBox(),
-                    ),
+                ...[
+                const SizedBox(height: 12),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(
+                    widget.post.mediaUrl!,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const SizedBox(),
                   ),
-                ],
+                ),
+              ],
 
                 const SizedBox(height: 16),
 
