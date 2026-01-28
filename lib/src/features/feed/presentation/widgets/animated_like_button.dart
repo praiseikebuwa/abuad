@@ -5,11 +5,16 @@ class AnimatedLikeButton extends StatefulWidget {
   final int count;
   final VoidCallback onTap;
 
+  final bool showCount;
+  final double iconSize;
+
   const AnimatedLikeButton({
     super.key,
     required this.isLiked,
     required this.count,
     required this.onTap,
+    this.showCount = true,
+    this.iconSize = 18,
   });
 
   @override
@@ -83,12 +88,12 @@ class _AnimatedLikeButtonState extends State<AnimatedLikeButton>
                 child: Icon(
                   widget.isLiked ? Icons.favorite : Icons.favorite_border,
                   key: ValueKey(widget.isLiked),
-                  size: 18,
+                  size: widget.iconSize,
                   color: widget.isLiked ? Colors.red : Colors.grey[600],
                 ),
               ),
             ),
-            if (widget.count > 0) ...[
+            if (widget.showCount && widget.count > 0) ...[
               const SizedBox(width: 4),
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 200),

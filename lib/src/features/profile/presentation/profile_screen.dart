@@ -6,9 +6,10 @@ import '../../auth/data/auth_repository.dart';
 import '../../user/data/user_repository.dart';
 import '../../feed/data/post_repository.dart';
 import '../../feed/domain/post.dart';
-import 'package:timeago/timeago.dart' as timeago;
 import 'package:flutter_animate/flutter_animate.dart';
-import '../../../core/services/cloudinary_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../../feed/presentation/widgets/post_card.dart';
+import '../../../core/services/supabase_storage_service.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   final String? userId; // If null, shows current user
@@ -24,6 +25,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget build(BuildContext context) {
     final authRepo = ref.watch(authRepositoryProvider);
     final currentUserId = authRepo.currentUser?.uid;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     // Determine which user to show
     final targetUserId = widget.userId ?? currentUserId;
@@ -35,10 +38,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final userAsync = ref.watch(userProvider(targetUserId));
 
     return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF000000) : Colors.white,
       body: userAsync.when(
         data: (user) {
           if (user == null) {
-            // If data is null but it might be loading or valid null, check context
             return const Center(child: Text("User not found"));
           }
           final isCurrentUser = currentUserId == user.uid;
@@ -49,27 +52,75 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               headerSliverBuilder: (context, innerBoxIsScrolled) {
                 return [
                   SliverAppBar(
-                    expandedHeight: 150,
+                    expandedHeight: 180,
                     pinned: true,
-                    flexibleSpace: FlexibleSpaceBar(
-                      background: Container(
-                        color: Colors.blue[700], // Default banner color
-                        child: user.bannerUrl != null
-                            ? Image.network(user.bannerUrl!, fit: BoxFit.cover)
-                            : null,
-                      ),
+                    backgroundColor: isDark
+                        ? const Color(0xFF000000)
+                        : Colors.white,
+                    surfaceTintColor: Colors.transparent,
+                    iconTheme: IconThemeData(
+                      color: isDark ? Colors.white : Colors.black87,
                     ),
-                    bottom: PreferredSize(
-                      preferredSize: const Size.fromHeight(0),
-                      child: Container(), // Spacer for overlapping avatar
+                    flexibleSpace: FlexibleSpaceBar(
+                      background: Stack(
+                        children: [
+                          // Banner Image
+                          Container(
+                            height: 180,
+                            decoration: BoxDecoration(
+                              gradient: user.bannerUrl == null
+                                  ? LinearGradient(
+                                      colors: [
+                                        theme.colorScheme.primary,
+                                        theme.colorScheme.primary.withValues(
+                                          alpha: 0.7,
+                                        ),
+                                      ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    )
+                                  : null,
+                            ),
+                            child: user.bannerUrl != null
+                                ? CachedNetworkImage(
+                                    imageUrl: user.bannerUrl!,
+                                    fit: BoxFit.cover,
+                                    width: double.infinity,
+                                    height: 180,
+                                  )
+                                : null,
+                          ),
+
+                          // Edit Banner Button (Current User Only)
+                          if (isCurrentUser)
+                            Positioned(
+                              top: 50,
+                              right: 16,
+                              child: IconButton(
+                                onPressed: () =>
+                                    _updateBannerImage(context, ref, user),
+                                icon: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.5),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.camera_alt,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                     actions: [
                       if (isCurrentUser)
                         IconButton(
                           icon: const Icon(Icons.settings_outlined),
-                          onPressed: () {
-                            context.push('/profile/settings');
-                          },
+                          onPressed: () => context.push('/settings'),
                         ),
                     ],
                   ),
@@ -82,27 +133,63 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     user: user,
                     isCurrentUser: isCurrentUser,
                     currentUserId: currentUserId,
+                    isDark: isDark,
                   ),
 
                   // Tabs
-                  const TabBar(
-                    labelColor: Colors.black,
-                    unselectedLabelColor: Colors.grey,
-                    indicatorColor: Colors.blue,
-                    tabs: [
-                      Tab(text: "Posts"),
-                      Tab(text: "Replies"),
-                      Tab(text: "Likes"),
-                    ],
+                  Container(
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
+                          width: 1,
+                        ),
+                      ),
+                    ),
+                    child: TabBar(
+                      labelColor: isDark ? Colors.white : Colors.black87,
+                      unselectedLabelColor: isDark
+                          ? Colors.grey[600]
+                          : Colors.grey[500],
+                      indicatorColor: theme.colorScheme.primary,
+                      indicatorWeight: 3,
+                      labelStyle: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                      ),
+                      tabs: const [
+                        Tab(text: "Posts"),
+                        Tab(text: "Replies"),
+                        Tab(text: "Likes"),
+                      ],
+                    ),
                   ),
 
                   // Tab Views
                   Expanded(
                     child: TabBarView(
                       children: [
-                        _UserPostsList(userId: user.uid),
-                        const Center(child: Text("Replies coming soon")),
-                        const Center(child: Text("Likes coming soon")),
+                        _UserPostsList(userId: user.uid, isDark: isDark),
+                        Center(
+                          child: Text(
+                            "Replies coming soon",
+                            style: TextStyle(
+                              color: isDark
+                                  ? Colors.grey[500]
+                                  : Colors.grey[600],
+                            ),
+                          ),
+                        ),
+                        Center(
+                          child: Text(
+                            "Likes coming soon",
+                            style: TextStyle(
+                              color: isDark
+                                  ? Colors.grey[500]
+                                  : Colors.grey[600],
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -112,9 +199,48 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, stack) => Center(child: Text('Error: $e')),
+        error: (e, stack) => Center(
+          child: Text('Error: $e', style: const TextStyle(color: Colors.red)),
+        ),
       ),
     );
+  }
+
+  Future<void> _updateBannerImage(
+    BuildContext context,
+    WidgetRef ref,
+    AppUser user,
+  ) async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+
+    if (pickedFile != null && context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Uploading banner...')));
+
+      try {
+        final storage = SupabaseStorageService();
+        final url = await storage.uploadImage(pickedFile);
+
+        if (url.isNotEmpty && context.mounted) {
+          await ref.read(userRepositoryProvider).updateUser(user.uid, {
+            'bannerUrl': url,
+          });
+          if (context.mounted) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('Banner updated!')));
+          }
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Error updating banner: $e')));
+        }
+      }
+    }
   }
 }
 
@@ -122,41 +248,65 @@ class _ProfileHeader extends ConsumerWidget {
   final AppUser user;
   final bool isCurrentUser;
   final String? currentUserId;
+  final bool isDark;
 
   const _ProfileHeader({
     required this.user,
     required this.isCurrentUser,
     required this.currentUserId,
+    required this.isDark,
   });
 
   Future<void> _updateProfileImage(BuildContext context, WidgetRef ref) async {
     final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+    final result = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Choose from gallery'),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Take a photo'),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+          ],
+        ),
+      ),
+    );
 
-    if (pickedFile != null && context.mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Uploading image...')));
+    if (result != null) {
+      final pickedFile = await picker.pickImage(source: result);
 
-      try {
-        final cloudinary = CloudinaryService();
-        final url = await cloudinary.uploadImage(pickedFile);
+      if (pickedFile != null && context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Uploading image...')));
 
-        if (url.isNotEmpty && context.mounted) {
-          await ref.read(userRepositoryProvider).updateUser(user.uid, {
-            'avatarUrl': url,
-          });
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Profile picture updated!')),
-            );
+        try {
+          final storage = SupabaseStorageService();
+          final url = await storage.uploadImage(pickedFile);
+
+          if (url.isNotEmpty && context.mounted) {
+            await ref.read(userRepositoryProvider).updateUser(user.uid, {
+              'avatarUrl': url,
+            });
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Profile picture updated!')),
+              );
+            }
           }
-        }
-      } catch (e) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Error updating image: $e')));
+        } catch (e) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text('Error: $e')));
+          }
         }
       }
     }
@@ -164,42 +314,81 @@ class _ProfileHeader extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+    final theme = Theme.of(context);
+
+    return Container(
+      color: isDark ? const Color(0xFF000000) : Colors.white,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Row with Avatar (overlapping) and Action Button
+          // Avatar and Action Button Row
           Transform.translate(
-            offset: const Offset(0, -40),
+            offset: const Offset(0, -50),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                // Avatar
-                Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 4),
-                  ),
-                  child: CircleAvatar(
-                    radius: 40,
-                    backgroundColor: Colors.blue[100],
-                    backgroundImage: user.avatarUrl != null
-                        ? NetworkImage(user.avatarUrl!)
-                        : null,
-                    child: user.avatarUrl == null
-                        ? Text(
-                            user.displayName.isNotEmpty
-                                ? user.displayName[0].toUpperCase()
-                                : '?',
-                            style: const TextStyle(
-                              fontSize: 32,
-                              fontWeight: FontWeight.bold,
+                // Avatar with Edit Button Overlay
+                Stack(
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isDark ? Colors.black : Colors.white,
+                          width: 4,
+                        ),
+                      ),
+                      child: CircleAvatar(
+                        radius: 42,
+                        backgroundColor: theme.colorScheme.primary.withValues(
+                          alpha: 0.2,
+                        ),
+                        backgroundImage: user.avatarUrl != null
+                            ? CachedNetworkImageProvider(user.avatarUrl!)
+                            : null,
+                        child: user.avatarUrl == null
+                            ? Text(
+                                user.displayName.isNotEmpty
+                                    ? user.displayName[0].toUpperCase()
+                                    : '?',
+                                style: TextStyle(
+                                  fontSize: 36,
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              )
+                            : null,
+                      ),
+                    ),
+
+                    // Edit Avatar Button (Current User Only)
+                    if (isCurrentUser)
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: GestureDetector(
+                          onTap: () => _updateProfileImage(context, ref),
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: isDark ? Colors.black : Colors.white,
+                                width: 2,
+                              ),
                             ),
-                          )
-                        : null,
-                  ),
+                            child: const Icon(
+                              Icons.camera_alt,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ).animate().scale(duration: 400.ms, curve: Curves.easeOutBack),
 
                 // Action Button
@@ -207,67 +396,125 @@ class _ProfileHeader extends ConsumerWidget {
                   padding: const EdgeInsets.only(bottom: 8.0),
                   child: isCurrentUser
                       ? OutlinedButton(
-                          onPressed: () => _updateProfileImage(context, ref),
+                          onPressed: () => context.push('/profile/edit'),
                           style: OutlinedButton.styleFrom(
+                            foregroundColor: isDark
+                                ? Colors.white
+                                : Colors.black87,
+                            side: BorderSide(
+                              color: isDark
+                                  ? Colors.grey[700]!
+                                  : Colors.grey[300]!,
+                            ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(20),
                             ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 8,
+                            ),
                           ),
-                          child: const Text("Edit Profile"),
+                          child: const Text(
+                            "Edit Profile",
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
                         )
-                      : _FollowButton(targetUserId: user.uid),
+                      : _FollowButton(targetUserId: user.uid, isDark: isDark),
                 ).animate().fadeIn(delay: 200.ms),
               ],
             ),
           ),
 
-          // Fix layout shift from translate
+          // Adjust spacing
           const SizedBox(height: -30),
 
           // User Info
           Text(
             user.displayName,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-          ).animate().fadeIn(delay: 100.ms).slideX(),
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+          ).animate().fadeIn(delay: 100.ms),
+
+          const SizedBox(height: 2),
+
           Row(
             children: [
               Text(
                 user.handle,
-                style: TextStyle(color: Colors.grey[600], fontSize: 15),
+                style: TextStyle(
+                  color: isDark ? Colors.grey[500] : Colors.grey[600],
+                  fontSize: 15,
+                ),
               ),
               if (user.isVerified) ...[
                 const SizedBox(width: 4),
-                const Icon(Icons.verified, size: 16, color: Colors.blue),
+                Icon(
+                  Icons.verified,
+                  size: 18,
+                  color: theme.colorScheme.primary,
+                ),
               ],
             ],
-          ).animate().fadeIn(delay: 150.ms).slideX(),
+          ).animate().fadeIn(delay: 150.ms),
 
           const SizedBox(height: 12),
 
           // Bio
-          if (user.bio != null && user.bio!.isNotEmpty)
-            ...[
-              Text(user.bio!, style: const TextStyle(fontSize: 15)),
-              const SizedBox(height: 12),
-            ].animate(interval: 50.ms).fadeIn(),
+          if (user.bio != null && user.bio!.isNotEmpty) ...[
+            Text(
+              user.bio!,
+              style: TextStyle(
+                fontSize: 15,
+                height: 1.4,
+                color: isDark ? Colors.grey[300] : Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
 
-          // Stats
+          // College/Location
+          if (user.college != null) ...[
+            Row(
+              children: [
+                Icon(
+                  Icons.school_outlined,
+                  size: 16,
+                  color: isDark ? Colors.grey[600] : Colors.grey[500],
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  user.college!,
+                  style: TextStyle(
+                    color: isDark ? Colors.grey[500] : Colors.grey[600],
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // Follower Stats
           Row(
             children: [
-              _StatItem(count: user.followingCount, label: "Following"),
-              const SizedBox(width: 16),
-              _StatItem(count: user.followersCount, label: "Followers"),
-              if (user.college != null) ...[
-                const SizedBox(width: 16),
-                _StatItem(
-                  count: 0,
-                  label: user.college!,
-                ), // Reuse StatItem for simplicity or create new
-              ],
+              _StatItem(
+                count: user.followingCount,
+                label: "Following",
+                isDark: isDark,
+              ),
+              const SizedBox(width: 20),
+              _StatItem(
+                count: user.followersCount,
+                label: "Followers",
+                isDark: isDark,
+              ),
             ],
           ).animate().fadeIn(delay: 300.ms),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
         ],
       ),
     );
@@ -277,29 +524,34 @@ class _ProfileHeader extends ConsumerWidget {
 class _StatItem extends StatelessWidget {
   final int count;
   final String label;
+  final bool isDark;
 
-  // Hacky reuse: if count is 0 and label is long, maybe treat differently?
-  // But for now, standard.
-  const _StatItem({required this.count, required this.label});
+  const _StatItem({
+    required this.count,
+    required this.label,
+    required this.isDark,
+  });
 
   @override
   Widget build(BuildContext context) {
-    if (count == 0 && (label.contains('Colege') || label.length > 10)) {
-      // Just show text for college if passed
-      return Text(
-        label,
-        style: TextStyle(color: Colors.grey[600], fontSize: 15),
-      );
-    }
-
     return Row(
       children: [
         Text(
           '$count',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 15,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
         ),
         const SizedBox(width: 4),
-        Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 15)),
+        Text(
+          label,
+          style: TextStyle(
+            color: isDark ? Colors.grey[500] : Colors.grey[600],
+            fontSize: 15,
+          ),
+        ),
       ],
     );
   }
@@ -307,8 +559,9 @@ class _StatItem extends StatelessWidget {
 
 class _FollowButton extends ConsumerWidget {
   final String targetUserId;
+  final bool isDark;
 
-  const _FollowButton({required this.targetUserId});
+  const _FollowButton({required this.targetUserId, required this.isDark});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -326,17 +579,33 @@ class _FollowButton extends ConsumerWidget {
             }
           },
           style: ElevatedButton.styleFrom(
-            backgroundColor: isFollowing ? Colors.white : Colors.black,
-            foregroundColor: isFollowing ? Colors.black : Colors.white,
-            side: isFollowing ? const BorderSide(color: Colors.grey) : null,
+            backgroundColor: isFollowing
+                ? (isDark ? Colors.transparent : Colors.white)
+                : (isDark ? Colors.white : Colors.black87),
+            foregroundColor: isFollowing
+                ? (isDark ? Colors.white : Colors.black87)
+                : (isDark ? Colors.black87 : Colors.white),
+            side: BorderSide(
+              color: isFollowing
+                  ? (isDark ? Colors.grey[700]! : Colors.grey[300]!)
+                  : Colors.transparent,
+            ),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
             ),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
           ),
-          child: Text(isFollowing ? "Following" : "Follow"),
+          child: Text(
+            isFollowing ? "Following" : "Follow",
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
         );
       },
-      loading: () => const CircularProgressIndicator.adaptive(),
+      loading: () => const SizedBox(
+        width: 24,
+        height: 24,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      ),
       error: (_, __) => const SizedBox(),
     );
   }
@@ -344,8 +613,9 @@ class _FollowButton extends ConsumerWidget {
 
 class _UserPostsList extends ConsumerWidget {
   final String userId;
+  final bool isDark;
 
-  const _UserPostsList({required this.userId});
+  const _UserPostsList({required this.userId, required this.isDark});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -362,10 +632,28 @@ class _UserPostsList extends ConsumerWidget {
         final userPosts = allPosts.where((p) => p.authorId == userId).toList();
 
         if (userPosts.isEmpty) {
-          return const Center(
+          return Center(
             child: Padding(
-              padding: EdgeInsets.all(32.0),
-              child: Text("No posts yet"),
+              padding: const EdgeInsets.all(32.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.post_add,
+                    size: 64,
+                    color: isDark ? Colors.grey[700] : Colors.grey[300],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    "No posts yet",
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.grey[500] : Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
             ),
           );
         }
@@ -373,15 +661,13 @@ class _UserPostsList extends ConsumerWidget {
         return ListView.separated(
           padding: EdgeInsets.zero,
           itemCount: userPosts.length,
-          separatorBuilder: (context, index) =>
-              Divider(height: 1, color: Colors.grey[200]),
+          separatorBuilder: (context, index) => Divider(
+            height: 1,
+            color: isDark ? Colors.grey[900] : Colors.grey[200],
+          ),
           itemBuilder: (context, index) {
-            // Reusing PostCard logic but possibly needing to expose it or duplicate
             final post = userPosts[index];
-            return ListTile(
-              title: Text(post.content),
-              subtitle: Text(timeago.format(post.timestamp)),
-            );
+            return PostCard(post: post);
           },
         );
       },

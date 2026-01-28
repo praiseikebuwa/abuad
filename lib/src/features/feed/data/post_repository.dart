@@ -30,6 +30,13 @@ class PostRepository {
         });
   }
 
+  Stream<Post?> watchPost(String postId) {
+    return _firestore.collection('posts').doc(postId).snapshots().map((doc) {
+      if (!doc.exists) return null;
+      return Post.fromMap(doc.id, doc.data()!);
+    });
+  }
+
   // Toggle like on a post
   Future<void> toggleLike(String postId) async {
     final userId = currentUserId;
@@ -163,5 +170,92 @@ class PostRepository {
     await _firestore.collection('posts').doc(originalPost.id).update({
       'repostCount': FieldValue.increment(1),
     });
+  }
+
+  // Vote on a poll
+  Future<void> votePoll(String postId, int optionIndex) async {
+    final userId = currentUserId;
+    if (userId == null) return;
+
+    final postRef = _firestore.collection('posts').doc(postId);
+
+    // Run as transaction to ensure consistency
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(postRef);
+      if (!snapshot.exists) throw Exception("Post does not exist");
+
+      final data = snapshot.data()!;
+      final pollData = Map<String, dynamic>.from(data['pollData'] ?? {});
+
+      if (pollData.isEmpty) return; // No poll
+
+      // Initialize votes array if missing
+      final List<dynamic> options = pollData['options'] ?? [];
+      List<int> votes = List<int>.from(
+        pollData['votes'] ?? List.filled(options.length, 0),
+      );
+      Map<String, int> voters = Map<String, int>.from(pollData['voters'] ?? {});
+
+      // Check if user already voted
+      if (voters.containsKey(userId)) {
+        // Optional: Change vote (remove old vote)
+        // For now, let's just return or throw. Let's allow changing vote.
+        final oldVoteIndex = voters[userId]!;
+        if (oldVoteIndex < votes.length) {
+          votes[oldVoteIndex] = (votes[oldVoteIndex] > 0)
+              ? votes[oldVoteIndex] - 1
+              : 0;
+        }
+      }
+
+      // Add new vote
+      if (optionIndex < votes.length) {
+        votes[optionIndex] = votes[optionIndex] + 1;
+        voters[userId] = optionIndex;
+      }
+
+      pollData['votes'] = votes;
+      pollData['voters'] = voters;
+
+      transaction.update(postRef, {'pollData': pollData});
+    });
+  }
+
+  // Delete a post (only if user is the author)
+  Future<void> deletePost(String postId) async {
+    final userId = currentUserId;
+    if (userId == null) throw Exception('User not authenticated');
+
+    final postRef = _firestore.collection('posts').doc(postId);
+    final postDoc = await postRef.get();
+
+    if (!postDoc.exists) {
+      throw Exception('Post not found');
+    }
+
+    final postData = postDoc.data();
+    if (postData?['authorId'] != userId) {
+      throw Exception('You can only delete your own posts');
+    }
+
+    // Delete all subcollections (likes, comments)
+    final batch = _firestore.batch();
+
+    // Delete likes
+    final likesSnapshot = await postRef.collection('likes').get();
+    for (var doc in likesSnapshot.docs) {
+      batch.delete(doc.reference);
+    }
+
+    // Delete comments
+    final commentsSnapshot = await postRef.collection('comments').get();
+    for (var doc in commentsSnapshot.docs) {
+      batch.delete(doc.reference);
+    }
+
+    // Delete the post itself
+    batch.delete(postRef);
+
+    await batch.commit();
   }
 }

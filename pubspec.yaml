@@ -42,7 +42,7 @@ dependencies:
   firebase_core: ^3.10.1
   firebase_auth: ^5.4.1
   cloud_firestore: ^5.6.1
-  cloudinary_public: ^0.23.1
+  supabase_flutter: ^2.6.0
   cached_network_image: ^3.4.1
   flutter_quill: ^11.5.0
   timeago: ^3.6.1
@@ -82,8 +82,7 @@ dependencies:
   freezed_annotation: ^3.1.0
   json_annotation: ^4.9.0
   firebase_messaging: ^15.2.10
-  flutter_local_notifications: ^16.3.0
-  introduction_screen: ^3.1.12
+  flutter_local_notifications: ^18.0.1
 
 dev_dependencies:
   flutter_test:

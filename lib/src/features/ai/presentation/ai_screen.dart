@@ -25,10 +25,10 @@ class AiMessage {
 }
 
 enum AiMode {
-  general('General', Icons.auto_awesome, Colors.blue),
-  academic('Academic Advisor', Icons.school, Colors.brown),
-  guide('Campus Guide', Icons.map, Colors.green),
-  buddy('Study Buddy', Icons.people, Colors.orange);
+  general('General', Icons.auto_awesome, Color(0xFF8E44AD)),
+  academic('Academic Advisor', Icons.school, Color(0xFFE67E22)),
+  guide('Campus Guide', Icons.map, Color(0xFF27AE60)),
+  buddy('Study Buddy', Icons.people, Color(0xFF3498DB));
 
   final String label;
   final IconData icon;
@@ -61,8 +61,6 @@ class _AiScreenState extends ConsumerState<AiScreen> {
 
   final _aiService = AiService();
 
-  // existing state variables...
-
   Future<void> _sendMessage() async {
     final text = _inputController.text.trim();
     if (text.isEmpty) return;
@@ -83,13 +81,8 @@ class _AiScreenState extends ConsumerState<AiScreen> {
     });
 
     try {
-      // Send optional system prompt context first if it's a new session or mode switch
-      // For simplicity in this demo, we just send user message.
-      // In a real app, you might prepend the system prompt to the history or strictly use the system instruction API if available.
-
       String accumulatedText = "";
 
-      // We'll wrap the user's input with the mode context for better one-shot responses in this simple implementation
       final contextPrompt =
           "${AiService.getSystemPrompt(_currentMode.label)}\n\nUser: $text";
 
@@ -138,12 +131,33 @@ class _AiScreenState extends ConsumerState<AiScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
+      backgroundColor: isDark
+          ? const Color(0xFF000000)
+          : const Color(0xFFF8F9FA),
       appBar: AppBar(
+        backgroundColor: isDark ? const Color(0xFF000000) : Colors.white,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
         title: Row(
           children: [
-            Icon(_currentMode.icon, color: _currentMode.color),
-            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    _currentMode.color,
+                    _currentMode.color.withOpacity(0.7),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(_currentMode.icon, color: Colors.white, size: 20),
+            ),
+            const SizedBox(width: 12),
             PopupMenuButton<AiMode>(
               initialValue: _currentMode,
               onSelected: (mode) {
@@ -161,9 +175,16 @@ class _AiScreenState extends ConsumerState<AiScreen> {
                 children: [
                   Text(
                     _currentMode.label,
-                    style: const TextStyle(fontSize: 16),
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
                   ),
-                  const Icon(Icons.arrow_drop_down),
+                  Icon(
+                    Icons.arrow_drop_down,
+                    color: isDark ? Colors.grey[400] : Colors.grey[700],
+                  ),
                 ],
               ),
               itemBuilder: (context) => AiMode.values.map((mode) {
@@ -172,7 +193,7 @@ class _AiScreenState extends ConsumerState<AiScreen> {
                   child: Row(
                     children: [
                       Icon(mode.icon, color: mode.color, size: 20),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 12),
                       Text(mode.label),
                     ],
                   ),
@@ -183,7 +204,10 @@ class _AiScreenState extends ConsumerState<AiScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: Icon(
+              Icons.refresh,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
             onPressed: () {
               setState(() {
                 _messages = [_messages.first];
@@ -191,154 +215,230 @@ class _AiScreenState extends ConsumerState<AiScreen> {
             },
           ),
         ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(
+            height: 1,
+            color: isDark ? Colors.grey[900] : Colors.grey[200],
+          ),
+        ),
       ),
       body: Column(
         children: [
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
               itemCount: _messages.length,
               itemBuilder: (context, index) {
                 final msg = _messages[index];
-                return Align(
-                  alignment: msg.isUser
-                      ? Alignment.centerRight
-                      : Alignment.centerLeft,
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 16),
-                    constraints: BoxConstraints(
-                      maxWidth: MediaQuery.of(context).size.width * 0.8,
-                    ),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: msg.isUser ? _currentMode.color : Colors.white,
-                      borderRadius: BorderRadius.only(
-                        topLeft: const Radius.circular(20),
-                        topRight: const Radius.circular(20),
-                        bottomLeft: msg.isUser
-                            ? const Radius.circular(20)
-                            : Radius.zero,
-                        bottomRight: msg.isUser
-                            ? Radius.zero
-                            : const Radius.circular(20),
-                      ),
-                      boxShadow: [
-                        if (!msg.isUser)
-                          BoxShadow(
-                            color: Colors.grey.withOpacity(0.1),
-                            blurRadius: 5,
-                            offset: const Offset(0, 2),
-                          ),
-                      ],
-                      border: !msg.isUser
-                          ? Border.all(color: Colors.grey.shade100)
-                          : null,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (!msg.isUser) ...[
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                _currentMode.icon,
-                                size: 14,
-                                color: _currentMode.color,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                _currentMode.label,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: _currentMode.color,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                        ],
-                        msg.isUser
-                            ? Text(
-                                msg.content,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                ),
-                              )
-                            : MarkdownBody(data: msg.content),
-                      ],
-                    ),
-                  ),
+                return _MessageBubble(
+                  message: msg,
+                  mode: _currentMode,
+                  isDark: isDark,
                 );
               },
             ),
           ),
+
           if (_isTyping && !_messages.last.isStreaming && _messages.last.isUser)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               child: Row(
                 children: [
-                  const SizedBox(
+                  SizedBox(
                     width: 16,
                     height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: _currentMode.color,
+                    ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 10),
                   Text(
                     "AI is thinking...",
-                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    style: TextStyle(
+                      color: isDark ? Colors.grey[500] : Colors.grey[600],
+                      fontSize: 13,
+                      fontStyle: FontStyle.italic,
+                    ),
                   ),
                 ],
               ),
             ),
+
+          // Input Area
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
             decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withOpacity(0.1),
-                  blurRadius: 4,
-                  offset: const Offset(0, -2),
+              color: isDark ? const Color(0xFF000000) : Colors.white,
+              border: Border(
+                top: BorderSide(
+                  color: isDark ? Colors.grey[900]! : Colors.grey[200]!,
+                  width: 1,
                 ),
-              ],
+              ),
             ),
             child: SafeArea(
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Expanded(
-                    child: TextField(
-                      controller: _inputController,
-                      decoration: InputDecoration(
-                        hintText: 'Ask your ${_currentMode.label}...',
-                        filled: true,
-                        fillColor: Colors.grey[50],
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 14,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.grey[900] : Colors.grey[100],
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(
+                          color: isDark
+                              ? Colors.grey[800]!
+                              : Colors.transparent,
                         ),
                       ),
-                      onSubmitted: (_) => _sendMessage(),
+                      child: TextField(
+                        controller: _inputController,
+                        maxLines: null,
+                        style: TextStyle(
+                          color: isDark ? Colors.white : Colors.black87,
+                          fontSize: 15,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: 'Ask ${_currentMode.label}...',
+                          hintStyle: TextStyle(
+                            color: isDark ? Colors.grey[600] : Colors.grey[500],
+                          ),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 14,
+                          ),
+                        ),
+                        onSubmitted: (_) => _sendMessage(),
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  FloatingActionButton.small(
-                    onPressed: _sendMessage,
-                    backgroundColor: _currentMode.color,
-                    elevation: 0,
-                    child: const Icon(Icons.send, color: Colors.white),
+                  const SizedBox(width: 10),
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          _currentMode.color,
+                          _currentMode.color.withOpacity(0.8),
+                        ],
+                      ),
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      onPressed: _sendMessage,
+                      icon: const Icon(
+                        Icons.arrow_upward,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MessageBubble extends StatelessWidget {
+  final AiMessage message;
+  final AiMode mode;
+  final bool isDark;
+
+  const _MessageBubble({
+    required this.message,
+    required this.mode,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: message.isUser
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
+        children: [
+          if (!message.isUser) ...[
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [mode.color, mode.color.withOpacity(0.7)],
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(mode.icon, color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 12),
+          ],
+          Flexible(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: message.isUser
+                    ? (isDark ? Colors.grey[850] : Colors.grey[200])
+                    : (isDark ? Colors.grey[900] : Colors.white),
+                borderRadius: BorderRadius.circular(16),
+                border: !message.isUser
+                    ? Border.all(
+                        color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
+                      )
+                    : null,
+              ),
+              child: message.isUser
+                  ? Text(
+                      message.content,
+                      style: TextStyle(
+                        color: isDark ? Colors.white : Colors.black87,
+                        fontSize: 15,
+                        height: 1.4,
+                      ),
+                    )
+                  : MarkdownBody(
+                      data: message.content.isEmpty ? "..." : message.content,
+                      styleSheet: MarkdownStyleSheet(
+                        p: TextStyle(
+                          color: isDark ? Colors.grey[300] : Colors.black87,
+                          fontSize: 15,
+                          height: 1.4,
+                        ),
+                        h1: TextStyle(
+                          color: isDark ? Colors.white : Colors.black87,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        h2: TextStyle(
+                          color: isDark ? Colors.white : Colors.black87,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        code: TextStyle(
+                          backgroundColor: isDark
+                              ? Colors.grey[800]
+                              : Colors.grey[100],
+                          color: mode.color,
+                          fontFamily: 'monospace',
+                        ),
+                        listBullet: TextStyle(
+                          color: isDark ? Colors.grey[400] : Colors.grey[700],
+                        ),
+                      ),
+                    ),
+            ),
+          ),
+          if (message.isUser) const SizedBox(width: 12),
         ],
       ),
     );

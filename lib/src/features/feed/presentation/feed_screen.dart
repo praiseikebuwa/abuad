@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../data/post_repository.dart';
@@ -14,200 +13,222 @@ class FeedScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final repo = ref.watch(postRepositoryProvider);
     final selectedChannel = ref.watch(feedChannelProvider);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF000000) : Colors.white,
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           'ABUAD Nest',
           style: TextStyle(
             fontWeight: FontWeight.w800,
-            color: Color(0xFF0D47A1),
+            fontSize: 20,
+            color: isDark ? Colors.white : const Color(0xFF0D47A1),
           ),
         ),
-        centerTitle: true,
+        centerTitle: false,
         surfaceTintColor: Colors.transparent,
         scrolledUnderElevation: 0,
-        backgroundColor: Colors.white,
+        backgroundColor: isDark ? const Color(0xFF000000) : Colors.white,
         leading: Padding(
           padding: const EdgeInsets.all(8.0),
           child: GestureDetector(
             onTap: () => context.push('/profile'),
-            child: const CircleAvatar(
-              backgroundImage: AssetImage('assets/images/logo.png'),
-              backgroundColor: Colors.grey,
-              child: Icon(Icons.person, color: Colors.white, size: 20),
+            child: CircleAvatar(
+              backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
+              child: Icon(
+                Icons.person,
+                color: theme.colorScheme.primary,
+                size: 20,
+              ),
             ),
           ),
         ),
+        actions: [
+          IconButton(
+            icon: Icon(
+              Icons.settings_outlined,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+            onPressed: () => context.push('/settings'),
+          ),
+        ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(50),
-          child: SizedBox(
-            height: 50,
+          preferredSize: const Size.fromHeight(48),
+          child: Container(
+            height: 48,
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
+                  width: 1,
+                ),
+              ),
+            ),
             child: ListView(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
               children: [
-                _ChannelChip(
-                  label: 'All',
+                _TabItem(
+                  label: 'For You',
                   id: 'all',
                   selectedId: selectedChannel,
+                  isDark: isDark,
                 ),
-                _ChannelChip(
+                _TabItem(
                   label: 'General',
                   id: 'general',
                   selectedId: selectedChannel,
+                  isDark: isDark,
                 ),
-                _ChannelChip(
+                _TabItem(
                   label: 'Engineering',
                   id: 'engineering',
                   selectedId: selectedChannel,
+                  isDark: isDark,
                 ),
-                _ChannelChip(
-                  label: 'Hostel Life',
+                _TabItem(
+                  label: 'Hostel',
                   id: 'hostel',
                   selectedId: selectedChannel,
+                  isDark: isDark,
                 ),
-                _ChannelChip(
+                _TabItem(
                   label: 'Confessions',
                   id: 'confessions',
                   selectedId: selectedChannel,
+                  isDark: isDark,
                 ),
-                _ChannelChip(
+                _TabItem(
                   label: 'Freshers',
                   id: 'freshers',
                   selectedId: selectedChannel,
+                  isDark: isDark,
                 ),
               ],
             ),
           ),
         ),
       ),
-      body: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _SocialFeatureCard(
-                          title: 'Events',
-                          icon: Icons.calendar_month,
-                          color: Colors.orange,
-                          onTap: () => context.push('/events'),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _SocialFeatureCard(
-                          title: 'Groups',
-                          icon: Icons.groups,
-                          color: Colors.purple,
-                          onTap: () => context.push('/groups'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _SocialFeatureCard(
-                          title: 'Resources',
-                          icon: Icons.library_books,
-                          color: Colors.teal,
-                          onTap: () => context.push('/resources'),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(child: SizedBox()), // Placeholder for balance
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          StreamBuilder<List<domain.Post>>(
-            stream: repo.watchPosts(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const SliverFillRemaining(child: FeedLoadingSkeleton());
-              }
-              if (snapshot.hasError) {
-                return SliverFillRemaining(
-                  child: Center(child: Text('Error: ${snapshot.error}')),
-                );
-              }
-
-              var posts = snapshot.data ?? [];
-
-              // Local Filtering (Ideally this moves to repo query)
-              if (selectedChannel != 'all') {
-                posts = posts
-                    .where((p) => p.channelId == selectedChannel)
-                    .toList();
-              }
-
-              if (posts.isEmpty) {
-                return SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 50.0),
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.feed_outlined,
-                            size: 64,
-                            color: Colors.grey[300],
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            selectedChannel == 'all'
-                                ? 'No posts yet. Be the first to post!'
-                                : 'No posts in #${selectedChannel.capitalize()}.',
-                          ),
-                        ],
+      body: RefreshIndicator(
+        onRefresh: () async {
+          // Invalidate and refresh posts
+          await Future.delayed(const Duration(seconds: 1));
+        },
+        color: theme.colorScheme.primary,
+        child: StreamBuilder<List<domain.Post>>(
+          stream: repo.watchPosts(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const FeedLoadingSkeleton();
+            }
+            if (snapshot.hasError) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      size: 64,
+                      color: Colors.grey[400],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Something went wrong',
+                      style: TextStyle(
+                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                        fontSize: 16,
                       ),
                     ),
-                  ),
-                );
-              }
-
-              return SliverList(
-                delegate: SliverChildBuilderDelegate((context, index) {
-                  final post = posts[index];
-                  return Column(
-                    children: [
-                      PostCard(post: post),
-                      Divider(height: 1, thickness: 1, color: Colors.grey[100]),
-                    ],
-                  );
-                }, childCount: posts.length),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: () {
+                        // Trigger refresh
+                      },
+                      child: const Text('Try again'),
+                    ),
+                  ],
+                ),
               );
-            },
-          ),
-        ],
+            }
+
+            var posts = snapshot.data ?? [];
+
+            // Filter by channel
+            if (selectedChannel != 'all') {
+              posts = posts
+                  .where((p) => p.channelId == selectedChannel)
+                  .toList();
+            }
+
+            if (posts.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.feed_outlined,
+                      size: 64,
+                      color: isDark ? Colors.grey[700] : Colors.grey[300],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      selectedChannel == 'all'
+                          ? 'No posts yet'
+                          : 'No posts in this channel',
+                      style: TextStyle(
+                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Be the first to post!',
+                      style: TextStyle(
+                        color: isDark ? Colors.grey[600] : Colors.grey[500],
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            return ListView.separated(
+              itemCount: posts.length,
+              padding: EdgeInsets.zero,
+              separatorBuilder: (context, index) => Divider(
+                height: 1,
+                thickness: 1,
+                color: isDark ? Colors.grey[900] : Colors.grey[200],
+              ),
+              itemBuilder: (context, index) {
+                final post = posts[index];
+                return PostCard(post: post);
+              },
+            );
+          },
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          // Pass selected channel to create screen
           context.push(
             '/create-post',
             extra: selectedChannel == 'all' ? 'general' : selectedChannel,
           );
         },
-        backgroundColor: Theme.of(context).primaryColor,
+        backgroundColor: theme.colorScheme.primary,
+        elevation: 4,
         shape: const CircleBorder(),
-        child: const Icon(Icons.add, color: Colors.white),
+        child: const Icon(Icons.add, color: Colors.white, size: 28),
       ),
     );
   }
 }
 
-// Simple Notifier Provider for Channel Filter
+// Channel Provider
 final feedChannelProvider = NotifierProvider<FeedChannelNotifier, String>(
   FeedChannelNotifier.new,
 );
@@ -221,86 +242,51 @@ class FeedChannelNotifier extends Notifier<String> {
   }
 }
 
-class _ChannelChip extends ConsumerWidget {
+// Twitter-style Tab Item
+class _TabItem extends ConsumerWidget {
   final String label;
   final String id;
   final String selectedId;
+  final bool isDark;
 
-  const _ChannelChip({
+  const _TabItem({
     required this.label,
     required this.id,
     required this.selectedId,
+    required this.isDark,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isSelected = id == selectedId;
-    return Padding(
-      padding: const EdgeInsets.only(right: 8.0, bottom: 8.0),
-      child: FilterChip(
-        label: Text(label),
-        selected: isSelected,
-        onSelected: (_) {
-          ref.read(feedChannelProvider.notifier).setChannel(id);
-        },
-        backgroundColor: Colors.grey[100],
-        selectedColor: const Color(0xFF0D47A1).withOpacity(0.1),
-        labelStyle: TextStyle(
-          color: isSelected ? const Color(0xFF0D47A1) : Colors.black87,
-          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(
-            color: isSelected ? const Color(0xFF0D47A1) : Colors.transparent,
-          ),
-        ),
-        showCheckmark: false,
-      ),
-    );
-  }
-}
 
-extension StringExtension on String {
-  String capitalize() {
-    return "${this[0].toUpperCase()}${substring(1)}";
-  }
-}
-
-class _SocialFeatureCard extends StatelessWidget {
-  final String title;
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _SocialFeatureCard({
-    required this.title,
-    required this.icon,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        ref.read(feedChannelProvider.notifier).setChannel(id);
+      },
+      behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(0.2)),
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(height: 8),
             Text(
-              title,
+              label,
               style: TextStyle(
-                color: color,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
+                color: isSelected
+                    ? (isDark ? Colors.white : Colors.black87)
+                    : (isDark ? Colors.grey[500] : Colors.grey[600]),
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                fontSize: 15,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              height: 4,
+              width: isSelected ? 40 : 0,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary,
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
           ],

@@ -54,6 +54,9 @@ class ChatRepository {
     String channelId,
     String content, {
     String type = 'text',
+    String? imageUrl,
+    double? imageWidth,
+    double? imageHeight,
   }) async {
     final uid = currentUserId;
     if (uid == null) return;
@@ -67,6 +70,10 @@ class ChatRepository {
       content: content,
       type: type,
       timestamp: timestamp,
+      imageUrl: imageUrl,
+      imageWidth: imageWidth,
+      imageHeight: imageHeight,
+      readBy: [uid],
     );
 
     // Batch write: Add message AND update channel lastMessage
@@ -79,7 +86,7 @@ class ChatRepository {
     batch.update(channelRef, {
       'lastMessage': message.toMap(),
       'lastMessageTime': timestamp.millisecondsSinceEpoch,
-      // Increment unread counts for others? keeping simple for now
+      'typingUsers.$uid': false,
     });
 
     await batch.commit();
@@ -105,6 +112,30 @@ class ChatRepository {
       return existingChannels.docs.first.id;
     }
 
+    // Fetch user info for both members
+    final memberNames = <String, String>{};
+    final memberAvatars = <String, String?>{};
+
+    for (final memberId in members) {
+      try {
+        final userDoc = await _firestore
+            .collection('users')
+            .doc(memberId)
+            .get();
+        if (userDoc.exists) {
+          final data = userDoc.data()!;
+          memberNames[memberId] = data['displayName'] ?? 'Student';
+          memberAvatars[memberId] = data['avatarUrl'];
+        } else {
+          memberNames[memberId] = 'Student';
+          memberAvatars[memberId] = null;
+        }
+      } catch (e) {
+        memberNames[memberId] = 'Student';
+        memberAvatars[memberId] = null;
+      }
+    }
+
     // Create new channel
     final channelId = const Uuid().v4();
     final channel = ChatChannel(
@@ -112,6 +143,8 @@ class ChatRepository {
       memberIds: members,
       lastMessage: {},
       lastMessageTime: DateTime.now(),
+      memberNames: memberNames,
+      memberAvatars: memberAvatars,
     );
 
     await _firestore.collection('channels').doc(channelId).set(channel.toMap());
@@ -134,5 +167,53 @@ class ChatRepository {
       // Ignore errors, return default
     }
     return {'name': 'Student', 'handle': '@student'};
+  }
+
+  // Set typing status
+  Future<void> setTypingStatus(String channelId, bool isTyping) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+
+    await _firestore.collection('channels').doc(channelId).update({
+      'typingUsers.$uid': isTyping,
+    });
+  }
+
+  // Mark messages as read
+  Future<void> markMessagesAsRead(String channelId) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+
+    final messagesSnapshot = await _firestore
+        .collection('channels')
+        .doc(channelId)
+        .collection('messages')
+        .where('senderId', isNotEqualTo: uid)
+        .get();
+
+    final batch = _firestore.batch();
+    for (final doc in messagesSnapshot.docs) {
+      final message = ChatMessage.fromMap(doc.id, doc.data());
+      if (!message.readBy.contains(uid)) {
+        batch.update(doc.reference, {
+          'readBy': FieldValue.arrayUnion([uid]),
+        });
+      }
+    }
+
+    await batch.commit();
+  }
+
+  // Get channel by ID
+  Future<ChatChannel?> getChannel(String channelId) async {
+    try {
+      final doc = await _firestore.collection('channels').doc(channelId).get();
+      if (doc.exists) {
+        return ChatChannel.fromMap(doc.id, doc.data()!);
+      }
+    } catch (e) {
+      // Ignore
+    }
+    return null;
   }
 }

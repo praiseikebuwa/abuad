@@ -1,109 +1,115 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // --- HELPER FUNCTIONS ---
-
+    
+    // --- Helper Functions ---
+    
     // Check if user is signed in
     function isAuthenticated() {
       return request.auth != null;
     }
-
-    // Check if the user accessing the data is the owner of the document
+    
+    // Check if the user is the owner of the data (comparing User ID)
     function isOwner(userId) {
       return request.auth.uid == userId;
     }
 
-    // Check if the user has the 'admin' claim (requires custom claims setup)
-    // Or simpler: check against a hardcoded list of admin UIDs (for MVP)
+    // Check if the user is an Admin
+    // Assumes the user document has a boolean field 'isAdmin' set to true
     function isAdmin() {
-      // return request.auth.token.admin == true; 
-      // For this project, you might want to temporarily allow all authenticated users 
-      // to act as admin if you haven't set up custom claims yet.
-      return isAuthenticated(); 
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
     }
 
-    // --- USERS COLLECTION ---
+    // --- Users Collection ---
     match /users/{userId} {
-      // Anyone can read user profiles (needed for feed, search, etc.)
       allow read: if true;
-
-      // Users can create their own profile on signup
       allow create: if isAuthenticated() && isOwner(userId);
-
-      // Users can update their own profile
-      // Note: We allow updating 'isVerified' here for the Admin Panel to work easily 
-      // without complex backend functions, but in a real production app, 
-      // 'isVerified' should be restricted to admin-only writes.
+      // User can update own profile. Admin can update any profile (e.g. to verify/ban).
       allow update: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      // Only Admin can delete users (prevent accidental self-deletion via client, or allow if policy permits)
+      allow delete: if isAdmin(); 
 
-      allow delete: if isOwner(userId) || isAdmin();
-
-      // User Subcollections (e.g. followers/following)
-      match /followers/{followerId} {
-        allow read: if true;
-        allow write: if isAuthenticated();
+      // Subcollections for Social Graph
+      match /followers/{followerId} { 
+        allow read: if true; 
+        allow write: if isAuthenticated(); // Simplified for follow/unfollow batch writes
       }
-      match /following/{followingId} {
-        allow read: if true;
-        allow write: if isAuthenticated();
+      match /following/{followingId} { 
+        allow read: if true; 
+        allow write: if isAuthenticated(); 
       }
     }
 
-    // --- POSTS COLLECTION ---
+    // --- Posts Collection ---
     match /posts/{postId} {
-      // Public feed
       allow read: if true;
-
-      // Authenticated users can create posts
-      allow create: if isAuthenticated();
-
-      // Author can update (e.g. edit) or Admin
-      // Also allow updates for counters like likesCount if the logic is client-side
-      allow update: if isAuthenticated();
-
-      // Author or Admin can delete
+      allow create: if isAuthenticated() && request.resource.data.authorId == request.auth.uid;
+      
+      // Update: Owner can edit content. Admin can edit/moderate. 
+      // Note: Also allows updating likes/stats if logic runs client-side
+      allow update: if isAuthenticated() && (resource.data.authorId == request.auth.uid || isAdmin());
+      
+      // Delete: Owner can delete own post. Admin can delete any post (Moderation).
       allow delete: if isAuthenticated() && (resource.data.authorId == request.auth.uid || isAdmin());
 
-      // -- LIKES SUBCOLLECTION --
-      match /likes/{userId} {
-        allow read: if true;
-        // User can only write their own like (docId must match auth.uid)
-        allow write: if isAuthenticated() && isOwner(userId);
-      }
-
-      // -- COMMENTS SUBCOLLECTION --
+      // Comments Subcollection
       match /comments/{commentId} {
         allow read: if true;
         allow create: if isAuthenticated();
-        // Comment author or Admin can delete
-        allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+        // Comment owner OR Post Owner OR Admin can delete comments
+        allow delete: if isAuthenticated() && (
+          resource.data.userId == request.auth.uid || 
+          get(/databases/$(database)/documents/posts/$(postId)).data.authorId == request.auth.uid ||
+          isAdmin()
+        );
+      }
+      
+      // Likes Subcollection
+      match /likes/{userId} {
+        allow read: if true;
+        allow write: if isAuthenticated() && isOwner(userId);
       }
     }
 
-    // --- CHAT CHANNELS ---
+    // --- Channels Collection (Chat) ---
     match /channels/{channelId} {
-      // Only members of the channel can read/write channel metadata
-      allow read: if isAuthenticated() && request.auth.uid in resource.data.memberIds;
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && request.auth.uid in resource.data.memberIds;
+      // Members can read. Admins can read (for moderation/investigation).
+      allow read: if isAuthenticated() && (resource.data.members[request.auth.uid] != null || isAdmin());
       
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (resource.data.members[request.auth.uid] != null || isAdmin());
+
       // Messages Subcollection
       match /messages/{messageId} {
-        // Only members of the parent channel can read messages
-        // (This requires a `get` call in strict rules, but for MVP we rely on parent access)
-        allow read: if isAuthenticated(); 
-        allow create: if isAuthenticated();
+         allow read: if isAuthenticated() && (
+           get(/databases/$(database)/documents/channels/$(channelId)).data.members[request.auth.uid] != null || 
+           isAdmin()
+         );
+         allow create: if isAuthenticated() && request.resource.data.senderId == request.auth.uid;
+         allow update: if false; // Messages usually shouldn't be edited? Or allow owner.
       }
     }
 
-    // --- ANNOUNCEMENTS (BROADCASTS) ---
-    match /announcements/{announcementId} {
-      // Everyone can read announcements
+    // --- Events Collection ---
+    match /events/{eventId} {
       allow read: if true;
-      
-      // Only Admins can send (create/update/delete) announcements
-      allow write: if isAdmin();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && (resource.data.organizerId == request.auth.uid || isAdmin());
+    }
+
+    // --- Groups Collection ---
+    match /groups/{groupId} {
+      allow read: if true;
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && (resource.data.adminId == request.auth.uid || isAdmin());
+    }
+    
+    // --- Resources Collection ---
+    match /resources/{resourceId} {
+      allow read: if true;
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && (resource.data.uploaderId == request.auth.uid || isAdmin());
     }
   }
 }

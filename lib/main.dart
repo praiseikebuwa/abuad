@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:toastification/toastification.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'src/core/router/app_router.dart';
 import 'src/core/database/local_database.dart';
 import 'src/core/theme/app_theme.dart';
+import 'src/features/settings/presentation/settings_screen.dart';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'src/features/utilities/broadcast_listener.dart';
 import 'src/core/services/notification_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'src/core/config/supabase_config.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -23,6 +27,17 @@ void main() async {
         options: DefaultFirebaseOptions.currentPlatform,
       );
     }
+
+    // Configure System UI for Edge-to-Edge
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarDividerColor: Colors.transparent,
+        statusBarColor: Colors.transparent,
+      ),
+    );
+
     // Initialize Notifications
     await NotificationService().initialize();
   } catch (e) {
@@ -33,6 +48,12 @@ void main() async {
   // Initialize Hive (Legacy/Local cache) - Optional now
   await container.read(localDatabaseProvider.future);
 
+  // Initialize Supabase
+  await Supabase.initialize(
+    url: SupabaseConfig.url,
+    anonKey: SupabaseConfig.anonKey,
+  );
+
   runApp(UncontrolledProviderScope(container: container, child: const MyApp()));
 }
 
@@ -42,6 +63,8 @@ class MyApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final goRouter = ref.watch(goRouterProvider);
+    // Watch the theme mode from settings (with async handling)
+    final themeModeAsync = ref.watch(themeModeProviderWithDefault);
 
     return ToastificationWrapper(
       child: MaterialApp.router(
@@ -49,7 +72,7 @@ class MyApp extends ConsumerWidget {
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.darkTheme,
-        themeMode: ThemeMode.system,
+        themeMode: themeModeAsync,
         routerConfig: goRouter,
         builder: (context, child) {
           return _ConnectivityListener(child: child);
@@ -58,6 +81,15 @@ class MyApp extends ConsumerWidget {
     );
   }
 }
+
+// Helper provider to provide a default value while async loads
+final themeModeProviderWithDefault = Provider<ThemeMode>((ref) {
+  final asyncValue = ref.watch(themeModeProvider);
+  return asyncValue.maybeWhen(
+    data: (mode) => mode,
+    orElse: () => ThemeMode.system,
+  );
+});
 
 class _ConnectivityListener extends StatefulWidget {
   final Widget? child;

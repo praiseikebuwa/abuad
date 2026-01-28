@@ -4,6 +4,9 @@ class ChatChannel {
   final Map<String, dynamic> lastMessage; // copy of the last message
   final DateTime lastMessageTime;
   final Map<String, int> unreadCounts;
+  final Map<String, bool> typingUsers; // userId -> isTyping
+  final Map<String, String> memberNames; // userId -> displayName
+  final Map<String, String?> memberAvatars; // userId -> avatarUrl
 
   ChatChannel({
     required this.id,
@@ -11,6 +14,9 @@ class ChatChannel {
     required this.lastMessage,
     required this.lastMessageTime,
     this.unreadCounts = const {},
+    this.typingUsers = const {},
+    this.memberNames = const {},
+    this.memberAvatars = const {},
   });
 
   Map<String, dynamic> toMap() {
@@ -19,6 +25,9 @@ class ChatChannel {
       'lastMessage': lastMessage,
       'lastMessageTime': lastMessageTime.millisecondsSinceEpoch,
       'unreadCounts': unreadCounts,
+      'typingUsers': typingUsers,
+      'memberNames': memberNames,
+      'memberAvatars': memberAvatars,
     };
   }
 
@@ -31,6 +40,9 @@ class ChatChannel {
         map['lastMessageTime'] ?? DateTime.now().millisecondsSinceEpoch,
       ),
       unreadCounts: Map<String, int>.from(map['unreadCounts'] ?? {}),
+      typingUsers: Map<String, bool>.from(map['typingUsers'] ?? {}),
+      memberNames: Map<String, String>.from(map['memberNames'] ?? {}),
+      memberAvatars: Map<String, String?>.from(map['memberAvatars'] ?? {}),
     );
   }
 }

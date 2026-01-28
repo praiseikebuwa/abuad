@@ -5,6 +5,10 @@ class ChatMessage {
   final String type; // 'text', 'image'
   final DateTime timestamp;
   final bool isRead;
+  final List<String> readBy; // List of user IDs who have read this message
+  final String? imageUrl; // For image messages
+  final double? imageWidth; // For proper aspect ratio
+  final double? imageHeight;
 
   ChatMessage({
     required this.id,
@@ -13,6 +17,10 @@ class ChatMessage {
     required this.type,
     required this.timestamp,
     this.isRead = false,
+    this.readBy = const [],
+    this.imageUrl,
+    this.imageWidth,
+    this.imageHeight,
   });
 
   Map<String, dynamic> toMap() {
@@ -22,6 +30,10 @@ class ChatMessage {
       'type': type,
       'timestamp': timestamp.millisecondsSinceEpoch,
       'isRead': isRead,
+      'readBy': readBy,
+      'imageUrl': imageUrl,
+      'imageWidth': imageWidth,
+      'imageHeight': imageHeight,
     };
   }
 
@@ -35,6 +47,10 @@ class ChatMessage {
         map['timestamp'] ?? DateTime.now().millisecondsSinceEpoch,
       ),
       isRead: map['isRead'] ?? false,
+      readBy: List<String>.from(map['readBy'] ?? []),
+      imageUrl: map['imageUrl'],
+      imageWidth: map['imageWidth']?.toDouble(),
+      imageHeight: map['imageHeight']?.toDouble(),
     );
   }
 }

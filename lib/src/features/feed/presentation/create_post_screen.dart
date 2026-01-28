@@ -2,11 +2,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart'; // Requires dependency
+import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import '../data/post_repository.dart';
 import '../../user/data/user_repository.dart';
-import '../../../core/services/cloudinary_service.dart';
+import '../../../core/services/supabase_storage_service.dart';
 import '../domain/post.dart';
 import '../../auth/data/auth_repository.dart';
 
@@ -45,10 +45,10 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
 
   Future<String> _uploadImage(XFile image) async {
     try {
-      final cloudinary = CloudinaryService();
-      return await cloudinary.uploadImage(image);
+      final storage = SupabaseStorageService();
+      return await storage.uploadImage(image);
     } catch (e) {
-      debugPrint("Cloudinary Upload Error: $e");
+      debugPrint("Supabase Upload Error: $e");
       return '';
     }
   }
@@ -269,7 +269,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                       Switch(
                         value: _isAnonymous,
                         onChanged: (val) => setState(() => _isAnonymous = val),
-                        activeColor: Colors.black,
+                        activeThumbColor: Colors.black,
                       ),
                     ],
                   ),

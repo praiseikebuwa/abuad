@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../user/data/user_repository.dart';
 import '../data/chat_repository.dart';
 
@@ -102,20 +103,28 @@ class _UserSearchScreenState extends ConsumerState<UserSearchScreen> {
                   itemBuilder: (context, index) {
                     final user = filteredUsers[index];
                     return ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: Theme.of(
-                          context,
-                        ).primaryColor.withOpacity(0.1),
-                        child: Text(
-                          user.displayName.isNotEmpty
-                              ? user.displayName[0].toUpperCase()
-                              : user.email[0].toUpperCase(),
-                          style: TextStyle(
-                            color: Theme.of(context).primaryColor,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
+                      leading:
+                          user.avatarUrl != null && user.avatarUrl!.isNotEmpty
+                          ? CircleAvatar(
+                              backgroundImage: CachedNetworkImageProvider(
+                                user.avatarUrl!,
+                              ),
+                              backgroundColor: Colors.grey[200],
+                            )
+                          : CircleAvatar(
+                              backgroundColor: Theme.of(
+                                context,
+                              ).primaryColor.withOpacity(0.1),
+                              child: Text(
+                                user.displayName.isNotEmpty
+                                    ? user.displayName[0].toUpperCase()
+                                    : user.email[0].toUpperCase(),
+                                style: TextStyle(
+                                  color: Theme.of(context).primaryColor,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
                       title: Row(
                         children: [
                           Text(

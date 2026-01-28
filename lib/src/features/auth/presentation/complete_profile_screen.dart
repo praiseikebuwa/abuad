@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../user/data/user_repository.dart';
 import '../../auth/data/auth_repository.dart';
-import '../../../core/services/cloudinary_service.dart'; // Ensure this matches path
+import '../../../core/services/supabase_storage_service.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 
@@ -96,14 +96,14 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
     try {
       final authRepo = ref.read(authRepositoryProvider);
       final userRepo = ref.read(userRepositoryProvider);
-      final cloudinary = CloudinaryService();
+      final storage = SupabaseStorageService();
 
       final currentUser = authRepo.currentUser;
       if (currentUser == null) return;
 
       String? photoUrl;
       if (_imageFile != null) {
-        photoUrl = await cloudinary.uploadImage(XFile(_imageFile!.path));
+        photoUrl = await storage.uploadImage(XFile(_imageFile!.path));
       }
 
       await userRepo.updateUser(currentUser.uid, {

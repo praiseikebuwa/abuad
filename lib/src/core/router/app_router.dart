@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../providers/shared_preferences_provider.dart';
 
 import '../../features/feed/presentation/feed_screen.dart';
 import '../../features/feed/presentation/create_post_screen.dart';
@@ -20,7 +19,6 @@ import '../../features/auth/data/auth_repository.dart';
 import '../../features/events/presentation/events_screen.dart';
 import '../../features/groups/presentation/groups_screen.dart';
 import '../../features/resources/presentation/resources_screen.dart';
-import '../../features/onboarding/presentation/onboarding_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -40,28 +38,14 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       final isLoggedIn = authState.value != null;
       final isLoggingIn = state.uri.toString() == '/login';
       final isSigningUp = state.uri.toString() == '/signup';
-      final isOnboarding = state.uri.toString() == '/onboarding';
 
-      // Check onboarding status
-      final prefs = ref.read(sharedPreferencesProvider).value;
-      final hasSeenOnboarding = prefs?.getBool('hasSeenOnboarding') ?? false;
-
-      if (!hasSeenOnboarding && !isOnboarding) return '/onboarding';
-      if (hasSeenOnboarding && isOnboarding) return '/login';
-
-      if (!isLoggedIn && !isLoggingIn && !isSigningUp && !isOnboarding)
-        return '/login';
-      if (isLoggedIn && (isLoggingIn || isSigningUp || isOnboarding))
-        return '/';
+      if (!isLoggedIn && !isLoggingIn && !isSigningUp) return '/login';
+      if (isLoggedIn && (isLoggingIn || isSigningUp)) return '/';
 
       return null;
     },
     routes: [
       GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
-      GoRoute(
-        path: '/onboarding',
-        builder: (context, state) => const OnboardingScreen(),
-      ),
       GoRoute(
         path: '/signup',
         builder: (context, state) => const SignUpScreen(),

@@ -1,0 +1,69 @@
+flutter_native_splash:
+  # ABUAD App - Native Splash Screen Configuration
+  # Styled with purple gradient branding to match app theme
+  # Run: dart run flutter_native_splash:create
+  
+  #======================================================================
+  #! FOR ALL PLATFORMS (except Android 12+)
+  #======================================================================
+  
+  # Background color - Deep purple matching app theme
+  color: "#8B5CF6"  # Purple gradient start color
+  color_dark: "#000000"  # Pure black for dark mode (OLED friendly)
+  
+  # Center logo image
+  image: assets/logo.png
+  image_dark: assets/logo.png
+  
+  # Image alignment
+  android_gravity: center
+  ios_content_mode: center
+  web_image_mode: center
+  
+  # Fullscreen splash (hide status bar)
+  fullscreen: true
+  
+  #======================================================================
+  #! ANDROID 12+ CONFIGURATION
+  #======================================================================
+  # Android 12+ has different splash screen requirements
+  # Visit: https://developer.android.com/guide/topics/ui/splash-screen
+  
+  android_12:
+    # Background color for Android 12+
+    color: "#8B5CF6"  # Purple to match app branding
+    color_dark: "#000000"  # Pure black for dark mode
+    
+    # Center logo
+    # For Android 12+, the image must fit within a circle:
+    # - With background: 960×960 px (fit within 640px diameter circle)
+    # - Without background: 1152×1152 px (fit within 768px diameter circle)
+    image: assets/logo.png
+    image_dark: assets/logo.png
+    
+    # Icon background color (circle behind the logo)
+    # Using white for contrast with purple background
+    icon_background_color: "#FFFFFF"
+    icon_background_color_dark: "#1C1C1E"  # Dark grey for dark mode
+    
+    # Branding image (optional)
+    # The branding image dimensions must be 800x320 px
+    # Uncomment if you have a branding image:
+    # branding: assets/images/branding.png
+    # branding_dark: assets/images/branding_dark.png
+
+#======================================================================
+# SETUP INSTRUCTIONS
+#======================================================================
+# 1. Ensure logo exists at: assets/logo.png
+# 2. Run: dart run flutter_native_splash:create
+# 3. If needed, clean project: flutter clean && flutter pub get
+# 4. To remove splash: dart run flutter_native_splash:remove
+#======================================================================
+
+# DESIGN NOTES:
+# - Purple (#8B5CF6) matches app's primary gradient color
+# - White icon background creates clean contrast
+# - Pure black (#000000) dark mode for OLED screens
+# - Fullscreen for immersive experience
+# - Centered logo for professional look
