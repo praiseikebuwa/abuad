@@ -1,18 +1,18 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../domain/story_model.dart';
 import '../../../core/services/supabase_storage_service.dart';
 
-/// Repository for Story operations with Firestore
+/// Repository for Story operations with Supabase
 class StoryRepository {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final SupabaseStorageService _storage = SupabaseStorageService();
+  final SupabaseClient _supabase;
+  final SupabaseStorageService _storage;
+
+  StoryRepository(this._supabase) : _storage = SupabaseStorageService();
 
   /// Create a new story
-  /// Uploads media to Supabase and saves to Firestore with 24h expiration
+  /// Uploads media to Supabase Storage and saves to Postgres with 24h expiration
   Future<String> createStory({
     required XFile mediaFile,
     required String mediaType,
@@ -20,15 +20,12 @@ class StoryRepository {
     String? backgroundColor,
   }) async {
     try {
-      final user = _auth.currentUser;
+      final user = _supabase.auth.currentUser;
       if (user == null) throw Exception('User not authenticated');
 
-      // Get user data
-      final userDoc = await _firestore.collection('users').doc(user.uid).get();
-      final userData = userDoc.data() ?? {};
+      // Upload media to Supabase Storage
+      debugPrint('📤 Uploading story media to Supabase Storage...');
 
-      // Upload media to Supabase
-      debugPrint('📤 Uploading story media to Supabase...');
       final mediaUrl = mediaType == 'video'
           ? await _storage.uploadVideo(mediaFile)
           : await _storage.uploadImage(mediaFile);
@@ -37,25 +34,26 @@ class StoryRepository {
       final now = DateTime.now();
       final expiresAt = now.add(const Duration(hours: 24));
 
-      // Create story document
-      final storyData = {
-        'userId': user.uid,
-        'userName': userData['displayName'] ?? 'Unknown User',
-        'userAvatar': userData['avatarUrl'] ?? '',
-        'mediaUrl': mediaUrl,
-        'mediaType': mediaType,
+      // Create story records in 'stories' table
+      final data = {
+        'user_id': user.id,
+        'media_url': mediaUrl,
+        'media_type': mediaType,
         'caption': caption,
-        'backgroundColor': backgroundColor,
-        'createdAt': Timestamp.fromDate(now),
-        'expiresAt': Timestamp.fromDate(expiresAt),
-        'viewCount': 0,
-        'viewers': [],
+        'background_color': backgroundColor,
+        'created_at': now.millisecondsSinceEpoch,
+        'expires_at': expiresAt.millisecondsSinceEpoch,
+        'view_count': 0,
       };
 
-      final docRef = await _firestore.collection('stories').add(storyData);
-      debugPrint('✅ Story created: ${docRef.id}');
+      final response = await _supabase
+          .from('stories')
+          .insert(data)
+          .select()
+          .single();
+      debugPrint('✅ Story created: ${response['id']}');
 
-      return docRef.id;
+      return response['id'] as String;
     } catch (e) {
       debugPrint('❌ Error creating story: $e');
       rethrow;
@@ -64,29 +62,55 @@ class StoryRepository {
 
   /// Get all stories for a specific user (non-expired)
   Stream<List<Story>> getUserStories(String userId) {
-    return _firestore
-        .collection('stories')
-        .where('userId', isEqualTo: userId)
-        .where('expiresAt', isGreaterThan: Timestamp.now())
-        .orderBy('expiresAt')
-        .orderBy('createdAt', descending: false)
-        .snapshots()
-        .map((snapshot) {
-          return snapshot.docs.map((doc) => Story.fromFirestore(doc)).toList();
-        });
+    // Current user for view check
+    final currentUid = _supabase.auth.currentUser?.id;
+
+    // Build query with optional join to check if viewed by current user
+    // We join 'story_views' filtered by current user aliased as 'my_views'
+    var query = _supabase
+        .from('stories')
+        .select('*, profiles(*), my_views:story_views(viewer_id)')
+        .eq('user_id', userId)
+        .gt('expires_at', DateTime.now().millisecondsSinceEpoch);
+
+    // If authenticated, we can filter the join, but standard Supabase select join filtering
+    // requires inner join or specific syntax.
+    // simpler to just join all story_views limit 1? No, logic is tricky with one query for "my view".
+    // Supabase allows filtering on joined tables: story_views!left(viewer_id.eq.currentUid)
+    // Query: select *, profiles(*), story_views!left(*) w/ filter.
+
+    if (currentUid != null) {
+      // Ideally:
+      // .select('*, profiles(*), my_views:story_views!left(viewer_id)')
+      // .eq('my_views.viewer_id', currentUid) -- this would filter STORIES to only those viewed, not what we want.
+      // We want all stories, with a flag.
+      // The standard way is: .select('*, story_views(viewer_id)') and filter in memory or client-side.
+      // Or simpler: just don't load view status in list, load on view.
+    }
+
+    return query.order('created_at', ascending: true).asStream().map((data) {
+      return data.map((map) {
+        // Inject manual check or rely on map structure
+        // If we used my_views:...
+        return Story.fromMap(map, currentUserId: currentUid);
+      }).toList();
+    });
   }
 
   /// Get all non-expired stories grouped by user
   Stream<Map<String, List<Story>>> getAllStoriesGrouped() {
-    return _firestore
-        .collection('stories')
-        .where('expiresAt', isGreaterThan: Timestamp.now())
-        .orderBy('expiresAt')
-        .orderBy('createdAt', descending: false)
-        .snapshots()
-        .map((snapshot) {
-          final stories = snapshot.docs
-              .map((doc) => Story.fromFirestore(doc))
+    final currentUid = _supabase.auth.currentUser?.id;
+    final nowEpoch = DateTime.now().millisecondsSinceEpoch;
+
+    return _supabase
+        .from('stories')
+        .select('*, profiles(*)')
+        .gt('expires_at', nowEpoch)
+        .order('created_at', ascending: false)
+        .asStream()
+        .map((data) {
+          final stories = data
+              .map((map) => Story.fromMap(map, currentUserId: currentUid))
               .toList();
 
           // Group stories by userId
@@ -101,41 +125,45 @@ class StoryRepository {
 
   /// Get all non-expired stories as a flat list
   Stream<List<Story>> getAllStories() {
-    return _firestore
-        .collection('stories')
-        .where('expiresAt', isGreaterThan: Timestamp.now())
-        .orderBy('expiresAt')
-        .orderBy('createdAt', descending: false)
-        .snapshots()
-        .map((snapshot) {
-          return snapshot.docs.map((doc) => Story.fromFirestore(doc)).toList();
+    final currentUid = _supabase.auth.currentUser?.id;
+    final nowEpoch = DateTime.now().millisecondsSinceEpoch;
+
+    return _supabase
+        .from('stories')
+        .select('*, profiles(*)')
+        .gt('expires_at', nowEpoch)
+        .order('created_at', ascending: false)
+        .asStream()
+        .map((data) {
+          return data
+              .map((map) => Story.fromMap(map, currentUserId: currentUid))
+              .toList();
         });
   }
 
   /// Mark a story as viewed by the current user
   Future<void> markAsViewed(String storyId, String viewerId) async {
     try {
-      final storyRef = _firestore.collection('stories').doc(storyId);
-      final storyDoc = await storyRef.get();
+      // 1. Insert into story_views (idempotent due to composite PK or unique index if set)
+      // My schema.sql didn't strictly enforce unique constraint on (story_id, viewer_id),
+      // so we use simple select to check first or just insert and ignore error.
 
-      if (!storyDoc.exists) return;
+      final existing = await _supabase.from('story_views').select().match({
+        'story_id': storyId,
+        'viewer_id': viewerId,
+      }).maybeSingle();
 
-      final story = Story.fromFirestore(storyDoc);
+      if (existing != null) return;
 
-      // Don't track if already viewed
-      if (story.hasViewed(viewerId)) return;
-
-      // Add viewer to list and increment count
-      await storyRef.update({
-        'viewers': FieldValue.arrayUnion([viewerId]),
-        'viewCount': FieldValue.increment(1),
+      await _supabase.from('story_views').insert({
+        'story_id': storyId,
+        'viewer_id': viewerId,
+        'viewed_at': DateTime.now().millisecondsSinceEpoch,
       });
 
-      // Track in subcollection for analytics
-      await storyRef.collection('views').doc(viewerId).set({
-        'viewerId': viewerId,
-        'viewedAt': FieldValue.serverTimestamp(),
-      });
+      // 2. Increment view count on story
+      // Ideally use RPC
+      await _supabase.rpc('increment_story_views', params: {'row_id': storyId});
 
       debugPrint('✅ Story $storyId marked as viewed by $viewerId');
     } catch (e) {
@@ -146,24 +174,12 @@ class StoryRepository {
   /// Delete a story (only owner can delete)
   Future<void> deleteStory(String storyId) async {
     try {
-      final user = _auth.currentUser;
+      final user = _supabase.auth.currentUser;
       if (user == null) throw Exception('User not authenticated');
 
-      final storyDoc = await _firestore
-          .collection('stories')
-          .doc(storyId)
-          .get();
-      if (!storyDoc.exists) return;
+      // Delete (RLS will ensure ownership)
+      await _supabase.from('stories').delete().eq('id', storyId);
 
-      final story = Story.fromFirestore(storyDoc);
-
-      // Verify ownership
-      if (story.userId != user.uid) {
-        throw Exception('You can only delete your own stories');
-      }
-
-      // Delete story
-      await _firestore.collection('stories').doc(storyId).delete();
       debugPrint('✅ Story deleted: $storyId');
     } catch (e) {
       debugPrint('❌ Error deleting story: $e');
@@ -174,47 +190,27 @@ class StoryRepository {
   /// Get viewers for a story (for owner to see who viewed)
   Future<List<Map<String, dynamic>>> getStoryViewers(String storyId) async {
     try {
-      final user = _auth.currentUser;
+      final user = _supabase.auth.currentUser;
       if (user == null) throw Exception('User not authenticated');
 
-      final storyDoc = await _firestore
-          .collection('stories')
-          .doc(storyId)
-          .get();
-      if (!storyDoc.exists) return [];
+      // Query story_views join profiles
+      final response = await _supabase
+          .from('story_views')
+          .select('*, profiles(*)')
+          .eq('story_id', storyId)
+          .order('viewed_at', ascending: false);
 
-      final story = Story.fromFirestore(storyDoc);
-
-      // Only owner can see viewers
-      if (story.userId != user.uid) return [];
-
-      final viewsSnapshot = await _firestore
-          .collection('stories')
-          .doc(storyId)
-          .collection('views')
-          .orderBy('viewedAt', descending: true)
-          .get();
-
-      final viewers = <Map<String, dynamic>>[];
-      for (final viewDoc in viewsSnapshot.docs) {
-        final viewData = viewDoc.data();
-        final viewerId = viewData['viewerId'];
-
-        // Get viewer user data
-        final userDoc = await _firestore
-            .collection('users')
-            .doc(viewerId)
-            .get();
-        if (userDoc.exists) {
-          final userData = userDoc.data()!;
-          viewers.add({
-            'userId': viewerId,
-            'displayName': userData['displayName'],
-            'avatarUrl': userData['avatarUrl'],
-            'viewedAt': viewData['viewedAt'],
-          });
-        }
-      }
+      final viewers = response.map((data) {
+        final profile = data['profiles'] ?? {};
+        return {
+          'userId': data['viewer_id'],
+          'displayName': profile['display_name'] ?? 'Unknown',
+          'avatarUrl': profile['avatar_url'],
+          'viewedAt': data['viewed_at'] != null
+              ? DateTime.fromMillisecondsSinceEpoch(data['viewed_at'])
+              : null,
+        };
+      }).toList();
 
       return viewers;
     } catch (e) {
@@ -225,21 +221,34 @@ class StoryRepository {
 
   /// Check if user has unviewed stories from a specific user
   Future<bool> hasUnviewedStories(String userId, String currentUserId) async {
+    // This requires a bit of logic:
+    // Fetch user's active stories AND the views by current user.
+    // If any story is NOT in the views list, return true.
     try {
-      final snapshot = await _firestore
-          .collection('stories')
-          .where('userId', isEqualTo: userId)
-          .where('expiresAt', isGreaterThan: Timestamp.now())
-          .get();
+      // 1. Get IDs of active stories by user
+      final nowEpoch = DateTime.now().millisecondsSinceEpoch;
+      final storiesData = await _supabase
+          .from('stories')
+          .select('id')
+          .eq('user_id', userId)
+          .gt('expires_at', nowEpoch);
 
-      for (final doc in snapshot.docs) {
-        final story = Story.fromFirestore(doc);
-        if (!story.hasViewed(currentUserId)) {
-          return true; // Found at least one unviewed story
-        }
-      }
+      if (storiesData.isEmpty) return false;
+      final storyIds = storiesData.map((e) => e['id'] as String).toList();
 
-      return false;
+      // 2. Get views by current user for these stories
+      final viewsData = await _supabase
+          .from('story_views')
+          .select('story_id')
+          .eq('viewer_id', currentUserId)
+          .inFilter('story_id', storyIds);
+
+      final viewedStoryIds = viewsData
+          .map((e) => e['story_id'] as String)
+          .toSet();
+
+      // 3. Check if we have any unviewed
+      return storyIds.any((id) => !viewedStoryIds.contains(id));
     } catch (e) {
       debugPrint('❌ Error checking unviewed stories: $e');
       return false;

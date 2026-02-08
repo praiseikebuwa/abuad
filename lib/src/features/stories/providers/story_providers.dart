@@ -1,11 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../data/story_repository.dart';
 import '../domain/story_model.dart';
 
 /// Provider for StoryRepository
 final storyRepositoryProvider = Provider<StoryRepository>((ref) {
-  return StoryRepository();
+  return StoryRepository(Supabase.instance.client);
 });
 
 /// Provider for all stories grouped by user
@@ -37,11 +37,11 @@ final hasUnviewedStoriesProvider = FutureProvider.family<bool, String>((
   userId,
 ) async {
   final repo = ref.watch(storyRepositoryProvider);
-  final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
+  final currentUserId = Supabase.instance.client.auth.currentUser?.id ?? '';
   return await repo.hasUnviewedStories(userId, currentUserId);
 });
 
 /// Provider for current user ID
 final currentUserIdProvider = Provider<String>((ref) {
-  return FirebaseAuth.instance.currentUser?.uid ?? '';
+  return Supabase.instance.client.auth.currentUser?.id ?? '';
 });

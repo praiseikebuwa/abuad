@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "762694975503",
-    "project_id": "abuad-app",
-    "storage_bucket": "abuad-app.firebasestorage.app"
+    "project_number": "597625995805",
+    "project_id": "abuadapp",
+    "storage_bucket": "abuadapp.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:762694975503:android:8a48247cd9504df7b8637a",
+        "mobilesdk_app_id": "1:597625995805:android:d9d5124097a46033237cf4",
         "android_client_info": {
           "package_name": "com.example.abuad"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyBsRrKJV2FfwTFhMJOEaLZfL5GX2V1sf14"
+          "current_key": "AIzaSyDIETPJN8QZz_9r5JYvpuPDlA0f24-kNTs"
         }
       ],
       "services": {

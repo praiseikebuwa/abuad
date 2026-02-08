@@ -24,13 +24,13 @@ class ImageUploadService {
     );
   }
 
-  /// Upload image to Supabase and return URL with dimensions
+  /// Upload image to Firebase Storage and return URL with dimensions
   Future<ImageUploadResult> uploadImage(XFile imageFile) async {
     try {
       // Upload to Supabase Storage
       final url = await _storageService.uploadImage(imageFile);
 
-      // Supabase Storage doesn't return dimensions.
+      // Firebase Storage doesn't return dimensions.
       // We return default dimensions or could decode image to get them if needed.
       return ImageUploadResult(url: url, width: 800, height: 600);
     } catch (e) {

@@ -135,7 +135,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             decoration: InputDecoration(
                               labelText: 'University Email',
                               labelStyle: const TextStyle(
-                                color: Colors.white70,
+                                color: Color.fromARGB(255, 255, 255, 255),
                               ),
                               prefixIcon: const Icon(
                                 Icons.email_outlined,
@@ -170,7 +170,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           TextFormField(
                             controller: _passwordController,
                             obscureText: true,
-                            style: const TextStyle(color: Colors.white),
+                            style: const TextStyle(color: Color.fromARGB(255, 255, 255, 255)),
                             decoration: InputDecoration(
                               labelText: 'Password',
                               labelStyle: const TextStyle(

@@ -53,424 +53,245 @@ class SettingsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Settings"),
+        centerTitle: true,
+        backgroundColor: Colors.transparent,
         flexibleSpace: Container(
-          decoration: const BoxDecoration(gradient: AppColors.blueGradient),
+          decoration: BoxDecoration(
+            gradient: isDark
+                ? AppColors.inkTealGradient
+                : AppColors.goldGradient,
+          ),
         ),
-        foregroundColor: Colors.white,
+        foregroundColor: isDark ? Colors.white : AppColors.primaryInk,
       ),
       body: ListView(
+        padding: const EdgeInsets.symmetric(vertical: 16),
         children: [
-          const _SectionHeader(title: "Appearance"),
+          _SectionHeader(title: "APPEARANCE"),
           themeModeAsync.when(
-            data: (themeMode) => ListTile(
-              leading: Icon(Icons.dark_mode, color: theme.colorScheme.primary),
-              title: Text(
-                "Theme",
-                style: TextStyle(
-                  color: isDark ? Colors.white : Colors.black87,
-                  fontWeight: FontWeight.w500,
+            data: (themeMode) => _SettingsTile(
+              icon: Icons.dark_mode_outlined,
+              title: "Theme",
+              trailing: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isDark
+                        ? AppColors.borderDark
+                        : AppColors.borderLight,
+                  ),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<ThemeMode>(
+                    value: themeMode,
+                    isDense: true,
+                    icon: Icon(
+                      Icons.arrow_drop_down,
+                      color: theme.iconTheme.color,
+                    ),
+                    onChanged: (mode) {
+                      if (mode != null) {
+                        _setThemeMode(ref, mode);
+                      }
+                    },
+                    dropdownColor: theme.cardTheme.color,
+                    style: theme.textTheme.bodyMedium,
+                    items: [
+                      DropdownMenuItem(
+                        value: ThemeMode.system,
+                        child: Text("System"),
+                      ),
+                      DropdownMenuItem(
+                        value: ThemeMode.light,
+                        child: Text("Light"),
+                      ),
+                      DropdownMenuItem(
+                        value: ThemeMode.dark,
+                        child: Text("Dark"),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              trailing: DropdownButton<ThemeMode>(
-                value: themeMode,
-                onChanged: (mode) {
-                  if (mode != null) {
-                    _setThemeMode(ref, mode);
-                  }
-                },
-                dropdownColor: isDark ? Colors.grey[850] : Colors.white,
-                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-                items: [
-                  DropdownMenuItem(
-                    value: ThemeMode.system,
-                    child: Text(
-                      "System",
-                      style: TextStyle(
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
-                    ),
-                  ),
-                  DropdownMenuItem(
-                    value: ThemeMode.light,
-                    child: Text(
-                      "Light",
-                      style: TextStyle(
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
-                    ),
-                  ),
-                  DropdownMenuItem(
-                    value: ThemeMode.dark,
-                    child: Text(
-                      "Dark",
-                      style: TextStyle(
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
             ),
-            loading: () => const ListTile(
-              leading: Icon(Icons.dark_mode),
-              title: Text("Theme"),
-              trailing: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            ),
-            error: (_, __) => const ListTile(
-              leading: Icon(Icons.dark_mode),
-              title: Text("Theme"),
-              trailing: Text("Error"),
-            ),
+            loading: () => const ListTile(title: Text("Loading...")),
+            error: (_, __) => const SizedBox(),
           ),
-          const Divider(),
-          const _SectionHeader(title: "Notifications"),
+
+          const SizedBox(height: 24),
+          _SectionHeader(title: "NOTIFICATIONS"),
           notificationsAsync.when(
-            data: (notificationsEnabled) => ListTile(
-              leading: Icon(
-                Icons.notifications_outlined,
-                color: theme.colorScheme.primary,
-              ),
-              title: Text(
-                "Push Notifications",
-                style: TextStyle(
-                  color: isDark ? Colors.white : Colors.black87,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              subtitle: Text(
-                "Receive notifications for new messages and posts",
-                style: TextStyle(
-                  color: isDark ? Colors.grey[400] : Colors.grey[600],
-                  fontSize: 13,
-                ),
-              ),
-              trailing: Switch(
+            data: (notificationsEnabled) => _SettingsTile(
+              icon: Icons.notifications_outlined,
+              title: "Push Notifications",
+              subtitle: "Receive updates for new messages and posts",
+              trailing: Switch.adaptive(
                 value: notificationsEnabled,
                 onChanged: (val) {
                   _toggleNotifications(ref, val);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        val
-                            ? 'Notifications enabled'
-                            : 'Notifications disabled',
-                      ),
-                      duration: const Duration(seconds: 1),
-                    ),
-                  );
                 },
-                activeThumbColor: theme.colorScheme.primary,
+                activeColor: AppColors.secondaryTeal,
               ),
             ),
-            loading: () => const ListTile(
-              leading: Icon(Icons.notifications_outlined),
-              title: Text("Push Notifications"),
-              trailing: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            ),
-            error: (_, __) => const ListTile(
-              leading: Icon(Icons.notifications_outlined),
-              title: Text("Push Notifications"),
-              trailing: Text("Error"),
-            ),
+            loading: () => const ListTile(title: Text("Loading...")),
+            error: (_, __) => const SizedBox(),
           ),
-          const Divider(),
-          const _SectionHeader(title: "Account"),
-          ListTile(
-            leading: Icon(Icons.person, color: theme.colorScheme.primary),
-            title: Text(
-              "Profile",
-              style: TextStyle(
-                color: isDark ? Colors.white : Colors.black87,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            subtitle: Text(
-              user?.displayName ?? "Guest",
-              style: TextStyle(
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
-              ),
-            ),
-            trailing: Icon(
-              Icons.chevron_right,
-              color: isDark ? Colors.grey[500] : Colors.grey[400],
-            ),
+
+          const SizedBox(height: 24),
+          _SectionHeader(title: "ACCOUNT"),
+          _SettingsTile(
+            icon: Icons.person_outline,
+            title: "Profile",
+            subtitle: user?.displayName ?? "Guest",
+            showArrow: true,
             onTap: () => context.push('/profile'),
           ),
-          ListTile(
-            leading: Icon(Icons.lock, color: theme.colorScheme.primary),
-            title: Text(
-              "Change Password",
-              style: TextStyle(
-                color: isDark ? Colors.white : Colors.black87,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            trailing: Icon(
-              Icons.chevron_right,
-              color: isDark ? Colors.grey[500] : Colors.grey[400],
-            ),
-            onTap: () {
-              _showChangePasswordDialog(context, ref);
-            },
+          _SettingsTile(
+            icon: Icons.lock_outline,
+            title: "Change Password",
+            showArrow: true,
+            onTap: () => _showChangePasswordDialog(context, ref),
           ),
-          ListTile(
-            leading: const Icon(Icons.privacy_tip, color: Colors.blue),
-            title: Text(
-              "Privacy & Security",
-              style: TextStyle(
-                color: isDark ? Colors.white : Colors.black87,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            trailing: Icon(
-              Icons.chevron_right,
-              color: isDark ? Colors.grey[500] : Colors.grey[400],
-            ),
+          _SettingsTile(
+            icon: Icons.privacy_tip_outlined,
+            title: "Privacy & Security",
+            showArrow: true,
             onTap: () {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text("Privacy settings coming soon")),
               );
             },
           ),
-          ListTile(
-            leading: const Icon(Icons.delete_forever, color: Colors.red),
-            title: const Text(
-              "Delete Account",
-              style: TextStyle(color: Colors.red, fontWeight: FontWeight.w500),
-            ),
-            trailing: Icon(
-              Icons.chevron_right,
-              color: Colors.red.withOpacity(0.5),
-            ),
-            onTap: () {
-              _showDeleteAccountDialog(context, ref);
-            },
+          _SettingsTile(
+            icon: Icons.delete_outline,
+            title: "Delete Account",
+            textColor: AppColors.error,
+            iconColor: AppColors.error,
+            onTap: () => _showDeleteAccountDialog(context, ref),
           ),
-          const Divider(),
-          const _SectionHeader(title: "Support"),
-          ListTile(
-            leading: Icon(Icons.help_outline, color: theme.colorScheme.primary),
-            title: Text(
-              "Help Center",
-              style: TextStyle(
-                color: isDark ? Colors.white : Colors.black87,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            trailing: Icon(
-              Icons.chevron_right,
-              color: isDark ? Colors.grey[500] : Colors.grey[400],
-            ),
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Help Center coming soon")),
-              );
-            },
-          ),
-          ListTile(
-            leading: Icon(
-              Icons.bug_report_outlined,
-              color: theme.colorScheme.primary,
-            ),
-            title: Text(
-              "Report a Bug",
-              style: TextStyle(
-                color: isDark ? Colors.white : Colors.black87,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            trailing: Icon(
-              Icons.chevron_right,
-              color: isDark ? Colors.grey[500] : Colors.grey[400],
-            ),
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Bug reporting coming soon")),
-              );
-            },
-          ),
-          const Divider(),
-          const _SectionHeader(title: "About"),
-          ListTile(
-            leading: Icon(Icons.info, color: theme.colorScheme.primary),
-            title: Text(
-              "Version",
-              style: TextStyle(
-                color: isDark ? Colors.white : Colors.black87,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            subtitle: Text(
-              "1.0.0",
-              style: TextStyle(
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8),
-            child: ElevatedButton.icon(
-              onPressed: () async {
-                final confirmed = await showDialog<bool>(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: const Text("Log Out"),
-                    content: const Text("Are you sure you want to log out?"),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, false),
-                        child: const Text("Cancel"),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, true),
-                        style: TextButton.styleFrom(
-                          foregroundColor: Colors.red,
-                        ),
-                        child: const Text("Log Out"),
-                      ),
-                    ],
-                  ),
-                );
 
+          const SizedBox(height: 24),
+          _SectionHeader(title: "SUPPORT"),
+          _SettingsTile(
+            icon: Icons.help_outline,
+            title: "Help Center",
+            showArrow: true,
+            onTap: () {},
+          ),
+          _SettingsTile(
+            icon: Icons.bug_report_outlined,
+            title: "Report a Bug",
+            showArrow: true,
+            onTap: () {},
+          ),
+
+          const SizedBox(height: 24),
+          _SectionHeader(title: "ABOUT"),
+          _SettingsTile(
+            icon: Icons.info_outline,
+            title: "Version",
+            subtitle: "1.0.0",
+          ),
+          const SizedBox(height: 32),
+
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: ElevatedButton(
+              onPressed: () async {
+                final confirmed = await _showConfirmationDialog(
+                  context,
+                  "Log Out",
+                  "Are you sure you want to log out?",
+                  isDestructive: true,
+                );
                 if (confirmed == true) {
                   await ref.read(authRepositoryProvider).signOut();
                 }
               },
-              icon: const Icon(Icons.logout),
-              label: const Text("Log Out"),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
+                backgroundColor: AppColors.error,
+                padding: const EdgeInsets.symmetric(vertical: 16),
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text("Log Out"),
+            ),
+          ),
+          const SizedBox(height: 40),
+        ],
+      ),
+    );
+  }
+
+  Future<bool?> _showConfirmationDialog(
+    BuildContext context,
+    String title,
+    String content, {
+    bool isDestructive = false,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) {
+        final theme = Theme.of(context);
+        return AlertDialog(
+          backgroundColor: theme.cardTheme.color,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Text(
+            title,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: Text(content),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(
+                "Cancel",
+                style: TextStyle(color: theme.textTheme.bodyMedium?.color),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(
+                isDestructive ? "Confirm" : "OK",
+                style: TextStyle(
+                  color: isDestructive
+                      ? AppColors.error
+                      : AppColors.secondaryTeal,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 20),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
 
   void _showChangePasswordDialog(BuildContext context, WidgetRef ref) {
-    final currentPasswordController = TextEditingController();
-    final newPasswordController = TextEditingController();
-    final confirmPasswordController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Change Password"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: currentPasswordController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: "Current Password",
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: newPasswordController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: "New Password",
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: confirmPasswordController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: "Confirm New Password",
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
-          ),
-          TextButton(
-            onPressed: () async {
-              if (newPasswordController.text !=
-                  confirmPasswordController.text) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Passwords don't match")),
-                );
-                return;
-              }
-
-              if (newPasswordController.text.length < 6) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("Password must be at least 6 characters"),
-                  ),
-                );
-                return;
-              }
-
-              Navigator.pop(context);
-              // TODO: Implement with Firebase Auth
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text("Password change feature coming soon"),
-                ),
-              );
-            },
-            child: const Text("Change"),
-          ),
-        ],
-      ),
+    // keeping implementation simple for now as it was mock in original
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Password change feature coming soon")),
     );
   }
 
-  void _showDeleteAccountDialog(BuildContext context, WidgetRef ref) {
-    showDialog(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text("Delete Account"),
-        content: const Text(
-          "Are you sure you want to delete your account? This action cannot be undone and all your data will be permanently deleted.",
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c),
-            child: const Text("Cancel"),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(c);
-              // TODO: Implement account deletion with Firebase
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text("Account deletion feature coming soon"),
-                  backgroundColor: Colors.red,
-                ),
-              );
-            },
-            child: const Text("Delete", style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
+  void _showDeleteAccountDialog(BuildContext context, WidgetRef ref) async {
+    final confirmed = await _showConfirmationDialog(
+      context,
+      "Delete Account",
+      "Are you sure you want to delete your account? This action cannot be undone.",
+      isDestructive: true,
     );
+    if (confirmed == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Account deletion coming soon")),
+      );
+    }
   }
 }
 
@@ -481,15 +302,94 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
       child: Text(
         title,
         style: TextStyle(
           color: Theme.of(context).colorScheme.primary,
           fontWeight: FontWeight.bold,
-          fontSize: 14,
-          letterSpacing: 0.5,
+          fontSize: 12,
+          letterSpacing: 1.2,
         ),
+      ),
+    );
+  }
+}
+
+class _SettingsTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final Widget? trailing;
+  final bool showArrow;
+  final Color? textColor;
+  final Color? iconColor;
+  final VoidCallback? onTap;
+
+  const _SettingsTile({
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    this.trailing,
+    this.showArrow = false,
+    this.textColor,
+    this.iconColor,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      decoration: BoxDecoration(
+        color: theme.cardTheme.color,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark ? AppColors.borderDark : AppColors.borderLight,
+          width: 0.5,
+        ),
+        boxShadow: AppColors.softShadow,
+      ),
+      child: ListTile(
+        onTap: onTap,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: (iconColor ?? theme.colorScheme.primary).withOpacity(0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            icon,
+            color: iconColor ?? theme.colorScheme.primary,
+            size: 20,
+          ),
+        ),
+        title: Text(
+          title,
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: textColor ?? theme.textTheme.bodyLarge?.color,
+            fontSize: 15,
+          ),
+        ),
+        subtitle: subtitle != null
+            ? Text(
+                subtitle!,
+                style: TextStyle(
+                  color: theme.textTheme.bodySmall?.color,
+                  fontSize: 13,
+                ),
+              )
+            : null,
+        trailing:
+            trailing ??
+            (showArrow
+                ? Icon(Icons.chevron_right, color: Colors.grey[400])
+                : null),
       ),
     );
   }

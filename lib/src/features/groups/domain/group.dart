@@ -22,21 +22,21 @@ class StudentGroup {
       'name': name,
       'description': description,
       'category': category,
-      'imageUrl': imageUrl,
-      'memberCount': memberCount,
-      'isPrivate': isPrivate,
+      'image_url': imageUrl,
+      'member_count': memberCount,
+      'is_private': isPrivate,
     };
   }
 
-  factory StudentGroup.fromMap(String id, Map<String, dynamic> map) {
+  factory StudentGroup.fromMap(Map<String, dynamic> map) {
     return StudentGroup(
-      id: id,
+      id: map['id'] ?? '',
       name: map['name'] ?? '',
       description: map['description'] ?? '',
       category: map['category'] ?? 'General',
-      imageUrl: map['imageUrl'] ?? '',
-      memberCount: map['memberCount'] ?? 0,
-      isPrivate: map['isPrivate'] ?? false,
+      imageUrl: map['image_url'] ?? '',
+      memberCount: map['member_count'] ?? 0,
+      isPrivate: map['is_private'] ?? false,
     );
   }
 }

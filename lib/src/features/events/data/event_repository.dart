@@ -1,28 +1,31 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../domain/campus_event.dart';
 
 final eventRepositoryProvider = Provider<EventRepository>((ref) {
-  return EventRepository();
+  return EventRepository(Supabase.instance.client);
 });
 
 class EventRepository {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final SupabaseClient _supabase;
+
+  EventRepository(this._supabase);
 
   Stream<List<CampusEvent>> watchUpcomingEvents() {
-    return _firestore
-        .collection('events')
-        .where('date', isGreaterThan: DateTime.now().millisecondsSinceEpoch)
-        .orderBy('date')
-        .snapshots()
-        .map((snapshot) {
-          return snapshot.docs.map((doc) {
-            return CampusEvent.fromMap(doc.id, doc.data());
-          }).toList();
+    return _supabase
+        .from('events')
+        .stream(primaryKey: ['id'])
+        .order('date', ascending: true)
+        .map((data) {
+          final now = DateTime.now().millisecondsSinceEpoch;
+          return data
+              .map((map) => CampusEvent.fromMap(map))
+              .where((event) => event.date.millisecondsSinceEpoch > now)
+              .toList();
         });
   }
 
   Future<void> addEvent(CampusEvent event) async {
-    await _firestore.collection('events').doc(event.id).set(event.toMap());
+    await _supabase.from('events').insert(event.toMap());
   }
 }

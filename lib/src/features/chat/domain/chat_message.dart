@@ -24,33 +24,35 @@ class ChatMessage {
   });
 
   Map<String, dynamic> toMap() {
+    // For inserting into Supabase
     return {
-      'senderId': senderId,
+      // 'id': id, // Let DB generate ID or use provided
+      'sender_id': senderId,
       'content': content,
       'type': type,
-      'timestamp': timestamp.millisecondsSinceEpoch,
-      'isRead': isRead,
-      'readBy': readBy,
-      'imageUrl': imageUrl,
-      'imageWidth': imageWidth,
-      'imageHeight': imageHeight,
+      'created_at': timestamp
+          .millisecondsSinceEpoch, // or ISO string if column is timestamptz
+      'read_by': readBy,
+      'image_url': imageUrl,
+      'image_width': imageWidth,
+      'image_height': imageHeight,
     };
   }
 
-  factory ChatMessage.fromMap(String id, Map<String, dynamic> map) {
+  factory ChatMessage.fromMap(Map<String, dynamic> map) {
     return ChatMessage(
-      id: id,
-      senderId: map['senderId'] ?? '',
+      id: map['id'] ?? '',
+      senderId: map['sender_id'] ?? '',
       content: map['content'] ?? '',
       type: map['type'] ?? 'text',
-      timestamp: DateTime.fromMillisecondsSinceEpoch(
-        map['timestamp'] ?? DateTime.now().millisecondsSinceEpoch,
-      ),
-      isRead: map['isRead'] ?? false,
-      readBy: List<String>.from(map['readBy'] ?? []),
-      imageUrl: map['imageUrl'],
-      imageWidth: map['imageWidth']?.toDouble(),
-      imageHeight: map['imageHeight']?.toDouble(),
+      timestamp: map['created_at'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(map['created_at'])
+          : DateTime.now(),
+      isRead: false, // Computed from readBy usually
+      readBy: List<String>.from(map['read_by'] ?? []),
+      imageUrl: map['image_url'],
+      imageWidth: map['image_width']?.toDouble(),
+      imageHeight: map['image_height']?.toDouble(),
     );
   }
 }

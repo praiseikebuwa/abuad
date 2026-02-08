@@ -1,47 +1,45 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../domain/resource.dart';
 
 final resourceRepositoryProvider = Provider<ResourceRepository>((ref) {
-  return ResourceRepository();
+  return ResourceRepository(Supabase.instance.client);
 });
 
 class ResourceRepository {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final SupabaseClient _supabase;
+
+  ResourceRepository(this._supabase);
 
   // Stream all resources, ordered by timestamp
   Stream<List<Resource>> watchResources() {
-    return _firestore
-        .collection('resources')
-        .orderBy('timestamp', descending: true)
-        .snapshots()
-        .map((snapshot) {
-          return snapshot.docs.map((doc) {
-            return Resource.fromMap(doc.id, doc.data());
+    return _supabase
+        .from('resources')
+        .stream(primaryKey: ['id'])
+        .order('timestamp', ascending: false)
+        .map((data) {
+          return data.map((map) {
+            return Resource.fromMap(map);
           }).toList();
         });
   }
 
-  // Filter resources by course code or level (simple client-side filter logic usually follows,
-  // but here's a query based one if needed)
+  // Filter resources by course code or level
   Stream<List<Resource>> watchResourcesByLevel(String level) {
-    return _firestore
-        .collection('resources')
-        .where('level', isEqualTo: level)
-        .orderBy('timestamp', descending: true)
-        .snapshots()
-        .map((snapshot) {
-          return snapshot.docs.map((doc) {
-            return Resource.fromMap(doc.id, doc.data());
-          }).toList();
+    return _supabase
+        .from('resources')
+        .stream(primaryKey: ['id'])
+        .order('timestamp', ascending: false)
+        .map((data) {
+          return data
+              .map((map) => Resource.fromMap(map))
+              .where((res) => res.level == level)
+              .toList();
         });
   }
 
-  // Add a new resource (Admin only usually, but open for MVP if needed)
+  // Add a new resource
   Future<void> addResource(Resource resource) async {
-    await _firestore
-        .collection('resources')
-        .doc(resource.id)
-        .set(resource.toMap());
+    await _supabase.from('resources').insert(resource.toMap());
   }
 }

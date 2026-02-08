@@ -1,144 +1,110 @@
--- Enable necessary extensions
-create extension if not exists "uuid-ossp";
+-- Supabase Schema & Storage Configuration
 
--- PROFILES TABLE (Links to auth.users)
-create table public.profiles (
-  id uuid references auth.users not null primary key,
-  display_name text,
-  avatar_url text,
-  username text unique,
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
+-- 1. Create a Storage Bucket for App Media
+-- The app uses a single bucket named 'abuad' for all media (avatars, posts, stories, etc.)
+insert into storage.buckets (id, name, public)
+values ('abuad', 'abuad', true)
+on conflict (id) do nothing;
+
+-- 2. Storage Policies (Row Level Security)
+
+-- Policy: Allow public read access to all files in the 'abuad' bucket
+-- This is required so that anyone (including unauthenticated users viewings posts) can see images.
+create policy "Public Access"
+on storage.objects for select
+using ( bucket_id = 'abuad' );
+
+-- Policy: Allow authenticated users to upload files
+-- This permits any signed-in user to upload avatars, post images, story videos, etc.
+-- Policy: Allow authenticated users to upload files
+-- This permits any signed-in user to upload avatars, post images, story videos, etc.
+create policy "Authenticated Users can Upload"
+on storage.objects for insert
+with check (
+  bucket_id = 'abuad' 
+  and auth.role() = 'authenticated'
 );
 
--- Turn on RLS
-alter table public.profiles enable row level security;
+-- ============================================================================
+-- Granular Folder Policies (Matches Firestore Rules Logic)
+-- ============================================================================
 
--- Profiles Policies
+-- 1. USER PROFILES (avatars, covers)
+-- Path: users/{userId}/*
+create policy "Users can update/delete own profile media"
+on storage.objects for all
+using (
+    bucket_id = 'abuad' 
+    and (storage.foldername(name))[1] = 'users'
+    and (storage.foldername(name))[2] = auth.uid()::text
+);
+
+-- 2. POSTS MEDIA
+-- Path: posts/{userId}/* (Files organized by uploader ID)
+create policy "Users can manage their post media"
+on storage.objects for all
+using (
+    bucket_id = 'abuad' 
+    and (storage.foldername(name))[1] = 'posts'
+    and (storage.foldername(name))[2] = auth.uid()::text
+);
+
+-- 3. CHAT MEDIA
+-- Path: chat/{channelId}/{userId}/*
+create policy "Users can upload to chat"
+on storage.objects for insert
+with check (
+    bucket_id = 'abuad'
+    and (storage.foldername(name))[1] = 'chat'
+    and auth.role() = 'authenticated'
+);
+
+-- 4. STORIES (Ephemeral)
+-- Path: stories/{userId}/*
+create policy "Users manage own stories"
+on storage.objects for all
+using (
+    bucket_id = 'abuad'
+    and (storage.foldername(name))[1] = 'stories'
+    and (storage.foldername(name))[2] = auth.uid()::text
+);
+
+-- Fallback: Allow Admins Full Access
+-- Assuming admin users have a distinct role or metadata claim. 
+-- For Supabase, often handled via service_role key, but RLS can check claims:
+-- create policy "Admins have full access"
+-- on storage.objects for all
+-- using ( bucket_id = 'abuad' and auth.jwt() ->> 'role' = 'admin' );
+
+
+-- 3. (Optional) Database Tables
+-- If you plan to move user data or other collections to Supabase SQL in the future, 
+-- here is an example structure mirroring your Firestore 'users' collection.
+
+/*
+create table public.users (
+  id uuid references auth.users not null primary key,
+  email text,
+  display_name text,
+  username text unique,
+  avatar_url text,
+  is_admin boolean default false,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Enable RLS
+alter table public.users enable row level security;
+
+-- Policies
 create policy "Public profiles are viewable by everyone."
-  on profiles for select
+  on public.users for select
   using ( true );
 
 create policy "Users can insert their own profile."
-  on profiles for insert
+  on public.users for insert
   with check ( auth.uid() = id );
 
 create policy "Users can update own profile."
-  on profiles for update
+  on public.users for update
   using ( auth.uid() = id );
-
--- Function to handle new user signup automatically
-create or replace function public.handle_new_user()
-returns trigger as $$
-begin
-  insert into public.profiles (id, display_name, avatar_url)
-  values (new.id, new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'avatar_url');
-  return new;
-end;
-$$ language plpgsql security definer;
-
--- Trigger for new user signup
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute procedure public.handle_new_user();
-
-
--- STORIES TABLE
-create table public.stories (
-  id uuid default uuid_generate_v4() primary key,
-  user_id uuid references public.profiles(id) not null,
-  media_url text not null,
-  media_type text not null, -- 'image' or 'video'
-  caption text,
-  background_color text,
-  created_at timestamptz default now(),
-  expires_at timestamptz default (now() + interval '24 hours'),
-  view_count int default 0,
-  viewers text[] default '{}', -- Array of user IDs who viewed
-  
-  constraint proper_media_type check (media_type in ('image', 'video'))
-);
-
--- Turn on RLS
-alter table public.stories enable row level security;
-
--- Stories Policies
-create policy "Stories are viewable by everyone (until expired)."
-  on stories for select
-  using ( expires_at > now() );
-
-create policy "Users can create stories."
-  on stories for insert
-  with check ( auth.uid() = user_id );
-
-create policy "Users can delete their own stories."
-  on stories for delete
-  using ( auth.uid() = user_id );
-
-create policy "Users can update their stories (e.g. view count)."
-  on stories for update
-  using ( auth.uid() = user_id );
-
-
--- STORY VIEWS TABLE (For detailed analytics/tracking)
-create table public.story_views (
-  id uuid default uuid_generate_v4() primary key,
-  story_id uuid references public.stories(id) on delete cascade not null,
-  viewer_id uuid references public.profiles(id) not null,
-  viewed_at timestamptz default now(),
-  unique(story_id, viewer_id) -- Prevent duplicate view records
-);
-
-alter table public.story_views enable row level security;
-
-create policy "Users can insert their own views."
-  on story_views for insert
-  with check ( auth.uid() = viewer_id );
-
-create policy "Users can see who viewed their stories."
-  on story_views for select
-  using ( 
-    auth.uid() = (select user_id from public.stories where id = story_id) 
-  );
-
-
--- POSTS TABLE
-create table public.posts (
-  id uuid default uuid_generate_v4() primary key,
-  author_id uuid references public.profiles(id) not null,
-  content text,
-  media_url text,
-  media_type text default 'none',
-  created_at timestamptz default now(),
-  likes_count int default 0,
-  comments_count int default 0,
-  repost_count int default 0,
-  is_verified boolean default false,
-  channel_id text default 'general',
-  is_anonymous boolean default false,
-  poll_data jsonb,   -- Store Map<String, dynamic> as JSON
-  repost_data jsonb  -- Store Map<String, dynamic> as JSON
-);
-
-alter table public.posts enable row level security;
-
--- Posts Policies
-create policy "Posts are viewable by everyone."
-  on posts for select
-  using ( true );
-
-create policy "Users can create posts."
-  on posts for insert
-  with check ( auth.uid() = author_id );
-
-create policy "Users can update their own posts."
-  on posts for update
-  using ( auth.uid() = author_id );
-
-create policy "Users can delete their own posts."
-  on posts for delete
-  using ( auth.uid() = author_id );
-
-
--- STORAGE BUCKETS (Optional: You might need to run this in the Storage-specific editor, but good to note)
--- insert into storage.buckets (id, name, public) values ('abuad-assets', 'abuad-assets', true);
+*/

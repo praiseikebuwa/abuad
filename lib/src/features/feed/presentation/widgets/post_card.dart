@@ -5,6 +5,7 @@ import 'package:timeago/timeago.dart' as timeago;
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../../../core/theme/app_colors.dart';
 import '../../data/post_repository.dart';
 import '../../domain/post.dart' as domain;
 import '../post_detail_screen.dart';
@@ -35,8 +36,17 @@ class PostCard extends ConsumerWidget {
               ),
             );
           },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: theme.cardTheme.color,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: isDark ? AppColors.borderDark : AppColors.borderLight,
+          ),
+          boxShadow: AppColors.softShadow,
+        ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -103,7 +113,7 @@ class PostCard extends ConsumerWidget {
                         const Icon(
                           Icons.verified,
                           size: 14,
-                          color: Colors.blue,
+                          color: AppColors.secondaryTeal,
                         ),
                       ],
                       if (!post.isAnonymous) ...[
@@ -159,12 +169,14 @@ class PostCard extends ConsumerWidget {
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         border: Border.all(
-                          color: isDark ? Colors.grey[800]! : Colors.grey[300]!,
+                          color: isDark
+                              ? AppColors.borderDark
+                              : AppColors.borderLight,
                         ),
                         borderRadius: BorderRadius.circular(12),
                         color: isDark
                             ? Colors.white.withOpacity(0.05)
-                            : Colors.grey[50],
+                            : AppColors.surfaceLight,
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -293,7 +305,7 @@ class PostCard extends ConsumerWidget {
                       _ActionButton(
                         icon: Icons.repeat,
                         count: post.repostCount,
-                        color: Colors.green,
+                        color: AppColors.secondaryTeal,
                         onTap: () {
                           _showRepostBottomSheet(context, ref, post);
                         },

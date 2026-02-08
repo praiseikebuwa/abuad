@@ -2,31 +2,48 @@ import 'package:flutter/material.dart';
 
 class AppColors {
   // Brand Colors
-  static const Color primaryBlue = Color(0xFF0D47A1); // Deep University Blue
-  static const Color secondaryBlue = Color(0xFF1976D2);
-  static const Color accentGold = Color(0xFFFFD700); // Premium Gold
-  static const Color accentGoldLight = Color(0xFFFFE57F);
+  static const Color primaryBlue = primaryInk;
+  static const Color secondaryBlue = secondaryTeal;
+  static const Color accentGold = accentAmber;
+  static const Color accentGoldLight = accentAmberLight;
+  static const Color primaryInk = Color(0xFF0B1B3A);
+  static const Color secondaryTeal = Color(0xFF1F5F5B);
+  static const Color accentAmber = Color(0xFFFFB84D);
+  static const Color accentAmberLight = Color(0xFFFFD79A);
 
   // Semantics
-  static const Color success = Color(0xFF4CAF50);
-  static const Color error = Color(0xFFE53935);
-  static const Color warning = Color(0xFFFFB74D);
-  static const Color info = Color(0xFF29B6F6);
+  static const Color success = Color(0xFF2E7D32);
+  static const Color error = Color(0xFFD32F2F);
+  static const Color warning = Color(0xFFF9A825);
+  static const Color info = Color(0xFF0288D1);
+
+  // Borders
+  static const Color borderLight = Color(0xFFE2E8F0); // grey[200] roughly
+  static const Color borderDark = Colors.white12;
 
   // Surfaces
-  static const Color surfaceLight = Color(0xFFF8F9FE);
-  static const Color surfaceDark = Color(0xFF121212);
-  static const Color surfaceDarkSecondary = Color(0xFF1E1E1E);
+  static const Color surfaceLight = Color(0xFFF9F6F1); // Updated warm off-white
+  static const Color surfaceLightAlt = Color(0xFFFDFBF7);
+  static const Color surfaceElevated = Color(0xFFFFFFFF);
+  static const Color surfaceDark = Color(0xFF0F1115);
+  static const Color surfaceDarkSecondary = Color(0xFF171B22);
+  static const Color surfaceDarkElevated = Color(0xFF1F2530);
+
+  // Text
+  static const Color textPrimary = Color(0xFF0F172A);
+  static const Color textMuted = Color(0xFF5B6475);
 
   // Gradients
-  static const LinearGradient blueGradient = LinearGradient(
-    colors: [primaryBlue, secondaryBlue],
+  static const LinearGradient blueGradient = inkTealGradient;
+  static const LinearGradient goldGradient = amberGradient;
+  static const LinearGradient inkTealGradient = LinearGradient(
+    colors: [primaryInk, secondaryTeal],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
-  static const LinearGradient goldGradient = LinearGradient(
-    colors: [accentGold, accentGoldLight],
+  static const LinearGradient amberGradient = LinearGradient(
+    colors: [accentAmber, accentAmberLight],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
@@ -34,9 +51,9 @@ class AppColors {
   // Shadows
   static List<BoxShadow> get softShadow => [
     BoxShadow(
-      color: Colors.black.withOpacity(0.05),
-      blurRadius: 10,
-      offset: const Offset(0, 4),
+      color: Colors.black.withOpacity(0.08),
+      blurRadius: 16,
+      offset: const Offset(0, 6),
     ),
   ];
 }

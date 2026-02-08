@@ -35,7 +35,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     try {
       await ref
           .read(authRepositoryProvider)
-          .createUserWithEmailAndPassword(
+          .signUpWithEmailAndPassword(
             _emailController.text.trim(),
             _passwordController.text.trim(),
           );

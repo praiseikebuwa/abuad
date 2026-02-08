@@ -9,6 +9,7 @@ import '../../feed/domain/post.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../feed/presentation/widgets/post_card.dart';
+import '../../../core/theme/app_colors.dart';
 import '../../../core/services/supabase_storage_service.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -24,7 +25,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final authRepo = ref.watch(authRepositoryProvider);
-    final currentUserId = authRepo.currentUser?.uid;
+    final currentUserId = authRepo.currentUser?.id;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
@@ -38,7 +39,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final userAsync = ref.watch(userProvider(targetUserId));
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF000000) : Colors.white,
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: userAsync.when(
         data: (user) {
           if (user == null) {
@@ -54,13 +55,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   SliverAppBar(
                     expandedHeight: 180,
                     pinned: true,
-                    backgroundColor: isDark
-                        ? const Color(0xFF000000)
-                        : Colors.white,
+                    backgroundColor: Colors.transparent,
                     surfaceTintColor: Colors.transparent,
-                    iconTheme: IconThemeData(
-                      color: isDark ? Colors.white : Colors.black87,
-                    ),
+                    iconTheme: IconThemeData(color: Colors.white),
                     flexibleSpace: FlexibleSpaceBar(
                       background: Stack(
                         children: [
@@ -69,16 +66,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             height: 180,
                             decoration: BoxDecoration(
                               gradient: user.bannerUrl == null
-                                  ? LinearGradient(
-                                      colors: [
-                                        theme.colorScheme.primary,
-                                        theme.colorScheme.primary.withValues(
-                                          alpha: 0.7,
-                                        ),
-                                      ],
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                    )
+                                  ? AppColors.inkTealGradient
                                   : null,
                             ),
                             child: user.bannerUrl != null
@@ -119,7 +107,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     actions: [
                       if (isCurrentUser)
                         IconButton(
-                          icon: const Icon(Icons.settings_outlined),
+                          icon: const Icon(
+                            Icons.settings_outlined,
+                            color: Colors.white,
+                          ),
                           onPressed: () => context.push('/settings'),
                         ),
                     ],
@@ -141,7 +132,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     decoration: BoxDecoration(
                       border: Border(
                         bottom: BorderSide(
-                          color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
+                          color: isDark ? Colors.white12 : Colors.grey[200]!,
                           width: 1,
                         ),
                       ),
@@ -151,7 +142,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       unselectedLabelColor: isDark
                           ? Colors.grey[600]
                           : Colors.grey[500],
-                      indicatorColor: theme.colorScheme.primary,
+                      indicatorColor: theme.colorScheme.secondary,
                       indicatorWeight: 3,
                       labelStyle: const TextStyle(
                         fontWeight: FontWeight.w600,
@@ -317,7 +308,7 @@ class _ProfileHeader extends ConsumerWidget {
     final theme = Theme.of(context);
 
     return Container(
-      color: isDark ? const Color(0xFF000000) : Colors.white,
+      color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -336,15 +327,14 @@ class _ProfileHeader extends ConsumerWidget {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: isDark ? Colors.black : Colors.white,
+                          color: isDark ? AppColors.surfaceDark : Colors.white,
                           width: 4,
                         ),
                       ),
                       child: CircleAvatar(
                         radius: 42,
-                        backgroundColor: theme.colorScheme.primary.withValues(
-                          alpha: 0.2,
-                        ),
+                        backgroundColor: theme.colorScheme.secondary
+                            .withOpacity(0.15),
                         backgroundImage: user.avatarUrl != null
                             ? CachedNetworkImageProvider(user.avatarUrl!)
                             : null,
@@ -373,16 +363,18 @@ class _ProfileHeader extends ConsumerWidget {
                           child: Container(
                             padding: const EdgeInsets.all(6),
                             decoration: BoxDecoration(
-                              color: theme.colorScheme.primary,
+                              color: theme.colorScheme.secondary,
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: isDark ? Colors.black : Colors.white,
+                                color: isDark
+                                    ? AppColors.surfaceDark
+                                    : Colors.white,
                                 width: 2,
                               ),
                             ),
                             child: const Icon(
                               Icons.camera_alt,
-                              color: Colors.white,
+                              color: AppColors.primaryInk,
                               size: 16,
                             ),
                           ),
@@ -400,11 +392,11 @@ class _ProfileHeader extends ConsumerWidget {
                           style: OutlinedButton.styleFrom(
                             foregroundColor: isDark
                                 ? Colors.white
-                                : Colors.black87,
+                                : AppColors.primaryInk,
                             side: BorderSide(
                               color: isDark
-                                  ? Colors.grey[700]!
-                                  : Colors.grey[300]!,
+                                  ? Colors.white24
+                                  : const Color(0xFFE8E1D7),
                             ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(20),
@@ -434,7 +426,7 @@ class _ProfileHeader extends ConsumerWidget {
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w800,
-              color: isDark ? Colors.white : Colors.black87,
+              color: isDark ? Colors.white : AppColors.textPrimary,
             ),
           ).animate().fadeIn(delay: 100.ms),
 
@@ -454,7 +446,7 @@ class _ProfileHeader extends ConsumerWidget {
                 Icon(
                   Icons.verified,
                   size: 18,
-                  color: theme.colorScheme.primary,
+                  color: theme.colorScheme.secondary,
                 ),
               ],
             ],
@@ -469,7 +461,7 @@ class _ProfileHeader extends ConsumerWidget {
               style: TextStyle(
                 fontSize: 15,
                 height: 1.4,
-                color: isDark ? Colors.grey[300] : Colors.black87,
+                color: isDark ? Colors.grey[300] : AppColors.textPrimary,
               ),
             ),
             const SizedBox(height: 12),
@@ -581,13 +573,13 @@ class _FollowButton extends ConsumerWidget {
           style: ElevatedButton.styleFrom(
             backgroundColor: isFollowing
                 ? (isDark ? Colors.transparent : Colors.white)
-                : (isDark ? Colors.white : Colors.black87),
+                : (isDark ? Colors.white : AppColors.primaryInk),
             foregroundColor: isFollowing
-                ? (isDark ? Colors.white : Colors.black87)
-                : (isDark ? Colors.black87 : Colors.white),
+                ? (isDark ? Colors.white : AppColors.primaryInk)
+                : (isDark ? AppColors.primaryInk : Colors.white),
             side: BorderSide(
               color: isFollowing
-                  ? (isDark ? Colors.grey[700]! : Colors.grey[300]!)
+                  ? (isDark ? Colors.white24 : const Color(0xFFE8E1D7))
                   : Colors.transparent,
             ),
             shape: RoundedRectangleBorder(

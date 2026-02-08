@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class BroadcastListener extends StatefulWidget {
@@ -12,19 +12,17 @@ class BroadcastListener extends StatefulWidget {
 
 class _BroadcastListenerState extends State<BroadcastListener> {
   // Listen to broadcasts from the last 24 hours to avoid spamming old stuff
-  // In a real app, you might track "seen" broadcasts in a subcollection
-  // For this MVP, we'll store seen IDs in SharedPreferences
-  late Stream<QuerySnapshot> _stream;
+  late Stream<List<Map<String, dynamic>>> _stream;
 
   @override
   void initState() {
     super.initState();
-    _stream = FirebaseFirestore.instance
-        .collection('announcements')
-        .where('active', isEqualTo: true)
-        .orderBy('timestamp', descending: true)
+    _stream = Supabase.instance.client
+        .from('announcements')
+        .stream(primaryKey: ['id'])
+        .order('created_at', ascending: false)
         .limit(1)
-        .snapshots();
+        .map((data) => data.where((e) => e['active'] == true).toList());
   }
 
   @override
@@ -33,13 +31,13 @@ class _BroadcastListenerState extends State<BroadcastListener> {
       children: [
         widget.child,
         // Invisible listener
-        StreamBuilder<QuerySnapshot>(
+        StreamBuilder<List<Map<String, dynamic>>>(
           stream: _stream,
           builder: (context, snapshot) {
-            if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
-              final doc = snapshot.data!.docs.first;
-              final data = doc.data() as Map<String, dynamic>;
-              _checkAndShowAlert(doc.id, data);
+            if (snapshot.hasData && snapshot.data!.isNotEmpty) {
+              final data = snapshot.data!.first;
+              final id = data['id'];
+              _checkAndShowAlert(id.toString(), data);
             }
             return const SizedBox.shrink();
           },

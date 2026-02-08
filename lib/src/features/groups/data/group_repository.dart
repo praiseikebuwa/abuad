@@ -1,29 +1,36 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../domain/group.dart';
 
-final groupRepositoryProvider = Provider((ref) => GroupRepository());
+final groupRepositoryProvider = Provider(
+  (ref) => GroupRepository(Supabase.instance.client),
+);
 
 class GroupRepository {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final SupabaseClient _supabase;
+
+  GroupRepository(this._supabase);
 
   Stream<List<StudentGroup>> watchGroups() {
-    return _firestore
-        .collection('groups')
-        .orderBy('memberCount', descending: true)
-        .snapshots()
-        .map((snapshot) {
-          return snapshot.docs
-              .map((doc) => StudentGroup.fromMap(doc.id, doc.data()))
-              .toList();
+    return _supabase
+        .from('groups')
+        .stream(primaryKey: ['id'])
+        .order('member_count', ascending: false)
+        .map((data) {
+          return data.map((map) => StudentGroup.fromMap(map)).toList();
         });
   }
 
   Future<void> joinGroup(String groupId, String userId) async {
-    // Implement join logic
-    await _firestore.collection('groups').doc(groupId).update({
-      'memberCount': FieldValue.increment(1),
+    // 1. Join group_members
+    await _supabase.from('group_members').insert({
+      'group_id': groupId,
+      'user_id': userId,
     });
+
+    // 2. Increment member count (should be a trigger or RPC)
+    // For now, we'll try a simple update if possible, or ignore if managed by trigger.
+    // Ideally: await _supabase.rpc('increment_group_members', params: {'g_id': groupId});
   }
 
   Future<void> generateDummyGroups() async {
@@ -68,14 +75,8 @@ class GroupRepository {
       ),
     ];
 
-    final batch = _firestore.batch();
     for (var group in groups) {
-      final docRef = _firestore.collection('groups').doc(group.id);
-      final doc = await docRef.get();
-      if (!doc.exists) {
-        batch.set(docRef, group.toMap());
-      }
+      await _supabase.from('groups').upsert(group.toMap());
     }
-    await batch.commit();
   }
 }

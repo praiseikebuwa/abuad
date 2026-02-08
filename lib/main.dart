@@ -1,3 +1,4 @@
+import 'package:abuad/src/core/services/notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,28 +7,15 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'src/core/router/app_router.dart';
 import 'src/core/database/local_database.dart';
 import 'src/core/theme/app_theme.dart';
-import 'src/features/settings/presentation/settings_screen.dart';
-
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'src/features/utilities/broadcast_listener.dart';
-import 'src/core/services/notification_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'src/core/config/supabase_config.dart';
-import 'firebase_options.dart';
+import 'src/features/utilities/broadcast_listener.dart';
+import 'src/features/settings/presentation/settings_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
-    // Check if Firebase is already initialized (prevents hot reload errors)
-    if (Firebase.apps.isEmpty) {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-    }
-
     // Configure System UI for Edge-to-Edge
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setSystemUIOverlayStyle(
@@ -140,15 +128,15 @@ class _ConnectivityListenerState extends State<_ConnectivityListener>
 
   Future<void> _updateStatus(String status) async {
     try {
-      final user = FirebaseAuth.instance.currentUser;
+      final user = Supabase.instance.client.auth.currentUser;
       if (user != null) {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
+        await Supabase.instance.client
+            .from('profiles')
             .update({
               'status': status,
-              'lastSeen': DateTime.now().millisecondsSinceEpoch,
-            });
+              'last_seen': DateTime.now().millisecondsSinceEpoch,
+            })
+            .eq('id', user.id);
       }
     } catch (e) {
       debugPrint("Error updating status: $e");

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../data/group_repository.dart';
 
 class GroupsScreen extends ConsumerWidget {
@@ -117,14 +118,30 @@ class GroupsScreen extends ConsumerWidget {
                               width: double.infinity,
                               child: OutlinedButton(
                                 onPressed: () {
-                                  ref
-                                      .read(groupRepositoryProvider)
-                                      .joinGroup(group.id, 'user_id');
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('Joined ${group.name}!'),
-                                    ),
-                                  );
+                                  final userId = Supabase
+                                      .instance
+                                      .client
+                                      .auth
+                                      .currentUser
+                                      ?.id;
+                                  if (userId != null) {
+                                    ref
+                                        .read(groupRepositoryProvider)
+                                        .joinGroup(group.id, userId);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Joined ${group.name}!'),
+                                      ),
+                                    );
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Please sign in to join groups',
+                                        ),
+                                      ),
+                                    );
+                                  }
                                 },
                                 style: OutlinedButton.styleFrom(
                                   padding: EdgeInsets.zero,

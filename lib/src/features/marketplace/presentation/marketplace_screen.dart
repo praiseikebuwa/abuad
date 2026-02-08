@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/theme/app_colors.dart';
 import '../data/marketplace_repository.dart';
 
 class MarketplaceScreen extends ConsumerStatefulWidget {
@@ -23,8 +24,20 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Campus Marketplace'),
-        actions: [IconButton(icon: const Icon(Icons.search), onPressed: () {})],
+        title: const Text(
+          'Campus Marketplace',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+        ),
+        backgroundColor: Colors.transparent,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(gradient: AppColors.inkTealGradient),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.search, color: Colors.white),
+            onPressed: () {},
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -104,6 +117,8 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
           // Show add item dialog
           _showAddItemDialog();
         },
+        backgroundColor: AppColors.accentAmber,
+        foregroundColor: AppColors.primaryInk,
         icon: const Icon(Icons.add),
         label: const Text('Sell Item'),
       ),
@@ -136,7 +151,8 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
+            AspectRatio(
+              aspectRatio: 1.15,
               child: Container(
                 color: Colors.grey[200],
                 child: item.imageUrl != null
@@ -161,7 +177,7 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
                   Text(
                     '₦${item.price.toStringAsFixed(0)}',
                     style: TextStyle(
-                      color: Theme.of(context).primaryColor,
+                      color: Theme.of(context).colorScheme.secondary,
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                     ),

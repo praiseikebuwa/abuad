@@ -19,18 +19,18 @@ class Resource {
     return {
       'title': title,
       'url': url,
-      'courseCode': courseCode,
+      'course_code': courseCode,
       'level': level,
       'timestamp': timestamp.millisecondsSinceEpoch,
     };
   }
 
-  factory Resource.fromMap(String id, Map<String, dynamic> map) {
+  factory Resource.fromMap(Map<String, dynamic> map) {
     return Resource(
-      id: id,
+      id: map['id'] ?? '',
       title: map['title'] ?? '',
       url: map['url'] ?? '',
-      courseCode: map['courseCode'] ?? '',
+      courseCode: map['course_code'] ?? '',
       level: map['level'] ?? '',
       timestamp: map['timestamp'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['timestamp'])

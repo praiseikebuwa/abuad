@@ -23,22 +23,22 @@ class CampusEvent {
       'description': description,
       'location': location,
       'date': date.millisecondsSinceEpoch,
-      'imageUrl': imageUrl,
-      'isOnline': isOnline,
+      'image_url': imageUrl,
+      'is_online': isOnline,
     };
   }
 
-  factory CampusEvent.fromMap(String id, Map<String, dynamic> map) {
+  factory CampusEvent.fromMap(Map<String, dynamic> map) {
     return CampusEvent(
-      id: id,
+      id: map['id'] ?? '',
       title: map['title'] ?? '',
       description: map['description'] ?? '',
       location: map['location'] ?? '',
       date: map['date'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['date'])
           : DateTime.now(),
-      imageUrl: map['imageUrl'] ?? '',
-      isOnline: map['isOnline'] ?? false,
+      imageUrl: map['image_url'] ?? '',
+      isOnline: map['is_online'] ?? false,
     );
   }
 }

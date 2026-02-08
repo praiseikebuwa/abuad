@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,13 +30,14 @@ final _aiNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'ai');
 final _profileNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'profile');
 
 final goRouterProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authStateChangesProvider);
+  final authRepo = ref.watch(authRepositoryProvider);
 
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
     initialLocation: '/',
+    refreshListenable: GoRouterRefreshStream(authRepo.authStateChanges),
     redirect: (context, state) {
-      final isLoggedIn = authState.value != null;
+      final isLoggedIn = authRepo.currentUser != null;
       final isLoggingIn = state.uri.toString() == '/login';
       final isSigningUp = state.uri.toString() == '/signup';
 
@@ -76,6 +78,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/groups',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const GroupsScreen(),
+      ),
+      GoRoute(
+        path: '/settings',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const SettingsScreen(),
       ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {
@@ -170,12 +177,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                 path: '/profile',
                 pageBuilder: (context, state) =>
                     const NoTransitionPage(child: ProfileScreen()),
-                routes: [
-                  GoRoute(
-                    path: 'settings',
-                    builder: (context, state) => const SettingsScreen(),
-                  ),
-                ],
+                routes: [],
               ),
             ],
           ),
@@ -184,3 +186,20 @@ final goRouterProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+class GoRouterRefreshStream extends ChangeNotifier {
+  GoRouterRefreshStream(Stream<dynamic> stream) {
+    notifyListeners();
+    _subscription = stream.asBroadcastStream().listen(
+      (dynamic _) => notifyListeners(),
+    );
+  }
+
+  late final StreamSubscription<dynamic> _subscription;
+
+  @override
+  void dispose() {
+    _subscription.cancel();
+    super.dispose();
+  }
+}

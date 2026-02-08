@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -18,10 +19,31 @@ class CompleteProfileScreen extends ConsumerStatefulWidget {
 class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final _phoneController = TextEditingController();
+  final _nameController = TextEditingController(); // Added Name Controller
   String? _department;
   String? _college;
-  File? _imageFile;
+  XFile? _pickedFile;
+  Uint8List? _imageBytes;
   bool _isLoading = false;
+
+  @override
+  @override
+  void initState() {
+    super.initState();
+    // Pre-fill name if available
+    final user = ref.read(authRepositoryProvider).currentUser;
+    final displayName = user?.userMetadata?['display_name'] as String?;
+    if (displayName != null && displayName.isNotEmpty) {
+      _nameController.text = displayName;
+    }
+  }
+
+  @override
+  void dispose() {
+    _phoneController.dispose();
+    _nameController.dispose();
+    super.dispose();
+  }
 
   final List<String> _colleges = [
     'Engineering',
@@ -30,6 +52,9 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
     'Social & Management Sciences',
     'Medicine & Health Sciences',
     'Arts & Humanities',
+    'Agriculture',
+    'Education',
+    'Environmental Sciences',
   ];
 
   final Map<String, List<String>> _departments = {
@@ -39,6 +64,8 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
       'Mechanical',
       'Civil',
       'Mechatronics',
+      'Chemical',
+      'Petroleum',
     ],
     'Law': ['Law'],
     'Sciences': [
@@ -46,6 +73,10 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
       'Microbiology',
       'Biochemistry',
       'Industrial Chemistry',
+      'Physics',
+      'Mathematics',
+      'Statistics',
+      'Geology',
     ],
     'Social & Management Sciences': [
       'Accounting',
@@ -53,6 +84,10 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
       'Economics',
       'Pol-Science',
       'Media',
+      'Sociology',
+      'Banking & Finance',
+      'Marketing',
+      'Public Admin',
     ],
     'Medicine & Health Sciences': [
       'Medicine',
@@ -60,12 +95,44 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
       'MLS',
       'Anatomy',
       'Physiology',
+      'Public Health',
+      'Pharmacy',
+      'Radiography',
+      'Optometry',
     ],
     'Arts & Humanities': [
       'Performing Arts',
       'English',
       'History',
       'International Relations',
+      'Philosophy',
+      'Religious Studies',
+      'Linguistics',
+      'Music',
+    ],
+    'Agriculture': [
+      'Agricultural Science',
+      'Fisheries',
+      'Forestry',
+      'Animal Science',
+      'Crop Science',
+      'Soil Science',
+    ],
+    'Education': [
+      'Guidance & Counseling',
+      'Educational Management',
+      'Science Education',
+      'Arts Education',
+      'Social Science Education',
+      'Library Science',
+    ],
+    'Environmental Sciences': [
+      'Architecture',
+      'Estate Management',
+      'Urban & Regional Planning',
+      'Quantity Surveying',
+      'Building',
+      'Surveying & Geoinformatics',
     ],
   };
 
@@ -78,7 +145,11 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery);
     if (picked != null) {
-      setState(() => _imageFile = File(picked.path));
+      final bytes = await picked.readAsBytes();
+      setState(() {
+        _pickedFile = picked;
+        _imageBytes = bytes;
+      });
     }
   }
 
@@ -102,16 +173,22 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
       if (currentUser == null) return;
 
       String? photoUrl;
-      if (_imageFile != null) {
-        photoUrl = await storage.uploadImage(XFile(_imageFile!.path));
+      if (_imageBytes != null) {
+        photoUrl = await storage.uploadImageBytes(
+          _imageBytes!,
+          'users/${currentUser.id}/profile/',
+        );
+      } else if (_pickedFile != null) {
+        // Fallback or legacy check
+        photoUrl = await storage.uploadImage(_pickedFile!);
       }
 
-      await userRepo.updateUser(currentUser.uid, {
-        'phoneNumber': _phoneController.text.trim(),
+      await userRepo.updateUser(currentUser.id, {
+        'display_name': _nameController.text.trim(), // Save Name/Nickname
+        'phone_number': _phoneController.text.trim(),
         'college': _college,
         'department': _department,
-        if (photoUrl != null) 'avatarUrl': photoUrl,
-        // Ensure verification is NOT auto-set here
+        if (photoUrl != null) 'avatar_url': photoUrl,
       });
 
       if (mounted) {
@@ -143,10 +220,10 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
                 child: CircleAvatar(
                   radius: 50,
                   backgroundColor: Colors.grey[200],
-                  backgroundImage: _imageFile != null
-                      ? FileImage(_imageFile!)
+                  backgroundImage: _pickedFile != null
+                      ? FileImage(File(_pickedFile!.path))
                       : null,
-                  child: _imageFile == null
+                  child: _pickedFile == null
                       ? const Icon(
                           Icons.add_a_photo,
                           size: 40,
@@ -161,6 +238,20 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
                 style: TextStyle(color: Colors.grey),
               ),
               const SizedBox(height: 32),
+
+              // Name Field
+              TextFormField(
+                controller: _nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Name / Nickname',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.person),
+                ),
+                validator: (val) => val == null || val.trim().isEmpty
+                    ? 'Please enter your name'
+                    : null,
+              ),
+              const SizedBox(height: 16),
 
               DropdownButtonFormField<String>(
                 initialValue: _college,

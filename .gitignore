@@ -49,3 +49,6 @@ app.*.map.json
 
 # Ignore Gradle build output directory
 build
+
+# ReCode local database
+.recode

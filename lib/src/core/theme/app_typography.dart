@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTypography {
-  static TextTheme get lightTextTheme => GoogleFonts.outfitTextTheme(
+  static TextTheme get lightTextTheme => GoogleFonts.spaceGroteskTextTheme(
     const TextTheme(
       displayLarge: TextStyle(
         fontWeight: FontWeight.bold,
@@ -45,7 +45,7 @@ class AppTypography {
     ),
   );
 
-  static TextTheme get darkTextTheme => GoogleFonts.outfitTextTheme(
+  static TextTheme get darkTextTheme => GoogleFonts.spaceGroteskTextTheme(
     const TextTheme(
       displayLarge: TextStyle(
         fontWeight: FontWeight.bold,

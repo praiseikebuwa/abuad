@@ -1,10 +1,9 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../user/data/user_repository.dart';
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
-  return AuthRepository(FirebaseAuth.instance, FirebaseFirestore.instance);
+  return AuthRepository(Supabase.instance.client);
 });
 
 final authStateChangesProvider = StreamProvider<User?>((ref) {
@@ -12,50 +11,35 @@ final authStateChangesProvider = StreamProvider<User?>((ref) {
 });
 
 class AuthRepository {
-  final FirebaseAuth _firebaseAuth;
-  final FirebaseFirestore _firestore;
+  final SupabaseClient _supabase;
 
-  AuthRepository(this._firebaseAuth, this._firestore);
+  AuthRepository(this._supabase);
 
-  Stream<User?> get authStateChanges => _firebaseAuth.authStateChanges();
+  Stream<User?> get authStateChanges =>
+      _supabase.auth.onAuthStateChange.map((event) {
+        return event.session?.user;
+      });
 
-  User? get currentUser => _firebaseAuth.currentUser;
+  User? get currentUser => _supabase.auth.currentUser;
 
+  // Sign In with Email and Password
   Future<void> signInWithEmailAndPassword(String email, String password) async {
-    await _firebaseAuth.signInWithEmailAndPassword(
-      email: email,
-      password: password,
-    );
+    await _supabase.auth.signInWithPassword(email: email, password: password);
   }
 
-  Future<void> createUserWithEmailAndPassword(
-    String email,
-    String password,
-  ) async {
-    final userCredential = await _firebaseAuth.createUserWithEmailAndPassword(
-      email: email,
-      password: password,
-    );
-
-    final user = userCredential.user;
-    if (user != null) {
-      final handle = email.split('@')[0];
-      final appUser = AppUser(
-        uid: user.uid,
-        displayName: handle,
-        email: email,
-        handle: handle,
-        isVerified: false,
-        followersCount: 0,
-        followingCount: 0,
-        status: 'online',
-      );
-
-      await _firestore.collection('users').doc(user.uid).set(appUser.toMap());
-    }
+  // Sign Up with Email and Password
+  Future<void> signUpWithEmailAndPassword(String email, String password) async {
+    await _supabase.auth.signUp(email: email, password: password);
+    // Note: Profile creation is handled by Database Trigger (schema.sql)
   }
 
+  // Sign Out
   Future<void> signOut() async {
-    await _firebaseAuth.signOut();
+    await _supabase.auth.signOut();
+  }
+
+  // Password Reset
+  Future<void> sendPasswordResetEmail(String email) async {
+    await _supabase.auth.resetPasswordForEmail(email);
   }
 }

@@ -2,7 +2,7 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 
 class AiService {
   // TODO: Replace with your actual Gemini API Key from https://aistudio.google.com/
-  static const String _apiKey = 'AIzaSyChtjHEJZ4uqDlyS6sO0ZN1-dt_xyH5gJA';
+  static const String _apiKey = '';
 
   late final GenerativeModel _model;
   late final ChatSession _chatSession;

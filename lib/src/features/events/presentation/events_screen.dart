@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../../../core/theme/app_colors.dart';
 import '../data/event_repository.dart';
 import '../domain/campus_event.dart';
 
@@ -12,7 +13,16 @@ class EventsScreen extends ConsumerWidget {
     final repo = ref.watch(eventRepositoryProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Campus Events")),
+      appBar: AppBar(
+        title: const Text(
+          "Campus Events",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+        ),
+        backgroundColor: Colors.transparent,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(gradient: AppColors.inkTealGradient),
+        ),
+      ),
       body: StreamBuilder<List<CampusEvent>>(
         stream: repo.watchUpcomingEvents(),
         builder: (context, snapshot) {
@@ -81,8 +91,8 @@ class _EventCard extends StatelessWidget {
             Container(
               height: 100,
               width: double.infinity,
-              color: Colors.blue[100],
-              child: const Icon(Icons.event, size: 50, color: Colors.blue),
+              color: const Color(0xFFE9EFEF),
+              child: const Icon(Icons.event, size: 50, color: AppColors.secondaryTeal),
             ),
           Padding(
             padding: const EdgeInsets.all(16),
@@ -95,7 +105,7 @@ class _EventCard extends StatelessWidget {
                     Text(
                       DateFormat('EEE, MMM d • h:mm a').format(event.date),
                       style: TextStyle(
-                        color: Colors.blue[700],
+                        color: AppColors.secondaryTeal,
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
                       ),
@@ -107,13 +117,13 @@ class _EventCard extends StatelessWidget {
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.green[50],
+                          color: const Color(0xFFFFF3D8),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Text(
                           "Online",
                           style: TextStyle(
-                            color: Colors.green,
+                            color: AppColors.primaryInk,
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
                           ),

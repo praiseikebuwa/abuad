@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../core/theme/app_colors.dart';
 
 enum MapStyle {
   streets('Streets', 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'),
@@ -21,6 +22,34 @@ enum MapStyle {
   const MapStyle(this.label, this.urlTemplate);
 }
 
+enum LocationCategory {
+  all('All', Icons.map),
+  academic('Academic', Icons.school),
+  food('Food', Icons.restaurant),
+  hostel('Hostels', Icons.house),
+  sports('Sports', Icons.sports_soccer),
+  health('Health', Icons.local_hospital),
+  other('Other', Icons.place);
+
+  final String label;
+  final IconData icon;
+  const LocationCategory(this.label, this.icon);
+}
+
+class MapMarkerData {
+  final String title;
+  final LatLng point;
+  final LocationCategory category;
+  final Color? color;
+
+  MapMarkerData({
+    required this.title,
+    required this.point,
+    required this.category,
+    this.color,
+  });
+}
+
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
 
@@ -35,6 +64,47 @@ class _MapScreenState extends State<MapScreen> {
   LatLng? _currentPosition;
   bool _isLoadingLocation = false;
   MapStyle _currentMapStyle = MapStyle.satellite;
+  LocationCategory _selectedCategory = LocationCategory.all;
+
+  // Define Markers Data
+  final List<MapMarkerData> _allMarkersData = [
+    MapMarkerData(
+      title: 'Senate Building',
+      point: const LatLng(7.6180, 5.2750),
+      category: LocationCategory.academic,
+      color: const Color(0xFF3B82F6),
+    ),
+    MapMarkerData(
+      title: 'Engineering',
+      point: const LatLng(7.6150, 5.2780),
+      category: LocationCategory.academic,
+      color: const Color(0xFF10B981),
+    ),
+    MapMarkerData(
+      title: 'Afe Babalola Hospital',
+      point: const LatLng(7.6200, 5.2720),
+      category: LocationCategory.health,
+      color: const Color(0xFFEF4444),
+    ),
+    MapMarkerData(
+      title: 'Cafeteria 1',
+      point: const LatLng(7.6130, 5.2740),
+      category: LocationCategory.food,
+      color: const Color(0xFFF59E0B),
+    ),
+    MapMarkerData(
+      title: 'Law Library',
+      point: const LatLng(7.6165, 5.2765),
+      category: LocationCategory.academic,
+      color: const Color(0xFF8B5CF6),
+    ),
+    MapMarkerData(
+      title: 'Sports Complex',
+      point: const LatLng(7.6140, 5.2725),
+      category: LocationCategory.sports,
+      color: const Color(0xFF06B6D4),
+    ),
+  ];
 
   Future<void> _getCurrentLocation() async {
     setState(() => _isLoadingLocation = true);
@@ -95,18 +165,14 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  void _showLocationDetails(
-    String title,
-    LatLng point,
-    IconData icon,
-    Color color,
-  ) {
+  void _showLocationDetails(MapMarkerData data) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final color = data.color ?? theme.primaryColor;
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+      backgroundColor: theme.cardTheme.color,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -135,26 +201,43 @@ class _MapScreenState extends State<MapScreen> {
                     colors: [color, color.withOpacity(0.7)],
                   ),
                   borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withOpacity(0.3),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
-                child: Icon(icon, color: Colors.white, size: 48),
+                child: Icon(data.category.icon, color: Colors.white, size: 48),
               ),
               const SizedBox(height: 16),
 
               Text(
-                title,
-                style: TextStyle(
+                data.title,
+                style: const TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : Colors.black87,
                 ),
               ),
               const SizedBox(height: 8),
 
-              Text(
-                'Campus Location',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  data.category.label,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: color,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
               const SizedBox(height: 24),
@@ -164,7 +247,7 @@ class _MapScreenState extends State<MapScreen> {
                 child: ElevatedButton.icon(
                   onPressed: () {
                     Navigator.pop(context);
-                    _launchMaps(point.latitude, point.longitude);
+                    _launchMaps(data.point.latitude, data.point.longitude);
                   },
                   icon: const Icon(Icons.directions),
                   label: const Text('Get Directions'),
@@ -191,7 +274,7 @@ class _MapScreenState extends State<MapScreen> {
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+      backgroundColor: theme.cardTheme.color,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -201,7 +284,6 @@ class _MapScreenState extends State<MapScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Handle bar
               Container(
                 width: 40,
                 height: 4,
@@ -212,13 +294,9 @@ class _MapScreenState extends State<MapScreen> {
               ),
               const SizedBox(height: 16),
 
-              Text(
+              const Text(
                 'Map Style',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : Colors.black87,
-                ),
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 20),
 
@@ -245,7 +323,6 @@ class _MapScreenState extends State<MapScreen> {
                         fontWeight: isSelected
                             ? FontWeight.w600
                             : FontWeight.normal,
-                        color: isDark ? Colors.white : Colors.black87,
                       ),
                     ),
                     trailing: isSelected
@@ -269,7 +346,6 @@ class _MapScreenState extends State<MapScreen> {
                   ),
                 );
               }),
-
               const SizedBox(height: 10),
             ],
           ),
@@ -278,114 +354,89 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  List<Marker> get _markers => [
-    _buildMarker(
-      'Senate Building',
-      const LatLng(7.6180, 5.2750),
-      Icons.account_balance,
-      const Color(0xFF3B82F6),
-    ),
-    _buildMarker(
-      'Engineering',
-      const LatLng(7.6150, 5.2780),
-      Icons.engineering,
-      const Color(0xFF10B981),
-    ),
-    _buildMarker(
-      'Hospital',
-      const LatLng(7.6200, 5.2720),
-      Icons.local_hospital,
-      const Color(0xFFEF4444),
-    ),
-    _buildMarker(
-      'Cafeteria',
-      const LatLng(7.6130, 5.2740),
-      Icons.restaurant,
-      const Color(0xFFF59E0B),
-    ),
-    _buildMarker(
-      'Library',
-      const LatLng(7.6165, 5.2765),
-      Icons.local_library,
-      const Color(0xFF8B5CF6),
-    ),
-    _buildMarker(
-      'Sports Complex',
-      const LatLng(7.6140, 5.2725),
-      Icons.sports_soccer,
-      const Color(0xFF06B6D4),
-    ),
-  ];
+  // --- Markers Logic ---
+  List<Marker> get _markers {
+    final filteredData = _selectedCategory == LocationCategory.all
+        ? _allMarkersData
+        : _allMarkersData
+              .where((m) => m.category == _selectedCategory)
+              .toList();
 
-  Marker _buildMarker(String title, LatLng point, IconData icon, Color color) {
-    return Marker(
-      point: point,
-      width: 80,
-      height: 80,
-      child: GestureDetector(
-        onTap: () => _showLocationDetails(title, point, icon, color),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            // 3D-style marker with shadow
-            Container(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: color.withOpacity(0.5),
-                    blurRadius: 12,
-                    spreadRadius: 2,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Container(
-                width: 48,
-                height: 48,
+    return filteredData.map((data) {
+      final color = data.color ?? Colors.red;
+      return Marker(
+        point: data.point,
+        width: 80,
+        height: 80,
+        child: GestureDetector(
+          onTap: () => _showLocationDetails(data),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              // 3D-style marker
+              Container(
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [color, color.withOpacity(0.8)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 3),
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withOpacity(0.5),
+                      blurRadius: 12,
+                      spreadRadius: 2,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
-                child: Icon(icon, color: Colors.white, size: 24),
-              ),
-            ),
-            const SizedBox(height: 4),
-
-            // Label with shadow
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.15),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [color, color.withOpacity(0.8)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 3),
                   ),
-                ],
-              ),
-              child: Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
+                  child: Icon(
+                    data.category.icon,
+                    color: Colors.white,
+                    size: 24,
+                  ),
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
               ),
-            ),
-          ],
+              const SizedBox(height: 4),
+
+              // Label
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.15),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  data.title,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    }).toList();
   }
 
   @override
@@ -394,19 +445,41 @@ class _MapScreenState extends State<MapScreen> {
     final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF000000) : Colors.white,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: const Text(
           'Campus Map',
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
-        backgroundColor: isDark ? const Color(0xFF000000) : Colors.white,
-        surfaceTintColor: Colors.transparent,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                isDark
+                    ? Colors.black.withOpacity(0.8)
+                    : Colors.white.withOpacity(0.9),
+                Colors.transparent,
+              ],
+            ),
+          ),
+        ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.layers),
-            onPressed: _showMapStyleSheet,
-            tooltip: 'Map Style',
+          Container(
+            margin: const EdgeInsets.only(right: 16),
+            decoration: BoxDecoration(
+              color: theme.cardTheme.color,
+              shape: BoxShape.circle,
+              boxShadow: AppColors.softShadow,
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.layers),
+              onPressed: _showMapStyleSheet,
+              tooltip: 'Map Style',
+            ),
           ),
         ],
       ),
@@ -416,12 +489,15 @@ class _MapScreenState extends State<MapScreen> {
             mapController: _mapController,
             options: MapOptions(
               initialCenter: _initialCenter,
-              initialZoom: 15.5,
+              initialZoom: 16.5,
               minZoom: 13.0,
               maxZoom: 19.0,
               interactionOptions: const InteractionOptions(
                 flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
               ),
+              onTap: (_, __) {
+                // Close any open overlays if needed
+              },
             ),
             children: [
               TileLayer(
@@ -446,7 +522,7 @@ class _MapScreenState extends State<MapScreen> {
                             height: 60,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: Colors.blue.withOpacity(0.2),
+                              color: AppColors.info.withOpacity(0.2),
                             ),
                             child: Container(
                               margin: const EdgeInsets.all(10),
@@ -485,64 +561,97 @@ class _MapScreenState extends State<MapScreen> {
             ],
           ),
 
-          // Map style indicator
+          // Category Chips (New Feature)
           Positioned(
-            top: 10,
-            right: 10,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? Colors.black.withOpacity(0.7)
-                    : Colors.white.withOpacity(0.9),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 8,
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    _currentMapStyle == MapStyle.satellite
-                        ? Icons.satellite_alt
-                        : _currentMapStyle == MapStyle.dark
-                        ? Icons.dark_mode
-                        : _currentMapStyle == MapStyle.terrain
-                        ? Icons.terrain
-                        : Icons.map,
-                    size: 16,
-                    color: theme.colorScheme.primary,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    _currentMapStyle.label,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: isDark ? Colors.white : Colors.black87,
+            top: 100, // Below AppBar
+            left: 0,
+            right: 0,
+            child: SafeArea( // Ensure it doesn't get cut off by notch
+              top: false,
+              child: SizedBox(
+                height: 40,
+              child: ListView.separated(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                scrollDirection: Axis.horizontal,
+                itemCount: LocationCategory.values.length,
+                separatorBuilder: (context, index) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  final category = LocationCategory.values[index];
+                  final isSelected = _selectedCategory == category;
+                  return GestureDetector(
+                    onTap: () => setState(() => _selectedCategory = category),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? AppColors.primaryInk
+                            : theme.cardTheme.color,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: isSelected
+                              ? Colors.transparent
+                              : (isDark
+                                    ? AppColors.borderDark
+                                    : AppColors.borderLight),
+                        ),
+                        boxShadow: isSelected
+                            ? [
+                                BoxShadow(
+                                  color: AppColors.primaryInk.withOpacity(0.3),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ]
+                            : [],
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            category.icon,
+                            size: 16,
+                            color: isSelected
+                                ? Colors.white
+                                : theme.iconTheme.color,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            category.label,
+                            style: TextStyle(
+                              color: isSelected
+                                  ? Colors.white
+                                  : theme.textTheme.bodyMedium?.color,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  );
+                },
               ),
             ),
           ),
+        )
         ],
       ),
-      floatingActionButton: Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          // Zoom controls
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 50.0), // Lift above bottom nav
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            // Zoom controls
           Container(
             decoration: BoxDecoration(
-              color: isDark ? Colors.grey[900] : Colors.white,
+              color: theme.cardTheme.color,
               borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8),
-              ],
+              boxShadow: AppColors.softShadow,
+              border: Border.all(
+                color: isDark ? AppColors.borderDark : AppColors.borderLight,
+              ),
             ),
             child: Column(
               children: [
@@ -559,7 +668,7 @@ class _MapScreenState extends State<MapScreen> {
                 Container(
                   height: 1,
                   width: 30,
-                  color: isDark ? Colors.grey[800] : Colors.grey[300],
+                  color: isDark ? AppColors.borderDark : AppColors.borderLight,
                 ),
                 IconButton(
                   icon: const Icon(Icons.remove),
@@ -609,6 +718,7 @@ class _MapScreenState extends State<MapScreen> {
           ),
         ],
       ),
+      )
     );
   }
 }
