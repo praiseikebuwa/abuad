@@ -4,10 +4,13 @@ import 'package:go_router/go_router.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/verification_badge.dart';
 import '../data/chat_repository.dart';
 import '../domain/chat_channel.dart';
-import '../../stories/providers/story_providers.dart';
+import '../../user/data/user_repository.dart';
+import '../../stories/data/story_repository.dart';
 import '../../stories/presentation/create_story_screen.dart';
 import '../../stories/presentation/story_viewer_screen.dart';
 // import '../../stories/presentation/widgets/story_widgets.dart';
@@ -38,9 +41,7 @@ class ChatListScreen extends ConsumerWidget {
         scrolledUnderElevation: 0,
         backgroundColor: Colors.transparent,
         flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: AppColors.inkTealGradient,
-          ),
+          decoration: const BoxDecoration(gradient: AppColors.inkTealGradient),
         ),
         leading: IconButton(
           icon: const Icon(
@@ -51,13 +52,34 @@ class ChatListScreen extends ConsumerWidget {
           onPressed: () => context.push('/settings'),
         ),
         actions: [
-          IconButton(
+          PopupMenuButton<String>(
             icon: const Icon(
-              Icons.person_add_outlined,
+              Icons.add_circle_outline,
               color: Colors.white,
               size: 26,
             ),
-            onPressed: () => context.push('/chat/user-search'),
+            onSelected: (value) {
+              if (value == 'new_chat') context.push('/chat/user-search');
+              if (value == 'new_group') context.push('/chat/create-group');
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'new_chat',
+                child: ListTile(
+                  leading: Icon(Icons.person_add_outlined),
+                  title: Text('New Chat'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'new_group',
+                child: ListTile(
+                  leading: Icon(Icons.group_add_outlined),
+                  title: Text('New Group'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
           ),
           const SizedBox(width: 4),
         ],
@@ -90,7 +112,19 @@ class ChatListScreen extends ConsumerWidget {
 
           return Column(
             children: [
-              // Stories Row (Snapchat-style)
+              // Status Header
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                child: Text(
+                  'Status',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.grey[300] : Colors.grey[700],
+                  ),
+                ),
+              ),
+              // Stories Row
               Consumer(
                 builder: (context, ref, child) {
                   final storiesAsync = ref.watch(allStoriesGroupedProvider);
@@ -98,8 +132,7 @@ class ChatListScreen extends ConsumerWidget {
 
                   return storiesAsync.when(
                     data: (storiesGrouped) {
-                      // Get list of user IDs who have stories
-                      final userIds = storiesGrouped.keys.toList();
+                      final storyUserIds = storiesGrouped.keys.toList();
 
                       return Container(
                         height: 108,
@@ -111,13 +144,15 @@ class ChatListScreen extends ConsumerWidget {
                               : AppColors.surfaceElevated,
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                            color: isDark ? Colors.white12 : const Color(0xFFE8E1D7),
+                            color: isDark
+                                ? Colors.white12
+                                : const Color(0xFFE8E1D7),
                           ),
                         ),
                         child: ListView.builder(
                           scrollDirection: Axis.horizontal,
                           padding: const EdgeInsets.symmetric(horizontal: 12),
-                          itemCount: userIds.length + 1,
+                          itemCount: storyUserIds.length + 1,
                           itemBuilder: (context, index) {
                             if (index == 0) {
                               return _CameraStoryItem(
@@ -133,20 +168,28 @@ class ChatListScreen extends ConsumerWidget {
                               );
                             }
 
-                            final userId = userIds[index - 1];
-                            final userStories = storiesGrouped[userId]!;
-                            final firstStory = userStories.first;
+                            final userId = storyUserIds[index - 1];
+                            final userStories = storiesGrouped[userId] ?? [];
 
-                            // Check if user has unviewed stories
-                            final hasUnviewed = userStories.any(
-                              (s) => !s.hasViewed(currentUserId),
-                            );
+                            final hasStory = userStories.isNotEmpty;
+                            final userName = hasStory
+                                ? userStories.first.userName
+                                : 'Unknown';
+                            final userAvatar = hasStory
+                                ? userStories.first.userAvatar
+                                : null;
+
+                            final unviewedStory =
+                                currentUserId != null &&
+                                userStories.any(
+                                  (s) => !s.hasViewed(currentUserId),
+                                );
 
                             return _StoryItem(
-                              name: firstStory.userName,
-                              avatarUrl: firstStory.userAvatar,
-                              hasStory: true,
-                              hasUnviewedStory: hasUnviewed,
+                              name: userName,
+                              avatarUrl: userAvatar,
+                              hasStory: hasStory,
+                              hasUnviewedStory: unviewedStory,
                               isDark: isDark,
                               onTap: () {
                                 Navigator.push(
@@ -169,7 +212,7 @@ class ChatListScreen extends ConsumerWidget {
                       alignment: Alignment.center,
                       child: const CircularProgressIndicator(),
                     ),
-                    error: (_, __) => const SizedBox(height: 100),
+                    error: (error, stackTrace) => const SizedBox(height: 100),
                   );
                 },
               ),
@@ -277,7 +320,7 @@ class _CameraStoryItem extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'Camera',
+              'My Status',
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
@@ -373,7 +416,7 @@ class _StoryItem extends StatelessWidget {
 }
 
 // Chat List Item
-class _SnapchatListItem extends StatelessWidget {
+class _SnapchatListItem extends ConsumerWidget {
   final ChatChannel channel;
   final String? currentUserId;
   final bool isDark;
@@ -385,16 +428,29 @@ class _SnapchatListItem extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final otherUserId = channel.memberIds.firstWhere(
-      (id) => id != currentUserId,
-      orElse: () => 'Unknown',
-    );
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isGroup = channel.type == 'group';
 
-    final otherUserName = channel.memberNames[otherUserId] ?? 'Student';
-    final otherUserAvatar = channel.memberAvatars[otherUserId];
-    final isTyping = channel.typingUsers[otherUserId] ?? false;
-    final isOnline = true; // TODO: Implement online status
+    final otherUserId = isGroup
+        ? null
+        : channel.memberIds.firstWhere(
+            (id) => id != currentUserId,
+            orElse: () => 'Unknown',
+          );
+
+    final displayName = isGroup
+        ? (channel.displayName ?? 'Untitled Group')
+        : (channel.memberNames[otherUserId] ?? 'Student');
+
+    final displayAvatar = isGroup
+        ? channel.displayAvatarUrl
+        : channel.memberAvatars[otherUserId];
+
+    final isTyping = !isGroup && otherUserId != null
+        ? (channel.typingUsers[otherUserId] ?? false)
+        : false; // TODO: Implement group typing
+
+    final isOnline = !isGroup; // Online status only for direct chats for now
 
     final unreadCount = channel.unreadCounts[currentUserId] ?? 0;
     final isUnread = unreadCount > 0;
@@ -411,13 +467,26 @@ class _SnapchatListItem extends StatelessWidget {
               : AppColors.surfaceElevated,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: isDark ? Colors.white12 : const Color(0xFFE8E1D7),
+            color: isUnread
+                ? AppColors.accentAmber.withOpacity(0.3)
+                : (isDark ? Colors.white12 : const Color(0xFFE8E1D7)),
+            width: isUnread ? 1.5 : 1,
           ),
+          boxShadow: isUnread && !isDark
+              ? [
+                  BoxShadow(
+                    color: AppColors.accentAmber.withOpacity(0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
         ),
         child: Row(
           children: [
-            // Avatar with online indicator
+            // Avatar with online indicator and Streak badge
             Stack(
+              clipBehavior: Clip.none,
               children: [
                 Container(
                   width: 56,
@@ -430,31 +499,38 @@ class _SnapchatListItem extends StatelessWidget {
                   ),
                   child: Padding(
                     padding: EdgeInsets.all(isUnread ? 2.0 : 0),
-                    child: otherUserAvatar != null && otherUserAvatar.isNotEmpty
+                    child: displayAvatar != null && displayAvatar.isNotEmpty
                         ? CircleAvatar(
                             backgroundImage: CachedNetworkImageProvider(
-                              otherUserAvatar,
+                              displayAvatar,
                             ),
                           )
                         : CircleAvatar(
-                            backgroundColor: Colors.grey[300],
-                            child: Text(
-                              otherUserName.isNotEmpty
-                                  ? otherUserName[0].toUpperCase()
-                                  : '?',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 20,
-                              ),
-                            ),
+                            backgroundColor: isGroup
+                                ? AppColors.secondaryTeal.withOpacity(0.2)
+                                : Colors.grey[300],
+                            child: isGroup
+                                ? const Icon(
+                                    Icons.groups,
+                                    color: AppColors.secondaryTeal,
+                                  )
+                                : Text(
+                                    displayName.isNotEmpty
+                                        ? displayName[0].toUpperCase()
+                                        : '?',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 20,
+                                    ),
+                                  ),
                           ),
                   ),
                 ),
                 // Online indicator
                 if (isOnline)
                   Positioned(
-                    bottom: 2,
-                    right: 2,
+                    bottom: 0,
+                    right: 0,
                     child: Container(
                       width: 14,
                       height: 14,
@@ -462,11 +538,65 @@ class _SnapchatListItem extends StatelessWidget {
                         color: const Color(0xFF00D664),
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: isDark ? Colors.black : Colors.white,
+                          color: isDark ? AppColors.surfaceDark : Colors.white,
                           width: 2,
                         ),
                       ),
                     ),
+                  ),
+                if (!isGroup && otherUserId != null)
+                  Consumer(
+                    builder: (context, ref, _) {
+                      final otherUserAsync = ref.watch(
+                        userProvider(otherUserId),
+                      );
+                      return otherUserAsync.when(
+                        data: (user) {
+                          if (user == null || user.streakCount == 0) {
+                            return const SizedBox();
+                          }
+                          return Positioned(
+                            top: -4,
+                            right: -4,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.orange,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: isDark
+                                      ? AppColors.surfaceDark
+                                      : Colors.white,
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Text(
+                                    "🔥",
+                                    style: TextStyle(fontSize: 8),
+                                  ),
+                                  Text(
+                                    "${user.streakCount}",
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                        loading: () => const SizedBox(),
+                        error: (error, stack) => const SizedBox(),
+                      );
+                    },
                   ),
               ],
             ),
@@ -480,13 +610,20 @@ class _SnapchatListItem extends StatelessWidget {
                   Row(
                     children: [
                       Text(
-                        otherUserName,
+                        displayName,
                         style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: isDark ? Colors.white : Colors.black87,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? Colors.white : AppColors.primaryInk,
                         ),
                       ),
+                      const SizedBox(width: 4),
+                      if (!isGroup && otherUserId != null)
+                        VerificationBadge(
+                          type:
+                              channel.verificationTypes[otherUserId] ?? 'none',
+                          size: 14,
+                        ),
                       if (isUnread) ...[
                         const SizedBox(width: 8),
                         Container(
@@ -502,7 +639,7 @@ class _SnapchatListItem extends StatelessWidget {
                             '$unreadCount',
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 11,
+                              fontSize: 10,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -526,38 +663,48 @@ class _SnapchatListItem extends StatelessWidget {
                       ] else ...[
                         if (isUnread)
                           Container(
-                            width: 10,
-                            height: 10,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
-                              color: AppColors.accentAmber,
-                              borderRadius: BorderRadius.circular(3),
+                              color: AppColors.accentAmber.withValues(
+                                alpha: 0.15,
+                              ),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              'New',
+                              style: TextStyle(
+                                color: AppColors.accentAmber,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                           )
                         else
-                          Container(
-                            width: 10,
-                            height: 10,
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: Colors.grey[400]!,
-                                width: 2,
-                              ),
-                              borderRadius: BorderRadius.circular(3),
-                            ),
+                          Icon(
+                            Icons.done_all,
+                            size: 16,
+                            color: Colors.grey[400],
                           ),
-                        const SizedBox(width: 8),
+
+                        const SizedBox(width: 6),
+
                         Flexible(
                           child: Text(
-                            isUnread ? 'New Chat' : 'Received',
+                            isUnread ? 'New Message' : 'Tap to chat',
                             style: TextStyle(
                               color: isUnread
-                                  ? AppColors.accentAmber
+                                  ? (isDark
+                                        ? Colors.white
+                                        : AppColors.primaryInk)
                                   : (isDark
                                         ? Colors.grey[500]
                                         : Colors.grey[600]),
                               fontWeight: isUnread
-                                  ? FontWeight.w700
-                                  : FontWeight.w500,
+                                  ? FontWeight.w600
+                                  : FontWeight.normal,
                               fontSize: 13,
                             ),
                           ),
@@ -566,7 +713,7 @@ class _SnapchatListItem extends StatelessWidget {
                           ' • ${timeago.format(lastMsgTime, locale: 'en_short')}',
                           style: TextStyle(
                             color: isDark ? Colors.grey[600] : Colors.grey[500],
-                            fontSize: 13,
+                            fontSize: 12,
                           ),
                         ),
                       ],
@@ -575,26 +722,10 @@ class _SnapchatListItem extends StatelessWidget {
                 ],
               ),
             ),
-
-            // Camera icon
-            IconButton(
-              icon: Icon(
-                Icons.camera_alt_outlined,
-                color: isDark ? Colors.grey[500] : Colors.grey[400],
-                size: 24,
-              ),
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Send snap feature coming soon'),
-                  ),
-                );
-              },
-            ),
           ],
         ),
       ),
-    );
+    ).animate().fadeIn(duration: 300.ms).slideX(begin: 0.1, curve: Curves.easeOut);
   }
 }
 

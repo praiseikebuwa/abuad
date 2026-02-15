@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 enum MediaType { none, image, video, gif }
 
 class Post {
@@ -13,12 +15,17 @@ class Post {
   final int likesCount;
   final int commentsCount;
   final int repostCount;
-  final bool isLiked; // UI state, not in DB usually, but we might join
+  final int viewsCount;
+  final bool isLiked;
   final String channelId;
   final bool isVerified;
+  final String verificationType;
   final bool isAnonymous;
   final Map<String, dynamic>? pollData;
   final Map<String, dynamic>? repostData;
+  final List<String> hashtags;
+  final List<String> mentions;
+  final String visibility; // everyone, followers
 
   Post({
     required this.id,
@@ -33,85 +40,99 @@ class Post {
     this.likesCount = 0,
     this.commentsCount = 0,
     this.repostCount = 0,
+    this.viewsCount = 0,
     this.isLiked = false,
-    this.channelId = 'public',
+    this.channelId = 'general',
     this.isVerified = false,
+    this.verificationType = 'none',
     this.isAnonymous = false,
     this.pollData,
     this.repostData,
+    this.hashtags = const [],
+    this.mentions = const [],
+    this.visibility = 'everyone',
   });
 
   Map<String, dynamic> toMap() {
     return {
       'id': id,
       'author_id': authorId,
-
-      // We might not store author details in 'posts' table if we normalize, but schema had references.
-      // Schema: author_id references profiles.
-      // We assume we might join profiles to get name/handle, or store duplicates.
-      // For now, let's assume we relying on joins or the schema I defined has author_id only.
-      // Schema: author_id uuid references public.profiles(id).
-      // It DOES NOT store name/handle/avatar in posts table.
-      // So we must fetch them via join.
+      'author_name': authorName,
+      'author_handle': authorHandle,
+      'author_avatar_url': authorAvatarUrl,
       'content': content,
-      // Schema has media_urls text[], so we should probably adapt.
-      // But let's stick to single media_url for now if possible or map.
-      'media_urls': mediaUrl.isNotEmpty ? [mediaUrl] : [],
-
+      'media_url': mediaUrl,
+      'media_type': mediaType.name,
       'channel_id': channelId,
       'likes_count': likesCount,
       'comments_count': commentsCount,
       'repost_count': repostCount,
+      'views_count': viewsCount,
       'poll_data': pollData,
       'repost_data': repostData,
-      'created_at': timestamp.millisecondsSinceEpoch,
+      'created_at': Timestamp.fromDate(timestamp),
+      'is_verified': isVerified,
+      'verification_type': verificationType,
+      'is_anonymous': isAnonymous,
+      'hashtags': hashtags,
+      'mentions': mentions,
+      'visibility': visibility,
     };
   }
 
   factory Post.fromMap(Map<String, dynamic> map) {
-    // Handle joins from Supabase: profiles(...)
-    final authorProfile = map['profiles'] as Map<String, dynamic>?;
+    final mUrl = map['media_url'] ?? '';
 
-    // Map media_urls (List) to single mediaUrl (String) for compatibility
-    String mUrl = '';
-    if (map['media_urls'] != null && (map['media_urls'] as List).isNotEmpty) {
-      mUrl = (map['media_urls'] as List).first;
-    }
-
-    // Determine MediaType (simple logic based on extension or metadata if available)
-    // For now defaulting to image if url exists
     MediaType mType = MediaType.none;
     if (mUrl.isNotEmpty) {
-      if (mUrl.endsWith('.mp4')) {
-        mType = MediaType.video;
-      } else if (mUrl.contains('giphy') || mUrl.endsWith('.gif')) {
-        mType = MediaType.gif;
+      final typeStr = map['media_type'] as String?;
+      if (typeStr != null) {
+        mType = MediaType.values.firstWhere(
+          (e) => e.name == typeStr,
+          orElse: () => MediaType.none,
+        );
       } else {
-        mType = MediaType.image;
+        // Fallback logic
+        if (mUrl.endsWith('.mp4')) {
+          mType = MediaType.video;
+        } else if (mUrl.contains('giphy') || mUrl.endsWith('.gif')) {
+          mType = MediaType.gif;
+        } else {
+          mType = MediaType.image;
+        }
       }
     }
 
     return Post(
       id: map['id'] ?? '',
       authorId: map['author_id'] ?? '',
-      authorName: authorProfile?['display_name'] ?? 'Anonymous',
-      authorHandle: authorProfile?['handle'] ?? '@anon',
-      authorAvatarUrl: authorProfile?['avatar_url'],
-      isVerified: authorProfile?['is_verified'] ?? false,
-
+      authorName: map['author_name'] ?? 'Anonymous',
+      authorHandle: map['author_handle'] ?? '@anon',
+      authorAvatarUrl: map['author_avatar_url'],
+      isVerified: map['is_verified'] ?? map['isVerified'] ?? false,
+      verificationType:
+          map['verification_type'] ??
+          map['verificationType'] ??
+          ((map['is_verified'] == true || map['isVerified'] == true)
+              ? 'blue'
+              : 'none'),
+      isAnonymous: map['is_anonymous'] ?? false,
       content: map['content'] ?? '',
       mediaUrl: mUrl,
       mediaType: mType,
-      timestamp: map['created_at'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(map['created_at'])
-          : DateTime.now(),
+      timestamp: (map['created_at'] as Timestamp?)?.toDate() ?? DateTime.now(),
       likesCount: map['likes_count'] ?? 0,
       commentsCount: map['comments_count'] ?? 0,
       repostCount: map['repost_count'] ?? 0,
-      channelId: map['channel_id'] ?? 'public',
+      viewsCount: map['views_count'] ?? 0,
+      channelId: (map['channel_id'] == 'public')
+          ? 'general'
+          : (map['channel_id'] ?? 'general'),
       pollData: map['poll_data'],
       repostData: map['repost_data'],
-      // isLiked handling usually requires a separate check or join
+      hashtags: List<String>.from(map['hashtags'] ?? []),
+      mentions: List<String>.from(map['mentions'] ?? []),
+      visibility: map['visibility'] ?? 'everyone',
     );
   }
 }

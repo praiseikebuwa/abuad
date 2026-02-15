@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../../core/theme/app_colors.dart';
 import '../data/event_repository.dart';
-import '../domain/campus_event.dart';
+import '../domain/event.dart';
 
 class EventsScreen extends ConsumerWidget {
   const EventsScreen({super.key});
@@ -23,7 +23,7 @@ class EventsScreen extends ConsumerWidget {
           decoration: const BoxDecoration(gradient: AppColors.inkTealGradient),
         ),
       ),
-      body: StreamBuilder<List<CampusEvent>>(
+      body: StreamBuilder<List<AppEvent>>(
         stream: repo.watchUpcomingEvents(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -67,7 +67,7 @@ class EventsScreen extends ConsumerWidget {
 }
 
 class _EventCard extends StatelessWidget {
-  final CampusEvent event;
+  final AppEvent event;
 
   const _EventCard({required this.event});
 
@@ -92,7 +92,11 @@ class _EventCard extends StatelessWidget {
               height: 100,
               width: double.infinity,
               color: const Color(0xFFE9EFEF),
-              child: const Icon(Icons.event, size: 50, color: AppColors.secondaryTeal),
+              child: const Icon(
+                Icons.event,
+                size: 50,
+                color: AppColors.secondaryTeal,
+              ),
             ),
           Padding(
             padding: const EdgeInsets.all(16),

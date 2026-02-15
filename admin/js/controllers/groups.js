@@ -9,14 +9,14 @@ const groupsController = {
         if (!tableBody) return;
 
         // Listen to 'groups' collection
-        db.collection('groups').orderBy('memberCount', 'desc').limit(50).onSnapshot((snapshot) => {
+        db.collection('groups').orderBy('member_count', 'desc').limit(50).onSnapshot((snapshot) => {
             const groups = [];
             snapshot.forEach((doc) => {
                 const data = doc.data();
                 groups.push({
                     id: doc.id,
                     name: data.name || 'Unnamed Group',
-                    members: data.memberCount || 0,
+                    members: data.member_count || 0,
                     category: data.category || 'General',
                     created: data.createdAt ? new Date(data.createdAt).toLocaleDateString() : 'N/A'
                 });

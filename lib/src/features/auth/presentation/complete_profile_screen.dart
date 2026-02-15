@@ -1,10 +1,9 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../user/data/user_repository.dart';
 import '../../auth/data/auth_repository.dart';
-import '../../../core/services/supabase_storage_service.dart';
+import '../../../core/services/firebase_storage_service.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 
@@ -23,7 +22,6 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
   String? _department;
   String? _college;
   XFile? _pickedFile;
-  Uint8List? _imageBytes;
   bool _isLoading = false;
 
   @override
@@ -32,7 +30,7 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
     super.initState();
     // Pre-fill name if available
     final user = ref.read(authRepositoryProvider).currentUser;
-    final displayName = user?.userMetadata?['display_name'] as String?;
+    final displayName = user?.displayName;
     if (displayName != null && displayName.isNotEmpty) {
       _nameController.text = displayName;
     }
@@ -145,10 +143,8 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery);
     if (picked != null) {
-      final bytes = await picked.readAsBytes();
       setState(() {
         _pickedFile = picked;
-        _imageBytes = bytes;
       });
     }
   }
@@ -167,32 +163,45 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
     try {
       final authRepo = ref.read(authRepositoryProvider);
       final userRepo = ref.read(userRepositoryProvider);
-      final storage = SupabaseStorageService();
+      final storage = FirebaseStorageService();
 
       final currentUser = authRepo.currentUser;
       if (currentUser == null) return;
 
       String? photoUrl;
-      if (_imageBytes != null) {
-        photoUrl = await storage.uploadImageBytes(
-          _imageBytes!,
-          'users/${currentUser.id}/profile/',
+      if (_pickedFile != null) {
+        photoUrl = await storage.uploadImage(
+          _pickedFile!,
+          path: 'profile_images/${currentUser.uid}/',
         );
-      } else if (_pickedFile != null) {
-        // Fallback or legacy check
-        photoUrl = await storage.uploadImage(_pickedFile!);
       }
 
-      await userRepo.updateUser(currentUser.id, {
-        'display_name': _nameController.text.trim(), // Save Name/Nickname
+      final existingUser = await userRepo.getUserById(currentUser.uid);
+      String? handle = existingUser?.handle;
+
+      if (handle == null || handle.isEmpty) {
+        handle = await userRepo.generateHandle(_nameController.text.trim());
+      }
+
+      await userRepo.updateUser(currentUser.uid, {
+        'display_name': _nameController.text.trim(),
+        'handle': handle,
+        'email': currentUser.email ?? '',
         'phone_number': _phoneController.text.trim(),
         'college': _college,
         'department': _department,
         if (photoUrl != null) 'avatar_url': photoUrl,
       });
 
+      // Force refresh of the user provider to ensure the navigation guard
+      // in ScaffoldWithBottomNav sees the updated data immediately.
+      ref.invalidate(currentUserProvider);
+
+      // Allow a small delay for the provider to update before navigating
+      await Future.delayed(const Duration(milliseconds: 500));
+
       if (mounted) {
-        context.go('/'); // Navigate to Feed (removes this from stack)
+        context.go('/'); // Navigate to Feed
       }
     } catch (e) {
       if (mounted) {

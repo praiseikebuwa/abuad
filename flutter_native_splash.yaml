@@ -1,0 +1,15 @@
+flutter_native_splash:
+  color: "#ffffff"
+  image: "assets/Logo.png"
+  branding: "assets/Logo.png"
+  color_dark: "#121212"
+  image_dark: "assets/Logo.png"
+  branding_dark: "assets/Logo.png"
+
+  android_12:
+    image: "assets/Logo.png"
+    icon_background_color: "#ffffff"
+    image_dark: "assets/Logo.png"
+    icon_background_color_dark: "#121212"
+
+  web: false

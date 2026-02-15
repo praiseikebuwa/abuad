@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../user/data/user_repository.dart';
+import '../../../core/widgets/verification_badge.dart';
 import '../data/chat_repository.dart';
 
 class UserSearchScreen extends ConsumerStatefulWidget {
@@ -114,7 +115,7 @@ class _UserSearchScreenState extends ConsumerState<UserSearchScreen> {
                           : CircleAvatar(
                               backgroundColor: Theme.of(
                                 context,
-                              ).primaryColor.withOpacity(0.1),
+                              ).primaryColor.withValues(alpha: 0.1),
                               child: Text(
                                 user.displayName.isNotEmpty
                                     ? user.displayName[0].toUpperCase()
@@ -135,10 +136,9 @@ class _UserSearchScreenState extends ConsumerState<UserSearchScreen> {
                           ),
                           if (user.isVerified) ...[
                             const SizedBox(width: 4),
-                            const Icon(
-                              Icons.verified,
+                            VerificationBadge(
+                              type: user.verificationType,
                               size: 16,
-                              color: Colors.blue,
                             ),
                           ],
                         ],
@@ -149,9 +149,22 @@ class _UserSearchScreenState extends ConsumerState<UserSearchScreen> {
                       onTap: () async {
                         // Create or get channel with this user
                         try {
+                          final currentUser = ref
+                              .read(currentUserProvider)
+                              .value;
+                          if (currentUser == null) {
+                            throw Exception('Profile not found');
+                          }
+
                           final channelId = await ref
                               .read(chatRepositoryProvider)
-                              .createOrGetChannel(user.uid);
+                              .createOrGetChannel(
+                                user.uid,
+                                otherUserName: user.displayName,
+                                otherUserAvatar: user.avatarUrl,
+                                currentUserName: currentUser.displayName,
+                                currentUserAvatar: currentUser.avatarUrl,
+                              );
 
                           if (context.mounted) {
                             // Navigate to chat screen (use push to maintain back stack)

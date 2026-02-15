@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../data/auth_repository.dart';
+import '../../user/data/user_repository.dart';
+
+import '../../../core/utils/auth_error_handler.dart';
+import '../../../core/presentation/widgets/custom_snackbar.dart';
 
 class SignUpScreen extends ConsumerStatefulWidget {
   const SignUpScreen({super.key});
@@ -33,20 +37,53 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     setState(() => _isLoading = true);
 
     try {
+      // 1. Sign up with Firebase Auth
       await ref
           .read(authRepositoryProvider)
           .signUpWithEmailAndPassword(
             _emailController.text.trim(),
             _passwordController.text.trim(),
           );
+
+      // 2. Create User Profile in Firestore
+      final user = ref.read(authRepositoryProvider).currentUser;
+      if (user != null) {
+        final userRepo = ref.read(userRepositoryProvider);
+
+        // Extract display name from email (before @)
+        final email = _emailController.text.trim();
+        final displayName = email.split('@')[0];
+
+        // Generate unique handle
+        final handle = await userRepo.generateHandle(displayName);
+
+        // Create AppUser object
+        final appUser = AppUser(
+          uid: user.uid,
+          displayName: displayName,
+          email: email,
+          handle: handle,
+          // Default values
+          isVerified: false,
+          verificationType: 'none',
+          followersCount: 0,
+          followingCount: 0,
+          status: 'online',
+          college: 'ABUAD', // Default college
+          streakCount: 0,
+        );
+
+        // Save to Firestore
+        await userRepo.createOrUpdateUser(appUser);
+      }
+
       // Navigation handled by auth state listener
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Sign Up Failed: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
+        CustomSnackbar.show(
+          context,
+          message: AuthErrorHandler.getErrorMessage(e),
+          isError: true,
         );
       }
     } finally {

@@ -59,7 +59,20 @@ class UsersController {
             const tr = document.createElement('tr');
 
             const initial = user.displayName ? user.displayName[0].toUpperCase() : '?';
-            const isVerified = user.isVerified || false;
+            const vType = user.verificationType || (user.isVerified ? 'blue' : 'none');
+
+            let badgeHtml = '';
+            let iconHtml = '';
+
+            if (vType === 'gold') {
+                badgeHtml = '<span class="badge badge-gold">Gold</span>';
+                iconHtml = '<i class="fas fa-check-circle verified-icon-gold" title="Gold Verified"></i>';
+            } else if (vType === 'blue') {
+                badgeHtml = '<span class="badge badge-verified">Blue</span>';
+                iconHtml = '<i class="fas fa-check-circle verified-icon" title="Blue Verified"></i>';
+            } else {
+                badgeHtml = '<span class="badge badge-gray">None</span>';
+            }
 
             tr.innerHTML = `
                 <td>
@@ -68,7 +81,7 @@ class UsersController {
                         <div>
                             <div class="user-name">
                                 ${user.displayName || 'No Name'} 
-                                ${isVerified ? '<i class="fas fa-check-circle verified-icon"></i>' : ''}
+                                ${iconHtml}
                             </div>
                             <small class="user-email">${user.email}</small>
                         </div>
@@ -76,21 +89,37 @@ class UsersController {
                 </td>
                 <td>
                     <span class="status-badge ${user.status || 'offline'}">
-                        ${user.status === 'online' ? '● Online' : 'Offline'}
+                        ${user.status === 'online' ? '● Online' : (user.status === 'banned' ? '🚫 Banned' : 'Offline')}
                     </span>
                 </td>
                 <td>
-                    <span class="badge ${isVerified ? 'badge-verified' : 'badge-gray'}">
-                        ${isVerified ? 'Verified' : 'Unverified'}
-                    </span>
+                    ${badgeHtml}
                 </td>
                 <td>${formatDate(user.createdAt)}</td>
                 <td>
                     <div class="action-buttons">
-                        <button class="btn-icon ${isVerified ? 'btn-revoke' : 'btn-approve'}" 
-                                onclick="window.usersController.toggleVerify('${user.id}', ${!isVerified})"
-                                title="${isVerified ? 'Revoke Verification' : 'Verify User'}">
-                            <i class="fas ${isVerified ? 'fa-times' : 'fa-check'}"></i>
+                        <div class="verification-tier-buttons">
+                            <button class="btn-icon btn-tier-none ${vType === 'none' ? 'active' : ''}" 
+                                    onclick="window.usersController.setVerification('${user.id}', 'none')"
+                                    title="Unverify">
+                                <i class="fas fa-times"></i>
+                            </button>
+                            <button class="btn-icon btn-tier-blue ${vType === 'blue' ? 'active' : ''}" 
+                                    onclick="window.usersController.setVerification('${user.id}', 'blue')"
+                                    title="Blue Badge">
+                                <i class="fas fa-check"></i>
+                            </button>
+                            <button class="btn-icon btn-tier-gold ${vType === 'gold' ? 'active' : ''}" 
+                                    onclick="window.usersController.setVerification('${user.id}', 'gold')"
+                                    title="Gold Badge">
+                                <i class="fas fa-award"></i>
+                            </button>
+                        </div>
+                        <button class="btn-icon ${user.status === 'banned' ? 'btn-unban' : 'btn-ban'}" 
+                                onclick="window.usersController.toggleBan('${user.id}', ${user.status === 'banned'})"
+                                title="${user.status === 'banned' ? 'Unban User' : 'Ban User'}"
+                                style="color: ${user.status === 'banned' ? '#4caf50' : '#f44336'}">
+                            <i class="fas ${user.status === 'banned' ? 'fa-unlock' : 'fa-ban'}"></i>
                         </button>
                         <button class="btn-icon btn-delete" 
                                 onclick="window.usersController.deleteUser('${user.id}')"
@@ -108,17 +137,22 @@ class UsersController {
         if (totalCount) totalCount.innerText = this.users.length + '+';
     }
 
-    // Keep render method for compatibility if needed, but load calls renderTable via onSnapshot callbacks now.
-    // Actually, I removed render() and replaced logic in load(). 
-    // I should remove the old render() method to avoid confusion? 
-    // Yes.
-    render(snap) { /* Deprecated */ }
-
-    toggleVerify(uid, newStatus) {
-        // Optimistic UI update could happen here, but Firestore listener handles it fast enough
+    setVerification(uid, type) {
         db.collection('users').doc(uid).update({
-            isVerified: newStatus
+            verificationType: type,
+            isVerified: type !== 'none'
         }).catch(err => alert("Error: " + err.message));
+    }
+
+    toggleBan(uid, isBanned) {
+        const newStatus = isBanned ? 'offline' : 'banned'; // Default to offline when unbanned
+        const confirmMsg = isBanned ? "Unban this user?" : "Permenantly BAN this user from the platform?";
+
+        if (confirm(confirmMsg)) {
+            db.collection('users').doc(uid).update({
+                status: newStatus
+            }).catch(err => alert("Error: " + err.message));
+        }
     }
 
     deleteUser(uid) {

@@ -1,31 +1,50 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../domain/campus_event.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../domain/event.dart';
 
 final eventRepositoryProvider = Provider<EventRepository>((ref) {
-  return EventRepository(Supabase.instance.client);
+  return EventRepository(FirebaseFirestore.instance);
 });
 
 class EventRepository {
-  final SupabaseClient _supabase;
+  final FirebaseFirestore _firestore;
 
-  EventRepository(this._supabase);
+  EventRepository(this._firestore);
 
-  Stream<List<CampusEvent>> watchUpcomingEvents() {
-    return _supabase
-        .from('events')
-        .stream(primaryKey: ['id'])
-        .order('date', ascending: true)
-        .map((data) {
-          final now = DateTime.now().millisecondsSinceEpoch;
-          return data
-              .map((map) => CampusEvent.fromMap(map))
-              .where((event) => event.date.millisecondsSinceEpoch > now)
-              .toList();
-        });
+  Stream<List<AppEvent>> watchUpcomingEvents() {
+    final now = DateTime.now();
+    return _firestore
+        .collection('events')
+        .where('date', isGreaterThan: Timestamp.fromDate(now))
+        .orderBy('date', descending: false)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => AppEvent.fromMap(doc.id, doc.data()))
+              .toList(),
+        );
   }
 
-  Future<void> addEvent(CampusEvent event) async {
-    await _supabase.from('events').insert(event.toMap());
+  Future<void> addEvent(AppEvent event) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw Exception('User must be logged in to create an event');
+    }
+
+    final eventId = _firestore.collection('events').doc().id;
+    final eventWithId = AppEvent(
+      id: eventId,
+      title: event.title,
+      description: event.description,
+      location: event.location,
+      date: event.date,
+      organizer: event.organizer,
+      organizerId: user.uid,
+      imageUrl: event.imageUrl,
+      attendeesCount: 0,
+      isOnline: event.isOnline,
+    );
+    await _firestore.collection('events').doc(eventId).set(eventWithId.toMap());
   }
 }

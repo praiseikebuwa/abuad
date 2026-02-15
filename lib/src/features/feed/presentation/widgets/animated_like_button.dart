@@ -7,6 +7,8 @@ class AnimatedLikeButton extends StatefulWidget {
 
   final bool showCount;
   final double iconSize;
+  final Color? activeColor;
+  final Color? inactiveColor;
 
   const AnimatedLikeButton({
     super.key,
@@ -15,6 +17,8 @@ class AnimatedLikeButton extends StatefulWidget {
     required this.onTap,
     this.showCount = true,
     this.iconSize = 18,
+    this.activeColor,
+    this.inactiveColor,
   });
 
   @override
@@ -89,7 +93,9 @@ class _AnimatedLikeButtonState extends State<AnimatedLikeButton>
                   widget.isLiked ? Icons.favorite : Icons.favorite_border,
                   key: ValueKey(widget.isLiked),
                   size: widget.iconSize,
-                  color: widget.isLiked ? Colors.red : Colors.grey[600],
+                  color: widget.isLiked
+                      ? (widget.activeColor ?? Colors.red)
+                      : (widget.inactiveColor ?? Colors.grey[600]),
                 ),
               ),
             ),
@@ -113,7 +119,9 @@ class _AnimatedLikeButtonState extends State<AnimatedLikeButton>
                   '${widget.count}',
                   key: ValueKey(widget.count),
                   style: TextStyle(
-                    color: widget.isLiked ? Colors.red : Colors.grey[600],
+                    color: widget.isLiked
+                        ? (widget.activeColor ?? Colors.red)
+                        : (widget.inactiveColor ?? Colors.grey[600]),
                     fontSize: 13,
                   ),
                 ),

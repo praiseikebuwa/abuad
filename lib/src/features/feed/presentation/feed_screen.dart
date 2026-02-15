@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'dart:ui';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../../../core/theme/app_colors.dart';
 import '../data/post_repository.dart';
 import '../domain/post.dart' as domain;
 import 'widgets/post_card.dart';
 import 'widgets/feed_loading_skeleton.dart';
+import '../../notifications/presentation/widgets/notification_icon.dart';
 
 class FeedScreen extends ConsumerWidget {
   const FeedScreen({super.key});
@@ -25,37 +28,41 @@ class FeedScreen extends ConsumerWidget {
           style: TextStyle(
             fontWeight: FontWeight.w800,
             fontSize: 20,
-            color: isDark ? Colors.white : Colors.white,
+            color: isDark
+                ? const Color.fromARGB(255, 0, 0, 0)
+                : const Color.fromARGB(255, 0, 0, 0),
           ),
         ),
         centerTitle: false,
         surfaceTintColor: Colors.transparent,
         scrolledUnderElevation: 0,
         backgroundColor: Colors.transparent,
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: AppColors.inkTealGradient,
-          ),
-        ),
+        elevation: 0,
         leading: Padding(
           padding: const EdgeInsets.all(8.0),
           child: GestureDetector(
-            onTap: () => context.push('/profile'),
+            onTap: () => context.go('/profile'),
             child: CircleAvatar(
-              backgroundColor: Colors.white.withOpacity(0.15),
+              backgroundColor: const Color.fromARGB(
+                255,
+                8,
+                36,
+                161,
+              ).withOpacity(0.15),
               child: Icon(
                 Icons.person,
-                color: Colors.white,
+                color: const Color.fromARGB(255, 0, 0, 0),
                 size: 20,
               ),
             ),
           ),
         ),
         actions: [
+          const NotificationIcon(),
           IconButton(
             icon: Icon(
               Icons.settings_outlined,
-              color: Colors.white,
+              color: const Color.fromARGB(255, 0, 0, 0),
             ),
             onPressed: () => context.push('/settings'),
           ),
@@ -81,36 +88,48 @@ class FeedScreen extends ConsumerWidget {
                   id: 'all',
                   selectedId: selectedChannel,
                   isDark: isDark,
+                  icon: Icons.auto_awesome,
+                  activeColor: Colors.blueAccent,
                 ),
                 _TabItem(
                   label: 'General',
                   id: 'general',
                   selectedId: selectedChannel,
                   isDark: isDark,
+                  icon: Icons.public,
+                  activeColor: AppColors.primaryInk,
                 ),
                 _TabItem(
                   label: 'Engineering',
                   id: 'engineering',
                   selectedId: selectedChannel,
                   isDark: isDark,
+                  icon: Icons.engineering,
+                  activeColor: Colors.blue,
                 ),
                 _TabItem(
                   label: 'Hostel',
                   id: 'hostel',
                   selectedId: selectedChannel,
                   isDark: isDark,
+                  icon: Icons.home_work,
+                  activeColor: Colors.orange,
                 ),
                 _TabItem(
                   label: 'Confessions',
                   id: 'confessions',
                   selectedId: selectedChannel,
                   isDark: isDark,
+                  icon: Icons.visibility_off,
+                  activeColor: Colors.deepPurple,
                 ),
                 _TabItem(
                   label: 'Freshers',
                   id: 'freshers',
                   selectedId: selectedChannel,
                   isDark: isDark,
+                  icon: Icons.school,
+                  activeColor: Colors.green,
                 ),
               ],
             ),
@@ -119,18 +138,60 @@ class FeedScreen extends ConsumerWidget {
       ),
       body: Stack(
         children: [
+          // Mesh Background Elements
           Positioned.fill(
             child: Container(color: theme.scaffoldBackgroundColor),
           ),
+          // Top Right Mesh
           Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
+            top: -100,
+            right: -50,
             child: Container(
-              height: 140,
-              decoration: const BoxDecoration(
-                gradient: AppColors.inkTealGradient,
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.secondaryTeal.withValues(
+                  alpha: isDark ? 0.2 : 0.15,
+                ),
               ),
+            ).animate().fadeIn(duration: 1000.ms),
+          ),
+          // Bottom Left Mesh
+          Positioned(
+            bottom: 100,
+            left: -100,
+            child: Container(
+              width: 400,
+              height: 400,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.primaryInk.withValues(
+                  alpha: isDark ? 0.3 : 0.1,
+                ),
+              ),
+            ).animate().fadeIn(duration: 1200.ms),
+          ),
+          // Subtle Center Mesh
+          Positioned(
+            top: 200,
+            right: 100,
+            child: Container(
+              width: 200,
+              height: 200,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.accentAmber.withValues(
+                  alpha: isDark ? 0.05 : 0.03,
+                ),
+              ),
+            ).animate().fadeIn(duration: 1500.ms),
+          ),
+          // Backdrop Filter for Mesh Blur
+          Positioned.fill(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
+              child: Container(color: Colors.transparent),
             ),
           ),
           RefreshIndicator(
@@ -139,7 +200,9 @@ class FeedScreen extends ConsumerWidget {
             },
             color: theme.colorScheme.primary,
             child: StreamBuilder<List<domain.Post>>(
-              stream: repo.watchPosts(),
+              stream: selectedChannel == 'all'
+                  ? repo.watchPosts()
+                  : repo.watchChannelPosts(selectedChannel),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const FeedLoadingSkeleton();
@@ -172,13 +235,7 @@ class FeedScreen extends ConsumerWidget {
                   );
                 }
 
-                var posts = snapshot.data ?? [];
-
-                if (selectedChannel != 'all') {
-                  posts = posts
-                      .where((p) => p.channelId == selectedChannel)
-                      .toList();
-                }
+                final posts = snapshot.data ?? [];
 
                 if (posts.isEmpty) {
                   return Center(
@@ -217,11 +274,13 @@ class FeedScreen extends ConsumerWidget {
                 return ListView.separated(
                   itemCount: posts.length,
                   padding: const EdgeInsets.only(top: 12),
-                  separatorBuilder: (context, index) => Divider(
-                    height: 1,
-                    thickness: 1,
-                    color: isDark ? Colors.grey[900] : Colors.grey[200],
-                  ),
+                  separatorBuilder: (context, index) {
+                    return Divider(
+                      height: 1,
+                      thickness: 0.5,
+                      color: isDark ? Colors.white10 : Colors.black12,
+                    );
+                  },
                   itemBuilder: (context, index) {
                     final post = posts[index];
                     return PostCard(post: post);
@@ -232,17 +291,23 @@ class FeedScreen extends ConsumerWidget {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          context.push(
-            '/create-post',
-            extra: selectedChannel == 'all' ? 'general' : selectedChannel,
-          );
-        },
-        backgroundColor: theme.colorScheme.secondary,
-        elevation: 4,
-        shape: const CircleBorder(),
-        child: const Icon(Icons.add, color: AppColors.primaryInk, size: 28),
+      floatingActionButton: Padding(
+        padding: EdgeInsets.only(
+          bottom: 5 + MediaQuery.of(context).padding.bottom,
+        ), // Lift above bottom nav
+        child: FloatingActionButton(
+          heroTag: 'feed_fab',
+          onPressed: () {
+            context.push(
+              '/create-post',
+              extra: selectedChannel == 'all' ? 'general' : selectedChannel,
+            );
+          },
+          backgroundColor: theme.colorScheme.secondary,
+          elevation: 7,
+          shape: const CircleBorder(),
+          child: const Icon(Icons.add, color: AppColors.primaryInk, size: 28),
+        ),
       ),
     );
   }
@@ -268,12 +333,16 @@ class _TabItem extends ConsumerWidget {
   final String id;
   final String selectedId;
   final bool isDark;
+  final IconData icon;
+  final Color activeColor;
 
   const _TabItem({
     required this.label,
     required this.id,
     required this.selectedId,
     required this.isDark,
+    required this.icon,
+    required this.activeColor,
   });
 
   @override
@@ -287,23 +356,55 @@ class _TabItem extends ConsumerWidget {
       },
       behavior: HitTestBehavior.opaque,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
           color: isSelected
-              ? Colors.white.withOpacity(0.18)
-              : Colors.white.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(18),
+              ? (isDark ? activeColor : activeColor)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(24),
           border: Border.all(
-            color: isSelected ? Colors.white54 : Colors.white24,
+            color: isSelected
+                ? Colors.transparent
+                : (isDark
+                      ? Colors.white.withValues(alpha: 0.3)
+                      : AppColors.primaryInk.withValues(alpha: 0.1)),
+            width: 1,
           ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: activeColor.withValues(alpha: 0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
         ),
-        child: Text(
-          label,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: Colors.white,
-            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: isSelected
+                  ? Colors.white
+                  : (isDark
+                        ? Colors.white70
+                        : AppColors.primaryInk.withValues(alpha: 0.6)),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: isSelected
+                    ? Colors.white
+                    : (isDark ? Colors.white70 : AppColors.primaryInk),
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ],
         ),
       ),
     );

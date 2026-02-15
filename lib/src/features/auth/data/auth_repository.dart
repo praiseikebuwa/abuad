@@ -1,9 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../user/data/user_repository.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
-  return AuthRepository(Supabase.instance.client);
+  return AuthRepository(FirebaseAuth.instance);
 });
 
 final authStateChangesProvider = StreamProvider<User?>((ref) {
@@ -11,35 +10,67 @@ final authStateChangesProvider = StreamProvider<User?>((ref) {
 });
 
 class AuthRepository {
-  final SupabaseClient _supabase;
+  final FirebaseAuth _auth;
 
-  AuthRepository(this._supabase);
+  AuthRepository(this._auth);
 
-  Stream<User?> get authStateChanges =>
-      _supabase.auth.onAuthStateChange.map((event) {
-        return event.session?.user;
-      });
+  Stream<User?> get authStateChanges => _auth.authStateChanges();
 
-  User? get currentUser => _supabase.auth.currentUser;
+  User? get currentUser => _auth.currentUser;
 
   // Sign In with Email and Password
   Future<void> signInWithEmailAndPassword(String email, String password) async {
-    await _supabase.auth.signInWithPassword(email: email, password: password);
+    await _auth.signInWithEmailAndPassword(email: email, password: password);
   }
 
   // Sign Up with Email and Password
   Future<void> signUpWithEmailAndPassword(String email, String password) async {
-    await _supabase.auth.signUp(email: email, password: password);
-    // Note: Profile creation is handled by Database Trigger (schema.sql)
+    await _auth.createUserWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+    // Note: Profile creation will be handled by a Cloud Function or manually after this call
   }
 
   // Sign Out
   Future<void> signOut() async {
-    await _supabase.auth.signOut();
+    await _auth.signOut();
   }
 
   // Password Reset
   Future<void> sendPasswordResetEmail(String email) async {
-    await _supabase.auth.resetPasswordForEmail(email);
+    await _auth.sendPasswordResetEmail(email: email);
+  }
+
+  // Change Password
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) throw Exception('No user logged in');
+
+    final email = user.email;
+    if (email == null) throw Exception('User email not found');
+
+    // Re-authenticate user
+    final credential = EmailAuthProvider.credential(
+      email: email,
+      password: currentPassword,
+    );
+
+    try {
+      await user.reauthenticateWithCredential(credential);
+      await user.updatePassword(newPassword);
+    } catch (e) {
+      if (e is FirebaseAuthException) {
+        if (e.code == 'wrong-password') {
+          throw Exception('Incorrect current password');
+        } else if (e.code == 'weak-password') {
+          throw Exception('New password is too weak');
+        }
+      }
+      throw Exception('Failed to change password: $e');
+    }
   }
 }

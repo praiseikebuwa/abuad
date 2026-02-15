@@ -1,5 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class MarketplaceItem {
   final String id;
@@ -9,7 +9,10 @@ class MarketplaceItem {
   final String category;
   final String sellerId;
   final String sellerName;
-  final String? imageUrl;
+  final List<String> images;
+
+  // Backwards compatibility getter
+  String? get imageUrl => images.isNotEmpty ? images.first : null;
   final String status;
   final DateTime createdAt;
 
@@ -21,22 +24,24 @@ class MarketplaceItem {
     required this.category,
     required this.sellerId,
     required this.sellerName,
-    this.imageUrl,
+    this.images = const [],
     this.status = 'available',
     required this.createdAt,
   });
 
   Map<String, dynamic> toMap() {
     return {
+      'id': id,
       'title': title,
       'description': description,
       'price': price,
       'category': category,
       'seller_id': sellerId,
       'seller_name': sellerName,
-      'image_url': imageUrl,
+      'images': images,
+      'image_url': imageUrl, // Maintain for older clients/queries
       'status': status,
-      'created_at': createdAt.millisecondsSinceEpoch,
+      'created_at': Timestamp.fromDate(createdAt),
     };
   }
 
@@ -49,44 +54,82 @@ class MarketplaceItem {
       category: map['category'] ?? 'books',
       sellerId: map['seller_id'] ?? '',
       sellerName: map['seller_name'] ?? '',
-      imageUrl: map['image_url'],
+      images: List<String>.from(
+        map['images'] ?? (map['image_url'] != null ? [map['image_url']] : []),
+      ),
       status: map['status'] ?? 'available',
-      createdAt: map['created_at'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(map['created_at'])
-          : DateTime.now(),
+      createdAt: (map['created_at'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
   }
 }
 
 final marketplaceRepositoryProvider = Provider<MarketplaceRepository>((ref) {
-  return MarketplaceRepository(Supabase.instance.client);
+  return MarketplaceRepository(FirebaseFirestore.instance);
 });
 
 class MarketplaceRepository {
-  final SupabaseClient _supabase;
+  final FirebaseFirestore _firestore;
 
-  MarketplaceRepository(this._supabase);
+  MarketplaceRepository(this._firestore);
 
-  Stream<List<MarketplaceItem>> watchItems({String? category}) {
-    return _supabase
-        .from('marketplace_items')
-        .stream(primaryKey: ['id'])
-        .order('created_at', ascending: false)
-        .map((data) {
-          var items = data.map((map) => MarketplaceItem.fromMap(map));
+  Stream<List<MarketplaceItem>> watchItems({
+    String? category,
+    String? searchQuery,
+  }) {
+    Query query = _firestore
+        .collection('marketplace_items')
+        .where('status', isEqualTo: 'available')
+        .orderBy('created_at', descending: true);
 
-          // Client-side filtering
-          items = items.where((item) => item.status == 'available');
+    if (category != null && category != 'all') {
+      query = query.where('category', isEqualTo: category);
+    }
 
-          if (category != null && category != 'all') {
-            items = items.where((item) => item.category == category);
-          }
+    return query.snapshots().map((snapshot) {
+      final items = snapshot.docs
+          .map(
+            (doc) =>
+                MarketplaceItem.fromMap(doc.data() as Map<String, dynamic>),
+          )
+          .toList();
 
-          return items.toList();
-        });
+      if (searchQuery != null && searchQuery.isNotEmpty) {
+        final queryLower = searchQuery.toLowerCase();
+        return items.where((item) {
+          final titleLower = item.title.toLowerCase();
+          final descLower = item.description.toLowerCase();
+          return titleLower.contains(queryLower) ||
+              descLower.contains(queryLower);
+        }).toList();
+      }
+
+      return items;
+    });
   }
 
   Future<void> addItem(MarketplaceItem item) async {
-    await _supabase.from('marketplace_items').insert(item.toMap());
+    final itemId = _firestore.collection('marketplace_items').doc().id;
+    final itemWithId = MarketplaceItem(
+      id: itemId,
+      title: item.title,
+      description: item.description,
+      price: item.price,
+      category: item.category,
+      sellerId: item.sellerId,
+      sellerName: item.sellerName,
+      images: item.images,
+      status: item.status,
+      createdAt: item.createdAt,
+    );
+    await _firestore
+        .collection('marketplace_items')
+        .doc(itemId)
+        .set(itemWithId.toMap());
+  }
+
+  Future<void> updateItemStatus(String itemId, String status) async {
+    await _firestore.collection('marketplace_items').doc(itemId).update({
+      'status': status,
+    });
   }
 }

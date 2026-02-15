@@ -5,8 +5,10 @@ class AppEvent {
   final DateTime date;
   final String location;
   final String organizer;
+  final String organizerId;
   final String imageUrl;
   final int attendeesCount;
+  final bool isOnline;
 
   AppEvent({
     required this.id,
@@ -15,8 +17,10 @@ class AppEvent {
     required this.date,
     required this.location,
     required this.organizer,
+    required this.organizerId,
     required this.imageUrl,
     this.attendeesCount = 0,
+    this.isOnline = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -26,8 +30,10 @@ class AppEvent {
       'date': date.millisecondsSinceEpoch,
       'location': location,
       'organizer': organizer,
+      'organizer_id': organizerId,
       'imageUrl': imageUrl,
       'attendeesCount': attendeesCount,
+      'is_online': isOnline,
     };
   }
 
@@ -39,8 +45,10 @@ class AppEvent {
       date: DateTime.fromMillisecondsSinceEpoch(map['date'] ?? 0),
       location: map['location'] ?? '',
       organizer: map['organizer'] ?? '',
+      organizerId: map['organizer_id'] ?? '',
       imageUrl: map['imageUrl'] ?? '',
       attendeesCount: map['attendeesCount'] ?? 0,
+      isOnline: map['is_online'] ?? false,
     );
   }
 }

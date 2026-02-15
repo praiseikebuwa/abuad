@@ -1,60 +1,77 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_auth/firebase_auth.dart' as auth;
 import '../domain/chat_channel.dart';
 import '../domain/chat_message.dart';
 
 final chatRepositoryProvider = Provider<ChatRepository>((ref) {
-  return ChatRepository(Supabase.instance.client);
+  return ChatRepository(FirebaseFirestore.instance, FirebaseDatabase.instance);
+});
+
+final unreadChatCountProvider = StreamProvider<int>((ref) {
+  final chatRepo = ref.watch(chatRepositoryProvider);
+  return chatRepo.watchChannels().map((channels) {
+    int total = 0;
+    final uid = chatRepo.currentUserId;
+    if (uid == null) return 0;
+
+    for (final channel in channels) {
+      total += channel.unreadCounts[uid] ?? 0;
+    }
+    return total;
+  });
 });
 
 class ChatRepository {
-  final SupabaseClient _supabase;
+  final FirebaseFirestore _firestore;
+  final FirebaseDatabase _rtdb;
 
-  ChatRepository(this._supabase);
+  ChatRepository(this._firestore, this._rtdb);
 
-  String? get currentUserId => _supabase.auth.currentUser?.id;
+  String? get currentUserId => auth.FirebaseAuth.instance.currentUser?.uid;
 
   // Stream list of channels where current user is a member
   Stream<List<ChatChannel>> watchChannels() {
     final uid = currentUserId;
     if (uid == null) return Stream.value([]);
 
-    // 1. Get channel IDs for user
-    // We can do a join: channels!inner(channel_members!inner(user_id))
-    // Filter: channel_members.user_id = uid.
-    // Also select all members from channel to build the channel object.
+    return _firestore
+        .collection('channels')
+        .where('member_ids', arrayContains: uid)
+        .orderBy('last_message_time', descending: true)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => ChatChannel.fromMap(doc.data()))
+              .toList(),
+        );
+  }
 
-    return _supabase
-        .from('channels')
-        .select(
-          '*, channel_members!inner(user_id), members:channel_members(user_id, profiles(display_name, avatar_url))',
-        )
-        .eq('channel_members.user_id', uid)
-        .order('last_message_time', ascending: false)
-        .asStream()
-        .map((data) {
-          return data.map((map) {
-            // We need to map 'members' to the structure expected by fromMap
-            // The query returns 'members' as List of {user_id, profiles: {...}}
-            // Rename 'members' to 'channel_members' if needed or adjust logic.
-            // Our fromMap expects 'channel_members'.
-            final validMap = Map<String, dynamic>.from(map);
-            validMap['channel_members'] = map['members']; // Remap alias
-            return ChatChannel.fromMap(validMap, currentUserId: uid);
-          }).toList();
-        });
+  // Stream a single channel by ID
+  Stream<ChatChannel?> watchChannel(String channelId) {
+    return _firestore
+        .collection('channels')
+        .doc(channelId)
+        .snapshots()
+        .map((doc) => doc.exists ? ChatChannel.fromMap(doc.data()!) : null);
   }
 
   // Stream messages for a specific channel
   Stream<List<ChatMessage>> watchMessages(String channelId) {
-    return _supabase
-        .from('messages')
-        .stream(primaryKey: ['id'])
-        .eq('channel_id', channelId)
-        .order('created_at', ascending: false)
-        .map((data) {
-          return data.map((map) => ChatMessage.fromMap(map)).toList();
-        });
+    final cutoff = DateTime.now().subtract(const Duration(hours: 24));
+    return _firestore
+        .collection('channels')
+        .doc(channelId)
+        .collection('messages')
+        .where('created_at', isGreaterThan: Timestamp.fromDate(cutoff))
+        .orderBy('created_at', descending: true)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => ChatMessage.fromMap(doc.data()))
+              .toList(),
+        );
   }
 
   // Send a message
@@ -65,91 +82,300 @@ class ChatRepository {
     String? imageUrl,
     double? imageWidth,
     double? imageHeight,
+    double? latitude,
+    double? longitude,
+    bool isSnap = false,
+    String? replyToId,
+    String? replyToContent,
+    String? replyToSenderId,
+    List<String>? mentions,
+    String? audioUrl,
+    int? duration,
   }) async {
     final uid = currentUserId;
     if (uid == null) return;
 
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final messageId = _firestore
+        .collection('channels')
+        .doc(channelId)
+        .collection('messages')
+        .doc()
+        .id;
+    final now = DateTime.now();
 
-    // Insert message
     final msgData = {
-      'channel_id': channelId,
+      'id': messageId,
       'sender_id': uid,
       'content': content,
       'type': type,
-      'created_at': timestamp,
-      'image_url': imageUrl,
-      'image_width': imageWidth,
-      'image_height': imageHeight,
+      'created_at': Timestamp.fromDate(now),
       'read_by': [uid],
+      if (imageUrl != null) 'image_url': imageUrl,
+      if (imageWidth != null) 'image_width': imageWidth,
+      if (imageHeight != null) 'image_height': imageHeight,
+      if (latitude != null) 'latitude': latitude,
+      if (longitude != null) 'longitude': longitude,
+      if (isSnap) 'is_snap': true,
+      if (replyToId != null) 'reply_to_id': replyToId,
+      if (replyToContent != null) 'reply_to_content': replyToContent,
+      if (replyToSenderId != null) 'reply_to_sender_id': replyToSenderId,
+      'reactions': {},
+      if (mentions != null) 'mentions': mentions,
+      'is_snap': isSnap,
+      if (audioUrl != null) 'audio_url': audioUrl,
+      if (duration != null) 'duration': duration,
     };
 
-    final res = await _supabase
-        .from('messages')
-        .insert(msgData)
-        .select()
-        .single();
+    final channelRef = _firestore.collection('channels').doc(channelId);
 
-    // Update channel last_message
-    await _supabase
-        .from('channels')
-        .update({
-          'last_message': res, // Store full message object
-          'last_message_time': timestamp,
-        })
-        .eq('id', channelId);
+    await _firestore.runTransaction((transaction) async {
+      final channelDoc = await transaction.get(channelRef);
+      if (!channelDoc.exists) return;
+
+      final channelData = channelDoc.data()!;
+      final lastSnapTimeMap =
+          channelData['last_snap_time'] as Map<String, dynamic>? ?? {};
+      int streakCount = channelData['streak_count'] ?? 0;
+      DateTime? streakExpiry = (channelData['streak_expiry'] as Timestamp?)
+          ?.toDate();
+
+      // Streak Logic (Only for direct chats)
+      if (isSnap && channelData['type'] == 'direct') {
+        // Get other user ID
+        final memberIds = List<String>.from(channelData['member_ids']);
+        final otherId = memberIds.firstWhere(
+          (id) => id != uid,
+          orElse: () => '',
+        );
+
+        if (otherId.isNotEmpty) {
+          final myLastSnap = (lastSnapTimeMap[uid] as Timestamp?)?.toDate();
+          final theirLastSnap = (lastSnapTimeMap[otherId] as Timestamp?)
+              ?.toDate();
+
+          // Update my last snap time
+          lastSnapTimeMap[uid] = Timestamp.fromDate(now);
+
+          // Check if streak expires
+          if (streakExpiry != null && now.isAfter(streakExpiry)) {
+            streakCount = 0;
+            streakExpiry = null;
+          }
+
+          // Check for streak increment
+          // Logic: If they snapped within last 24h AND I haven't snapped today (to avoid double counting)
+          // Simplified Logic: Streak increments if BOTH snap within 24h window.
+          // We set expiry to 24h from now whenever a streak is active.
+
+          if (theirLastSnap != null) {
+            final difference = now.difference(theirLastSnap);
+            // If they snapped within 24 hours
+            if (difference.inHours < 24) {
+              // Extend/Start Streak
+              // We only increment if this is a "new" exchange day or to start off
+              // Ideally we need more robust logic but for MVP:
+              // If streak is 0, set to 1.
+              // If streak > 0, check if we already incremented today?
+              // Let's keep it simple: Reset expiry to 24h from now.
+              streakExpiry = now.add(const Duration(hours: 24));
+
+              // To avoid spam incrementing, we could check if I already snapped in this window.
+              // For now, let's just update timestamp and maybe increment if it was 0 or expiring.
+              if (streakCount == 0) {
+                streakCount = 1;
+              } else {
+                // Increment if my previous snap was > 12 hours ago (approx "next day")
+                if (myLastSnap == null ||
+                    now.difference(myLastSnap).inHours > 12) {
+                  streakCount++;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // 1. Add message
+      transaction.set(
+        _firestore
+            .collection('channels')
+            .doc(channelId)
+            .collection('messages')
+            .doc(messageId),
+        msgData,
+      );
+
+      // 2. Update channel
+      transaction.update(channelRef, {
+        'last_message': msgData,
+        'last_message_time': Timestamp.fromDate(now),
+        if (isSnap) 'last_snap_time': lastSnapTimeMap,
+        if (isSnap) 'streak_count': streakCount,
+        if (isSnap && streakExpiry != null)
+          'streak_expiry': Timestamp.fromDate(streakExpiry),
+      });
+    });
   }
 
   // Start a new chat (or get existing)
-  Future<String> createOrGetChannel(String otherUserId) async {
+  Future<String> createOrGetChannel(
+    String otherUserId, {
+    required String otherUserName,
+    String? otherUserAvatar,
+    required String currentUserName,
+    String? currentUserAvatar,
+  }) async {
     final uid = currentUserId;
     if (uid == null) throw Exception('Not logged in');
 
-    // Create a new direct channel
-    // TODO: Implement unique constraint on direct chats in DB to prevent duplicates
+    // For direct chats, we search for existing one where member_ids contains both
+    final existing = await _firestore
+        .collection('channels')
+        .where('type', isEqualTo: 'direct')
+        .where('member_ids', arrayContains: uid)
+        .get();
 
-    final channelRes = await _supabase
-        .from('channels')
-        .insert({
-          'type': 'direct',
-          'last_message_time': DateTime.now().millisecondsSinceEpoch,
-        })
-        .select()
-        .single();
+    for (final doc in existing.docs) {
+      final memberIds = List<String>.from(doc.data()['member_ids']);
+      if (memberIds.contains(otherUserId)) {
+        return doc.id;
+      }
+    }
 
-    final channelId = channelRes['id'];
+    if (otherUserId.isEmpty) {
+      throw ArgumentError('otherUserId cannot be empty');
+    }
 
-    // Add members
-    await _supabase.from('channel_members').insert([
-      {'channel_id': channelId, 'user_id': uid},
-      {'channel_id': channelId, 'user_id': otherUserId},
-    ]);
+    // REMOVED: Mutual Follow Check to allow open messaging as requested
+    /*
+    final currentUserFollowing = await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('following')
+        .doc(otherUserId)
+        .get();
 
+    final otherUserFollowing = await _firestore
+        .collection('users')
+        .doc(otherUserId)
+        .collection('following')
+        .doc(uid)
+        .get();
+
+    if (!currentUserFollowing.exists || !otherUserFollowing.exists) {
+      throw Exception('You can only message users who follow you back.');
+    }
+    */
+
+    // Create new
+    final channelId = _firestore.collection('channels').doc().id;
+    final now = DateTime.now();
+
+    // For chat headers/list, we need verification info
+    final otherUserType =
+        (await _firestore.collection('users').doc(otherUserId).get())
+            .data()?['verification_type'] ??
+        'none';
+    final currentUserData =
+        (await _firestore.collection('users').doc(uid).get()).data();
+    final currentUserType = currentUserData?['verification_type'] ?? 'none';
+
+    final channelData = {
+      'id': channelId,
+      'type': 'direct',
+      'member_ids': [uid, otherUserId],
+      'member_names': {uid: currentUserName, otherUserId: otherUserName},
+      'member_avatars': {uid: currentUserAvatar, otherUserId: otherUserAvatar},
+      'verification_types': {uid: currentUserType, otherUserId: otherUserType},
+      'last_message_time': Timestamp.fromDate(now),
+      'last_message': {},
+      'unread_counts': {uid: 0, otherUserId: 0},
+    };
+
+    await _firestore.collection('channels').doc(channelId).set(channelData);
     return channelId;
   }
 
-  // Get user display info (for chat list)
-  Future<Map<String, String>> getUserInfo(String userId) async {
-    try {
-      final data = await _supabase
-          .from('profiles')
-          .select('display_name, handle')
-          .eq('id', userId)
-          .single();
+  // Create a new group chat
+  Future<String> createGroupChannel({
+    required String name,
+    String? avatarUrl,
+    required List<String> memberIds,
+  }) async {
+    final uid = currentUserId;
+    if (uid == null) throw Exception('Not logged in');
 
-      return {
-        'name': data['display_name'] ?? 'Student',
-        'handle': data['handle'] ?? '@student',
-      };
-    } catch (e) {
-      // Ignore errors
+    final channelId = _firestore.collection('channels').doc().id;
+    final now = DateTime.now();
+
+    final allMemberIds = {uid, ...memberIds}.toList();
+
+    // Fetch info for all members
+    final Map<String, String> memberNames = {};
+    final Map<String, String?> memberAvatars = {};
+    final Map<String, String> verificationTypes = {};
+    final Map<String, int> unreadCounts = {};
+
+    for (final id in allMemberIds) {
+      final userDoc = await _firestore.collection('users').doc(id).get();
+      final userData = userDoc.data();
+      if (userData != null) {
+        memberNames[id] = userData['display_name'] ?? 'Student';
+        memberAvatars[id] = userData['avatar_url'];
+        verificationTypes[id] = userData['verification_type'] ?? 'none';
+        unreadCounts[id] = 0;
+      }
     }
-    return {'name': 'Student', 'handle': '@student'};
+
+    final channelData = {
+      'id': channelId,
+      'type': 'group',
+      'display_name': name,
+      'display_avatar_url': avatarUrl,
+      'created_by': uid,
+      'admin_ids': [uid],
+      'restrict_info_updates': false,
+      'restrict_messaging': false,
+      'member_ids': allMemberIds,
+      'member_names': memberNames,
+      'member_avatars': memberAvatars,
+      'verification_types': verificationTypes,
+      'last_message_time': Timestamp.fromDate(now),
+      'last_message': {},
+      'unread_counts': unreadCounts,
+    };
+
+    await _firestore.collection('channels').doc(channelId).set(channelData);
+    return channelId;
   }
 
-  // Set typing status - Logic moved to Realtime Presence in UI
-  Future<void> setTypingStatus(String channelId, bool isTyping) async {
-    // No-op for DB. Use channel.on('presence', ...) in UI.
+  // Reactions logic
+  Future<void> addReaction(
+    String channelId,
+    String messageId,
+    String emoji,
+  ) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+
+    await _firestore
+        .collection('channels')
+        .doc(channelId)
+        .collection('messages')
+        .doc(messageId)
+        .update({'reactions.$uid': emoji});
+  }
+
+  Future<void> removeReaction(String channelId, String messageId) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+
+    await _firestore
+        .collection('channels')
+        .doc(channelId)
+        .collection('messages')
+        .doc(messageId)
+        .update({'reactions.$uid': FieldValue.delete()});
   }
 
   // Mark messages as read
@@ -157,32 +383,134 @@ class ChatRepository {
     final uid = currentUserId;
     if (uid == null) return;
 
-    // Ideally use RPC. 'mark_channel_read(channel_id)'
-    try {
-      await _supabase.rpc('mark_channel_read', params: {'c_id': channelId});
-    } catch (_) {
-      // Ignored
+    // In Firestore, we would typically update unread counts or mark specific messages
+    // Simplified for MVP: reset unread count for current user
+    await _firestore.collection('channels').doc(channelId).update({
+      'unread_counts.$uid': 0,
+    });
+  }
+
+  // Typing logic using Realtime Database
+  Future<void> setTypingStatus(String channelId, bool isTyping) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+
+    final ref = _rtdb.ref('channels/$channelId/typing/$uid');
+    if (isTyping) {
+      await ref.set(true);
+      await ref.onDisconnect().remove();
+    } else {
+      await ref.remove();
     }
+  }
+
+  Stream<Map<String, bool>> watchTypingStatus(String channelId) {
+    return _rtdb.ref('channels/$channelId/typing').onValue.map((event) {
+      final Map<dynamic, dynamic>? data =
+          event.snapshot.value as Map<dynamic, dynamic>?;
+      if (data == null) return {};
+      return data.map((key, value) => MapEntry(key.toString(), value as bool));
+    });
   }
 
   // Get channel by ID
   Future<ChatChannel?> getChannel(String channelId) async {
     try {
-      final data = await _supabase
-          .from('channels')
-          .select(
-            '*, members:channel_members(user_id, profiles(display_name, avatar_url))',
-          )
-          .eq('id', channelId)
-          .single();
-
-      final validMap = Map<String, dynamic>.from(data);
-      validMap['channel_members'] = data['members'];
-
-      return ChatChannel.fromMap(validMap, currentUserId: currentUserId);
+      final doc = await _firestore.collection('channels').doc(channelId).get();
+      if (!doc.exists) return null;
+      return ChatChannel.fromMap(doc.data()!);
     } catch (e) {
-      // Ignore
+      return null;
     }
-    return null;
+  }
+
+  Future<void> leaveGroup(String channelId) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+
+    await _firestore.collection('channels').doc(channelId).update({
+      'member_ids': FieldValue.arrayRemove([uid]),
+      'member_names.$uid': FieldValue.delete(),
+      'member_avatars.$uid': FieldValue.delete(),
+      'verification_types.$uid': FieldValue.delete(),
+      'unread_counts.$uid': FieldValue.delete(),
+    });
+
+    // Also remove from RTDB typing status
+    await _rtdb.ref('channels/$channelId/typing/$uid').remove();
+  }
+
+  Future<void> toggleAdminStatus(String channelId, String userId) async {
+    final channel = await getChannel(channelId);
+    if (channel == null) return;
+
+    final admins = List<String>.from(channel.adminIds);
+    if (admins.contains(userId)) {
+      admins.remove(userId);
+    } else {
+      admins.add(userId);
+    }
+
+    await _firestore.collection('channels').doc(channelId).update({
+      'admin_ids': admins,
+    });
+  }
+
+  Future<void> updateGroupSettings(
+    String channelId, {
+    bool? restrictInfoUpdates,
+    bool? restrictMessaging,
+  }) async {
+    final Map<String, dynamic> updates = {};
+    if (restrictInfoUpdates != null) {
+      updates['restrict_info_updates'] = restrictInfoUpdates;
+    }
+    if (restrictMessaging != null) {
+      updates['restrict_messaging'] = restrictMessaging;
+    }
+
+    if (updates.isNotEmpty) {
+      await _firestore.collection('channels').doc(channelId).update(updates);
+    }
+  }
+
+  Future<void> removeMember(String channelId, String userId) async {
+    await _firestore.collection('channels').doc(channelId).update({
+      'member_ids': FieldValue.arrayRemove([userId]),
+      'member_names.$userId': FieldValue.delete(),
+      'member_avatars.$userId': FieldValue.delete(),
+      'verification_types.$userId': FieldValue.delete(),
+      'unread_counts.$userId': FieldValue.delete(),
+      'admin_ids': FieldValue.arrayRemove([userId]),
+    });
+
+    // Also remove from RTDB typing status
+    await _rtdb.ref('channels/$channelId/typing/$userId').remove();
+  }
+
+  Future<void> updateChannelInfo(
+    String channelId, {
+    String? name,
+    String? avatarUrl,
+  }) async {
+    final Map<String, dynamic> updates = {};
+    if (name != null) updates['display_name'] = name;
+    if (avatarUrl != null) updates['display_avatar_url'] = avatarUrl;
+
+    if (updates.isNotEmpty) {
+      await _firestore.collection('channels').doc(channelId).update(updates);
+    }
+  }
+
+  Future<void> deleteMessage(String channelId, String messageId) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+
+    await _firestore
+        .collection('channels')
+        .doc(channelId)
+        .collection('messages')
+        .doc(messageId)
+        .delete();
   }
 }

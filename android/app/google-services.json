@@ -7,9 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:597625995805:android:d9d5124097a46033237cf4",
+        "mobilesdk_app_id": "1:597625995805:android:e4fe555553eb3c10237cf4",
         "android_client_info": {
-          "package_name": "com.example.abuad"
+          "package_name": "com.pronown.abuad"
         }
       },
       "oauth_client": [],

@@ -10,9 +10,24 @@ class AuthController {
 
     init() {
         // Auth Listener
-        auth.onAuthStateChanged(user => {
+        auth.onAuthStateChanged(async (user) => {
             if (user) {
-                this.showDashboard();
+                try {
+                    // Check if user has admin role
+                    const userDoc = await db.collection('users').doc(user.uid).get();
+                    if (userDoc.exists && userDoc.data().role === 'admin') {
+                        this.showDashboard();
+                    } else {
+                        alert("Access Denied: You do not have administrator privileges.");
+                        await auth.signOut();
+                        this.showLogin();
+                    }
+                } catch (error) {
+                    console.error("Error verifying admin status:", error);
+                    alert("System Error: Could not verify permissions. Please try again.");
+                    await auth.signOut();
+                    this.showLogin();
+                }
             } else {
                 this.showLogin();
             }
@@ -50,6 +65,12 @@ class AuthController {
     showLogin() {
         this.loginSection.classList.remove('hidden-section');
         this.dashboardSection.classList.add('hidden-section');
+        // Reset login button state if needed
+        const btn = this.loginForm.querySelector('button');
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = 'Ans In';
+        }
     }
 
     showDashboard() {

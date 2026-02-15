@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -8,11 +9,15 @@ import '../data/post_repository.dart';
 import '../domain/post.dart' as domain;
 import 'widgets/poll_widget.dart';
 import 'widgets/animated_like_button.dart';
+import 'package:flutter/gestures.dart';
+import '../../user/data/user_repository.dart';
+import '../../../core/widgets/verification_badge.dart';
 
 class PostDetailScreen extends ConsumerStatefulWidget {
-  final domain.Post post;
+  final domain.Post? post;
+  final String? postId;
 
-  const PostDetailScreen({super.key, required this.post});
+  const PostDetailScreen({super.key, this.post, this.postId});
 
   @override
   ConsumerState<PostDetailScreen> createState() => _PostDetailScreenState();
@@ -38,7 +43,8 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
 
     try {
       final repo = ref.read(postRepositoryProvider);
-      await repo.addComment(widget.post.id, content);
+      final postId = widget.post?.id ?? widget.postId!;
+      await repo.addComment(postId, content);
       _commentController.clear();
 
       // Scroll to bottom to see new comment (optional, but nice)
@@ -90,7 +96,8 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
 
     try {
       final repo = ref.read(postRepositoryProvider);
-      await repo.deleteComment(widget.post.id, commentId);
+      final postId = widget.post?.id ?? widget.postId!;
+      await repo.deleteComment(postId, commentId);
 
       if (mounted) {
         ScaffoldMessenger.of(
@@ -325,8 +332,16 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final repo = ref.watch(postRepositoryProvider);
-    final commentsStream = repo.watchComments(widget.post.id);
-    final isLikedStream = repo.isPostLiked(widget.post.id);
+    final postId = widget.post?.id ?? widget.postId;
+
+    if (postId == null) {
+      return const Scaffold(
+        body: Center(child: Text("Error: No Post ID provided")),
+      );
+    }
+
+    final commentsStream = repo.watchComments(postId);
+    final isLikedStream = repo.isPostLiked(postId);
     final currentUserId = repo.currentUserId;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -334,9 +349,13 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Post'), centerTitle: true),
       body: StreamBuilder<domain.Post?>(
-        stream: repo.watchPost(widget.post.id),
+        stream: repo.watchPost(postId),
         builder: (context, snapshot) {
           final post = snapshot.data ?? widget.post;
+
+          if (post == null) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
           return Column(
             children: [
@@ -393,10 +412,9 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                           ),
                                           if (post.isVerified) ...[
                                             const SizedBox(width: 4),
-                                            const Icon(
-                                              Icons.verified,
-                                              size: 16,
-                                              color: Colors.blue,
+                                            VerificationBadge(
+                                              type: post.verificationType,
+                                              size: 18,
                                             ),
                                           ],
                                         ],
@@ -424,9 +442,11 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                             const SizedBox(height: 16),
 
                             // Post Text
-                            Text(
+                            _buildHighlightedContent(
+                              context,
                               post.content,
-                              style: const TextStyle(fontSize: 18, height: 1.4),
+                              theme,
+                              ref,
                             ),
 
                             // Post Media
@@ -609,6 +629,19 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                 onLongPress: isOwnComment
                                     ? () => _deleteComment(comment['id'])
                                     : null,
+                                onTap: () {
+                                  // Reply to user
+                                  final userName =
+                                      comment['userName'] ?? 'User';
+                                  _commentController.text = '@$userName ';
+                                  _commentController
+                                      .selection = TextSelection.fromPosition(
+                                    TextPosition(
+                                      offset: _commentController.text.length,
+                                    ),
+                                  );
+                                  FocusScope.of(context).requestFocus();
+                                },
                                 child: Padding(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 16,
@@ -618,18 +651,36 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      CircleAvatar(
-                                        radius: 18,
-                                        backgroundColor: theme.primaryColor
-                                            .withOpacity(0.1),
-                                        child: Text(
-                                          (comment['userName'] ?? 'U')[0]
-                                              .toUpperCase(),
-                                          style: TextStyle(
-                                            color: theme.primaryColor,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 14,
-                                          ),
+                                      GestureDetector(
+                                        onTap: () {
+                                          if (comment['userId'] != null) {
+                                            context.push(
+                                              '/user/${comment['userId']}',
+                                            );
+                                          }
+                                        },
+                                        child: CircleAvatar(
+                                          radius: 18,
+                                          backgroundColor: theme.primaryColor
+                                              .withOpacity(0.1),
+                                          backgroundImage:
+                                              comment['userAvatar'] != null
+                                              ? CachedNetworkImageProvider(
+                                                  comment['userAvatar'],
+                                                )
+                                              : null,
+                                          child: comment['userAvatar'] == null
+                                              ? Text(
+                                                  (comment['userName'] ??
+                                                          'U')[0]
+                                                      .toUpperCase(),
+                                                  style: TextStyle(
+                                                    color: theme.primaryColor,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 14,
+                                                  ),
+                                                )
+                                              : null,
                                         ),
                                       ),
                                       const SizedBox(width: 12),
@@ -640,12 +691,23 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                           children: [
                                             Row(
                                               children: [
-                                                Text(
-                                                  comment['userName'] ??
-                                                      'Student',
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 15,
+                                                GestureDetector(
+                                                  onTap: () {
+                                                    if (comment['userId'] !=
+                                                        null) {
+                                                      context.push(
+                                                        '/user/${comment['userId']}',
+                                                      );
+                                                    }
+                                                  },
+                                                  child: Text(
+                                                    comment['userName'] ??
+                                                        'Student',
+                                                    style: const TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      fontSize: 15,
+                                                    ),
                                                   ),
                                                 ),
                                                 const SizedBox(width: 6),
@@ -745,6 +807,87 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildHighlightedContent(
+    BuildContext context,
+    String text,
+    ThemeData theme,
+    WidgetRef ref,
+  ) {
+    final words = text.split(' ');
+    final List<TextSpan> spans = [];
+
+    for (var i = 0; i < words.length; i++) {
+      final word = words[i];
+      final isLast = i == words.length - 1;
+
+      if (word.startsWith('#')) {
+        final tag = word.substring(1);
+        spans.add(
+          TextSpan(
+            text: word,
+            style: const TextStyle(
+              color: Colors.blue,
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+            ),
+            recognizer: TapGestureRecognizer()
+              ..onTap = () {
+                context.push('/hashtag/$tag');
+              },
+          ),
+        );
+      } else if (word.startsWith('@')) {
+        final handle = word.substring(1);
+        spans.add(
+          TextSpan(
+            text: word,
+            style: const TextStyle(
+              color: Colors.blue,
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+            ),
+            recognizer: TapGestureRecognizer()
+              ..onTap = () async {
+                final user = await ref
+                    .read(userRepositoryProvider)
+                    .getUserByHandle(handle);
+                if (context.mounted) {
+                  if (user != null) {
+                    context.push('/user/${user.uid}');
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('User not found')),
+                    );
+                  }
+                }
+              },
+          ),
+        );
+      } else {
+        spans.add(
+          TextSpan(
+            text: word,
+            style: TextStyle(
+              color: theme.textTheme.bodyMedium?.color ?? Colors.black,
+              fontSize: 18,
+            ),
+          ),
+        );
+      }
+
+      if (!isLast) {
+        spans.add(const TextSpan(text: ' ', style: TextStyle(fontSize: 18)));
+      }
+    }
+
+    return RichText(
+      text: TextSpan(
+        style: const TextStyle(fontSize: 18, height: 1.4),
+        children: spans,
       ),
     );
   }

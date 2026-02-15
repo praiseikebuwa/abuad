@@ -7,15 +7,21 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'src/core/router/app_router.dart';
 import 'src/core/database/local_database.dart';
 import 'src/core/theme/app_theme.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'src/core/config/supabase_config.dart';
 import 'src/features/utilities/broadcast_listener.dart';
 import 'src/features/settings/presentation/settings_screen.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
 
   try {
+    // Register background handler
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
     // Configure System UI for Edge-to-Edge
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setSystemUIOverlayStyle(
@@ -36,12 +42,6 @@ void main() async {
   // Initialize Hive (Legacy/Local cache) - Optional now
   await container.read(localDatabaseProvider.future);
 
-  // Initialize Supabase
-  await Supabase.initialize(
-    url: SupabaseConfig.url,
-    anonKey: SupabaseConfig.anonKey,
-  );
-
   runApp(UncontrolledProviderScope(container: container, child: const MyApp()));
 }
 
@@ -51,7 +51,6 @@ class MyApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final goRouter = ref.watch(goRouterProvider);
-    // Watch the theme mode from settings (with async handling)
     final themeModeAsync = ref.watch(themeModeProviderWithDefault);
 
     return ToastificationWrapper(
@@ -70,7 +69,6 @@ class MyApp extends ConsumerWidget {
   }
 }
 
-// Helper provider to provide a default value while async loads
 final themeModeProviderWithDefault = Provider<ThemeMode>((ref) {
   final asyncValue = ref.watch(themeModeProvider);
   return asyncValue.maybeWhen(
@@ -93,6 +91,10 @@ class _ConnectivityListenerState extends State<_ConnectivityListener>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Process any pending notification tap from terminated state
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      NotificationService().consumePendingInitialMessage();
+    });
     _updateStatus('online');
     Connectivity().onConnectivityChanged.listen((result) {
       if (result.contains(ConnectivityResult.none)) {
@@ -128,15 +130,15 @@ class _ConnectivityListenerState extends State<_ConnectivityListener>
 
   Future<void> _updateStatus(String status) async {
     try {
-      final user = Supabase.instance.client.auth.currentUser;
+      final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        await Supabase.instance.client
-            .from('profiles')
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
             .update({
               'status': status,
-              'last_seen': DateTime.now().millisecondsSinceEpoch,
-            })
-            .eq('id', user.id);
+              'last_seen': FieldValue.serverTimestamp(),
+            });
       }
     } catch (e) {
       debugPrint("Error updating status: $e");

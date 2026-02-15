@@ -12,15 +12,34 @@ class PollWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     if (post.pollData == null) return const SizedBox.shrink();
 
-    final options = List<String>.from(post.pollData!['options'] ?? []);
-    final votes = List<int>.from(
-      post.pollData!['votes'] ?? List.filled(options.length, 0),
-    );
-    final voters = Map<String, dynamic>.from(post.pollData!['voters'] ?? {});
+    final pollData = post.pollData!;
+    final List<dynamic> optionsRaw = pollData['options'] ?? [];
+
+    // Safely parse options (could be String or Map)
+    final options = optionsRaw.map((opt) {
+      if (opt is String) return opt;
+      if (opt is Map) return opt['text']?.toString() ?? 'Option';
+      return opt.toString();
+    }).toList();
+
+    // Safely parse votes
+    final List<dynamic> votesRaw = pollData['votes'] ?? [];
+    final votes = List<int>.generate(options.length, (i) {
+      if (i < votesRaw.length) {
+        return (votesRaw[i] as num?)?.toInt() ?? 0;
+      }
+      // Fallback: check if votes are inside the option maps
+      if (i < optionsRaw.length && optionsRaw[i] is Map) {
+        return (optionsRaw[i]['votes'] as num?)?.toInt() ?? 0;
+      }
+      return 0;
+    });
+
+    final voters = Map<String, dynamic>.from(pollData['voters'] ?? {});
     final totalVotes = votes.fold(0, (sum, item) => sum + item);
     final currentUserId = repo.currentUserId;
     final userVoteIndex = currentUserId != null
-        ? voters[currentUserId] as int?
+        ? (voters[currentUserId] as num?)?.toInt()
         : null;
     final hasVoted = userVoteIndex != null;
 

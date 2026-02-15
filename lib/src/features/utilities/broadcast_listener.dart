@@ -1,5 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class BroadcastListener extends StatefulWidget {
@@ -11,52 +12,44 @@ class BroadcastListener extends StatefulWidget {
 }
 
 class _BroadcastListenerState extends State<BroadcastListener> {
-  // Listen to broadcasts from the last 24 hours to avoid spamming old stuff
-  late Stream<List<Map<String, dynamic>>> _stream;
+  StreamSubscription<QuerySnapshot>? _subscription;
 
   @override
   void initState() {
     super.initState();
-    _stream = Supabase.instance.client
-        .from('announcements')
-        .stream(primaryKey: ['id'])
-        .order('created_at', ascending: false)
+    _subscription = FirebaseFirestore.instance
+        .collection('announcements')
+        .where('active', isEqualTo: true)
+        .orderBy('created_at', descending: true)
         .limit(1)
-        .map((data) => data.where((e) => e['active'] == true).toList());
+        .snapshots()
+        .listen((snapshot) {
+          if (snapshot.docs.isNotEmpty) {
+            final doc = snapshot.docs.first;
+            final data = doc.data(); // Ensure correct type for data
+            _checkAndShowAlert(doc.id, data);
+          }
+        });
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        widget.child,
-        // Invisible listener
-        StreamBuilder<List<Map<String, dynamic>>>(
-          stream: _stream,
-          builder: (context, snapshot) {
-            if (snapshot.hasData && snapshot.data!.isNotEmpty) {
-              final data = snapshot.data!.first;
-              final id = data['id'];
-              _checkAndShowAlert(id.toString(), data);
-            }
-            return const SizedBox.shrink();
-          },
-        ),
-      ],
-    );
+    return widget.child;
   }
 
   Future<void> _checkAndShowAlert(String id, Map<String, dynamic> data) async {
     final prefs = await SharedPreferences.getInstance();
     final seenKey = 'seen_broadcast_$id';
 
-    // Check if already seen
     if (prefs.getBool(seenKey) == true) return;
-
-    // Passively wait for frame to be ready before showing dialog
     if (!mounted) return;
 
-    // Mark as seen immediately so it doesn't pop up again
     await prefs.setBool(seenKey, true);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -91,7 +84,7 @@ class _BroadcastListenerState extends State<BroadcastListener> {
 
     showDialog(
       context: context,
-      barrierDismissible: type != 'urgent', // Force action for urgent?
+      barrierDismissible: type != 'urgent',
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(

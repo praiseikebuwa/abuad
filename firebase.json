@@ -8,7 +8,7 @@
             "android": {
                 "default": {
                     "projectId": "abuadapp",
-                    "appId": "1:597625995805:android:d9d5124097a46033237cf4",
+                    "appId": "1:597625995805:android:e4fe555553eb3c10237cf4",
                     "fileOutput": "android/app/google-services.json"
                 }
             },
@@ -16,12 +16,28 @@
                 "lib/firebase_options.dart": {
                     "projectId": "abuadapp",
                     "configurations": {
-                        "android": "1:597625995805:android:d9d5124097a46033237cf4",
-                        "ios": "1:597625995805:ios:3f1a478633cc2285237cf4",
-                        "web": "1:597625995805:web:2ff34401fbddb1df237cf4"
+                        "android": "1:597625995805:android:e4fe555553eb3c10237cf4",
+                        "ios": "1:597625995805:ios:8d19a0f7b4bf543f237cf4"
                     }
                 }
             }
         }
+    },
+    "functions": [
+        {
+            "source": "functions",
+            "codebase": "default",
+            "disallowLegacyRuntimeConfig": true,
+            "ignore": [
+                "node_modules",
+                ".git",
+                "firebase-debug.log",
+                "firebase-debug.*.log",
+                "*.local"
+            ]
+        }
+    ],
+    "storage": {
+        "rules": "storage.rules"
     }
 }

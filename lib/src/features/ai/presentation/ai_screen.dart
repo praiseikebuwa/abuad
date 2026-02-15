@@ -150,7 +150,7 @@ class _AiScreenState extends ConsumerState<AiScreen> {
                 gradient: LinearGradient(
                   colors: [
                     _currentMode.color,
-                    _currentMode.color.withOpacity(0.7),
+                    _currentMode.color.withValues(alpha: 0.7),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(8),
@@ -324,7 +324,7 @@ class _AiScreenState extends ConsumerState<AiScreen> {
                       gradient: LinearGradient(
                         colors: [
                           _currentMode.color,
-                          _currentMode.color.withOpacity(0.8),
+                          _currentMode.color.withValues(alpha: 0.8),
                         ],
                       ),
                       shape: BoxShape.circle,
@@ -375,7 +375,7 @@ class _MessageBubble extends StatelessWidget {
               height: 32,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [mode.color, mode.color.withOpacity(0.7)],
+                  colors: [mode.color, mode.color.withValues(alpha: 0.7)],
                 ),
                 borderRadius: BorderRadius.circular(8),
               ),

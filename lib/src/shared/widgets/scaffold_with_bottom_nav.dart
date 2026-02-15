@@ -1,11 +1,9 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:salomon_bottom_bar/salomon_bottom_bar.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:badges/badges.dart' as badges;
 import '../../features/user/data/user_repository.dart';
-import '../../features/feed/presentation/feed_screen.dart';
+import '../../features/chat/data/chat_repository.dart';
 
 class ScaffoldWithBottomNav extends ConsumerWidget {
   const ScaffoldWithBottomNav({super.key, required this.navigationShell});
@@ -21,113 +19,175 @@ class ScaffoldWithBottomNav extends ConsumerWidget {
         if (user.college == null ||
             user.department == null ||
             user.phoneNumber == null) {
-          // Check if we are already on the complete profile screen to avoid loop
           final location = GoRouterState.of(context).uri.toString();
           if (location != '/complete-profile') {
-            context.go('/complete-profile');
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (context.mounted) {
+                context.go('/complete-profile');
+              }
+            });
           }
         }
       }
     });
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final unreadCountAsync = ref.watch(unreadChatCountProvider);
+    final unreadCount = unreadCountAsync.asData?.value ?? 0;
 
     return Scaffold(
-      extendBody: true, // Critical for edge-to-edge content behind nav bar
       body: navigationShell,
-      bottomNavigationBar: ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      bottomNavigationBar: ClipRect(
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              12, // Reduced top padding
+              16,
+              12 +
+                  MediaQuery.of(
+                    context,
+                  ).padding.bottom, // Adjusted bottom padding
+            ),
             decoration: BoxDecoration(
               color: isDark
-                  ? Colors.black.withOpacity(0.7)
-                  : Colors.white.withOpacity(0.8),
+                  ? Colors.black.withValues(alpha: 0.6)
+                  : Colors.white.withValues(alpha: 0.7),
               border: Border(
                 top: BorderSide(
                   color: isDark
-                      ? Colors.white.withOpacity(0.1)
-                      : Colors.black.withOpacity(0.05),
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : Colors.black.withValues(alpha: 0.05),
                   width: 1,
                 ),
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
+                  color: Colors.black.withValues(alpha: 0.05),
                   blurRadius: 10,
-                  offset: const Offset(0, -5),
+                  offset: const Offset(0, -2),
                 ),
               ],
             ),
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildNavItem(context, 0, Icons.home_outlined, Icons.home),
+                _buildNavItem(
+                  context,
+                  1,
+                  Icons.search,
+                  Icons.search,
+                  iconSize: 26,
                 ),
-                child: SalomonBottomBar(
-                  currentIndex: navigationShell.currentIndex,
-                  onTap: (index) {
-                    navigationShell.goBranch(
-                      index,
-                      initialLocation: index == navigationShell.currentIndex,
-                    );
-                  },
-                  items: [
-                    SalomonBottomBarItem(
-                      icon: const Icon(Icons.home),
-                      title: const Text("Feed"),
-                      selectedColor: Colors.blue,
-                    ),
-                    SalomonBottomBarItem(
-                      icon: badges.Badge(
-                        showBadge: true,
-                        badgeContent: const Text(
-                          '3',
-                          style: TextStyle(color: Colors.white, fontSize: 10),
-                        ),
-                        child: const Icon(Icons.chat_bubble),
-                      ),
-                      title: const Text("Chat"),
-                      selectedColor: Colors.deepPurple,
-                    ),
-                    SalomonBottomBarItem(
-                      icon: const Icon(Icons.map),
-                      title: const Text("Map"),
-                      selectedColor: Colors.green,
-                    ),
-                    SalomonBottomBarItem(
-                      icon: const Icon(Icons.smart_toy),
-                      title: const Text("AI"),
-                      selectedColor: Colors.teal,
-                    ),
-                    SalomonBottomBarItem(
-                      icon: const Icon(Icons.person),
-                      title: const Text("Profile"),
-                      selectedColor: Colors.orange,
-                    ),
-                  ],
+                _buildNavItem(
+                  context,
+                  2,
+                  Icons.smart_toy_outlined,
+                  Icons.smart_toy,
                 ),
-              ),
+                _buildNavItem(context, 3, Icons.map_outlined, Icons.map),
+                _buildNavItem(
+                  context,
+                  4,
+                  Icons.storefront_outlined,
+                  Icons.storefront,
+                ),
+                _buildNavItem(
+                  context,
+                  5,
+                  Icons.chat_bubble_outline,
+                  Icons.chat_bubble,
+                  badgeCount: unreadCount,
+                ),
+                _buildNavItem(context, 6, Icons.person_outline, Icons.person),
+              ],
             ),
           ),
         ),
       ),
-      floatingActionButton: navigationShell.currentIndex == 0
-          ? FloatingActionButton(
-              onPressed: () {
-                final selectedChannel = ref.read(feedChannelProvider);
-                context.push(
-                  '/create-post',
-                  extra: selectedChannel == 'all' ? 'general' : selectedChannel,
-                );
-              },
-              backgroundColor: Theme.of(context).colorScheme.primary,
-              shape: const CircleBorder(),
-              child: const Icon(Icons.add, color: Colors.white),
-            )
-          : null,
+    );
+  }
+
+  Widget _buildNavItem(
+    BuildContext context,
+    int index,
+    IconData outlineIcon,
+    IconData filledIcon, {
+    int badgeCount = 0,
+    double iconSize = 28,
+  }) {
+    final isSelected = navigationShell.currentIndex == index;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return GestureDetector(
+      onTap: () {
+        navigationShell.goBranch(
+          index,
+          initialLocation: index == navigationShell.currentIndex,
+        );
+      },
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: 44,
+        height: 44,
+        alignment: Alignment.center,
+        child: Stack(
+          alignment: Alignment.center,
+          clipBehavior: Clip.none,
+          children: [
+            Icon(
+              isSelected ? filledIcon : outlineIcon,
+              size: iconSize,
+              color: isSelected
+                  ? (isDark ? Colors.white : Colors.black)
+                  : (isDark ? Colors.grey[600] : Colors.grey[500]),
+            ),
+            if (badgeCount > 0)
+              Positioned(
+                top: -5,
+                right: -5,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                  constraints: const BoxConstraints(
+                    minWidth: 16,
+                    minHeight: 16,
+                  ),
+                  child: Text(
+                    badgeCount > 99 ? '99+' : '$badgeCount',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+extension RowExtension on Row {
+  // Helper to allow simpler list syntax in build method
+  Row copyWith({List<Widget>? items}) {
+    return Row(
+      key: key,
+      mainAxisAlignment: mainAxisAlignment,
+      mainAxisSize: mainAxisSize,
+      crossAxisAlignment: crossAxisAlignment,
+      textDirection: textDirection,
+      verticalDirection: verticalDirection,
+      textBaseline: textBaseline,
+      children: items ?? children,
     );
   }
 }

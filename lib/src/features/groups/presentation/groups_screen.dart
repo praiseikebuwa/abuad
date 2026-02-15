@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../data/group_repository.dart';
+import 'create_group_screen.dart';
+import '../../notifications/presentation/widgets/notification_icon.dart';
 
 class GroupsScreen extends ConsumerWidget {
   const GroupsScreen({super.key});
@@ -11,7 +13,10 @@ class GroupsScreen extends ConsumerWidget {
     final groupsAsync = ref.watch(groupsProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Student Groups')),
+      appBar: AppBar(
+        title: const Text('Student Groups'),
+        actions: const [NotificationIcon(), SizedBox(width: 8)],
+      ),
       body: groupsAsync.when(
         data: (groups) {
           if (groups.isEmpty) {
@@ -118,12 +123,8 @@ class GroupsScreen extends ConsumerWidget {
                               width: double.infinity,
                               child: OutlinedButton(
                                 onPressed: () {
-                                  final userId = Supabase
-                                      .instance
-                                      .client
-                                      .auth
-                                      .currentUser
-                                      ?.id;
+                                  final userId =
+                                      FirebaseAuth.instance.currentUser?.uid;
                                   if (userId != null) {
                                     ref
                                         .read(groupRepositoryProvider)
@@ -162,6 +163,23 @@ class GroupsScreen extends ConsumerWidget {
         },
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, stack) => Center(child: Text('Error: $e')),
+      ),
+      floatingActionButton: Padding(
+        padding: EdgeInsets.only(
+          bottom: 100 + MediaQuery.of(context).padding.bottom,
+        ),
+        child: FloatingActionButton.extended(
+          heroTag: 'groups_fab',
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const CreateGroupScreen(),
+              ),
+            );
+          },
+          label: const Text('New Group'),
+          icon: const Icon(Icons.add),
+        ),
       ),
     );
   }

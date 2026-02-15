@@ -2,621 +2,580 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // ============================================================================
-    // HELPER FUNCTIONS
-    // ============================================================================
-    
-    // Check if user is authenticated
+    // --------------------------------------------------------------------------
+    // Helper functions
+    // --------------------------------------------------------------------------
     function isSignedIn() {
       return request.auth != null;
     }
-    
-    // Check if user is the owner of a resource
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+
+    function isSelf(uid) {
+      return isSignedIn() && request.auth.uid == uid;
     }
-    
-    // Check if user is admin
+
+    function currentUserDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
     function isAdmin() {
       return isSignedIn() && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-    }
-    
-    // Check if user is verified
-    function isVerified() {
-      return isSignedIn() && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isVerified == true;
-    }
-    
-    // Get user data
-    function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
-    
-    // Check if user exists
-    function userExists(userId) {
-      return exists(/databases/$(database)/documents/users/$(userId));
-    }
-    
-    // Validate string length
-    function validStringLength(str, min, max) {
-      return str.size() >= min && str.size() <= max;
-    }
-    
-    // Validate required fields exist
-    function hasRequiredFields(data, fields) {
-      return data.keys().hasAll(fields);
-    }
-    
-    // Check if data hasn't changed certain fields
-    function unchangedFields(fields) {
-      return request.resource.data.diff(resource.data).unchangedKeys().hasAll(fields);
-    }
-    
-    // Check if user is blocked
-    function isBlocked() {
-      return isSignedIn() && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isBlocked == true;
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get("role", "user") == "admin" ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get("isAdmin", false) == true
+        );
     }
 
-    // ============================================================================
-    // GLOBAL ADMIN ACCESS
-    // Purpose: Ensure Admins have full access to everything (Safety Net)
-    // ============================================================================
-    match /{document=**} {
-      allow read, write: if isAdmin();
+    function isBlockedUser() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+          currentUserDoc().data.get("isBlocked", false) == true ||
+          currentUserDoc().data.get("is_blocked", false) == true
+        );
     }
-    
-    // ============================================================================
-    // USERS COLLECTION
-    // Collection: /users/{userId}
-    // Purpose: Store user profile information and settings
-    // ============================================================================
-    
+
+    function isVerifiedUser(data) {
+      return data.get("isVerified", false) == true || 
+             data.get("is_verified", false) == true;
+    }
+
+    function getVerificationType(data) {
+      return data.get("verificationType", data.get("verification_type", "none"));
+    }
+
+    // --------------------------------------------------------------------------
+    function isSignedInAndActive() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        !isBlockedUser();
+    }
+
+    function isChannelMemberFromDoc(channelDoc) {
+      return isSignedIn() && 
+        request.auth.uid in channelDoc.get('member_ids', []);
+    }
+
+    function canSelfCreateUser(userId) {
+      return isSelf(userId) &&
+        (
+          !("uid" in request.resource.data) ||
+          request.resource.data.uid == userId
+        ) &&
+        (
+          !("role" in request.resource.data) ||
+          request.resource.data.role in ["student", "user"]
+        ) &&
+        (
+          !("isAdmin" in request.resource.data) ||
+          request.resource.data.isAdmin == false
+        ) &&
+        isVerifiedUser(request.resource.data) == false &&
+        getVerificationType(request.resource.data) == 'none';
+    }
+
+    function canSelfUpdateUser(userId) {
+      return isSelf(userId) &&
+        (
+          !("uid" in request.resource.data) ||
+          request.resource.data.uid == userId
+        ) &&
+        request.resource.data.get('role', 'user') == resource.data.get('role', 'user') &&
+        request.resource.data.get('isBlocked', false) == resource.data.get('isBlocked', false) &&
+        request.resource.data.get('is_blocked', false) == resource.data.get('is_blocked', false) &&
+        isVerifiedUser(request.resource.data) == isVerifiedUser(resource.data) &&
+        getVerificationType(request.resource.data) == getVerificationType(resource.data) &&
+        // Validate social links
+        (
+          !('website_url' in request.resource.data) || request.resource.data.website_url is string
+        ) &&
+        (
+          !('facebook_url' in request.resource.data) || request.resource.data.facebook_url is string
+        ) &&
+        (
+          !('twitter_url' in request.resource.data) || request.resource.data.twitter_url is string
+        ) &&
+        (
+          !('instagram_url' in request.resource.data) || request.resource.data.instagram_url is string
+        ) &&
+        (
+          !('linkedin_url' in request.resource.data) || request.resource.data.linkedin_url is string
+        ) &&
+        (
+          !('tiktok_url' in request.resource.data) || request.resource.data.tiktok_url is string
+        ) &&
+        (
+          !('youtube_url' in request.resource.data) || request.resource.data.youtube_url is string
+        ) &&
+        (
+          !('snapchat_url' in request.resource.data) || request.resource.data.snapchat_url is string
+        ) &&
+        (
+          !('github_url' in request.resource.data) || request.resource.data.github_url is string
+        ) &&
+        (
+          !('twitch_url' in request.resource.data) || request.resource.data.twitch_url is string
+        );
+    }
+
+    function canAdjustFollowCounters() {
+      let changed = request.resource.data.diff(resource.data).changedKeys();
+      return isSignedInAndActive() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "followers_count",
+          "following_count"
+        ]) &&
+        (
+          !changed.hasAny(["followers_count"]) ||
+          (
+            request.resource.data.followers_count is int &&
+            resource.data.followers_count is int &&
+            (
+              request.resource.data.followers_count == resource.data.followers_count + 1 ||
+              request.resource.data.followers_count == resource.data.followers_count - 1
+            )
+          )
+        ) &&
+        (
+          !changed.hasAny(["following_count"]) ||
+          (
+            request.resource.data.following_count is int &&
+            resource.data.following_count is int &&
+            (
+              request.resource.data.following_count == resource.data.following_count + 1 ||
+              request.resource.data.following_count == resource.data.following_count - 1
+            )
+          )
+        );
+    }
+
+    function canCreatePost(postId) {
+      let userData = currentUserDoc().data;
+      return isSignedInAndActive() &&
+        request.resource.data.author_id == request.auth.uid &&
+        request.resource.data.id == postId &&
+        isVerifiedUser(request.resource.data) == isVerifiedUser(userData) &&
+        getVerificationType(request.resource.data) == getVerificationType(userData) &&
+        // Check new fields
+        (
+          !('hashtags' in request.resource.data) || request.resource.data.hashtags is list
+        ) &&
+        (
+          !('mentions' in request.resource.data) || request.resource.data.mentions is list
+        ) &&
+        (
+          !('visibility' in request.resource.data) || request.resource.data.visibility in ['everyone', 'followers']
+        );
+    }
+
+    function canUpdateOwnPost() {
+      return isSignedInAndActive() &&
+        resource.data.author_id == request.auth.uid &&
+        request.resource.data.author_id == resource.data.author_id &&
+        request.resource.data.id == resource.data.id &&
+        isVerifiedUser(request.resource.data) == isVerifiedUser(resource.data) &&
+        getVerificationType(request.resource.data) == getVerificationType(resource.data);
+    }
+
+    function canUpdatePostEngagement() {
+      let diff = request.resource.data.diff(resource.data);
+      let affected = diff.affectedKeys();
+      
+      return isSignedInAndActive() &&
+        request.resource.data.author_id == resource.data.author_id &&
+        request.resource.data.id == resource.data.id &&
+        affected.hasOnly([
+          "likes_count",
+          "comments_count",
+          "repost_count",
+          "views_count",
+          "poll_data",
+          "poll"
+        ]) &&
+        (
+          !affected.hasAny(["likes_count"]) || 
+          request.resource.data.likes_count == resource.data.get("likes_count", 0) + 1 ||
+          request.resource.data.likes_count == resource.data.get("likes_count", 0) - 1
+        ) &&
+        (
+          !affected.hasAny(["comments_count"]) || 
+          request.resource.data.comments_count == resource.data.get("comments_count", 0) + 1 ||
+          request.resource.data.comments_count == resource.data.get("comments_count", 0) - 1
+        ) &&
+        (
+          !affected.hasAny(["repost_count"]) || 
+          request.resource.data.repost_count == resource.data.get("repost_count", 0) + 1
+        ) &&
+        (
+          !affected.hasAny(["views_count"]) || 
+          request.resource.data.views_count == resource.data.get("views_count", 0) + 1
+        );
+    }
+
+    function canCreateComment() {
+      return isSignedInAndActive() &&
+        request.resource.data.user_id == request.auth.uid &&
+        request.resource.data.content is string &&
+        request.resource.data.content.size() > 0 &&
+        request.resource.data.content.size() <= 2000;
+    }
+
+    function canCreateChannel() {
+      return isSignedInAndActive() && (
+        request.resource.data.member_ids is list &&
+        request.auth.uid in request.resource.data.member_ids
+      );
+    }
+
+    function canUpdateChannelAsMember() {
+      return isSignedInAndActive() &&
+        isChannelMemberFromDoc(resource.data);
+    }
+
+    function canUpdateMessageReactions(channelId) {
+      let channel = get(/databases/$(database)/documents/channels/$(channelId));
+      let affected = request.resource.data.diff(resource.data).affectedKeys();
+      let reactionsDiff = request.resource.data.get('reactions', {}).diff(resource.data.get('reactions', {}));
+      
+      return isSignedInAndActive() &&
+        isChannelMemberFromDoc(channel.data) &&
+        affected.hasOnly(["reactions"]) &&
+        reactionsDiff.affectedKeys().hasOnly([request.auth.uid]);
+    }
+
+    function canCreateMessage(channelId, messageId) {
+      let channel = get(/databases/$(database)/documents/channels/$(channelId));
+      return isSignedInAndActive() &&
+        isChannelMemberFromDoc(channel.data) &&
+        request.resource.data.sender_id == request.auth.uid &&
+        request.resource.data.id == messageId;
+    }
+
+    function canReadChannelMessages(channelId) {
+      let channel = get(/databases/$(database)/documents/channels/$(channelId));
+      return isChannelMemberFromDoc(channel.data);
+    }
+
+    function isValidStoryViewerUpdate() {
+      return isSignedInAndActive() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(["viewers"]) &&
+        request.resource.data.viewers is list &&
+        resource.data.viewers is list &&
+        !(request.auth.uid in resource.data.viewers) &&
+        request.auth.uid in request.resource.data.viewers &&
+        request.resource.data.viewers.size() == resource.data.viewers.size() + 1 &&
+        request.resource.data.viewers.hasAll(resource.data.viewers);
+    }
+
+    function isValidStoryLikeUpdate() {
+      return isSignedInAndActive() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(["likes"]) &&
+        request.resource.data.likes is list &&
+        resource.data.likes is list &&
+        !(request.auth.uid in resource.data.likes) &&
+        request.auth.uid in request.resource.data.likes &&
+        request.resource.data.likes.size() == resource.data.likes.size() + 1 &&
+        request.resource.data.likes.hasAll(resource.data.likes);
+    }
+
+    function isValidSnapViewUpdate() {
+      return isSignedIn() &&
+        request.resource.data.id == resource.data.id &&
+        request.resource.data.user_id == resource.data.user_id &&
+        request.resource.data.user_name == resource.data.user_name &&
+        request.resource.data.user_avatar == resource.data.user_avatar &&
+        request.resource.data.image_url == resource.data.image_url &&
+        request.resource.data.created_at == resource.data.created_at &&
+        request.resource.data.expires_at == resource.data.expires_at &&
+        request.resource.data.viewers is list &&
+        resource.data.viewers is list &&
+        !(request.auth.uid in resource.data.viewers) &&
+        request.auth.uid in request.resource.data.viewers &&
+        request.resource.data.viewers.size() == resource.data.viewers.size() + 1 &&
+        request.resource.data.viewers.hasAll(resource.data.viewers);
+    }
+
+    function canUpdateGroupMemberCountOnly() {
+      return isSignedInAndActive() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(["member_count"]) &&
+        request.resource.data.member_count is int &&
+        resource.data.member_count is int &&
+        (
+          request.resource.data.member_count == resource.data.member_count + 1 ||
+          request.resource.data.member_count == resource.data.member_count - 1
+        );
+    }
+
+    function canCreateReport() {
+      return isSignedIn() &&
+        (
+          !("reporterId" in request.resource.data) ||
+          request.resource.data.reporterId == request.auth.uid
+        );
+    }
+
+
+    // --------------------------------------------------------------------------
+    // users/{userId}
+    // Supports both snake_case (Flutter app) and camelCase (admin/functions).
+    // --------------------------------------------------------------------------
     match /users/{userId} {
-      // READ: Anyone can read basic user info (for displaying profiles)
       allow read: if isSignedIn();
-      
-      // CREATE: Only during signup, user creates their own document
-      allow create: if isSignedIn() &&
-                      isOwner(userId) &&
-                      hasRequiredFields(request.resource.data, [
-                        'email', 'displayName', 'handle', 'createdAt'
-                      ]) &&
-                      request.resource.data.email == request.auth.token.email &&
-                      validStringLength(request.resource.data.displayName, 1, 50) &&
-                      validStringLength(request.resource.data.handle, 3, 20) &&
-                      (request.resource.data.createdAt is string || request.resource.data.createdAt is timestamp) &&
-                      request.resource.data.followersCount == 0 &&
-                      request.resource.data.followingCount == 0 &&
-                      request.resource.data.isVerified == false &&
-                      request.resource.data.isBlocked == false;
-      
-      // UPDATE: Users can update their own profile, admins can update any
-      allow update: if (isOwner(userId) && 
-                       !request.resource.data.diff(resource.data).affectedKeys().hasAny(['uid', 'email', 'createdAt', 'role', 'isVerified', 'isBlocked']) &&
-                       (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['displayName']) || validStringLength(request.resource.data.displayName, 1, 50)) &&
-                       (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['avatarUrl']) || request.resource.data.avatarUrl is string))
-                       ||
-                       (isAdmin() && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['uid', 'email', 'createdAt']));
-      
-      // DELETE: Only admins can delete users
-      allow delete: if isAdmin();
-      
-      // SUBCOLLECTION: Followers
-      // /users/{userId}/followers/{followerId}
+      allow create: if canSelfCreateUser(userId);
+      allow update: if canSelfUpdateUser(userId) || canAdjustFollowCounters();
+      allow delete: if false;
+
       match /followers/{followerId} {
         allow read: if isSignedIn();
-        allow create: if isSignedIn() && 
-                        isOwner(followerId) &&
-                        !isBlocked() &&
-                        userExists(userId);
-        allow delete: if isOwner(followerId) || isAdmin();
+        allow create, delete: if isSelf(followerId);
+        allow update: if false;
       }
-      
-      // SUBCOLLECTION: Following
-      // /users/{userId}/following/{followedId}
+
       match /following/{followedId} {
         allow read: if isSignedIn();
-        allow create: if isSignedIn() && 
-                        isOwner(userId) &&
-                        !isBlocked() &&
-                        userExists(followedId);
-        allow delete: if isOwner(userId) || isAdmin();
+        allow create, delete: if isSelf(userId);
+        allow update: if false;
       }
-      
-      // SUBCOLLECTION: Notifications
-      // /users/{userId}/notifications/{notificationId}
+
       match /notifications/{notificationId} {
-        allow read: if isOwner(userId);
-        allow create: if isSignedIn(); // Any user can create notifications for others
-        allow update: if isOwner(userId); // Only owner can mark as read
-        allow delete: if isOwner(userId) || isAdmin();
+        allow read: if isSelf(userId);
+        allow create: if isSignedIn() && request.resource.data.user_id == userId;
+        allow update, delete: if isSelf(userId);
       }
     }
 
-    // ============================================================================
-    // NEWS COLLECTION
-    // Collection: /news/{newsId}
-    // Purpose: Store news items
-    // ============================================================================
-    
-    match /news/{newsId} {
-      allow read: if true;
-      allow create: if isSignedIn();
-      allow update, delete: if isSignedIn() && (resource.data.authorId == request.auth.uid || isAdmin());
-      
-      match /comments/{commentId} {
-        allow read: if true;
-        allow create: if isSignedIn();
-        allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      }
+    // --------------------------------------------------------------------------
+    // snaps/{snapId}
+    // --------------------------------------------------------------------------
+    match /snaps/{snapId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedInAndActive() && request.resource.data.user_id == request.auth.uid;
+      allow update: if (
+        isSignedInAndActive() && resource.data.user_id == request.auth.uid
+      ) || isValidSnapViewUpdate();
+      allow delete: if isSignedIn() && resource.data.user_id == request.auth.uid;
     }
-    
-    // ============================================================================
-    // POSTS COLLECTION
-    // Collection: /posts/{postId}
-    // Purpose: Store user posts, reposts, and polls
-    // ============================================================================
-    
+
+    // --------------------------------------------------------------------------
+    // posts/{postId}
+    // --------------------------------------------------------------------------
     match /posts/{postId} {
-      // READ: Anyone authenticated can read posts
       allow read: if isSignedIn();
-      
-      // CREATE: Authenticated, non-blocked users can create posts
-      allow create: if isSignedIn() &&
-                      !isBlocked() &&
-                      hasRequiredFields(request.resource.data, [
-                        'authorId', 'content', 'timestamp', 'channelId'
-                      ]) &&
-                      isOwner(request.resource.data.authorId) &&
-                      validStringLength(request.resource.data.content, 1, 2000) &&
-                      (request.resource.data.timestamp is string || request.resource.data.timestamp is timestamp) &&
-                      request.resource.data.likesCount == 0 &&
-                      request.resource.data.commentsCount == 0 &&
-                      request.resource.data.repostCount == 0 &&
-                      request.resource.data.channelId in ['general', 'engineering', 'hostel', 'confessions', 'freshers'];
-      
-      // UPDATE: Author can update their own post, admins can update any
-      // (mainly for updating engagement counts)
-      allow update: if (isOwner(resource.data.authorId) && 
-                       unchangedFields(['authorId', 'timestamp']))
-                       ||
-                       isAdmin();
-      
-      // DELETE: Author or admin can delete
-      allow delete: if isOwner(resource.data.authorId) || isAdmin();
-      
-      // SUBCOLLECTION: Likes
-      // /posts/{postId}/likes/{userId}
-      match /likes/{likeUserId} {
+      allow create: if canCreatePost(postId);
+      allow update: if canUpdateOwnPost() || canUpdatePostEngagement();
+      allow delete: if isSignedIn() && resource.data.author_id == request.auth.uid;
+
+      match /likes/{userId} {
         allow read: if isSignedIn();
-        allow create: if isSignedIn() && 
-                        isOwner(likeUserId) &&
-                        !isBlocked();
-        allow delete: if isOwner(likeUserId) || isAdmin();
+        allow create, delete: if isSelf(userId);
+        allow update: if false;
       }
-      
-      // SUBCOLLECTION: Comments
-      // /posts/{postId}/comments/{commentId}
+
       match /comments/{commentId} {
         allow read: if isSignedIn();
-        allow create: if isSignedIn() &&
-                        !isBlocked() &&
-                        hasRequiredFields(request.resource.data, [
-                          'authorId', 'content', 'timestamp'
-                        ]) &&
-                        isOwner(request.resource.data.authorId) &&
-                        validStringLength(request.resource.data.content, 1, 500);
-        allow update: if isOwner(resource.data.authorId) || isAdmin();
-        allow delete: if isOwner(resource.data.authorId) || isAdmin();
+        allow create: if canCreateComment();
+        allow update: if isSignedIn() && resource.data.user_id == request.auth.uid;
+        allow delete: if isSignedIn() && (
+          resource.data.user_id == request.auth.uid ||
+          get(/databases/$(database)/documents/posts/$(postId)).data.author_id == request.auth.uid
+        );
       }
-      
-      // SUBCOLLECTION: Poll Votes
-      // /posts/{postId}/pollVotes/{userId}
-      match /pollVotes/{voteUserId} {
+
+      match /views/{userId} {
         allow read: if isSignedIn();
-        allow create: if isSignedIn() && 
-                        isOwner(voteUserId) &&
-                        !isBlocked() &&
-                        request.resource.data.keys().hasAll(['optionIndex', 'timestamp']);
-        allow update: if isOwner(voteUserId); // Allow changing vote
-        allow delete: if isOwner(voteUserId);
+        allow create: if isSelf(userId);
+        allow update, delete: if false;
       }
     }
-    
-    // ============================================================================
-    // CHAT CHANNELS COLLECTION
-    // Collection: /chatChannels/{channelId}
-    // Purpose: Store chat channel metadata and participants
-    // ============================================================================
-    
-    // ============================================================================
-    // CHAT CHANNELS COLLECTION
-    // Collection: /channels/{channelId} (Updated from chatChannels to match Codebase)
-    // Purpose: Store chat channel metadata and participants
-    // ============================================================================
-    
+
+    function isChannelAdminFromDoc(channelDoc) {
+      return isSignedIn() && 
+        request.auth.uid in channelDoc.get('admin_ids', [channelDoc.get('created_by', '')]);
+    }
+
+    function canUpdateChannel(channelId) {
+      let isMember = isChannelMemberFromDoc(resource.data);
+      let isAdmin = isChannelAdminFromDoc(resource.data);
+      let affected = request.resource.data.diff(resource.data).affectedKeys();
+      
+      return isAdmin || (
+        isMember && 
+        affected.hasOnly([
+          'unread_counts', 'last_message', 'last_message_time', 
+          'streak_count', 'last_snap_time', 'streak_expiry', 
+          'member_ids', 'member_names', 'member_avatars', 'verification_types',
+          'display_name', 'display_avatar_url'
+        ]) &&
+        (!affected.hasAny(['member_ids']) || (
+          request.resource.data.member_ids is list &&
+          resource.data.member_ids is list &&
+          request.auth.uid in resource.data.member_ids &&
+          !(request.auth.uid in request.resource.data.member_ids) &&
+          request.resource.data.member_ids.size() == resource.data.member_ids.size() - 1
+        )) &&
+        (!affected.hasAny(['display_name', 'display_avatar_url']) || !resource.data.get('restrict_info_updates', false))
+      );
+    }
+
+    // --------------------------------------------------------------------------
+    // channels/{channelId}
+    // --------------------------------------------------------------------------
     match /channels/{channelId} {
-      // READ: Only participants can read channel
-      allow read: if isSignedIn() &&
-                    request.auth.uid in resource.data.memberIds;
-      
-      // CREATE: Any authenticated user can create a channel
-      allow create: if isSignedIn() &&
-                      !isBlocked() &&
-                      hasRequiredFields(request.resource.data, [
-                        'memberIds', 'memberNames', 'createdAt', 'lastMessageTime'
-                      ]) &&
-                      request.auth.uid in request.resource.data.memberIds &&
-                      request.resource.data.memberIds.size() >= 2 &&
-                      (request.resource.data.createdAt is string || request.resource.data.createdAt is timestamp);
-      
-      // UPDATE: Only participants can update (for typing indicators, last message, etc.)
-      allow update: if isSignedIn() &&
-                      request.auth.uid in resource.data.memberIds &&
-                      unchangedFields(['memberIds', 'createdAt']);
-      
-      // DELETE: Only admins can delete channels
-      allow delete: if isAdmin();
-      
-      // SUBCOLLECTION: Messages
-      // /channels/{channelId}/messages/{messageId}
+      allow read: if isChannelMemberFromDoc(resource.data);
+      allow create: if canCreateChannel();
+      allow update: if canUpdateChannel(channelId);
+      allow delete: if false;
+
       match /messages/{messageId} {
-        // READ: Only channel participants
-        allow read: if isSignedIn() &&
-                      request.auth.uid in get(/databases/$(database)/documents/channels/$(channelId)).data.memberIds;
-        
-        // CREATE: Only channel participants can send messages
-        allow create: if isSignedIn() &&
-                        !isBlocked() &&
-                        request.auth.uid in get(/databases/$(database)/documents/channels/$(channelId)).data.memberIds &&
-                        hasRequiredFields(request.resource.data, [
-                          'senderId', 'content', 'timestamp', 'type'
-                        ]) &&
-                        isOwner(request.resource.data.senderId) &&
-                        (request.resource.data.timestamp is string || request.resource.data.timestamp is timestamp) &&
-                        request.resource.data.type in ['text', 'image', 'video', 'audio'];
-        
-        // UPDATE: Sender can update (mark as read, edit)
-        allow update: if isOwner(resource.data.senderId) ||
-                        (isSignedIn() && 
-                         request.auth.uid in get(/databases/$(database)/documents/channels/$(channelId)).data.memberIds);
-        
-        // DELETE: Sender or admin can delete
-        allow delete: if isOwner(resource.data.senderId) || isAdmin();
+        allow read: if canReadChannelMessages(channelId);
+        allow create: if canCreateMessage(channelId, messageId) && (
+          !get(/databases/$(database)/documents/channels/$(channelId)).data.get('restrict_messaging', false) ||
+          isChannelAdminFromDoc(get(/databases/$(database)/documents/channels/$(channelId)).data)
+        ) && (
+          // Type validation
+          request.resource.data.type in ['text', 'image', 'location', 'voice', 'giphy']
+        ) && (
+          // Content or Attachment validation
+          (request.resource.data.type == 'text' && request.resource.data.content is string && request.resource.data.content.size() > 0) ||
+          (request.resource.data.type == 'image' && request.resource.data.image_url is string) ||
+          (request.resource.data.type == 'voice' && request.resource.data.audio_url is string && request.resource.data.duration is int) ||
+          (request.resource.data.type == 'giphy' && request.resource.data.image_url is string) ||
+          (request.resource.data.type == 'location' && request.resource.data.latitude is float && request.resource.data.longitude is float)
+        );
+        allow update: if (isSignedIn() && resource.data.sender_id == request.auth.uid) || canUpdateMessageReactions(channelId);
+        allow delete: if isSignedIn() && resource.data.sender_id == request.auth.uid;
       }
     }
-    
-    // ============================================================================
-    // STORIES COLLECTION
-    // Collection: /stories/{storyId}
-    // Purpose: Store Snapchat-style stories with 24hr expiration
-    // ============================================================================
-    
+
+    // --------------------------------------------------------------------------
+    // stories/{storyId}
+    // --------------------------------------------------------------------------
     match /stories/{storyId} {
-      // READ: Authenticated users can read stories that haven't expired
-      allow read: if isSignedIn() &&
-                    resource.data.expiresAt > request.time;
-      
-      // CREATE: Authenticated, non-blocked users can create stories
-      allow create: if isSignedIn() &&
-                      !isBlocked() &&
-                      hasRequiredFields(request.resource.data, [
-                        'userId', 'mediaUrl', 'mediaType', 'createdAt', 'expiresAt'
-                      ]) &&
-                      isOwner(request.resource.data.userId) &&
-                      (request.resource.data.createdAt is string || request.resource.data.createdAt is timestamp) &&
-                      // Removed strict expiresAt constraint to allow client logic
-                      request.resource.data.mediaType in ['image', 'video'] &&
-                      request.resource.data.viewCount == 0;
-      
-      // UPDATE: Owner can update view count
-      allow update: if isOwner(resource.data.userId) &&
-                      unchangedFields(['userId', 'mediaUrl', 'mediaType', 'createdAt', 'expiresAt']);
-      
-      // DELETE: Owner or admin can delete
-      allow delete: if isOwner(resource.data.userId) || isAdmin();
-      
-      // SUBCOLLECTION: Story Views
-      // /stories/{storyId}/views/{viewerId}
-      match /views/{viewerId} {
-        allow read: if isSignedIn() && 
-                      (isOwner(viewerId) || 
-                       isOwner(get(/databases/$(database)/documents/stories/$(storyId)).data.userId));
-        allow create: if isSignedIn() && 
-                        isOwner(viewerId) &&
-                        request.resource.data.timestamp == request.time;
-        allow delete: if isAdmin();
-      }
+      allow read: if isSignedIn();
+      allow create: if isSignedInAndActive() &&
+        request.resource.data.author_id == request.auth.uid &&
+        request.resource.data.id == storyId;
+      allow update: if (
+        isSignedInAndActive() && resource.data.author_id == request.auth.uid
+      ) || isValidStoryViewerUpdate() || isValidStoryLikeUpdate();
+      allow delete: if isSignedIn() && resource.data.author_id == request.auth.uid;
     }
-    
-    // ============================================================================
-    // EVENTS COLLECTION
-    // Collection: /events/{eventId}
-    // Purpose: Store campus events
-    // ============================================================================
-    
+
+    // --------------------------------------------------------------------------
+    // events/{eventId}
+    // --------------------------------------------------------------------------
     match /events/{eventId} {
-      // READ: Anyone authenticated can read events
       allow read: if isSignedIn();
-      
-      // CREATE: Only admins or verified users can create events
-      allow create: if isSignedIn() &&
-                      (isAdmin() || isVerified()) &&
-                      hasRequiredFields(request.resource.data, [
-                        'title', 'description', 'organizerId', 'dateTime', 'location', 'createdAt'
-                      ]) &&
-                      isOwner(request.resource.data.organizerId) &&
-                      validStringLength(request.resource.data.title, 3, 100) &&
-                      validStringLength(request.resource.data.description, 10, 2000) &&
-                      request.resource.data.dateTime > request.time &&
-                      request.resource.data.createdAt == request.time &&
-                      request.resource.data.attendeesCount == 0;
-      
-      // UPDATE: Organizer or admin can update
-      allow update: if (isOwner(resource.data.organizerId) || isAdmin()) &&
-                      unchangedFields(['organizerId', 'createdAt']);
-      
-      // DELETE: Organizer or admin can delete
-      allow delete: if isOwner(resource.data.organizerId) || isAdmin();
-      
-      // SUBCOLLECTION: Attendees
-      // /events/{eventId}/attendees/{userId}
-      match /attendees/{attendeeId} {
+      allow create: if isSignedInAndActive() && request.resource.data.organizer_id == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.organizer_id == request.auth.uid;
+
+      match /attendees/{userId} {
         allow read: if isSignedIn();
-        allow create: if isSignedIn() && 
-                        isOwner(attendeeId) &&
-                        !isBlocked();
-        allow delete: if isOwner(attendeeId) || isAdmin();
+        allow create, delete: if isSelf(userId);
+        allow update: if false;
       }
     }
-    
-    // ============================================================================
-    // GROUPS COLLECTION
-    // Collection: /groups/{groupId}
-    // Purpose: Store community groups
-    // ============================================================================
-    
+
+    // --------------------------------------------------------------------------
+    // groups/{groupId}
+    // --------------------------------------------------------------------------
     match /groups/{groupId} {
-      // READ: Anyone authenticated can read groups
       allow read: if isSignedIn();
-      
-      // CREATE: Authenticated, non-blocked users can create groups
-      allow create: if isSignedIn() &&
-                      !isBlocked() &&
-                      hasRequiredFields(request.resource.data, [
-                        'name', 'description', 'category', 'creatorId', 'createdAt'
-                      ]) &&
-                      isOwner(request.resource.data.creatorId) &&
-                      validStringLength(request.resource.data.name, 3, 50) &&
-                      validStringLength(request.resource.data.description, 10, 500) &&
-                      request.resource.data.createdAt == request.time &&
-                      request.resource.data.membersCount == 1;
-      
-      // UPDATE: Group creator or admin can update
-      allow update: if (isOwner(resource.data.creatorId) || isAdmin()) &&
-                      unchangedFields(['creatorId', 'createdAt']);
-      
-      // DELETE: Creator or admin can delete
-      allow delete: if isOwner(resource.data.creatorId) || isAdmin();
-      
-      // SUBCOLLECTION: Members
-      // /groups/{groupId}/members/{userId}
+      allow create: if isSignedInAndActive() && request.resource.data.creator_id == request.auth.uid;
+      allow update: if (
+        isSignedIn() && resource.data.creator_id == request.auth.uid
+      ) || canUpdateGroupMemberCountOnly();
+      allow delete: if isSignedIn() && resource.data.creator_id == request.auth.uid;
+
       match /members/{memberId} {
         allow read: if isSignedIn();
-        allow create: if isSignedIn() && 
-                        isOwner(memberId) &&
-                        !isBlocked();
-        allow delete: if isOwner(memberId) || 
-                        isOwner(get(/databases/$(database)/documents/groups/$(groupId)).data.creatorId) ||
-                        isAdmin();
+        allow create, delete: if isSelf(memberId);
+        allow update: if false;
       }
     }
-    
-    // ============================================================================
-    // RESOURCES COLLECTION
-    // Collection: /resources/{resourceId}
-    // Purpose: Store academic resources (notes, past questions, etc.)
-    // ============================================================================
-    
+
+    // --------------------------------------------------------------------------
+    // resources/{resourceId}
+    // --------------------------------------------------------------------------
     match /resources/{resourceId} {
-      // READ: Anyone authenticated can read resources
       allow read: if isSignedIn();
-      
-      // CREATE: Only admins or verified users can upload resources
-      allow create: if isSignedIn() &&
-                      (isAdmin() || isVerified()) &&
-                      hasRequiredFields(request.resource.data, [
-                        'title', 'category', 'fileUrl', 'uploaderId', 'uploadedAt'
-                      ]) &&
-                      isOwner(request.resource.data.uploaderId) &&
-                      validStringLength(request.resource.data.title, 3, 100) &&
-                      request.resource.data.category in ['Lecture Notes', 'Past Questions', 'Research', 'Other'] &&
-                      request.resource.data.uploadedAt == request.time &&
-                      request.resource.data.downloadCount == 0;
-      
-      // UPDATE: Uploader or admin can update (mainly for download count)
-      allow update: if (isOwner(resource.data.uploaderId) || isAdmin()) &&
-                      unchangedFields(['uploaderId', 'uploadedAt', 'fileUrl']);
-      
-      // DELETE: Uploader or admin can delete
-      allow delete: if isOwner(resource.data.uploaderId) || isAdmin();
+      allow create: if isSignedInAndActive() && request.resource.data.uploader_id == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.uploader_id == request.auth.uid;
     }
-    
-    // ============================================================================
-    // BROADCASTS COLLECTION
-    // Collection: /broadcasts/{broadcastId}
-    // Purpose: Store admin announcements/broadcasts
-    // ============================================================================
-    
-    // ============================================================================
-    // ANNOUNCEMENTS COLLECTION
-    // Collection: /announcements/{announcementId} (Updated from broadcasts to match Codebase)
-    // Purpose: Store admin announcements/broadcasts
-    // ============================================================================
-    
+
+    // --------------------------------------------------------------------------
+    // marketplace_items/{itemId}
+    // --------------------------------------------------------------------------
+    match /marketplace_items/{itemId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedInAndActive() && 
+        request.resource.data.seller_id == request.auth.uid &&
+        (
+          !('images' in request.resource.data) || request.resource.data.images is list
+        ) &&
+        request.resource.data.title is string &&
+        (request.resource.data.price is int || request.resource.data.price is float);
+      allow update, delete: if isSignedIn() && resource.data.seller_id == request.auth.uid;
+    }
+
+    // --------------------------------------------------------------------------
+    // announcements/{announcementId}
+    // Admin managed content, app can read only.
+    // --------------------------------------------------------------------------
     match /announcements/{announcementId} {
-      // READ: Anyone authenticated can read announcements
       allow read: if isSignedIn();
-      
-      // CREATE: Only admins can create announcements
-      allow create: if isAdmin() &&
-                      hasRequiredFields(request.resource.data, [
-                        'title', 'message', 'type', 'createdBy', 'createdAt'
-                      ]) &&
-                      isOwner(request.resource.data.createdBy) &&
-                      validStringLength(request.resource.data.title, 3, 100) &&
-                      validStringLength(request.resource.data.message, 10, 500) &&
-                      request.resource.data.type in ['info', 'warning', 'urgent'] &&
-                      request.resource.data.createdAt == request.time;
-      
-      // UPDATE: Only admins
-      allow update: if isAdmin();
-      
-      // DELETE: Only admins
-      allow delete: if isAdmin();
+      allow create, update, delete: if false;
     }
-    
-    // ============================================================================
-    // ANALYTICS COLLECTION
-    // Collection: /analytics/{documentId}
-    // Purpose: Store app analytics and metrics
-    // ============================================================================
-    
-    match /analytics/{documentId} {
-      // READ: Only admins can read analytics
-      allow read: if isAdmin();
-      
-      // CREATE/UPDATE: System or admin only
-      allow create, update: if isAdmin();
-      
-      // DELETE: Only admins
-      allow delete: if isAdmin();
-    }
-    
-    // ============================================================================
-    // REPORTS COLLECTION
-    // Collection: /reports/{reportId}
-    // Purpose: Store user reports for content moderation
-    // ============================================================================
-    
+
+    // --------------------------------------------------------------------------
+    // reports/{reportId}
+    // App users submit, admins review.
+    // --------------------------------------------------------------------------
     match /reports/{reportId} {
-      // READ: Reporter and admins can read
-      allow read: if isSignedIn() &&
-                    (isOwner(resource.data.reporterId) || isAdmin());
-      
-      // CREATE: Authenticated users can report content
-      allow create: if isSignedIn() &&
-                      !isBlocked() &&
-                      hasRequiredFields(request.resource.data, [
-                        'reporterId', 'reportType', 'targetId', 'reason', 'timestamp'
-                      ]) &&
-                      isOwner(request.resource.data.reporterId) &&
-                      request.resource.data.reportType in ['post', 'comment', 'user', 'chat'] &&
-                      validStringLength(request.resource.data.reason, 10, 500) &&
-                      request.resource.data.timestamp == request.time &&
-                      request.resource.data.status == 'pending';
-      
-      // UPDATE: Only admins (to change status)
-      allow update: if isAdmin();
-      
-      // DELETE: Only admins
-      allow delete: if isAdmin();
+      allow read: if false;
+      allow create: if canCreateReport();
+      allow update, delete: if false;
     }
-    
-    // ============================================================================
-    // PRESENCE COLLECTION
-    // Collection: /presence/{userId}
-    // Purpose: Track online/offline status of users
-    // ============================================================================
-    
+
+    // --------------------------------------------------------------------------
+    // presence/{userId}
+    // --------------------------------------------------------------------------
     match /presence/{userId} {
-      // READ: Anyone authenticated can read presence
       allow read: if isSignedIn();
-      
-      // CREATE/UPDATE: Only the user themselves
-      allow create, update: if isOwner(userId) &&
-                              hasRequiredFields(request.resource.data, [
-                                'isOnline', 'lastSeen'
-                              ]) &&
-                              request.resource.data.lastSeen == request.time;
-      
-      // DELETE: User or admin
-      allow delete: if isOwner(userId) || isAdmin();
+      allow create, update, delete: if isSelf(userId);
     }
-    
-    // ============================================================================
-    // APP SETTINGS COLLECTION
-    // Collection: /appSettings/{documentId}
-    // Purpose: Store app-wide settings and configuration
-    // ============================================================================
-    
-    match /appSettings/{settingId} {
-      // READ: Everyone can read settings
-      allow read: if isSignedIn();
-      
-      // WRITE: Only admins
-      allow write: if isAdmin();
-    }
-    
-    // ============================================================================
-    // CLOUDINARY UPLOADS COLLECTION
-    // Collection: /uploads/{uploadId}
-    // Purpose: Track uploaded media files for cleanup and moderation
-    // ============================================================================
-    
-    match /uploads/{uploadId} {
-      // READ: Owner and admins
-      allow read: if isSignedIn() &&
-                    (isOwner(resource.data.uploaderId) || isAdmin());
-      
-      // CREATE: Authenticated users logging their uploads
+
+    // --------------------------------------------------------------------------
+    // notifications/{notificationId}
+    // Supports both `user_id` and legacy `recipient_id`.
+    // --------------------------------------------------------------------------
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && (
+        resource.data.user_id == request.auth.uid ||
+        resource.data.recipient_id == request.auth.uid
+      );
       allow create: if isSignedIn() &&
-                      isOwner(request.resource.data.uploaderId) &&
-                      hasRequiredFields(request.resource.data, [
-                        'uploaderId', 'cloudinaryUrl', 'publicId', 'uploadedAt', 'fileType'
-                      ]) &&
-                      request.resource.data.uploadedAt == request.time &&
-                      request.resource.data.fileType in ['image', 'video'];
-      
-      // UPDATE: Owner and admins (for metadata)
-      allow update: if isOwner(resource.data.uploaderId) || isAdmin();
-      
-      // DELETE: Owner and admins
-      allow delete: if isOwner(resource.data.uploaderId) || isAdmin();
+        (
+          "user_id" in request.resource.data ||
+          "recipient_id" in request.resource.data
+        ) &&
+        (
+          !("sender_id" in request.resource.data) ||
+          request.resource.data.sender_id == request.auth.uid
+        );
+      allow update: if isSignedIn() && (
+        resource.data.user_id == request.auth.uid ||
+        resource.data.recipient_id == request.auth.uid
+      );
+      allow delete: if isSignedIn() && (
+        resource.data.user_id == request.auth.uid ||
+        resource.data.recipient_id == request.auth.uid
+      );
     }
-    
-    // ============================================================================
-    // FEATURED CONTENT COLLECTION
-    // Collection: /featured/{featureId}
-    // Purpose: Curated/featured content by admins
-    // ============================================================================
-    
-    match /featured/{featureId} {
-      // READ: Everyone
-      allow read: if isSignedIn();
-      
-      // WRITE: Only admins
-      allow write: if isAdmin();
-    }
-    
-    // ============================================================================
-    // HASHTAGS COLLECTION (for trending)
-    // Collection: /hashtags/{tag}
-    // Purpose: Track hashtag usage and trending topics
-    // ============================================================================
-    
-    match /hashtags/{tag} {
-      // READ: Everyone
-      allow read: if isSignedIn();
-      
-      // CREATE/UPDATE: System updates counts
-      allow create, update: if isSignedIn(); // Users can increment counts
-      
-      // DELETE: Only admins
-      allow delete: if isAdmin();
+
+    // --------------------------------------------------------------------------
+    // Global admin override (Moved to bottom)
+    // --------------------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if isAdmin();
     }
   }
 }

@@ -2,7 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import '../providers/story_providers.dart';
+import '../data/story_repository.dart';
+import '../../user/data/user_repository.dart';
 
 /// Screen for creating a new story
 /// Allows user to take a photo or select from gallery
@@ -16,11 +17,43 @@ class CreateStoryScreen extends ConsumerStatefulWidget {
 class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
   XFile? _selectedMedia;
   final TextEditingController _captionController = TextEditingController();
+  final TextEditingController _textController = TextEditingController();
   bool _isUploading = false;
+  bool _isTextMode = false;
+  Color _backgroundColor = const Color(0xFFEF5350); // Default Red
+  Color _textColor = Colors.white;
+  String _fontFamily = 'Roboto';
+  TextAlign _textAlign = TextAlign.center;
+
+  final List<Color> _backgroundColors = [
+    const Color(0xFFEF5350), // Red
+    const Color(0xFFAB47BC), // Purple
+    const Color(0xFF42A5F5), // Blue
+    const Color(0xFF26A69A), // Teal
+    const Color(0xFF66BB6A), // Green
+    const Color(0xFFFFA726), // Orange
+    const Color(0xFF78909C), // Blue Grey
+    const Color(0xFF212121), // Black
+    const Color(0xFF5D4037), // Brown
+    const Color(0xFF303F9F), // Indigo
+  ];
+
+  final List<Color> _textColors = [
+    Colors.white,
+    Colors.black,
+    const Color(0xFFEF5350),
+    const Color(0xFF42A5F5),
+    const Color(0xFF66BB6A),
+    const Color(0xFFFFA726),
+    const Color(0xFFAB47BC),
+  ];
+
+  final List<String> _fonts = ['Roboto', 'Serif', 'Monospace'];
 
   @override
   void dispose() {
     _captionController.dispose();
+    _textController.dispose();
     super.dispose();
   }
 
@@ -131,10 +164,17 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
   }
 
   Future<void> _uploadStory() async {
-    if (_selectedMedia == null) {
+    if (_selectedMedia == null && !_isTextMode) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select an image first')),
       );
+      return;
+    }
+
+    if (_isTextMode && _textController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please enter some text')));
       return;
     }
 
@@ -144,12 +184,38 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
 
     try {
       final repo = ref.read(storyRepositoryProvider);
+      final currentUser = ref.read(currentUserProvider).value;
+
+      if (currentUser == null) {
+        throw Exception('User profile not found');
+      }
+
+      // ... (inside _uploadStory)
+      String content = '';
+      String type = 'image';
+      String? caption = _captionController.text.trim().isEmpty
+          ? null
+          : _captionController.text.trim();
+      int? backgroundColor;
+      int? textColor;
+
+      if (_isTextMode) {
+        content = _textController.text.trim();
+        type = 'text';
+        caption = null;
+        backgroundColor = _backgroundColor.value;
+        textColor = _textColor.value;
+      }
+
       await repo.createStory(
-        mediaFile: _selectedMedia!,
-        mediaType: 'image',
-        caption: _captionController.text.trim().isEmpty
-            ? null
-            : _captionController.text.trim(),
+        mediaFile: _isTextMode ? null : _selectedMedia!,
+        type: type,
+        caption: caption,
+        content: content,
+        backgroundColor: backgroundColor,
+        textColor: textColor,
+        fontFamily: _isTextMode ? _fontFamily : null,
+        textAlign: _isTextMode ? _textAlign.name : null,
       );
 
       if (mounted) {
@@ -194,36 +260,70 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
         ),
         actions: [
-          if (_selectedMedia != null && !_isUploading)
-            TextButton(
-              onPressed: _uploadStory,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)],
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Text(
-                  'Share',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 15,
-                  ),
+          TextButton(
+            onPressed:
+                ((_selectedMedia != null) ||
+                        (_isTextMode &&
+                            _textController.text.trim().isNotEmpty)) &&
+                    !_isUploading
+                ? _uploadStory
+                : null,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                gradient:
+                    ((_selectedMedia != null) ||
+                            (_isTextMode &&
+                                _textController.text.trim().isNotEmpty)) &&
+                        !_isUploading
+                    ? const LinearGradient(
+                        colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)],
+                      )
+                    : null,
+                color:
+                    ((_selectedMedia != null) ||
+                            (_isTextMode &&
+                                _textController.text.trim().isNotEmpty)) &&
+                        !_isUploading
+                    ? null
+                    : (isDark ? Colors.grey[800] : Colors.grey[200]),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                'Post',
+                style: TextStyle(
+                  color:
+                      ((_selectedMedia != null) ||
+                              (_isTextMode &&
+                                  _textController.text.trim().isNotEmpty)) &&
+                          !_isUploading
+                      ? Colors.white
+                      : (isDark ? Colors.grey[600] : Colors.grey[400]),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
                 ),
               ),
             ),
+          ),
           const SizedBox(width: 8),
         ],
       ),
-      body: _selectedMedia == null
-          ? _buildEmptyState(isDark)
-          : _buildPreview(isDark),
+      body: _isTextMode
+          ? _buildTextPreview(isDark)
+          : (_selectedMedia == null
+                ? _buildEmptyState(isDark)
+                : _buildPreview(isDark)),
+      floatingActionButton:
+          (_selectedMedia != null ||
+                  (_isTextMode && _textController.text.trim().isNotEmpty)) &&
+              !_isUploading
+          ? FloatingActionButton.extended(
+              onPressed: _uploadStory,
+              label: const Text('Share Now'),
+              icon: const Icon(Icons.send_rounded),
+              backgroundColor: const Color(0xFF8B5CF6),
+            )
+          : null,
     );
   }
 
@@ -297,6 +397,29 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                 const SizedBox(width: 12),
                 const Text(
                   'Add Photo',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextButton(
+            onPressed: () {
+              setState(() {
+                _isTextMode = true;
+                _selectedMedia = null;
+              });
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: isDark ? Colors.white70 : Colors.black54,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Icon(Icons.text_fields, size: 20),
+                SizedBox(width: 8),
+                Text(
+                  'Text Status',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
               ],
@@ -402,6 +525,284 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildTextPreview(bool isDark) {
+    return Stack(
+      children: [
+        // Background
+        Positioned.fill(
+          child: GestureDetector(
+            onTap: () {
+              // Focus text field when tapping background
+              FocusScope.of(context).unfocus();
+            },
+            child: Container(
+              color: _backgroundColor,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32.0),
+                  child: TextField(
+                    controller: _textController,
+                    textAlign: _textAlign,
+                    onChanged: (val) {
+                      setState(() {}); // Rebuild to update Post button
+                    },
+                    style: TextStyle(
+                      color: _textColor,
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: _fontFamily,
+                    ),
+                    maxLines: null,
+                    decoration: const InputDecoration(
+                      hintText: 'Type a status...',
+                      hintStyle: TextStyle(color: Colors.white54),
+                      border: InputBorder.none,
+                    ),
+                    autofocus: true,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        // Controls
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: Container(
+            padding: EdgeInsets.fromLTRB(
+              0,
+              16,
+              0,
+              16 + MediaQuery.of(context).padding.bottom,
+            ),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+                colors: [Colors.black.withOpacity(0.5), Colors.transparent],
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Font Selector
+                SizedBox(
+                  height: 40,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: _fonts.length,
+                    itemBuilder: (context, index) {
+                      final font = _fonts[index];
+                      final isSelected = _fontFamily == font;
+                      return GestureDetector(
+                        onTap: () => setState(() => _fontFamily = font),
+                        child: Container(
+                          margin: const EdgeInsets.only(right: 12),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? Colors.white
+                                : Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: isSelected ? Colors.white : Colors.white30,
+                            ),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            font,
+                            style: TextStyle(
+                              color: isSelected ? Colors.black : Colors.white,
+                              fontWeight: isSelected
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                              fontFamily: font,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Alignment Selector
+                SizedBox(
+                  height: 36,
+                  child: Row(
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(left: 16, right: 12),
+                        child: Icon(
+                          Icons.align_horizontal_left,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                      Expanded(
+                        child: Row(
+                          children: [
+                            _buildAlignmentButton(
+                              TextAlign.left,
+                              Icons.format_align_left,
+                            ),
+                            const SizedBox(width: 8),
+                            _buildAlignmentButton(
+                              TextAlign.center,
+                              Icons.format_align_center,
+                            ),
+                            const SizedBox(width: 8),
+                            _buildAlignmentButton(
+                              TextAlign.right,
+                              Icons.format_align_right,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Text Color Picker
+                SizedBox(
+                  height: 36,
+                  child: Row(
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(left: 16, right: 12),
+                        child: Icon(
+                          Icons.text_format,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                      Expanded(
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: _textColors.length,
+                          itemBuilder: (context, index) {
+                            final color = _textColors[index];
+                            final isSelected = _textColor == color;
+                            return GestureDetector(
+                              onTap: () => setState(() => _textColor = color),
+                              child: Container(
+                                margin: const EdgeInsets.only(right: 12),
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? Colors.white
+                                        : Colors.white30,
+                                    width: isSelected ? 3 : 1,
+                                  ),
+                                  boxShadow: isSelected
+                                      ? [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(
+                                              0.3,
+                                            ),
+                                            blurRadius: 4,
+                                          ),
+                                        ]
+                                      : null,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Background Color Picker
+                SizedBox(
+                  height: 44,
+                  child: Row(
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(left: 16, right: 12),
+                        child: Icon(
+                          Icons.wallpaper,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                      Expanded(
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: _backgroundColors.length,
+                          itemBuilder: (context, index) {
+                            final color = _backgroundColors[index];
+                            final isSelected = _backgroundColor == color;
+                            return GestureDetector(
+                              onTap: () =>
+                                  setState(() => _backgroundColor = color),
+                              child: Container(
+                                margin: const EdgeInsets.only(right: 12),
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? Colors.white
+                                        : Colors.white30,
+                                    width: isSelected ? 3 : 1,
+                                  ),
+                                  boxShadow: isSelected
+                                      ? [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(
+                                              0.3,
+                                            ),
+                                            blurRadius: 6,
+                                          ),
+                                        ]
+                                      : null,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAlignmentButton(TextAlign alignment, IconData icon) {
+    final isSelected = _textAlign == alignment;
+    return GestureDetector(
+      onTap: () => setState(() => _textAlign = alignment),
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.white : Colors.white.withOpacity(0.2),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(
+          icon,
+          color: isSelected ? Colors.black : Colors.white,
+          size: 20,
+        ),
+      ),
     );
   }
 }

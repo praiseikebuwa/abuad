@@ -149,7 +149,7 @@ class SettingsScreen extends ConsumerWidget {
             title: "Profile",
             subtitle: user?.displayName ?? "Guest",
             showArrow: true,
-            onTap: () => context.push('/profile'),
+            onTap: () => context.push('/profile/edit'),
           ),
           _SettingsTile(
             icon: Icons.lock_outline,
@@ -274,9 +274,138 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   void _showChangePasswordDialog(BuildContext context, WidgetRef ref) {
-    // keeping implementation simple for now as it was mock in original
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Password change feature coming soon")),
+    final currentPasswordController = TextEditingController();
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    bool isLoading = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Change Password'),
+              content: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: currentPasswordController,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Current Password',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (value) => value == null || value.isEmpty
+                          ? 'Enter current password'
+                          : null,
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: newPasswordController,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'New Password',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Enter new password';
+                        }
+                        if (value.length < 6) {
+                          return 'Password must be at least 6 characters';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: confirmPasswordController,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Confirm New Password',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (value) {
+                        if (value != newPasswordController.text) {
+                          return 'Passwords do not match';
+                        }
+                        return null;
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isLoading ? null : () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: isLoading
+                      ? null
+                      : () async {
+                          if (!formKey.currentState!.validate()) return;
+
+                          setState(() => isLoading = true);
+
+                          try {
+                            await ref
+                                .read(authRepositoryProvider)
+                                .changePassword(
+                                  currentPassword: currentPasswordController
+                                      .text
+                                      .trim(),
+                                  newPassword: newPasswordController.text
+                                      .trim(),
+                                );
+
+                            if (context.mounted) {
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Password changed successfully',
+                                  ),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Error: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          } finally {
+                            if (context.mounted) {
+                              setState(() => isLoading = false);
+                            }
+                          }
+                        },
+                  child: isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('Update'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 

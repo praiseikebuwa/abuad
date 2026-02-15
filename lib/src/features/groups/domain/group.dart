@@ -6,6 +6,7 @@ class StudentGroup {
   final String imageUrl;
   final int memberCount;
   final bool isPrivate;
+  final String creatorId;
 
   StudentGroup({
     required this.id,
@@ -15,16 +16,19 @@ class StudentGroup {
     required this.imageUrl,
     this.memberCount = 0,
     this.isPrivate = false,
+    required this.creatorId,
   });
 
   Map<String, dynamic> toMap() {
     return {
+      'id': id,
       'name': name,
       'description': description,
       'category': category,
       'image_url': imageUrl,
       'member_count': memberCount,
       'is_private': isPrivate,
+      'creator_id': creatorId,
     };
   }
 
@@ -37,6 +41,7 @@ class StudentGroup {
       imageUrl: map['image_url'] ?? '',
       memberCount: map['member_count'] ?? 0,
       isPrivate: map['is_private'] ?? false,
+      creatorId: map['creator_id'] ?? '',
     );
   }
 }

@@ -4,6 +4,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../auth/data/auth_repository.dart';
 
+import '../../../core/utils/auth_error_handler.dart';
+import '../../../core/presentation/widgets/custom_snackbar.dart';
+
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -32,9 +35,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       // Navigation is usually handled by listening to auth state changes in the router
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
+        CustomSnackbar.show(
           context,
-        ).showSnackBar(SnackBar(content: Text('Login Failed: $e')));
+          message: AuthErrorHandler.getErrorMessage(e),
+          isError: true,
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -170,7 +175,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           TextFormField(
                             controller: _passwordController,
                             obscureText: true,
-                            style: const TextStyle(color: Color.fromARGB(255, 255, 255, 255)),
+                            style: const TextStyle(
+                              color: Color.fromARGB(255, 255, 255, 255),
+                            ),
                             decoration: InputDecoration(
                               labelText: 'Password',
                               labelStyle: const TextStyle(
@@ -203,7 +210,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 ? 'Please enter password'
                                 : null,
                           ),
-                          const SizedBox(height: 24),
+                          const SizedBox(height: 8),
+
+                          // Forgot Password
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              onPressed: () {
+                                _showForgotPasswordDialog(context);
+                              },
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.white,
+                              ),
+                              child: const Text('Forgot Password?'),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
 
                           // Login Button
                           FilledButton(
@@ -258,6 +280,80 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  void _showForgotPasswordDialog(BuildContext context) {
+    final emailController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Reset Password'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Enter your email address to receive a password reset link.',
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: emailController,
+                decoration: const InputDecoration(
+                  labelText: 'Email Address',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.emailAddress,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final email = emailController.text.trim();
+                if (email.isEmpty) {
+                  CustomSnackbar.show(
+                    context,
+                    message: 'Please enter your email',
+                    isError: true,
+                  );
+                  return;
+                }
+
+                Navigator.pop(context); // Close dialog
+
+                try {
+                  await ref
+                      .read(authRepositoryProvider)
+                      .sendPasswordResetEmail(email);
+
+                  if (mounted) {
+                    CustomSnackbar.show(
+                      context,
+                      message: 'Password reset link sent! Check your email.',
+                      isError: false,
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    CustomSnackbar.show(
+                      context,
+                      message: AuthErrorHandler.getErrorMessage(e),
+                      isError: true,
+                    );
+                  }
+                }
+              },
+              child: const Text('Send Link'),
+            ),
+          ],
+        );
+      },
     );
   }
 }
