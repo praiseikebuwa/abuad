@@ -89,7 +89,7 @@ class PollWidget extends StatelessWidget {
                         widthFactor: percentage,
                         child: Container(
                           decoration: BoxDecoration(
-                            color: Colors.blue.withOpacity(0.15),
+                            color: Colors.blue.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(8),
                           ),
                         ),

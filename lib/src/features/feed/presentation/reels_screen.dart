@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../domain/post.dart';
 import '../data/post_repository.dart';
@@ -35,6 +36,8 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final repo = ref.watch(postRepositoryProvider);
+
     return Scaffold(
       backgroundColor: Colors.black,
       extendBodyBehindAppBar: true,
@@ -46,14 +49,38 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
           onPressed: () => context.pop(),
         ),
       ),
-      body: PageView.builder(
-        scrollDirection: Axis.vertical,
-        controller: _pageController,
-        itemCount: widget.videos.length,
-        itemBuilder: (context, index) {
-          return _ReelPlayerItem(post: widget.videos[index]);
-        },
-      ),
+      body: widget.videos.length > 1
+          ? PageView.builder(
+              scrollDirection: Axis.vertical,
+              controller: _pageController,
+              itemCount: widget.videos.length,
+              itemBuilder: (context, index) {
+                return _ReelPlayerItem(post: widget.videos[index]);
+              },
+            )
+          : StreamBuilder<List<Post>>(
+              stream: repo.watchVideoPosts(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Center(
+                    child: CircularProgressIndicator(color: Colors.white),
+                  );
+                }
+
+                final allVideos = snapshot.data!;
+                // Ensure the initial video is first if possible, or just use the whole list
+                // For simplicity, if we came from a single video, we might want to prioritize it.
+
+                return PageView.builder(
+                  scrollDirection: Axis.vertical,
+                  controller: _pageController,
+                  itemCount: allVideos.length,
+                  itemBuilder: (context, index) {
+                    return _ReelPlayerItem(post: allVideos[index]);
+                  },
+                );
+              },
+            ),
     );
   }
 }
@@ -197,7 +224,7 @@ class _ReelPlayerItemState extends ConsumerState<_ReelPlayerItem> {
                   size: 32,
                 ),
                 onPressed: () {
-                  context.push('/post-detail', extra: post);
+                  context.push('/post/${post.id}', extra: post);
                 },
               ),
               Text(
@@ -212,7 +239,11 @@ class _ReelPlayerItemState extends ConsumerState<_ReelPlayerItem> {
               // Share Button
               IconButton(
                 icon: const Icon(Icons.share, color: Colors.white, size: 32),
-                onPressed: () {}, // Todo share
+                onPressed: () {
+                  Share.share(
+                    'Check out this post on ABUAD Nest: https://abuadapp.web.app/post/${post.id}',
+                  );
+                },
               ),
             ],
           ),

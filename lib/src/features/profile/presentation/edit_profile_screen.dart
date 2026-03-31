@@ -6,6 +6,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../user/data/user_repository.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/firebase_storage_service.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 class EditProfileScreen extends ConsumerStatefulWidget {
   const EditProfileScreen({super.key});
@@ -482,70 +483,79 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                           controller: _websiteController,
                           label: 'Website',
                           hint: 'https://example.com',
-                          icon: Icons.link,
+                          icon: FontAwesomeIcons.globe,
                           keyboardType: TextInputType.url,
                         ),
                         _buildInputField(
                           controller: _facebookController,
                           label: 'Facebook',
                           hint: 'https://facebook.com/username',
-                          icon: Icons.facebook,
+                          icon: FontAwesomeIcons.facebook,
+                          iconColor: const Color(0xFF1877F2),
                           keyboardType: TextInputType.url,
                         ),
                         _buildInputField(
                           controller: _twitterController,
                           label: 'Twitter / X',
                           hint: 'https://x.com/username',
-                          icon: Icons.alternate_email,
+                          icon: FontAwesomeIcons.xTwitter,
+                          iconColor: Colors.black,
                           keyboardType: TextInputType.url,
                         ),
                         _buildInputField(
                           controller: _instagramController,
                           label: 'Instagram',
                           hint: 'https://instagram.com/username',
-                          icon: Icons.camera_alt_outlined,
+                          icon: FontAwesomeIcons.instagram,
+                          iconColor: const Color(0xFFE4405F),
                           keyboardType: TextInputType.url,
                         ),
                         _buildInputField(
                           controller: _linkedinController,
                           label: 'LinkedIn',
                           hint: 'https://linkedin.com/in/username',
-                          icon: Icons.work_outline,
+                          icon: FontAwesomeIcons.linkedin,
+                          iconColor: const Color(0xFF0077B5),
                           keyboardType: TextInputType.url,
                         ),
                         _buildInputField(
                           controller: _tiktokController,
                           label: 'TikTok',
                           hint: 'https://tiktok.com/@username',
-                          icon: Icons.music_note,
+                          icon: FontAwesomeIcons.tiktok,
+                          iconColor: Colors.black,
                           keyboardType: TextInputType.url,
                         ),
                         _buildInputField(
                           controller: _youtubeController,
                           label: 'YouTube',
                           hint: 'https://youtube.com/@channel',
-                          icon: Icons.video_library,
+                          icon: FontAwesomeIcons.youtube,
+                          iconColor: const Color(0xFFFF0000),
                           keyboardType: TextInputType.url,
                         ),
                         _buildInputField(
                           controller: _snapchatController,
                           label: 'Snapchat',
                           hint: 'https://snapchat.com/add/username',
-                          icon: Icons.chat_bubble_outline,
+                          icon: FontAwesomeIcons.snapchat,
+                          iconColor: const Color(0xFFFFFC00),
                           keyboardType: TextInputType.url,
                         ),
                         _buildInputField(
                           controller: _githubController,
                           label: 'GitHub',
                           hint: 'https://github.com/username',
-                          icon: Icons.code,
+                          icon: FontAwesomeIcons.github,
+                          iconColor: const Color(0xFF181717),
                           keyboardType: TextInputType.url,
                         ),
                         _buildInputField(
                           controller: _twitchController,
                           label: 'Twitch',
                           hint: 'https://twitch.tv/username',
-                          icon: Icons.gamepad,
+                          icon: FontAwesomeIcons.twitch,
+                          iconColor: const Color(0xFF9146FF),
                           keyboardType: TextInputType.url,
                         ),
                         const SizedBox(height: 32),
@@ -570,7 +580,8 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     required TextEditingController controller,
     required String label,
     required String hint,
-    required IconData icon,
+    required dynamic icon,
+    Color? iconColor,
     int? maxLines = 1,
     int? maxLength,
     String? prefixText,
@@ -590,7 +601,20 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         decoration: InputDecoration(
           labelText: label,
           hintText: hint,
-          prefixIcon: Icon(icon, color: AppColors.secondaryTeal, size: 20),
+          prefixIcon: Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: (icon is IconData && icon is! FaIconData)
+                ? Icon(
+                    icon,
+                    color: iconColor ?? AppColors.secondaryTeal,
+                    size: 20,
+                  )
+                : FaIcon(
+                    icon as dynamic,
+                    color: iconColor ?? AppColors.secondaryTeal,
+                    size: 20,
+                  ),
+          ),
           prefixText: prefixText,
           counterText: '',
           filled: true,

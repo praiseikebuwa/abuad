@@ -25,13 +25,11 @@ class NotificationRepository {
     if (uid == null) return Stream.value([]);
 
     return _firestore
-        .collection(
-          'notifications',
-        ) // Using root collection for notifications (option 1)
-        // OR using subcollection users/{uid}/notifications (option 2 - preferred for scalability)
-        .where('recipient_id', isEqualTo: uid)
+        .collection('users')
+        .doc(uid)
+        .collection('notifications')
         .orderBy('timestamp', descending: true)
-        .limit(50)
+        .limit(100)
         .snapshots()
         .map(
           (snapshot) => snapshot.docs
@@ -60,7 +58,11 @@ class NotificationRepository {
     required String body,
     String? relatedId,
   }) async {
-    final docRef = _firestore.collection('notifications').doc();
+    final docRef = _firestore
+        .collection('users')
+        .doc(recipientId)
+        .collection('notifications')
+        .doc();
 
     final notification = AppNotification(
       id: docRef.id,
@@ -80,8 +82,30 @@ class NotificationRepository {
   }
 
   Future<void> markAsRead(String notificationId) async {
-    await _firestore.collection('notifications').doc(notificationId).update({
-      'is_read': true,
-    });
+    final uid = currentUserId;
+    if (uid == null) return;
+    await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('notifications')
+        .doc(notificationId)
+        .update({'is_read': true});
+  }
+
+  Future<void> deleteNotifications(List<String> notificationIds) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+
+    final batch = _firestore.batch();
+    final collection = _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('notifications');
+
+    for (final id in notificationIds) {
+      batch.delete(collection.doc(id));
+    }
+
+    await batch.commit();
   }
 }

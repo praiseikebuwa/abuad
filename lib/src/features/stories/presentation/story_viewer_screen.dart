@@ -6,6 +6,11 @@ import 'package:timeago/timeago.dart' as timeago;
 import '../domain/story.dart';
 import '../data/story_repository.dart';
 import 'package:abuad/src/features/user/data/user_repository.dart';
+import '../../feed/domain/report.dart';
+import '../../feed/presentation/widgets/report_bottom_sheet.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 
 /// Full-screen story viewer with Snapchat-style controls
 class StoryViewerScreen extends ConsumerStatefulWidget {
@@ -180,6 +185,21 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
     }
   }
 
+  Future<void> _launchUrl(String urlString) async {
+    final url = Uri.parse(urlString);
+    if (await canLaunchUrl(url)) {
+      _storyTimer?.cancel();
+      setState(() => _isPaused = true);
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+      if (mounted) {
+        setState(() {
+          _isPaused = false;
+          _startStoryTimer();
+        });
+      }
+    }
+  }
+
   Future<void> _likeCurrentStory() async {
     final currentUserId = _userIds[_currentUserIndex];
     final stories = widget.storiesGrouped[currentUserId]!;
@@ -196,6 +216,22 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
         // Force rebuild to show like animation if implemented
       });
     }
+  }
+
+  void _shareStory(Story story) {
+    _storyTimer?.cancel();
+    setState(() => _isPaused = true);
+
+    final text =
+        'Check out this story on ABUAD Nest! ${story.caption ?? ""}\n\nhttps://abuadapp.web.app/post/${story.id}';
+    Share.share(text).then((_) {
+      if (mounted) {
+        setState(() {
+          _isPaused = false;
+          _startStoryTimer();
+        });
+      }
+    });
   }
 
   void _showViewers(Story story) {
@@ -283,7 +319,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                 : null,
           ),
           loading: () => const ListTile(title: Text('Loading...')),
-          error: (_, __) => const SizedBox(),
+          error: (_, _) => const SizedBox(),
         );
       },
     );
@@ -407,7 +443,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
                             colors: [
-                              Colors.black.withOpacity(0.6),
+                              Colors.black.withValues(alpha: 0.6),
                               Colors.transparent,
                             ],
                           ),
@@ -428,7 +464,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                               height: 3,
                               margin: const EdgeInsets.symmetric(horizontal: 2),
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.3),
+                                color: Colors.white.withValues(alpha: 0.3),
                                 borderRadius: BorderRadius.circular(2),
                               ),
                               child: FractionallySizedBox(
@@ -490,7 +526,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                                 Text(
                                   timeago.format(story.createdAt),
                                   style: TextStyle(
-                                    color: Colors.white.withOpacity(0.8),
+                                    color: Colors.white.withValues(alpha: 0.8),
                                     fontSize: 13,
                                   ),
                                 ),
@@ -507,7 +543,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                                   vertical: 6,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.4),
+                                  color: Colors.black.withValues(alpha: 0.4),
                                   borderRadius: BorderRadius.circular(20),
                                 ),
                                 child: Row(
@@ -543,56 +579,262 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                             onPressed: () => Navigator.pop(context),
                             icon: const Icon(Icons.close, color: Colors.white),
                           ),
+                          if (!isOwnStory)
+                            IconButton(
+                              onPressed: () {
+                                setState(() => _isPaused = true);
+                                _storyTimer?.cancel();
+                                showModalBottomSheet(
+                                  context: context,
+                                  isScrollControlled: true,
+                                  backgroundColor: Colors.transparent,
+                                  builder: (context) => ReportBottomSheet(
+                                    targetId: story.id,
+                                    type: ReportType.story,
+                                  ),
+                                ).then((_) {
+                                  if (mounted) {
+                                    setState(() {
+                                      _isPaused = false;
+                                      _startStoryTimer();
+                                    });
+                                  }
+                                });
+                              },
+                              icon: const Icon(
+                                Icons.report_outlined,
+                                color: Colors.white,
+                              ),
+                            ),
                         ],
                       ),
                     ),
 
-                    // Caption at bottom (For Image Stories)
-                    if (story.caption != null &&
-                        story.caption!.isNotEmpty &&
-                        story.type != 'text')
-                      Positioned(
-                        bottom: 80,
-                        left: 16,
-                        right: 16,
-                        child: Text(
-                          story.caption!,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                            shadows: [
-                              Shadow(
-                                blurRadius: 4,
-                                color: Colors.black,
-                                offset: Offset(0, 1),
+                    // Mentions and Caption
+                    Positioned(
+                      bottom: 80,
+                      left: 16,
+                      right: 16,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (story.mentions.isNotEmpty)
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 4,
+                              alignment: WrapAlignment.center,
+                              children: story.mentions
+                                  .map(
+                                    (mention) => GestureDetector(
+                                      onTap: () {
+                                        _storyTimer?.cancel();
+                                        setState(() => _isPaused = true);
+                                        ref
+                                            .read(userRepositoryProvider)
+                                            .getUserByHandle(mention)
+                                            .then((user) {
+                                              if (user != null && mounted) {
+                                                context.push(
+                                                  '/user/${user.uid}',
+                                                );
+                                              } else if (mounted) {
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(
+                                                      'User @$mention not found',
+                                                    ),
+                                                  ),
+                                                );
+                                                setState(() {
+                                                  _isPaused = false;
+                                                  _startStoryTimer();
+                                                });
+                                              }
+                                            });
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withValues(
+                                            alpha: 0.5,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            15,
+                                          ),
+                                          border: Border.all(
+                                            color: const Color(
+                                              0xFF8B5CF6,
+                                            ).withValues(alpha: 0.8),
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: const Color(
+                                                0xFF8B5CF6,
+                                              ).withValues(alpha: 0.2),
+                                              blurRadius: 4,
+                                              spreadRadius: 1,
+                                            ),
+                                          ],
+                                        ),
+                                        child: Text(
+                                          '@$mention',
+                                          style: const TextStyle(
+                                            color: Color(0xFFC4B5FD),
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
+                          if (story.mentions.isNotEmpty &&
+                              story.caption != null &&
+                              story.caption!.isNotEmpty)
+                            const SizedBox(height: 8),
+                          if (story.caption != null &&
+                              story.caption!.isNotEmpty &&
+                              story.type != 'text')
+                            Text(
+                              story.caption!,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                                shadows: [
+                                  Shadow(
+                                    blurRadius: 4,
+                                    color: Colors.black,
+                                    offset: Offset(0, 1),
+                                  ),
+                                ],
                               ),
-                            ],
+                            ),
+                        ],
+                      ),
+                    ),
+
+                    // Link Button (Visit Link)
+                    if (story.linkUrl != null && story.linkUrl!.isNotEmpty)
+                      Positioned(
+                        bottom: 90,
+                        left: 0,
+                        right: 0,
+                        child: Center(
+                          child: GestureDetector(
+                            onTap: () => _launchUrl(story.linkUrl!),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 10,
+                              ),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [
+                                    Color(0xFF8B5CF6),
+                                    Color(0xFFEC4899),
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.3),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: const [
+                                  Icon(
+                                    Icons.open_in_new,
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Visit Link',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                       ),
 
-                    // Like Button (For Viewers)
-                    if (!isOwnStory)
-                      Positioned(
-                        bottom: 24,
-                        right: 16,
-                        child: FloatingActionButton(
-                          heroTag: 'like_story_btn',
-                          onPressed: _likeCurrentStory,
-                          backgroundColor: story.hasLiked(viewerId!)
-                              ? Colors.red
-                              : Colors.white.withOpacity(0.2),
-                          elevation: 0,
-                          child: Icon(
-                            story.hasLiked(viewerId)
-                                ? Icons.favorite
-                                : Icons.favorite_border,
-                            color: Colors.white,
+                    // Actions Bar (Bottom)
+                    Positioned(
+                      bottom: 24,
+                      left: 16,
+                      right: 16,
+                      child: Row(
+                        children: [
+                          if (!isOwnStory)
+                            Expanded(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(25),
+                                  border: Border.all(color: Colors.white24),
+                                ),
+                                child: const TextField(
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                  ),
+                                  decoration: InputDecoration(
+                                    hintText: 'Send message...',
+                                    hintStyle: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 13,
+                                    ),
+                                    border: InputBorder.none,
+                                    isDense: true,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          const SizedBox(width: 12),
+                          if (!isOwnStory)
+                            IconButton(
+                              onPressed: _likeCurrentStory,
+                              icon: Icon(
+                                story.hasLiked(viewerId!)
+                                    ? Icons.favorite
+                                    : Icons.favorite_border,
+                                color: story.hasLiked(viewerId)
+                                    ? Colors.red
+                                    : Colors.white,
+                              ),
+                            ),
+                          IconButton(
+                            onPressed: () => _shareStory(story),
+                            icon: const Icon(
+                              Icons.send_outlined,
+                              color: Colors.white,
+                            ),
                           ),
-                        ),
+                        ],
                       ),
+                    ),
                   ],
                 );
               },

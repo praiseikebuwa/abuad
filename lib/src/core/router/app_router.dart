@@ -12,14 +12,18 @@ import '../../features/chat/presentation/chat_screen.dart';
 import '../../features/chat/presentation/user_search_screen.dart';
 import '../../features/chat/presentation/create_group_screen.dart';
 import '../../features/chat/presentation/group_info_screen.dart';
+import '../../features/chat/presentation/chat_settings_screen.dart';
 import '../../features/map/presentation/map_screen.dart';
-import '../../features/ai/presentation/ai_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
 import '../../shared/widgets/scaffold_with_bottom_nav.dart';
 import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/presentation/signup_screen.dart';
 import '../../features/auth/presentation/complete_profile_screen.dart';
+import '../../features/auth/presentation/splash_screen.dart';
+import '../../features/auth/presentation/onboarding_screen.dart';
+import '../../features/auth/presentation/banned_screen.dart';
 import '../../features/auth/data/auth_repository.dart';
+import '../providers/shared_preferences_provider.dart';
 import '../../features/events/presentation/events_screen.dart';
 import '../../features/groups/presentation/groups_screen.dart';
 import '../../features/resources/presentation/resources_screen.dart';
@@ -31,12 +35,13 @@ import '../../features/marketplace/presentation/marketplace_detail_screen.dart';
 import '../../features/marketplace/data/marketplace_repository.dart';
 import '../../features/feed/presentation/reels_screen.dart';
 import '../../features/feed/domain/post.dart';
+import '../../features/user/presentation/user_list_screen.dart';
+import '../../features/user/data/user_repository.dart';
 
 final rootNavigatorKey = GlobalKey<NavigatorState>();
 final _feedNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'feed');
 final _chatNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'chat');
 final _mapNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'map');
-final _aiNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'ai');
 final _profileNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'profile');
 
 final goRouterProvider = Provider<GoRouter>((ref) {
@@ -44,27 +49,105 @@ final goRouterProvider = Provider<GoRouter>((ref) {
 
   return GoRouter(
     navigatorKey: rootNavigatorKey,
-    initialLocation: '/',
-    refreshListenable: GoRouterRefreshStream(authRepo.authStateChanges),
+    initialLocation: '/splash',
+    refreshListenable: GoRouterRefreshStream(
+      // Only watch user data if logged in to avoid empty document path errors
+      authRepo.currentUser != null
+          ? ref
+                .watch(userRepositoryProvider)
+                .watchUser(authRepo.currentUser!.uid)
+          : authRepo.authStateChanges,
+    ),
     redirect: (context, state) {
       final isLoggedIn = authRepo.currentUser != null;
+      final isFirstLaunch = ref
+          .read(firstLaunchRepositoryProvider)
+          .isFirstLaunch();
+
       final isLoggingIn = state.uri.toString() == '/login';
       final isSigningUp = state.uri.toString() == '/signup';
+      final isSplash = state.uri.toString() == '/splash';
+      final isOnboarding = state.uri.toString() == '/onboarding';
+      final isCompletingProfile = state.uri.toString() == '/complete-profile';
+      final isBanned = state.uri.toString() == '/banned';
 
-      if (!isLoggedIn && !isLoggingIn && !isSigningUp) return '/login';
-      if (isLoggedIn && (isLoggingIn || isSigningUp)) return '/';
+      if (isFirstLaunch && !isOnboarding && !isSplash) {
+        return '/onboarding';
+      }
+
+      if (!isLoggedIn &&
+          !isLoggingIn &&
+          !isSigningUp &&
+          !isSplash &&
+          !isOnboarding) {
+        return '/login';
+      }
+
+      if (isLoggedIn) {
+        // Only check profile completion if not on splash or onboarding
+        if (isSplash || isOnboarding) return null;
+
+        // Get user data to check for completeness
+        final userAsync = ref.read(currentUserProvider);
+        if (userAsync.isLoading) {
+          return null; // Don't redirect while loading data
+        }
+
+        final user = userAsync.value;
+
+        // If profile is incomplete, force redirect to /complete-profile
+        final isIncomplete =
+            user == null ||
+            user.college == null ||
+            user.college == 'ABUAD' || // 'ABUAD' is default from signup
+            user.department == null ||
+            user.bio == null ||
+            user.bio!.isEmpty;
+
+        if (isIncomplete &&
+            !isCompletingProfile &&
+            !isLoggingIn &&
+            !isSigningUp) {
+          return '/complete-profile';
+        }
+
+        // Check if user is banned
+        if (user != null && user.isBanned && !isBanned && !isSplash) {
+          return '/banned';
+        }
+
+        // If logged in and on auth pages, go to root
+        if (isLoggingIn ||
+            isSigningUp ||
+            isOnboarding ||
+            (isBanned && user != null && !user.isBanned)) {
+          return '/';
+        }
+      }
 
       return null;
     },
     routes: [
+      GoRoute(
+        path: '/splash',
+        builder: (context, state) => const SplashScreen(),
+      ),
       GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
       GoRoute(
         path: '/signup',
         builder: (context, state) => const SignUpScreen(),
       ),
       GoRoute(
+        path: '/onboarding',
+        builder: (context, state) => const OnboardingScreen(),
+      ),
+      GoRoute(
         path: '/complete-profile',
         builder: (context, state) => const CompleteProfileScreen(),
+      ),
+      GoRoute(
+        path: '/banned',
+        builder: (context, state) => const BannedScreen(),
       ),
       GoRoute(
         path: '/user/:userId',
@@ -73,6 +156,18 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           final userId = state.pathParameters['userId'];
           return ProfileScreen(userId: userId);
         },
+        routes: [
+          GoRoute(
+            path: 'connections',
+            parentNavigatorKey: rootNavigatorKey,
+            builder: (context, state) {
+              final userId = state.pathParameters['userId']!;
+              final extra = state.extra as Map<String, dynamic>?;
+              final initialIndex = extra?['initialIndex'] as int? ?? 0;
+              return UserListScreen(userId: userId, initialIndex: initialIndex);
+            },
+          ),
+        ],
       ),
       GoRoute(
         path: '/events',
@@ -129,13 +224,27 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                     },
                   ),
                   GoRoute(
-                    path: 'post-detail',
+                    path: 'post/:postId',
                     parentNavigatorKey: rootNavigatorKey,
                     builder: (context, state) {
                       final extra = state.extra;
                       final post = extra is Post ? extra : null;
-                      final postId = state.uri.queryParameters['postId'];
+                      final postId =
+                          state.pathParameters['postId'] ??
+                          state.uri.queryParameters['postId'];
                       return PostDetailScreen(post: post, postId: postId);
+                    },
+                  ),
+                  // Keeping post-detail for backward compatibility if needed, but routing it to the above
+                  GoRoute(
+                    path: 'post-detail',
+                    parentNavigatorKey: rootNavigatorKey,
+                    redirect: (context, state) {
+                      final postId = state.uri.queryParameters['postId'];
+                      if (postId != null) {
+                        return '/post/$postId';
+                      }
+                      return null;
                     },
                   ),
                   GoRoute(
@@ -163,19 +272,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             ],
           ),
 
-          // 3. AI Branch
-          StatefulShellBranch(
-            navigatorKey: _aiNavigatorKey,
-            routes: [
-              GoRoute(
-                path: '/ai',
-                pageBuilder: (context, state) =>
-                    const NoTransitionPage(child: AiScreen()),
-              ),
-            ],
-          ),
-
-          // 4. Map Branch
+          // 3. Map Branch
           StatefulShellBranch(
             navigatorKey: _mapNavigatorKey,
             routes: [
@@ -227,6 +324,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                     path: 'create-group',
                     parentNavigatorKey: rootNavigatorKey,
                     builder: (context, state) => const CreateGroupScreen(),
+                  ),
+                  GoRoute(
+                    path: 'settings',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const ChatSettingsScreen(),
                   ),
                   GoRoute(
                     path: ':channelId',

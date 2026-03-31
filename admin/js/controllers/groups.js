@@ -78,9 +78,4 @@ const groupsController = {
     }
 };
 
-document.addEventListener('DOMContentLoaded', () => {
-    if (!window.groupsControllerInitialized) {
-        groupsController.init();
-        window.groupsControllerInitialized = true;
-    }
-});
+// Auto-init removed. Will be called by NavigationController.

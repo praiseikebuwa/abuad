@@ -84,10 +84,4 @@ const eventsController = {
     }
 };
 
-document.addEventListener('DOMContentLoaded', () => {
-    // Basic check to prevent multiple inits if scripts reused
-    if (!window.eventsControllerInitialized) {
-        eventsController.init();
-        window.eventsControllerInitialized = true;
-    }
-});
+// Auto-init removed.

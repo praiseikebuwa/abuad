@@ -71,7 +71,7 @@ class FeedLoadingSkeleton extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Divider(color: Colors.white.withOpacity(0.5)),
+                Divider(color: Colors.white.withValues(alpha: 0.5)),
               ],
             ),
           ),

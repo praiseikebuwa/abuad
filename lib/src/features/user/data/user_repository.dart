@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as auth;
 import 'dart:math';
 import '../../auth/data/auth_repository.dart';
+import '../../feed/domain/post.dart';
 
 class AppUser {
   final String uid;
@@ -35,6 +37,10 @@ class AppUser {
   final String? snapchatUrl;
   final String? githubUrl;
   final String? twitchUrl;
+  final bool isFollowingVisible;
+  final bool isAdmin;
+  final bool isBanned;
+  final DateTime? createdAt;
 
   AppUser({
     required this.uid,
@@ -67,6 +73,10 @@ class AppUser {
     this.snapchatUrl,
     this.githubUrl,
     this.twitchUrl,
+    this.isFollowingVisible = true,
+    this.isAdmin = false,
+    this.isBanned = false,
+    this.createdAt,
   });
 
   Map<String, dynamic> toMap() {
@@ -103,6 +113,10 @@ class AppUser {
       'snapchat_url': snapchatUrl,
       'github_url': githubUrl,
       'twitch_url': twitchUrl,
+      'is_following_visible': isFollowingVisible,
+      'is_admin': isAdmin,
+      'is_banned': isBanned,
+      'created_at': createdAt != null ? Timestamp.fromDate(createdAt!) : null,
     };
   }
 
@@ -143,6 +157,12 @@ class AppUser {
       snapchatUrl: map['snapchat_url'],
       githubUrl: map['github_url'],
       twitchUrl: map['twitch_url'],
+      isFollowingVisible: map['is_following_visible'] ?? true,
+      isAdmin: map['is_admin'] ?? false,
+      isBanned: map['is_banned'] ?? false,
+      createdAt:
+          (map['created_at'] as Timestamp? ?? map['createdAt'] as Timestamp?)
+              ?.toDate(),
     );
   }
 }
@@ -167,12 +187,14 @@ class UserRepository {
       data['uid'] = doc.id;
       return AppUser.fromMap(data);
     } catch (e) {
+      debugPrint('❌ Error getting user $uid: $e');
       return null;
     }
   }
 
   // Watch user by ID
   Stream<AppUser?> watchUser(String uid) {
+    if (uid.isEmpty) return Stream.value(null);
     return _firestore.collection('users').doc(uid).snapshots().map((doc) {
       if (!doc.exists) return null;
       final data = doc.data()!;
@@ -245,6 +267,22 @@ class UserRepository {
     return snapshot.docs.isEmpty;
   }
 
+  // New: Watch popular/suggested users
+  Stream<List<AppUser>> watchPopularUsers() {
+    return _firestore
+        .collection('users')
+        .orderBy('followers_count', descending: true)
+        .limit(10)
+        .snapshots()
+        .map((snapshot) {
+          return snapshot.docs.map((doc) {
+            final data = doc.data();
+            data['uid'] = doc.id;
+            return AppUser.fromMap(data);
+          }).toList();
+        });
+  }
+
   // Search users by name
   Stream<List<AppUser>> searchUsers(String query) {
     if (query.isEmpty) {
@@ -285,10 +323,15 @@ class UserRepository {
   }
 
   Future<void> updateUser(String uid, Map<String, dynamic> data) async {
-    await _firestore
-        .collection('users')
-        .doc(uid)
-        .set(data, SetOptions(merge: true));
+    try {
+      await _firestore
+          .collection('users')
+          .doc(uid)
+          .set(data, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('❌ Error updating user $uid: $e');
+      rethrow;
+    }
   }
 
   // Follow a user
@@ -400,6 +443,17 @@ class UserRepository {
     });
   }
 
+  // Stream a single user's data
+  Stream<AppUser?> watchUsers(String uid) {
+    return _firestore.collection('users').doc(uid).snapshots().map((doc) {
+      if (!doc.exists) return null;
+      final data = doc.data();
+      if (data == null) return null;
+      data['uid'] = doc.id;
+      return AppUser.fromMap(data);
+    });
+  }
+
   // Watch all active users' locations (limited to last hour for performance/privacy)
   Stream<List<AppUser>> watchUsersLocations() {
     final hourAgo = DateTime.now().subtract(const Duration(hours: 1));
@@ -414,6 +468,155 @@ class UserRepository {
             return AppUser.fromMap(data);
           }).toList();
         });
+  }
+
+  // --- Social Features ---
+
+  // Bookmark/Save Post
+  Future<void> togglePostSave(String postId) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+
+    final savedRef = _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('saved_posts')
+        .doc(postId);
+
+    final doc = await savedRef.get();
+    if (doc.exists) {
+      await savedRef.delete();
+    } else {
+      await savedRef.set({
+        'post_id': postId,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    }
+  }
+
+  // Check if post is saved
+  Stream<bool> isPostSaved(String postId) {
+    final uid = currentUserId;
+    if (uid == null) return Stream.value(false);
+
+    return _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('saved_posts')
+        .doc(postId)
+        .snapshots()
+        .map((doc) => doc.exists);
+  }
+
+  // Watch Saved Posts
+  Stream<List<Post>> watchSavedPosts(String uid) {
+    return _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('saved_posts')
+        .orderBy('timestamp', descending: true)
+        .snapshots()
+        .asyncMap((snapshot) async {
+          final posts = <Post>[];
+          for (final doc in snapshot.docs) {
+            final postId = doc.id;
+            final postDoc = await _firestore
+                .collection('posts')
+                .doc(postId)
+                .get();
+            if (postDoc.exists) {
+              posts.add(Post.fromMap(postDoc.data()!));
+            }
+          }
+          return posts;
+        });
+  }
+
+  // Watch Followers
+  Stream<List<AppUser>> watchFollowers(String uid) {
+    return _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('followers')
+        .orderBy('timestamp', descending: true)
+        .snapshots()
+        .asyncMap((snapshot) async {
+          final users = <AppUser>[];
+          for (final doc in snapshot.docs) {
+            final followerUid = doc.id;
+            final user = await getUserById(followerUid);
+            if (user != null) {
+              users.add(user);
+            }
+          }
+          return users;
+        });
+  }
+
+  // Watch Following
+  Stream<List<AppUser>> watchFollowing(String uid) {
+    return _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('following')
+        .orderBy('timestamp', descending: true)
+        .snapshots()
+        .asyncMap((snapshot) async {
+          final users = <AppUser>[];
+          for (final doc in snapshot.docs) {
+            final followingUid = doc.id;
+            final user = await getUserById(followingUid);
+            if (user != null) {
+              users.add(user);
+            }
+          }
+          return users;
+        });
+  }
+
+  Future<void> blockUser(String targetUid) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+    await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('blocked_users')
+        .doc(targetUid)
+        .set({'blocked_at': FieldValue.serverTimestamp()});
+  }
+
+  Future<void> unblockUser(String targetUid) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+    await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('blocked_users')
+        .doc(targetUid)
+        .delete();
+  }
+
+  Stream<bool> isBlocked(String targetUid) {
+    final uid = currentUserId;
+    if (uid == null) return Stream.value(false);
+    return _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('blocked_users')
+        .doc(targetUid)
+        .snapshots()
+        .map((doc) => doc.exists);
+  }
+
+  Stream<List<String>> watchBlockedUsers() {
+    final uid = currentUserId;
+    if (uid == null) return Stream.value([]);
+    return _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('blocked_users')
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map((doc) => doc.id).toList());
   }
 }
 
@@ -459,4 +662,37 @@ final currentUserIdProvider = Provider<String?>((ref) {
 
 final usersLocationsProvider = StreamProvider<List<AppUser>>((ref) {
   return ref.watch(userRepositoryProvider).watchUsersLocations();
+});
+
+final isPostSavedProvider = StreamProvider.family<bool, String>((ref, postId) {
+  return ref.watch(userRepositoryProvider).isPostSaved(postId);
+});
+
+final savedPostsProvider = StreamProvider.family<List<Post>, String>((
+  ref,
+  uid,
+) {
+  return ref.watch(userRepositoryProvider).watchSavedPosts(uid);
+});
+
+final followersProvider = StreamProvider.family<List<AppUser>, String>((
+  ref,
+  uid,
+) {
+  return ref.watch(userRepositoryProvider).watchFollowers(uid);
+});
+
+final followingProvider = StreamProvider.family<List<AppUser>, String>((
+  ref,
+  uid,
+) {
+  return ref.watch(userRepositoryProvider).watchFollowing(uid);
+});
+
+final isBlockedProvider = StreamProvider.family<bool, String>((ref, targetUid) {
+  return ref.watch(userRepositoryProvider).isBlocked(targetUid);
+});
+
+final blockedUsersProvider = StreamProvider<List<String>>((ref) {
+  return ref.watch(userRepositoryProvider).watchBlockedUsers();
 });

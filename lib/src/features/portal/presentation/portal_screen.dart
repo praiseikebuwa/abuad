@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'gpa_calculator_screen.dart';
+import 'timetable_screen.dart';
+import '../data/academic_repository.dart';
+import 'package:timeago/timeago.dart' as timeago;
 
 class PortalScreen extends ConsumerWidget {
   const PortalScreen({super.key});
@@ -117,23 +121,76 @@ class PortalScreen extends ConsumerWidget {
                 );
               },
             ),
-            _buildFeatureCard(
-              context,
-              icon: Icons.assessment,
-              title: 'Results',
-              subtitle: 'Check your exam results',
-              color: Colors.teal,
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const ResultsScreen(),
-                  ),
-                );
-              },
+            const SizedBox(height: 24),
+            const Text(
+              'Your Results',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
+            const SizedBox(height: 12),
+            ref
+                .watch(resultsStreamProvider)
+                .when(
+                  data: (results) {
+                    if (results.isEmpty) {
+                      return const Center(child: Text('No results saved yet'));
+                    }
+                    return ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: results.length,
+                      itemBuilder: (context, index) {
+                        final result = results[index];
+                        return _buildResultCard(context, ref, result);
+                      },
+                    );
+                  },
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                  error: (e, s) => Text('Error: $e'),
+                ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildResultCard(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic> result,
+  ) {
+    final gpa = result['gpa'] as double;
+    final semester = result['semester'] as String;
+    final timestamp =
+        result['timestamp'] as dynamic; // Can be Timestamp or null
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: gpa >= 4.5
+              ? Colors.green
+              : (gpa >= 3.5 ? Colors.blue : Colors.orange),
+          child: Text(
+            gpa.toStringAsFixed(1),
+            style: const TextStyle(color: Colors.white, fontSize: 12),
+          ),
+        ),
+        title: Text(
+          semester,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(
+          timestamp != null ? timeago.format(timestamp.toDate()) : 'Recently',
+        ),
+        trailing: IconButton(
+          icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+          onPressed: () =>
+              ref.read(academicRepositoryProvider).deleteResult(result['id']),
+        ),
+        onTap: () {
+          // Show details if needed
+        },
       ),
     );
   }
@@ -190,259 +247,6 @@ class PortalScreen extends ConsumerWidget {
         subtitle: Text(subtitle),
         trailing: const Icon(Icons.chevron_right),
         onTap: onTap,
-      ),
-    );
-  }
-}
-
-// Timetable Screen
-class TimetableScreen extends StatelessWidget {
-  const TimetableScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-    final schedule = {
-      'Monday': [
-        {'time': '8:00 AM', 'course': 'CSC 301', 'venue': 'LT1'},
-        {'time': '10:00 AM', 'course': 'MTH 201', 'venue': 'LT2'},
-      ],
-      'Tuesday': [
-        {'time': '9:00 AM', 'course': 'PHY 202', 'venue': 'Lab 1'},
-      ],
-      'Wednesday': [
-        {'time': '8:00 AM', 'course': 'CSC 305', 'venue': 'LT1'},
-        {'time': '12:00 PM', 'course': 'ENG 201', 'venue': 'LT3'},
-      ],
-      'Thursday': [
-        {'time': '10:00 AM', 'course': 'CSC 307', 'venue': 'Lab 2'},
-      ],
-      'Friday': [
-        {'time': '8:00 AM', 'course': 'MTH 203', 'venue': 'LT2'},
-      ],
-    };
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('My Timetable')),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: days.length,
-        itemBuilder: (context, index) {
-          final day = days[index];
-          final classes = schedule[day] ?? [];
-
-          return Card(
-            margin: const EdgeInsets.only(bottom: 16),
-            child: ExpansionTile(
-              title: Text(
-                day,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              subtitle: Text('${classes.length} classes'),
-              children: classes.map((classInfo) {
-                return ListTile(
-                  leading: const Icon(Icons.access_time),
-                  title: Text(classInfo['course']!),
-                  subtitle: Text(
-                    '${classInfo['time']} - ${classInfo['venue']}',
-                  ),
-                );
-              }).toList(),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-// GPA Calculator Screen
-class GPACalculatorScreen extends StatefulWidget {
-  const GPACalculatorScreen({super.key});
-
-  @override
-  State<GPACalculatorScreen> createState() => _GPACalculatorScreenState();
-}
-
-class _GPACalculatorScreenState extends State<GPACalculatorScreen> {
-  final List<Map<String, dynamic>> _courses = [];
-  double _gpa = 0.0;
-
-  void _addCourse() {
-    setState(() {
-      _courses.add({'name': '', 'units': 3, 'grade': 'A'});
-    });
-  }
-
-  void _calculateGPA() {
-    if (_courses.isEmpty) return;
-
-    final gradePoints = {
-      'A': 5.0,
-      'B': 4.0,
-      'C': 3.0,
-      'D': 2.0,
-      'E': 1.0,
-      'F': 0.0,
-    };
-    double totalPoints = 0;
-    int totalUnits = 0;
-
-    for (var course in _courses) {
-      final units = course['units'] as int;
-      final grade = course['grade'] as String;
-      totalPoints += (gradePoints[grade] ?? 0) * units;
-      totalUnits += units;
-    }
-
-    setState(() {
-      _gpa = totalUnits > 0 ? totalPoints / totalUnits : 0.0;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('GPA Calculator')),
-      body: Column(
-        children: [
-          if (_gpa > 0)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(24),
-              color: Theme.of(context).primaryColor.withOpacity(0.1),
-              child: Column(
-                children: [
-                  const Text('Your GPA', style: TextStyle(fontSize: 16)),
-                  Text(
-                    _gpa.toStringAsFixed(2),
-                    style: TextStyle(
-                      fontSize: 48,
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).primaryColor,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _courses.length,
-              itemBuilder: (context, index) {
-                return Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Row(
-                      children: [
-                        Expanded(flex: 2, child: Text('Course ${index + 1}')),
-                        Expanded(
-                          child: DropdownButton<int>(
-                            value: _courses[index]['units'],
-                            items: [1, 2, 3, 4, 5, 6].map((units) {
-                              return DropdownMenuItem(
-                                value: units,
-                                child: Text('$units U'),
-                              );
-                            }).toList(),
-                            onChanged: (value) {
-                              setState(() {
-                                _courses[index]['units'] = value!;
-                              });
-                            },
-                          ),
-                        ),
-                        Expanded(
-                          child: DropdownButton<String>(
-                            value: _courses[index]['grade'],
-                            items: ['A', 'B', 'C', 'D', 'E', 'F'].map((grade) {
-                              return DropdownMenuItem(
-                                value: grade,
-                                child: Text(grade),
-                              );
-                            }).toList(),
-                            onChanged: (value) {
-                              setState(() {
-                                _courses[index]['grade'] = value!;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FloatingActionButton(
-            heroTag: 'add',
-            onPressed: _addCourse,
-            child: const Icon(Icons.add),
-          ),
-          const SizedBox(height: 8),
-          FloatingActionButton.extended(
-            heroTag: 'calc',
-            onPressed: _calculateGPA,
-            label: const Text('Calculate'),
-            icon: const Icon(Icons.calculate),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// Results Screen
-class ResultsScreen extends StatelessWidget {
-  const ResultsScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final results = [
-      {
-        'semester': '2023/2024 First Semester',
-        'gpa': '3.92',
-        'status': 'Excellent',
-      },
-      {
-        'semester': '2022/2023 Second Semester',
-        'gpa': '3.78',
-        'status': 'Very Good',
-      },
-    ];
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('My Results')),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: results.length,
-        itemBuilder: (context, index) {
-          final result = results[index];
-          return Card(
-            margin: const EdgeInsets.only(bottom: 12),
-            child: ListTile(
-              leading: CircleAvatar(
-                backgroundColor: Colors.green,
-                child: Text(
-                  result['gpa']!,
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                ),
-              ),
-              title: Text(result['semester']!),
-              subtitle: Text(result['status']!),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                // Show detailed results
-              },
-            ),
-          );
-        },
       ),
     );
   }

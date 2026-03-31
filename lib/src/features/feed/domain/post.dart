@@ -26,6 +26,12 @@ class Post {
   final List<String> hashtags;
   final List<String> mentions;
   final String visibility; // everyone, followers
+  final String status; // active, flagged, removed
+  final double? latitude;
+  final double? longitude;
+  final String replyPermission; // everyone, following, mentioned
+  final DateTime? scheduledAt;
+  final String? mediaAltText;
 
   Post({
     required this.id,
@@ -51,6 +57,12 @@ class Post {
     this.hashtags = const [],
     this.mentions = const [],
     this.visibility = 'everyone',
+    this.status = 'active',
+    this.latitude,
+    this.longitude,
+    this.replyPermission = 'everyone',
+    this.scheduledAt,
+    this.mediaAltText,
   });
 
   Map<String, dynamic> toMap() {
@@ -77,6 +89,14 @@ class Post {
       'hashtags': hashtags,
       'mentions': mentions,
       'visibility': visibility,
+      'status': status,
+      'latitude': latitude,
+      'longitude': longitude,
+      'reply_permission': replyPermission,
+      'scheduled_at': scheduledAt != null
+          ? Timestamp.fromDate(scheduledAt!)
+          : null,
+      'media_alt_text': mediaAltText,
     };
   }
 
@@ -103,8 +123,20 @@ class Post {
       }
     }
 
+    final String postId = map['id'] ?? map['post_id'] ?? '';
+
+    DateTime ts;
+    final dynamic rawTs = map['created_at'] ?? map['timestamp'];
+    if (rawTs is Timestamp) {
+      ts = rawTs.toDate();
+    } else if (rawTs is String) {
+      ts = DateTime.tryParse(rawTs) ?? DateTime.now();
+    } else {
+      ts = DateTime.now();
+    }
+
     return Post(
-      id: map['id'] ?? '',
+      id: postId,
       authorId: map['author_id'] ?? '',
       authorName: map['author_name'] ?? 'Anonymous',
       authorHandle: map['author_handle'] ?? '@anon',
@@ -120,7 +152,7 @@ class Post {
       content: map['content'] ?? '',
       mediaUrl: mUrl,
       mediaType: mType,
-      timestamp: (map['created_at'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      timestamp: ts,
       likesCount: map['likes_count'] ?? 0,
       commentsCount: map['comments_count'] ?? 0,
       repostCount: map['repost_count'] ?? 0,
@@ -133,6 +165,76 @@ class Post {
       hashtags: List<String>.from(map['hashtags'] ?? []),
       mentions: List<String>.from(map['mentions'] ?? []),
       visibility: map['visibility'] ?? 'everyone',
+      status: map['status'] ?? 'active',
+      latitude: (map['latitude'] as num?)?.toDouble(),
+      longitude: (map['longitude'] as num?)?.toDouble(),
+      replyPermission: map['reply_permission'] ?? 'everyone',
+      scheduledAt: (map['scheduled_at'] as Timestamp?)?.toDate(),
+      mediaAltText: map['media_alt_text'],
+    );
+  }
+
+  Post copyWith({
+    String? id,
+    String? authorId,
+    String? authorName,
+    String? authorHandle,
+    String? authorAvatarUrl,
+    String? content,
+    String? mediaUrl,
+    MediaType? mediaType,
+    DateTime? timestamp,
+    int? likesCount,
+    int? commentsCount,
+    int? repostCount,
+    int? viewsCount,
+    bool? isLiked,
+    String? channelId,
+    bool? isVerified,
+    String? verificationType,
+    bool? isAnonymous,
+    Map<String, dynamic>? pollData,
+    Map<String, dynamic>? repostData,
+    List<String>? hashtags,
+    List<String>? mentions,
+    String? visibility,
+    String? status,
+    double? latitude,
+    double? longitude,
+    String? replyPermission,
+    DateTime? scheduledAt,
+    String? mediaAltText,
+  }) {
+    return Post(
+      id: id ?? this.id,
+      authorId: authorId ?? this.authorId,
+      authorName: authorName ?? this.authorName,
+      authorHandle: authorHandle ?? this.authorHandle,
+      authorAvatarUrl: authorAvatarUrl ?? this.authorAvatarUrl,
+      content: content ?? this.content,
+      mediaUrl: mediaUrl ?? this.mediaUrl,
+      mediaType: mediaType ?? this.mediaType,
+      timestamp: timestamp ?? this.timestamp,
+      likesCount: likesCount ?? this.likesCount,
+      commentsCount: commentsCount ?? this.commentsCount,
+      repostCount: repostCount ?? this.repostCount,
+      viewsCount: viewsCount ?? this.viewsCount,
+      isLiked: isLiked ?? this.isLiked,
+      channelId: channelId ?? this.channelId,
+      isVerified: isVerified ?? this.isVerified,
+      verificationType: verificationType ?? this.verificationType,
+      isAnonymous: isAnonymous ?? this.isAnonymous,
+      pollData: pollData ?? this.pollData,
+      repostData: repostData ?? this.repostData,
+      hashtags: hashtags ?? this.hashtags,
+      mentions: mentions ?? this.mentions,
+      visibility: visibility ?? this.visibility,
+      status: status ?? this.status,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      replyPermission: replyPermission ?? this.replyPermission,
+      scheduledAt: scheduledAt ?? this.scheduledAt,
+      mediaAltText: mediaAltText ?? this.mediaAltText,
     );
   }
 }

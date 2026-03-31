@@ -102,9 +102,4 @@ const resourcesController = {
     }
 };
 
-document.addEventListener('DOMContentLoaded', () => {
-    if (!window.resourcesControllerInitialized) {
-        resourcesController.init();
-        window.resourcesControllerInitialized = true;
-    }
-});
+// Auto-init removed.

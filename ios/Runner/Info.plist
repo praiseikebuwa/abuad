@@ -5,9 +5,13 @@
 		<key>NSMicrophoneUsageDescription</key>
 		<string>We need access to your microphone for voice messages.</string>
 		<key>NSLocationWhenInUseUsageDescription</key>
-		<string>We need your location to share it with your friends in chat.</string>
-		<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-		<string>We need your location to keep your friends updated on your real-time position.</string>
+		<string>We need your location for the Shuttle Tracker and SOS features.</string>
+		<key>NSCameraUsageDescription</key>
+		<string>We need access to your camera so you can take photos for your profile and marketplace listings.</string>
+		<key>NSPhotoLibraryUsageDescription</key>
+		<string>We need access to your gallery so you can upload photos for your profile and marketplace listings.</string>
+		<key>NSPhotoLibraryAddUsageDescription</key>
+		<string>We need permission to save photos to your gallery.</string>
 		<key>CFBundleDevelopmentRegion</key>
 		<string>$(DEVELOPMENT_LANGUAGE)</string>
 		<key>CFBundleDisplayName</key>
@@ -52,7 +56,7 @@
 		<key>UIApplicationSupportsIndirectInputEvents</key>
 		<true/>
 		<key>UIStatusBarHidden</key>
-		<false/>
+		<true/>
 		<key>UIViewControllerBasedStatusBarAppearance</key>
 		<false/>
 	</dict>

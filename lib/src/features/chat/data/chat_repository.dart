@@ -2,8 +2,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart' as auth;
+import 'package:flutter/foundation.dart';
 import '../domain/chat_channel.dart';
 import '../domain/chat_message.dart';
+import '../../../core/utils/profanity_filter.dart';
 
 final chatRepositoryProvider = Provider<ChatRepository>((ref) {
   return ChatRepository(FirebaseFirestore.instance, FirebaseDatabase.instance);
@@ -103,10 +105,12 @@ class ChatRepository {
         .id;
     final now = DateTime.now();
 
+    final maskedContent = ProfanityFilter.maskProfanity(content);
+
     final msgData = {
       'id': messageId,
       'sender_id': uid,
-      'content': content,
+      'content': maskedContent,
       'type': type,
       'created_at': Timestamp.fromDate(now),
       'read_by': [uid],
@@ -121,7 +125,6 @@ class ChatRepository {
       if (replyToSenderId != null) 'reply_to_sender_id': replyToSenderId,
       'reactions': {},
       if (mentions != null) 'mentions': mentions,
-      'is_snap': isSnap,
       if (audioUrl != null) 'audio_url': audioUrl,
       if (duration != null) 'duration': duration,
     };
@@ -133,6 +136,33 @@ class ChatRepository {
       if (!channelDoc.exists) return;
 
       final channelData = channelDoc.data()!;
+      if (channelData['type'] == 'direct') {
+        final memberIds = List<String>.from(channelData['member_ids']);
+        final otherId = memberIds.firstWhere(
+          (id) => id != uid,
+          orElse: () => '',
+        );
+
+        if (otherId.isNotEmpty) {
+          // Check if either user has blocked the other
+          final blockedByMe = await _firestore
+              .collection('users')
+              .doc(uid)
+              .collection('blocked_users')
+              .doc(otherId)
+              .get();
+          final blockedByThem = await _firestore
+              .collection('users')
+              .doc(otherId)
+              .collection('blocked_users')
+              .doc(uid)
+              .get();
+
+          if (blockedByMe.exists || blockedByThem.exists) {
+            throw Exception('Cannot send message: User is blocked');
+          }
+        }
+      }
       final lastSnapTimeMap =
           channelData['last_snap_time'] as Map<String, dynamic>? ?? {};
       int streakCount = channelData['streak_count'] ?? 0;
@@ -213,8 +243,40 @@ class ChatRepository {
         if (isSnap) 'streak_count': streakCount,
         if (isSnap && streakExpiry != null)
           'streak_expiry': Timestamp.fromDate(streakExpiry),
+        // Increment unread count for other members
+        for (final memberId in List<String>.from(channelData['member_ids']))
+          if (memberId != uid)
+            'unread_counts.$memberId': FieldValue.increment(1),
       });
     });
+
+    // 3. Send Notification to other members
+    try {
+      final channelDoc = await channelRef.get();
+      final channelData = channelDoc.data()!;
+      final memberIds = List<String>.from(channelData['member_ids']);
+      final memberNames = Map<String, String>.from(channelData['member_names']);
+      final senderName = memberNames[uid] ?? 'ABUAD Nest User';
+
+      for (final recipientId in memberIds) {
+        if (recipientId != uid) {
+          // Send push notification via cloud architecture (modeled here)
+          await _firestore.collection('notifications').add({
+            'user_id': recipientId,
+            'title': channelData['type'] == 'group'
+                ? '${channelData['display_name']} - $senderName'
+                : senderName,
+            'body': type == 'image' ? '📸 Sent a snap' : content,
+            'type': 'chat',
+            'data': {'id': channelId},
+            'created_at': FieldValue.serverTimestamp(),
+            'is_read': false,
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error sending message notification: $e');
+    }
   }
 
   // Start a new chat (or get existing)
@@ -227,8 +289,21 @@ class ChatRepository {
   }) async {
     final uid = currentUserId;
     if (uid == null) throw Exception('Not logged in');
+    if (otherUserId.isEmpty) throw ArgumentError('otherUserId cannot be empty');
 
-    // For direct chats, we search for existing one where member_ids contains both
+    // 1. Check for deterministic channel ID first (new format)
+    final List<String> sortedIds = [uid, otherUserId]..sort();
+    final deterministicId = 'direct_${sortedIds[0]}_${sortedIds[1]}';
+    final deterministicDoc = await _firestore
+        .collection('channels')
+        .doc(deterministicId)
+        .get();
+
+    if (deterministicDoc.exists) {
+      return deterministicDoc.id;
+    }
+
+    // 2. Fallback: Search for existing random-ID channels (backward compatibility)
     final existing = await _firestore
         .collection('channels')
         .where('type', isEqualTo: 'direct')
@@ -242,46 +317,22 @@ class ChatRepository {
       }
     }
 
-    if (otherUserId.isEmpty) {
-      throw ArgumentError('otherUserId cannot be empty');
-    }
-
-    // REMOVED: Mutual Follow Check to allow open messaging as requested
-    /*
-    final currentUserFollowing = await _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('following')
-        .doc(otherUserId)
-        .get();
-
-    final otherUserFollowing = await _firestore
-        .collection('users')
-        .doc(otherUserId)
-        .collection('following')
-        .doc(uid)
-        .get();
-
-    if (!currentUserFollowing.exists || !otherUserFollowing.exists) {
-      throw Exception('You can only message users who follow you back.');
-    }
-    */
-
-    // Create new
-    final channelId = _firestore.collection('channels').doc().id;
+    // 3. Create new with deterministic ID
     final now = DateTime.now();
 
-    // For chat headers/list, we need verification info
-    final otherUserType =
-        (await _firestore.collection('users').doc(otherUserId).get())
-            .data()?['verification_type'] ??
-        'none';
-    final currentUserData =
-        (await _firestore.collection('users').doc(uid).get()).data();
-    final currentUserType = currentUserData?['verification_type'] ?? 'none';
+    // Fetch verification info
+    final otherUserDoc = await _firestore
+        .collection('users')
+        .doc(otherUserId)
+        .get();
+    final otherUserType = otherUserDoc.data()?['verification_type'] ?? 'none';
+
+    final currentUserDoc = await _firestore.collection('users').doc(uid).get();
+    final currentUserType =
+        currentUserDoc.data()?['verification_type'] ?? 'none';
 
     final channelData = {
-      'id': channelId,
+      'id': deterministicId,
       'type': 'direct',
       'member_ids': [uid, otherUserId],
       'member_names': {uid: currentUserName, otherUserId: otherUserName},
@@ -292,8 +343,11 @@ class ChatRepository {
       'unread_counts': {uid: 0, otherUserId: 0},
     };
 
-    await _firestore.collection('channels').doc(channelId).set(channelData);
-    return channelId;
+    await _firestore
+        .collection('channels')
+        .doc(deterministicId)
+        .set(channelData);
+    return deterministicId;
   }
 
   // Create a new group chat
@@ -512,5 +566,96 @@ class ChatRepository {
         .collection('messages')
         .doc(messageId)
         .delete();
+  }
+
+  Future<void> viewSnap(String channelId, String messageId) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+
+    final msgRef = _firestore
+        .collection('channels')
+        .doc(channelId)
+        .collection('messages')
+        .doc(messageId);
+
+    final doc = await msgRef.get();
+    if (!doc.exists) return;
+
+    final data = doc.data()!;
+    if (data['is_snap'] == true && data['sender_id'] != uid) {
+      // Mark as read or delete? Snapchat deletes/hides.
+      // We'll mark as read by me, and the UI will hide it if already read.
+      await msgRef.update({
+        'read_by': FieldValue.arrayUnion([uid]),
+      });
+    }
+  }
+
+  Future<void> editMessage(
+    String channelId,
+    String messageId,
+    String newContent,
+  ) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+
+    final maskedContent = ProfanityFilter.maskProfanity(newContent);
+    await _firestore
+        .collection('channels')
+        .doc(channelId)
+        .collection('messages')
+        .doc(messageId)
+        .update({'content': maskedContent, 'is_edited': true});
+  }
+
+  Future<void> togglePinChannel(String channelId, bool pin) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+
+    await _firestore.collection('channels').doc(channelId).update({
+      'pinned_by': pin
+          ? FieldValue.arrayUnion([uid])
+          : FieldValue.arrayRemove([uid]),
+    });
+  }
+
+  Future<void> toggleArchiveChannel(String channelId, bool archive) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+
+    await _firestore.collection('channels').doc(channelId).update({
+      'archived_by': archive
+          ? FieldValue.arrayUnion([uid])
+          : FieldValue.arrayRemove([uid]),
+    });
+  }
+
+  Future<void> toggleReaction(
+    String channelId,
+    String messageId,
+    String emoji,
+  ) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+
+    final msgRef = _firestore
+        .collection('channels')
+        .doc(channelId)
+        .collection('messages')
+        .doc(messageId);
+
+    final doc = await msgRef.get();
+    if (!doc.exists) return;
+
+    final message = ChatMessage.fromMap(doc.data()!);
+    final reactions = Map<String, String>.from(message.reactions);
+
+    if (reactions[uid] == emoji) {
+      reactions.remove(uid);
+    } else {
+      reactions[uid] = emoji;
+    }
+
+    await msgRef.update({'reactions': reactions});
   }
 }

@@ -6,13 +6,16 @@ import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import 'package:giphy_get/giphy_get.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../data/post_repository.dart';
 import '../../user/data/user_repository.dart';
 import '../../../core/services/firebase_storage_service.dart';
 import '../domain/post.dart';
 import '../../auth/data/auth_repository.dart';
-import '../../../core/theme/app_colors.dart'; // Ensure we have access to colors
+import '../../../core/theme/app_colors.dart';
+import '../../../core/providers/shared_preferences_provider.dart';
 
 class CreatePostScreen extends ConsumerStatefulWidget {
   final String? initialChannelId;
@@ -32,8 +35,8 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
 
   bool _isPosting = false;
   bool _isAnonymous = false;
-  String _channelId = 'general'; // Default to general
-  String _visibility = 'everyone'; // everyone, followers
+  String _channelId = 'general';
+  String _visibility = 'everyone';
 
   // Tagging State
   String? _mentionQuery;
@@ -54,9 +57,17 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     TextEditingController(),
     TextEditingController(),
   ];
-  final String _pollDuration = '1 Day';
+  String _pollDuration = '1 Day';
+  double? _latitude;
+  double? _longitude;
+  String? _address;
+  bool _isLoadingLocation = false;
 
-  // API Key (Moved to a secure config in real app, but here for now)
+  // Social Features State
+  String _replyPermission = 'everyone';
+  DateTime? _scheduledAt;
+  String? _mediaAltText;
+
   final String _giphyApiKey = 'DnmoJ3pdO49O9K45y8zYwe7sZdDNuXOx';
 
   @override
@@ -66,6 +77,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       _channelId = widget.initialChannelId!;
     }
     _contentController.addListener(_updateState);
+    _loadDraft();
   }
 
   @override
@@ -99,7 +111,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
 
     if (lastWordMatch != null) {
       final word = lastWordMatch.group(1)!;
-      if (word.startsWith('@') && word.length > 1) {
+      if (word.startsWith('@') && word.length > 2) {
         _mentionQuery = word.substring(1);
         _hashtagQuery = null;
         _fetchUserSuggestions(_mentionQuery!);
@@ -191,8 +203,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
         _selectedImage = pickedFile;
         _selectedVideo = null;
         _selectedGif = null;
-        _showPollCreator =
-            false; // Twitter disables polls if media attached usually
+        _showPollCreator = false;
       });
     }
   }
@@ -200,7 +211,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   Future<void> _pickVideo() async {
     final pickedFile = await _picker.pickVideo(
       source: ImageSource.gallery,
-      maxDuration: const Duration(minutes: 5), // Limit video length
+      maxDuration: const Duration(minutes: 5),
     );
     if (pickedFile != null) {
       setState(() {
@@ -237,28 +248,158 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
         _selectedImage = null;
         _selectedVideo = null;
         _selectedGif = null;
+        _latitude = null;
+        _longitude = null;
+        _address = null;
       }
     });
   }
 
-  Future<String> _uploadImage(XFile image, String uid) async {
-    try {
-      final storage = FirebaseStorageService();
-      return await storage.uploadImage(image, path: 'post_images/$uid/');
-    } catch (e) {
-      debugPrint("Firebase Storage Upload Error: $e");
-      return '';
+  Future<void> _schedulePost() async {
+    final now = DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _scheduledAt ?? now.add(const Duration(hours: 1)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 14)),
+    );
+
+    if (date != null && mounted) {
+      final time = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(
+          _scheduledAt ?? now.add(const Duration(hours: 1)),
+        ),
+      );
+
+      if (time != null) {
+        setState(() {
+          _scheduledAt = DateTime(
+            date.year,
+            date.month,
+            date.day,
+            time.hour,
+            time.minute,
+          );
+        });
+      }
     }
   }
 
-  Future<String> _uploadVideo(XFile video, String uid) async {
-    try {
-      final storage = FirebaseStorageService();
-      return await storage.uploadVideo(video, path: 'post_videos/$uid/');
-    } catch (e) {
-      debugPrint("Firebase Storage Video Upload Error: $e");
-      return '';
+  void _editAltText() {
+    final controller = TextEditingController(text: _mediaAltText);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Alt Text'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: 'Describe this image for accessibility...',
+            border: OutlineInputBorder(),
+          ),
+          maxLines: 3,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              setState(() => _mediaAltText = controller.text.trim());
+              Navigator.pop(context);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static const String _draftKey = 'create_post_draft';
+
+  Future<void> _loadDraft() async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    final draft = prefs.getString(_draftKey);
+    if (draft != null && draft.isNotEmpty && mounted) {
+      final shouldLoad = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Resume Draft?'),
+          content: const Text(
+            'You have an unsaved post. Would you like to resume?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Discard'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Resume'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldLoad == true) {
+        setState(() => _contentController.text = draft);
+      } else {
+        await prefs.remove(_draftKey);
+      }
     }
+  }
+
+  Future<void> _saveDraft() async {
+    if (_contentController.text.trim().isEmpty) return;
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setString(_draftKey, _contentController.text.trim());
+  }
+
+  Future<void> _getCurrentLocation() async {
+    setState(() => _isLoadingLocation = true);
+    try {
+      final status = await Permission.location.request();
+      if (status.isDenied) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Location permission denied")),
+          );
+        }
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
+
+      setState(() {
+        _latitude = position.latitude;
+        _longitude = position.longitude;
+        _address = "Location Attached";
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Error getting location: $e")));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoadingLocation = false);
+    }
+  }
+
+  Future<String> _uploadImage(XFile image, String uid) async {
+    final storage = FirebaseStorageService();
+    return await storage.uploadImage(image, path: 'post_images/$uid/');
+  }
+
+  Future<String> _uploadVideo(XFile video, String uid) async {
+    final storage = FirebaseStorageService();
+    return await storage.uploadVideo(video, path: 'post_videos/$uid/');
   }
 
   Future<void> _submitPost() async {
@@ -293,15 +434,25 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
 
       Map<String, dynamic>? pollData;
       if (_showPollCreator) {
-        pollData = {
-          'options': _pollOptions
-              .map((c) => {'text': c.text.trim(), 'votes': 0})
-              .toList(),
-          'duration': _pollDuration,
-          'endsAt': DateTime.now()
-              .add(const Duration(days: 1))
-              .toIso8601String(), // Simplified duration logic
-        };
+        final optionsStrings = _pollOptions
+            .map((c) => c.text.trim())
+            .where((t) => t.isNotEmpty)
+            .toList();
+
+        if (optionsStrings.length >= 2) {
+          int days = 1;
+          if (_pollDuration.contains('3')) days = 3;
+          if (_pollDuration.contains('7')) days = 7;
+
+          pollData = {
+            'options': optionsStrings,
+            'votes': List<int>.filled(optionsStrings.length, 0),
+            'voters': <String, int>{},
+            'ends_at': DateTime.now()
+                .add(Duration(days: days))
+                .toIso8601String(),
+          };
+        }
       }
 
       final post = Post(
@@ -331,6 +482,11 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
           r"@(\w+)",
         ).allMatches(_contentController.text).map((m) => m.group(1)!).toList(),
         visibility: _visibility,
+        latitude: _latitude,
+        longitude: _longitude,
+        replyPermission: _replyPermission,
+        scheduledAt: _scheduledAt,
+        mediaAltText: _mediaAltText,
       );
 
       await ref.read(postRepositoryProvider).addPost(post);
@@ -357,7 +513,12 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       appBar: AppBar(
         leadingWidth: 80,
         leading: TextButton(
-          onPressed: () => context.pop(),
+          onPressed: () async {
+            if (_contentController.text.isNotEmpty) {
+              await _saveDraft();
+            }
+            if (mounted) context.pop();
+          },
           child: Icon(
             Icons.close,
             color: isDark ? Colors.white : Colors.black87,
@@ -417,7 +578,6 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Avatar
                   currentUserAsync.when(
                     data: (user) => CircleAvatar(
                       radius: 20,
@@ -440,8 +600,6 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                     ),
                   ),
                   const SizedBox(width: 12),
-
-                  // Input Area
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -450,7 +608,6 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                           scrollDirection: Axis.horizontal,
                           child: Row(
                             children: [
-                              // Audience Selector
                               PopupMenuButton<String>(
                                 onSelected: (val) =>
                                     setState(() => _visibility = val),
@@ -498,15 +655,84 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                                 ),
                               ),
                               const SizedBox(width: 8),
-
-                              // Channel Selector
+                              PopupMenuButton<String>(
+                                onSelected: (val) =>
+                                    setState(() => _replyPermission = val),
+                                itemBuilder: (context) => [
+                                  const PopupMenuItem(
+                                    value: 'everyone',
+                                    child: ListTile(
+                                      leading: Icon(Icons.public, size: 20),
+                                      title: Text('Everyone'),
+                                      dense: true,
+                                    ),
+                                  ),
+                                  const PopupMenuItem(
+                                    value: 'following',
+                                    child: ListTile(
+                                      leading: Icon(Icons.people, size: 20),
+                                      title: Text('People you follow'),
+                                      dense: true,
+                                    ),
+                                  ),
+                                  const PopupMenuItem(
+                                    value: 'mentioned',
+                                    child: ListTile(
+                                      leading: Icon(
+                                        Icons.alternate_email,
+                                        size: 20,
+                                      ),
+                                      title: Text('Only mentioned people'),
+                                      dense: true,
+                                    ),
+                                  ),
+                                ],
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: Colors.grey[400]!,
+                                    ),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        _replyPermission == 'everyone'
+                                            ? Icons.public
+                                            : _replyPermission == 'following'
+                                            ? Icons.people
+                                            : Icons.alternate_email,
+                                        size: 14,
+                                        color: Colors.grey[600],
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        _replyPermission == 'everyone'
+                                            ? 'Everyone can reply'
+                                            : _replyPermission == 'following'
+                                            ? 'Followers can reply'
+                                            : 'Only mentioned can reply',
+                                        style: TextStyle(
+                                          color: Colors.grey[600],
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
                               PopupMenuButton<String>(
                                 initialValue: _channelId,
                                 onSelected: (val) => setState(() {
                                   _channelId = val;
-                                  if (val == 'confessions') {
-                                    _isAnonymous = true;
-                                  }
+                                  if (val == 'confessions') _isAnonymous = true;
                                 }),
                                 itemBuilder: (context) => [
                                   const PopupMenuItem(
@@ -709,12 +935,36 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                                     File(_selectedImage!.path),
                                     width: double.infinity,
                                     fit: BoxFit.cover,
-                                    // limit height if needed
                                     height: 300,
                                   ),
                                 ),
                                 _buildRemoveButton(
                                   () => setState(() => _selectedImage = null),
+                                ),
+                                Positioned(
+                                  bottom: 12,
+                                  left: 12,
+                                  child: GestureDetector(
+                                    onTap: _editAltText,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black54,
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        _mediaAltText == null ? '+ ALT' : 'ALT',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ],
                             ),
@@ -735,13 +985,13 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                                       child: Column(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          Icon(
+                                          const Icon(
                                             Icons.play_circle_fill,
                                             size: 64,
                                             color: Colors.white,
                                           ),
                                           const SizedBox(height: 8),
-                                          Text(
+                                          const Text(
                                             'Video Selected',
                                             style: TextStyle(
                                               color: Colors.white,
@@ -751,7 +1001,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                                           ),
                                           Text(
                                             _selectedVideo!.name,
-                                            style: TextStyle(
+                                            style: const TextStyle(
                                               color: Colors.white70,
                                               fontSize: 12,
                                             ),
@@ -815,7 +1065,46 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                             ),
                           ),
 
-                        // Poll Creator
+                        if (_latitude != null)
+                          Container(
+                            margin: const EdgeInsets.only(top: 12),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.secondaryTeal.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.location_on,
+                                  color: AppColors.secondaryTeal,
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _address ?? "Location attached",
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                                GestureDetector(
+                                  onTap: () => setState(() {
+                                    _latitude = null;
+                                    _longitude = null;
+                                    _address = null;
+                                  }),
+                                  child: const Icon(Icons.close, size: 16),
+                                ),
+                              ],
+                            ),
+                          ),
+
                         if (_showPollCreator)
                           Container(
                             margin: const EdgeInsets.only(top: 12),
@@ -854,7 +1143,6 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                                       ),
                                     ),
                                   ),
-
                                 if (_pollOptions.length < 4)
                                   TextButton(
                                     onPressed: () {
@@ -866,7 +1154,6 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                                     },
                                     child: const Text("Add another choice"),
                                   ),
-
                                 const Divider(),
                                 Row(
                                   mainAxisAlignment:
@@ -874,7 +1161,30 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                                   children: [
                                     const Text("Poll Length"),
                                     TextButton(
-                                      onPressed: () {}, // Todo duration picker
+                                      onPressed: () {
+                                        showDialog(
+                                          context: context,
+                                          builder: (context) => SimpleDialog(
+                                            title: const Text("Poll Duration"),
+                                            children:
+                                                [
+                                                  '1 Day',
+                                                  '3 Days',
+                                                  '7 Days',
+                                                ].map((d) {
+                                                  return SimpleDialogOption(
+                                                    onPressed: () {
+                                                      setState(
+                                                        () => _pollDuration = d,
+                                                      );
+                                                      Navigator.pop(context);
+                                                    },
+                                                    child: Text(d),
+                                                  );
+                                                }).toList(),
+                                          ),
+                                        );
+                                      },
                                       child: Text(_pollDuration),
                                     ),
                                   ],
@@ -897,87 +1207,74 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
             ),
           ),
 
-          // Bottom Toolbar (Twitter Style)
-          Container(
-            padding: const EdgeInsets.only(
-              left: 16,
-              right: 16,
-              top: 8,
-              bottom: 8,
-            ),
-            decoration: BoxDecoration(
-              border: Border(
-                top: BorderSide(
-                  color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
+          SafeArea(
+            top: false,
+            child: Container(
+              padding: const EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 8,
+                bottom: 8,
+              ),
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(
+                    color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
+                  ),
                 ),
               ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      "Everyone can reply",
-                      style: TextStyle(
-                        color: AppColors.secondaryTeal,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      _ToolbarIcon(
+                        icon: Icons.image_outlined,
+                        onTap: _pickImage,
                       ),
-                    ),
-                    const SizedBox(width: 4),
-                    const Icon(
-                      Icons.public,
-                      size: 14,
-                      color: AppColors.secondaryTeal,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    _ToolbarIcon(icon: Icons.image_outlined, onTap: _pickImage),
-                    _ToolbarIcon(
-                      icon: Icons.missed_video_call_outlined,
-                      onTap: _pickVideo,
-                    ), // Video Icon
-                    _ToolbarIcon(icon: Icons.gif_box_outlined, onTap: _pickGif),
-                    _ToolbarIcon(
-                      icon: Icons.poll_outlined,
-                      onTap: _togglePoll,
-                      isActive: _showPollCreator,
-                    ),
-                    _ToolbarIcon(
-                      icon: Icons.location_on_outlined,
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text("Location coming soon!"),
-                          ),
-                        );
-                      },
-                    ),
-                    const Spacer(),
-
-                    // Character Count (Circle)
-                    SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        value: _contentController.text.length / 280,
-                        backgroundColor: Colors.grey[300],
-                        color: _contentController.text.length > 280
-                            ? Colors.red
-                            : AppColors.secondaryTeal,
-                        strokeWidth: 2,
+                      _ToolbarIcon(
+                        icon: Icons.missed_video_call_outlined,
+                        onTap: _pickVideo,
                       ),
-                    ),
-                    const SizedBox(width: 12),
-
-                    // Removed redundant "Add" button
-                  ],
-                ),
-              ],
+                      _ToolbarIcon(
+                        icon: Icons.gif_box_outlined,
+                        onTap: _pickGif,
+                      ),
+                      _ToolbarIcon(
+                        icon: Icons.poll_outlined,
+                        onTap: _togglePoll,
+                        isActive: _showPollCreator,
+                      ),
+                      _ToolbarIcon(
+                        icon: Icons.location_on_outlined,
+                        onTap: _isLoadingLocation ? null : _getCurrentLocation,
+                        isActive: _latitude != null,
+                        isLoading: _isLoadingLocation,
+                      ),
+                      _ToolbarIcon(
+                        icon: Icons.schedule_outlined,
+                        onTap: _schedulePost,
+                        isActive: _scheduledAt != null,
+                      ),
+                      const Spacer(),
+                      SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          value: _contentController.text.length / 280,
+                          backgroundColor: Colors.grey[300],
+                          color: _contentController.text.length > 280
+                              ? Colors.red
+                              : AppColors.secondaryTeal,
+                          strokeWidth: 2,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -1006,22 +1303,34 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
 
 class _ToolbarIcon extends StatelessWidget {
   final IconData icon;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final bool isActive;
+  final bool isLoading;
 
   const _ToolbarIcon({
     required this.icon,
     required this.onTap,
     this.isActive = false,
+    this.isLoading = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Padding(
+        padding: EdgeInsets.all(8.0),
+        child: SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            valueColor: AlwaysStoppedAnimation<Color>(AppColors.secondaryTeal),
+          ),
+        ),
+      );
+    }
     return IconButton(
-      icon: Icon(
-        icon,
-        color: isActive ? AppColors.secondaryTeal : AppColors.secondaryTeal,
-      ),
+      icon: Icon(icon, color: AppColors.secondaryTeal),
       onPressed: onTap,
       visualDensity: VisualDensity.compact,
     );

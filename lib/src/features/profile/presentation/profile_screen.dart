@@ -16,6 +16,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/services/firebase_storage_service.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:url_launcher/url_launcher.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   final String? userId; // If null, shows current user
@@ -53,7 +54,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           final isCurrentUser = currentUserId == user.uid;
 
           return DefaultTabController(
-            length: 4,
+            length: isCurrentUser ? 5 : 4,
             child: NestedScrollView(
               headerSliverBuilder: (context, innerBoxIsScrolled) {
                 return [
@@ -322,11 +323,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           fontWeight: FontWeight.w600,
                           fontSize: 15,
                         ),
-                        tabs: const [
-                          Tab(text: "Posts"),
-                          Tab(text: "Replies"),
-                          Tab(text: "Media"),
-                          Tab(text: "Likes"),
+                        tabs: [
+                          const Tab(text: "Posts"),
+                          const Tab(text: "Replies"),
+                          const Tab(text: "Media"),
+                          const Tab(text: "Likes"),
+                          if (isCurrentUser) const Tab(text: "Saved"),
                         ],
                       ),
                       isDark: isDark,
@@ -342,6 +344,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   _UserRepliesList(userId: user.uid, isDark: isDark),
                   _UserMediaList(userId: user.uid, isDark: isDark),
                   _UserLikesList(userId: user.uid, isDark: isDark),
+                  if (isCurrentUser)
+                    _UserSavedPostsList(userId: user.uid, isDark: isDark),
                 ],
               ),
             ),
@@ -699,16 +703,40 @@ class _ProfileHeader extends ConsumerWidget {
                 // Follower Stats
                 Row(
                   children: [
-                    _StatItem(
-                      count: user.followingCount,
-                      label: "Following",
-                      isDark: isDark,
+                    GestureDetector(
+                      onTap: () {
+                        if (!isCurrentUser && !user.isFollowingVisible) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text("Following list is private"),
+                            ),
+                          );
+                          return;
+                        }
+                        context.push(
+                          '/user/${user.uid}/connections',
+                          extra: {'initialIndex': 1},
+                        );
+                      },
+                      child: _StatItem(
+                        count: user.followingCount,
+                        label: "Following",
+                        isDark: isDark,
+                      ),
                     ),
-                    const SizedBox(width: 24), // Wide spacing like X
-                    _StatItem(
-                      count: user.followersCount,
-                      label: "Followers",
-                      isDark: isDark,
+                    const SizedBox(width: 24),
+                    GestureDetector(
+                      onTap: () {
+                        context.push(
+                          '/user/${user.uid}/connections',
+                          extra: {'initialIndex': 0},
+                        );
+                      },
+                      child: _StatItem(
+                        count: user.followersCount,
+                        label: "Followers",
+                        isDark: isDark,
+                      ),
                     ),
                   ],
                 ).animate().fadeIn(delay: 300.ms),
@@ -720,61 +748,70 @@ class _ProfileHeader extends ConsumerWidget {
                   children: [
                     if (user.websiteUrl != null && user.websiteUrl!.isNotEmpty)
                       _SocialIcon(
-                        icon: Icons.link,
+                        icon: FontAwesomeIcons.globe,
                         url: user.websiteUrl!,
                         isDark: isDark,
                       ),
                     if (user.twitterUrl != null && user.twitterUrl!.isNotEmpty)
                       _SocialIcon(
-                        icon: Icons.alternate_email, // Replaces X icon
+                        icon: FontAwesomeIcons.xTwitter,
                         url: user.twitterUrl!,
                         isDark: isDark,
+                        color: Colors.black,
                       ),
                     if (user.instagramUrl != null &&
                         user.instagramUrl!.isNotEmpty)
                       _SocialIcon(
-                        icon: Icons.camera_alt_outlined,
+                        icon: FontAwesomeIcons.instagram,
                         url: user.instagramUrl!,
                         isDark: isDark,
+                        color: const Color(0xFFE4405F),
                       ),
                     if (user.facebookUrl != null &&
                         user.facebookUrl!.isNotEmpty)
                       _SocialIcon(
-                        icon: Icons.facebook,
+                        icon: FontAwesomeIcons.facebook,
                         url: user.facebookUrl!,
                         isDark: isDark,
+                        color: const Color(0xFF1877F2),
                       ),
                     if (user.linkedinUrl != null &&
                         user.linkedinUrl!.isNotEmpty)
                       _SocialIcon(
-                        icon: Icons.work_outline,
+                        icon: FontAwesomeIcons.linkedin,
                         url: user.linkedinUrl!,
                         isDark: isDark,
+                        color: const Color(0xFF0077B5),
                       ),
                     if (user.tiktokUrl != null && user.tiktokUrl!.isNotEmpty)
                       _SocialIcon(
-                        icon: Icons.music_note,
+                        icon: FontAwesomeIcons.tiktok,
                         url: user.tiktokUrl!,
                         isDark: isDark,
+                        color: Colors.black,
                       ),
                     if (user.youtubeUrl != null && user.youtubeUrl!.isNotEmpty)
                       _SocialIcon(
-                        icon: Icons.video_library,
+                        icon: FontAwesomeIcons.youtube,
                         url: user.youtubeUrl!,
                         isDark: isDark,
+                        color: const Color(0xFFFF0000),
                       ),
                     if (user.snapchatUrl != null &&
                         user.snapchatUrl!.isNotEmpty)
                       _SocialIcon(
-                        icon: Icons.chat_bubble_outline,
+                        icon: FontAwesomeIcons.snapchat,
                         url: user.snapchatUrl!,
                         isDark: isDark,
+                        color: const Color(0xFFFFFC00),
+                        iconColor: Colors.black,
                       ),
                     if (user.githubUrl != null && user.githubUrl!.isNotEmpty)
                       _SocialIcon(
-                        icon: Icons.code,
+                        icon: FontAwesomeIcons.github,
                         url: user.githubUrl!,
                         isDark: isDark,
+                        color: const Color(0xFF181717),
                       ),
                     if (user.twitchUrl != null && user.twitchUrl!.isNotEmpty)
                       _SocialIcon(
@@ -794,20 +831,28 @@ class _ProfileHeader extends ConsumerWidget {
 }
 
 class _SocialIcon extends StatelessWidget {
-  final IconData icon;
+  final dynamic icon;
   final String url;
   final bool isDark;
+  final Color? color;
+  final Color? iconColor;
 
   const _SocialIcon({
     required this.icon,
     required this.url,
     required this.isDark,
+    this.color,
+    this.iconColor,
   });
 
   Future<void> _launchUrl() async {
     final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      debugPrint("Error launching URL: $e");
     }
   }
 
@@ -820,18 +865,34 @@ class _SocialIcon extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[100],
+            color: color != null
+                ? color!.withValues(alpha: isDark ? 0.15 : 0.1)
+                : (isDark ? Colors.white.withOpacity(0.05) : Colors.grey[100]),
             shape: BoxShape.circle,
             border: Border.all(
-              color: isDark ? Colors.white10 : Colors.grey[300]!,
+              color: color != null
+                  ? color!.withValues(alpha: 0.3)
+                  : (isDark ? Colors.white10 : Colors.grey[300]!),
               width: 1,
             ),
           ),
-          child: Icon(
-            icon,
-            size: 18,
-            color: isDark ? Colors.grey[400] : AppColors.primaryInk,
-          ),
+          child: (icon is IconData && icon is! FaIconData)
+              ? Icon(
+                  icon,
+                  size: 16,
+                  color:
+                      iconColor ??
+                      (color ??
+                          (isDark ? Colors.grey[400] : AppColors.primaryInk)),
+                )
+              : FaIcon(
+                  icon as dynamic,
+                  size: 16,
+                  color:
+                      iconColor ??
+                      (color ??
+                          (isDark ? Colors.grey[400] : AppColors.primaryInk)),
+                ),
         ),
       ),
     );
@@ -874,110 +935,226 @@ class _StatItem extends StatelessWidget {
   }
 }
 
-class _ProfileActionButtons extends ConsumerWidget {
+class _ProfileActionButtons extends ConsumerStatefulWidget {
   final AppUser targetUser;
   final bool isDark;
 
   const _ProfileActionButtons({required this.targetUser, required this.isDark});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_ProfileActionButtons> createState() =>
+      _ProfileActionButtonsState();
+}
+
+class _ProfileActionButtonsState extends ConsumerState<_ProfileActionButtons> {
+  bool _isCreatingChannel = false;
+
+  @override
+  Widget build(BuildContext context) {
     final repo = ref.watch(userRepositoryProvider);
     final chatRepo = ref.watch(chatRepositoryProvider);
-    final targetUserId = targetUser.uid;
+    final targetUserId = widget.targetUser.uid;
 
     final isFollowingAsync = ref.watch(isFollowingProvider(targetUserId));
     final currentUserAsync = ref.watch(currentUserProvider);
+    final isBlockedAsync = ref.watch(isBlockedProvider(targetUserId));
 
-    return Row(
-      children: [
-        // Message Button (Always visible unless blocked - blocked logic not yet implemented)
-        Padding(
-          padding: const EdgeInsets.only(right: 8.0),
-          child: IconButton(
-            onPressed: () async {
-              final currentUser = currentUserAsync.value;
-              if (currentUser == null) return;
-
-              try {
-                final channelId = await chatRepo.createOrGetChannel(
-                  targetUserId,
-                  otherUserName: targetUser.displayName,
-                  otherUserAvatar: targetUser.avatarUrl,
-                  currentUserName: currentUser.displayName,
-                  currentUserAvatar: currentUser.avatarUrl,
-                );
-                if (context.mounted) {
-                  context.push('/chat/$channelId');
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text(e.toString())));
-                }
-              }
-            },
-            icon: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: isDark ? Colors.white10 : Colors.grey[200],
-                shape: BoxShape.circle,
+    return isBlockedAsync.when(
+      data: (isBlocked) {
+        if (isBlocked) {
+          return ElevatedButton(
+            onPressed: () => repo.unblockUser(targetUserId),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
               ),
-              child: Icon(
-                Icons.chat_bubble_outline,
-                size: 20,
-                color: isDark ? Colors.white : AppColors.primaryInk,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
             ),
-          ),
-        ),
+            child: const Text(
+              "Unblock",
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+          );
+        }
 
-        // Follow/Unfollow Button
-        isFollowingAsync.when(
-          data: (isFollowing) {
-            return ElevatedButton(
-              onPressed: () async {
-                if (isFollowing) {
-                  await repo.unfollowUser(targetUserId);
-                } else {
-                  await repo.followUser(targetUserId);
+        return Row(
+          children: [
+            // Message Button
+            Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: _isCreatingChannel
+                  ? const SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: Padding(
+                        padding: EdgeInsets.all(10.0),
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : IconButton(
+                      onPressed: () async {
+                        final currentUser = currentUserAsync.value;
+                        if (currentUser == null) return;
+
+                        setState(() => _isCreatingChannel = true);
+
+                        try {
+                          final channelId = await chatRepo.createOrGetChannel(
+                            targetUserId,
+                            otherUserName: widget.targetUser.displayName,
+                            otherUserAvatar: widget.targetUser.avatarUrl,
+                            currentUserName: currentUser.displayName,
+                            currentUserAvatar: currentUser.avatarUrl,
+                          );
+                          if (context.mounted) {
+                            context.push('/chat/$channelId');
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(e.toString())),
+                            );
+                          }
+                        } finally {
+                          if (mounted) {
+                            setState(() => _isCreatingChannel = false);
+                          }
+                        }
+                      },
+                      icon: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: widget.isDark
+                              ? Colors.white10
+                              : Colors.grey[200],
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.chat_bubble_outline,
+                          size: 20,
+                          color: widget.isDark
+                              ? Colors.white
+                              : AppColors.primaryInk,
+                        ),
+                      ),
+                    ),
+            ),
+
+            // Follow/Unfollow Button
+            isFollowingAsync.when(
+              data: (isFollowing) {
+                return ElevatedButton(
+                  onPressed: () async {
+                    if (isFollowing) {
+                      await repo.unfollowUser(targetUserId);
+                    } else {
+                      await repo.followUser(targetUserId);
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isFollowing
+                        ? (widget.isDark ? Colors.transparent : Colors.white)
+                        : (widget.isDark ? Colors.white : AppColors.primaryInk),
+                    foregroundColor: isFollowing
+                        ? (widget.isDark ? Colors.white : AppColors.primaryInk)
+                        : (widget.isDark ? AppColors.primaryInk : Colors.white),
+                    side: BorderSide(
+                      color: isFollowing
+                          ? (widget.isDark
+                                ? Colors.white24
+                                : const Color(0xFFE8E1D7))
+                          : Colors.transparent,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 8,
+                    ),
+                  ),
+                  child: Text(
+                    isFollowing ? "Following" : "Follow",
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                );
+              },
+              loading: () => const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              error: (error, stack) => const SizedBox(),
+            ),
+
+            // More Options (Block)
+            PopupMenuButton<String>(
+              onSelected: (value) async {
+                if (value == 'block') {
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Block User?'),
+                      content: Text(
+                        'Are you sure you want to block ${widget.targetUser.displayName}? They will no longer be able to see your profile or message you.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text('Cancel'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.orange,
+                          ),
+                          child: const Text('Block'),
+                        ),
+                      ],
+                    ),
+                  );
+
+                  if (confirmed == true) {
+                    await repo.blockUser(targetUserId);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            '${widget.targetUser.displayName} blocked',
+                          ),
+                        ),
+                      );
+                    }
+                  }
                 }
               },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: isFollowing
-                    ? (isDark ? Colors.transparent : Colors.white)
-                    : (isDark ? Colors.white : AppColors.primaryInk),
-                foregroundColor: isFollowing
-                    ? (isDark ? Colors.white : AppColors.primaryInk)
-                    : (isDark ? AppColors.primaryInk : Colors.white),
-                side: BorderSide(
-                  color: isFollowing
-                      ? (isDark ? Colors.white24 : const Color(0xFFE8E1D7))
-                      : Colors.transparent,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 8,
-                ),
+              icon: Icon(
+                Icons.more_vert,
+                color: widget.isDark ? Colors.grey[400] : Colors.grey[600],
               ),
-              child: Text(
-                isFollowing ? "Following" : "Follow",
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-            );
-          },
-          loading: () => const SizedBox(
-            width: 24,
-            height: 24,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-          error: (error, stack) => const SizedBox(),
-        ),
-      ],
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'block',
+                  child: Row(
+                    children: [
+                      Icon(Icons.block, color: Colors.orange, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        'Block User',
+                        style: TextStyle(color: Colors.orange),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+      loading: () => const SizedBox(),
+      error: (_, __) => const SizedBox(),
     );
   }
 }
@@ -1402,6 +1579,67 @@ class _UserMediaList extends ConsumerWidget {
           },
         );
       },
+    );
+  }
+}
+
+class _UserSavedPostsList extends ConsumerWidget {
+  final String userId;
+  final bool isDark;
+
+  const _UserSavedPostsList({required this.userId, required this.isDark});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Note: savedPostsProvider expects a String argument (userId)
+    final savedPostsAsync = ref.watch(savedPostsProvider(userId));
+
+    return savedPostsAsync.when(
+      data: (savedPosts) {
+        if (savedPosts.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.bookmark_border,
+                    size: 64,
+                    color: isDark ? Colors.grey[700] : Colors.grey[300],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    "No saved posts",
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.grey[500] : Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return ListView.separated(
+          padding: EdgeInsets.zero,
+          itemCount: savedPosts.length,
+          separatorBuilder: (context, index) => Divider(
+            height: 1,
+            color: isDark ? Colors.grey[900] : Colors.grey[200],
+          ),
+          itemBuilder: (context, index) {
+            final post = savedPosts[index];
+            return PostCard(post: post);
+          },
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, stack) => Center(
+        child: Text('Error: $e', style: const TextStyle(color: Colors.red)),
+      ),
     );
   }
 }

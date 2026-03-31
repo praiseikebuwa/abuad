@@ -75,18 +75,37 @@ class MarketplaceRepository {
   Stream<List<MarketplaceItem>> watchItems({
     String? category,
     String? searchQuery,
+    double? minPrice,
+    double? maxPrice,
+    String sortBy = 'newest', // newest, price_asc, price_desc
   }) {
     Query query = _firestore
         .collection('marketplace_items')
-        .where('status', isEqualTo: 'available')
-        .orderBy('created_at', descending: true);
+        .where('status', isEqualTo: 'available');
 
     if (category != null && category != 'all') {
       query = query.where('category', isEqualTo: category);
     }
 
+    // Server-side price filtering (requires composite indexes if mixed with category)
+    if (minPrice != null) {
+      query = query.where('price', isGreaterThanOrEqualTo: minPrice);
+    }
+    if (maxPrice != null) {
+      query = query.where('price', isLessThanOrEqualTo: maxPrice);
+    }
+
+    // Applying sort
+    if (sortBy == 'price_asc') {
+      query = query.orderBy('price', descending: false);
+    } else if (sortBy == 'price_desc') {
+      query = query.orderBy('price', descending: true);
+    } else {
+      query = query.orderBy('created_at', descending: true);
+    }
+
     return query.snapshots().map((snapshot) {
-      final items = snapshot.docs
+      var items = snapshot.docs
           .map(
             (doc) =>
                 MarketplaceItem.fromMap(doc.data() as Map<String, dynamic>),
@@ -95,7 +114,7 @@ class MarketplaceRepository {
 
       if (searchQuery != null && searchQuery.isNotEmpty) {
         final queryLower = searchQuery.toLowerCase();
-        return items.where((item) {
+        items = items.where((item) {
           final titleLower = item.title.toLowerCase();
           final descLower = item.description.toLowerCase();
           return titleLower.contains(queryLower) ||

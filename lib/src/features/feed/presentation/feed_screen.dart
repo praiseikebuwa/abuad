@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../core/theme/app_colors.dart';
 import '../data/post_repository.dart';
+import '../../user/data/user_repository.dart';
 import '../domain/post.dart' as domain;
 import 'widgets/post_card.dart';
 import 'widgets/feed_loading_skeleton.dart';
@@ -19,6 +20,9 @@ class FeedScreen extends ConsumerWidget {
     final selectedChannel = ref.watch(feedChannelProvider);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+
+    final blockedUsersAsync = ref.watch(blockedUsersProvider);
+    final blockedUserIds = blockedUsersAsync.value ?? [];
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -90,6 +94,14 @@ class FeedScreen extends ConsumerWidget {
                   isDark: isDark,
                   icon: Icons.auto_awesome,
                   activeColor: Colors.blueAccent,
+                ),
+                _TabItem(
+                  label: 'Reels',
+                  id: 'reels',
+                  selectedId: selectedChannel,
+                  isDark: isDark,
+                  icon: Icons.movie_outlined,
+                  activeColor: Colors.pinkAccent,
                 ),
                 _TabItem(
                   label: 'General',
@@ -201,8 +213,13 @@ class FeedScreen extends ConsumerWidget {
             color: theme.colorScheme.primary,
             child: StreamBuilder<List<domain.Post>>(
               stream: selectedChannel == 'all'
-                  ? repo.watchPosts()
-                  : repo.watchChannelPosts(selectedChannel),
+                  ? repo.watchPosts(blockedUserIds: blockedUserIds)
+                  : selectedChannel == 'reels'
+                  ? repo.watchVideoPosts(blockedUserIds: blockedUserIds)
+                  : repo.watchChannelPosts(
+                      selectedChannel,
+                      blockedUserIds: blockedUserIds,
+                    ),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const FeedLoadingSkeleton();

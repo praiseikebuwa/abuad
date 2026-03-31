@@ -8,7 +8,8 @@ import '../../user/data/user_repository.dart';
 /// Screen for creating a new story
 /// Allows user to take a photo or select from gallery
 class CreateStoryScreen extends ConsumerStatefulWidget {
-  const CreateStoryScreen({super.key});
+  final String? initialImagePath;
+  const CreateStoryScreen({super.key, this.initialImagePath});
 
   @override
   ConsumerState<CreateStoryScreen> createState() => _CreateStoryScreenState();
@@ -24,6 +25,16 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
   Color _textColor = Colors.white;
   String _fontFamily = 'Roboto';
   TextAlign _textAlign = TextAlign.center;
+  String? _linkUrl;
+  String _visibility = 'everyone';
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialImagePath != null) {
+      _selectedMedia = XFile(widget.initialImagePath!);
+    }
+  }
 
   final List<Color> _backgroundColors = [
     const Color(0xFFEF5350), // Red
@@ -163,6 +174,133 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
     );
   }
 
+  Future<void> _showLinkDialog() async {
+    final controller = TextEditingController(text: _linkUrl);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Link'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: 'https://example.com',
+            labelText: 'URL',
+          ),
+          autofocus: true,
+          keyboardType: TextInputType.url,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null) {
+      setState(() {
+        _linkUrl = result.trim().isEmpty ? null : result.trim();
+      });
+    }
+  }
+
+  void _showVisibilitySelector() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return Container(
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 12),
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.grey[700] : Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Who can see this?',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                _buildVisibilityTile(
+                  'everyone',
+                  'Everyone',
+                  Icons.public,
+                  isDark,
+                ),
+                _buildVisibilityTile(
+                  'followers',
+                  'Followers',
+                  Icons.people,
+                  isDark,
+                ),
+                _buildVisibilityTile(
+                  'close_friends',
+                  'Close Friends',
+                  Icons.star,
+                  isDark,
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildVisibilityTile(
+    String value,
+    String title,
+    IconData icon,
+    bool isDark,
+  ) {
+    final isSelected = _visibility == value;
+    return ListTile(
+      leading: Icon(
+        icon,
+        color: isSelected
+            ? const Color(0xFF8B5CF6)
+            : (isDark ? Colors.white70 : Colors.black54),
+      ),
+      title: Text(
+        title,
+        style: TextStyle(
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          color: isSelected
+              ? const Color(0xFF8B5CF6)
+              : (isDark ? Colors.white70 : Colors.black54),
+        ),
+      ),
+      trailing: isSelected
+          ? const Icon(Icons.check, color: Color(0xFF8B5CF6))
+          : null,
+      onTap: () {
+        setState(() {
+          _visibility = value;
+        });
+        Navigator.pop(context);
+      },
+    );
+  }
+
   Future<void> _uploadStory() async {
     if (_selectedMedia == null && !_isTextMode) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -203,8 +341,18 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
         content = _textController.text.trim();
         type = 'text';
         caption = null;
-        backgroundColor = _backgroundColor.value;
-        textColor = _textColor.value;
+        backgroundColor = _backgroundColor.toARGB32();
+        textColor = _textColor.toARGB32();
+      }
+
+      // Extract mentions from caption or text
+      final List<String> mentions = [];
+      final String mentionSource = _isTextMode ? content : (caption ?? '');
+      final RegExp mentionRegex = RegExp(r'@(\w+)');
+      for (final match in mentionRegex.allMatches(mentionSource)) {
+        if (match.group(1) != null) {
+          mentions.add(match.group(1)!);
+        }
       }
 
       await repo.createStory(
@@ -212,6 +360,9 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
         type: type,
         caption: caption,
         content: content,
+        mentions: mentions,
+        linkUrl: _linkUrl,
+        visibility: _visibility,
         backgroundColor: backgroundColor,
         textColor: textColor,
         fontFamily: _isTextMode ? _fontFamily : null,
@@ -313,17 +464,7 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
           : (_selectedMedia == null
                 ? _buildEmptyState(isDark)
                 : _buildPreview(isDark)),
-      floatingActionButton:
-          (_selectedMedia != null ||
-                  (_isTextMode && _textController.text.trim().isNotEmpty)) &&
-              !_isUploading
-          ? FloatingActionButton.extended(
-              onPressed: _uploadStory,
-              label: const Text('Share Now'),
-              icon: const Icon(Icons.send_rounded),
-              backgroundColor: const Color(0xFF8B5CF6),
-            )
-          : null,
+      floatingActionButton: null,
     );
   }
 
@@ -343,7 +484,7 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF8B5CF6).withOpacity(0.3),
+                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.3),
                   blurRadius: 20,
                   offset: const Offset(0, 10),
                 ),
@@ -448,7 +589,7 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
             color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withValues(alpha: 0.05),
                 blurRadius: 10,
                 offset: const Offset(0, -2),
               ),
@@ -486,11 +627,80 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
+                      onPressed: _showVisibilitySelector,
+                      icon: Icon(
+                        _visibility == 'everyone'
+                            ? Icons.public
+                            : (_visibility == 'followers'
+                                  ? Icons.people
+                                  : Icons.star),
+                        size: 20,
+                        color: _visibility != 'everyone'
+                            ? const Color(0xFF8B5CF6)
+                            : null,
+                      ),
+                      label: Text(
+                        _visibility == 'everyone'
+                            ? 'Public'
+                            : (_visibility == 'followers'
+                                  ? 'Followers'
+                                  : 'Close Friends'),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        side: BorderSide(
+                          color: _visibility != 'everyone'
+                              ? const Color(0xFF8B5CF6)
+                              : (isDark
+                                    ? Colors.grey[700]!
+                                    : Colors.grey[300]!),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _showLinkDialog,
+                      icon: Icon(
+                        Icons.link,
+                        size: 20,
+                        color: _linkUrl != null
+                            ? const Color(0xFF8B5CF6)
+                            : null,
+                      ),
+                      label: Text(_linkUrl == null ? 'Add Link' : 'Link Added'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        side: BorderSide(
+                          color: _linkUrl != null
+                              ? const Color(0xFF8B5CF6)
+                              : (isDark
+                                    ? Colors.grey[700]!
+                                    : Colors.grey[300]!),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
                       onPressed: _selectedMedia != null && !_isUploading
                           ? () {
                               setState(() {
                                 _selectedMedia = null;
                                 _captionController.clear();
+                                _linkUrl = null;
                               });
                             }
                           : null,
@@ -531,6 +741,90 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
   Widget _buildTextPreview(bool isDark) {
     return Stack(
       children: [
+        // Top Controls (Link and Visibility)
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: Container(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              16 + MediaQuery.of(context).padding.top,
+              16,
+              12,
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Visibility
+                GestureDetector(
+                  onTap: _showVisibilitySelector,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: _visibility != 'everyone'
+                            ? const Color(0xFF8B5CF6)
+                            : Colors.white24,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _visibility == 'everyone'
+                              ? Icons.public
+                              : (_visibility == 'followers'
+                                    ? Icons.people
+                                    : Icons.star),
+                          color: Colors.white,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _visibility == 'everyone'
+                              ? 'Public'
+                              : (_visibility == 'followers'
+                                    ? 'Followers'
+                                    : 'Close Friends'),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                // Link
+                GestureDetector(
+                  onTap: _showLinkDialog,
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: _linkUrl != null
+                          ? const Color(0xFF8B5CF6)
+                          : Colors.black.withValues(alpha: 0.3),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.link,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
         // Background
         Positioned.fill(
           child: GestureDetector(
@@ -577,164 +871,107 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
           child: Container(
             padding: EdgeInsets.fromLTRB(
               0,
-              16,
+              12,
               0,
-              16 + MediaQuery.of(context).padding.bottom,
+              12 + MediaQuery.of(context).padding.bottom,
             ),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.bottomCenter,
                 end: Alignment.topCenter,
-                colors: [Colors.black.withOpacity(0.5), Colors.transparent],
+                colors: [
+                  Colors.black.withValues(alpha: 0.7),
+                  Colors.transparent,
+                ],
               ),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Font Selector
-                SizedBox(
-                  height: 40,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: _fonts.length,
-                    itemBuilder: (context, index) {
-                      final font = _fonts[index];
-                      final isSelected = _fontFamily == font;
-                      return GestureDetector(
-                        onTap: () => setState(() => _fontFamily = font),
-                        child: Container(
-                          margin: const EdgeInsets.only(right: 12),
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? Colors.white
-                                : Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: isSelected ? Colors.white : Colors.white30,
-                            ),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            font,
-                            style: TextStyle(
-                              color: isSelected ? Colors.black : Colors.white,
-                              fontWeight: isSelected
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
-                              fontFamily: font,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // Alignment Selector
-                SizedBox(
-                  height: 36,
+                // Font and Alignment Row
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Row(
                     children: [
-                      const Padding(
-                        padding: EdgeInsets.only(left: 16, right: 12),
-                        child: Icon(
-                          Icons.align_horizontal_left,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                      ),
+                      // Font Selector (Smaller)
                       Expanded(
-                        child: Row(
-                          children: [
-                            _buildAlignmentButton(
-                              TextAlign.left,
-                              Icons.format_align_left,
-                            ),
-                            const SizedBox(width: 8),
-                            _buildAlignmentButton(
-                              TextAlign.center,
-                              Icons.format_align_center,
-                            ),
-                            const SizedBox(width: 8),
-                            _buildAlignmentButton(
-                              TextAlign.right,
-                              Icons.format_align_right,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // Text Color Picker
-                SizedBox(
-                  height: 36,
-                  child: Row(
-                    children: [
-                      const Padding(
-                        padding: EdgeInsets.only(left: 16, right: 12),
-                        child: Icon(
-                          Icons.text_format,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                      ),
-                      Expanded(
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: _textColors.length,
-                          itemBuilder: (context, index) {
-                            final color = _textColors[index];
-                            final isSelected = _textColor == color;
-                            return GestureDetector(
-                              onTap: () => setState(() => _textColor = color),
-                              child: Container(
-                                margin: const EdgeInsets.only(right: 12),
-                                width: 32,
-                                height: 32,
-                                decoration: BoxDecoration(
-                                  color: color,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
+                        child: SizedBox(
+                          height: 32,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: _fonts.length,
+                            itemBuilder: (context, index) {
+                              final font = _fonts[index];
+                              final isSelected = _fontFamily == font;
+                              return GestureDetector(
+                                onTap: () => setState(() => _fontFamily = font),
+                                child: Container(
+                                  margin: const EdgeInsets.only(right: 8),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                  ),
+                                  decoration: BoxDecoration(
                                     color: isSelected
                                         ? Colors.white
-                                        : Colors.white30,
-                                    width: isSelected ? 3 : 1,
+                                        : Colors.white.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(16),
                                   ),
-                                  boxShadow: isSelected
-                                      ? [
-                                          BoxShadow(
-                                            color: Colors.black.withOpacity(
-                                              0.3,
-                                            ),
-                                            blurRadius: 4,
-                                          ),
-                                        ]
-                                      : null,
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    font,
+                                    style: TextStyle(
+                                      color: isSelected
+                                          ? Colors.black
+                                          : Colors.white,
+                                      fontSize: 13,
+                                      fontWeight: isSelected
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                      fontFamily: font,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
+                              );
+                            },
+                          ),
                         ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Alignment Selector (Icons only)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildAlignmentButton(
+                            TextAlign.left,
+                            Icons.format_align_left,
+                          ),
+                          const SizedBox(width: 4),
+                          _buildAlignmentButton(
+                            TextAlign.center,
+                            Icons.format_align_center,
+                          ),
+                          const SizedBox(width: 4),
+                          _buildAlignmentButton(
+                            TextAlign.right,
+                            Icons.format_align_right,
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
-                // Background Color Picker
+                const SizedBox(height: 12),
+                // Text and Background Color Row
                 SizedBox(
-                  height: 44,
+                  height: 32,
                   child: Row(
                     children: [
                       const Padding(
-                        padding: EdgeInsets.only(left: 16, right: 12),
+                        padding: EdgeInsets.only(left: 16, right: 8),
                         child: Icon(
-                          Icons.wallpaper,
+                          Icons.palette,
                           color: Colors.white,
-                          size: 20,
+                          size: 18,
                         ),
                       ),
                       Expanded(
@@ -748,9 +985,9 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                               onTap: () =>
                                   setState(() => _backgroundColor = color),
                               child: Container(
-                                margin: const EdgeInsets.only(right: 12),
-                                width: 40,
-                                height: 40,
+                                margin: const EdgeInsets.only(right: 8),
+                                width: 28,
+                                height: 28,
                                 decoration: BoxDecoration(
                                   color: color,
                                   shape: BoxShape.circle,
@@ -758,18 +995,53 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                                     color: isSelected
                                         ? Colors.white
                                         : Colors.white30,
-                                    width: isSelected ? 3 : 1,
+                                    width: isSelected ? 2.5 : 1,
                                   ),
-                                  boxShadow: isSelected
-                                      ? [
-                                          BoxShadow(
-                                            color: Colors.black.withOpacity(
-                                              0.3,
-                                            ),
-                                            blurRadius: 6,
-                                          ),
-                                        ]
-                                      : null,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // Secondary Colors (Text) Row
+                SizedBox(
+                  height: 28,
+                  child: Row(
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(left: 16, right: 8),
+                        child: Icon(
+                          Icons.text_format,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                      Expanded(
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: _textColors.length,
+                          itemBuilder: (context, index) {
+                            final color = _textColors[index];
+                            final isSelected = _textColor == color;
+                            return GestureDetector(
+                              onTap: () => setState(() => _textColor = color),
+                              child: Container(
+                                margin: const EdgeInsets.only(right: 8),
+                                width: 24,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? Colors.white
+                                        : Colors.white30,
+                                    width: isSelected ? 2 : 1,
+                                  ),
                                 ),
                               ),
                             );
@@ -794,7 +1066,9 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
       child: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white : Colors.white.withOpacity(0.2),
+          color: isSelected
+              ? Colors.white
+              : Colors.white.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(

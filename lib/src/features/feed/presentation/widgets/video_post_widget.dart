@@ -21,7 +21,34 @@ class VideoPostWidget extends StatefulWidget {
 class _VideoPostWidgetState extends State<VideoPostWidget> {
   VideoPlayerController? _controller;
   bool _isInitialized = false;
-  bool _isPlaying = false;
+  final bool _isPlaying = false;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Pre-initialize to show first frame if possible or just be ready
+    _initializePlayer();
+  }
+
+  Future<void> _initializePlayer() async {
+    if (_controller != null) return;
+
+    setState(() => _isLoading = true);
+    try {
+      _controller = VideoPlayerController.networkUrl(
+        Uri.parse(widget.videoUrl),
+      );
+      await _controller!.initialize();
+      setState(() {
+        _isInitialized = true;
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint("Video initialization error: $e");
+      setState(() => _isLoading = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -29,70 +56,75 @@ class _VideoPostWidgetState extends State<VideoPostWidget> {
     super.dispose();
   }
 
-  Future<void> _togglePlay() async {
-    if (_controller == null) {
-      _controller = VideoPlayerController.networkUrl(
-        Uri.parse(widget.videoUrl),
-      );
-      await _controller!.initialize();
-      setState(() {
-        _isInitialized = true;
-      });
-    }
-
-    if (_controller!.value.isPlaying) {
-      await _controller!.pause();
-      setState(() => _isPlaying = false);
-    } else {
-      await _controller!.play();
-      setState(() => _isPlaying = true);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: _togglePlay,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          height: widget.height,
-          width: double.infinity,
-          color: Colors.black,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              if (!_isInitialized)
-                if (widget.thumbnailUrl != null)
-                  CachedNetworkImage(
-                    imageUrl: widget.thumbnailUrl!,
-                    fit: BoxFit.cover,
-                    width: double.infinity,
-                    height: widget.height,
-                  )
-                else
-                  const Center(
-                    child: Icon(
-                      Icons.play_circle_outline,
-                      color: Colors.white,
-                      size: 64,
-                    ),
-                  ),
-              if (_isInitialized)
-                Center(
-                  child: AspectRatio(
-                    aspectRatio: _controller!.value.aspectRatio,
-                    child: VideoPlayer(_controller!),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        height: widget.height,
+        width: double.infinity,
+        color: Colors.black,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // Show thumbnail while not initialized
+            if (!_isInitialized)
+              if (widget.thumbnailUrl != null)
+                CachedNetworkImage(
+                  imageUrl: widget.thumbnailUrl!,
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  height: widget.height,
+                )
+              else
+                const Center(
+                  child: Icon(
+                    Icons.movie_outlined,
+                    color: Colors.white24,
+                    size: 64,
                   ),
                 ),
-              if (!_isPlaying && _isInitialized)
-                const Icon(Icons.play_arrow, color: Colors.white, size: 64),
 
-              // Loading indicator
-              if (_controller != null && !_isInitialized)
-                const CircularProgressIndicator(color: Colors.white),
-            ],
-          ),
+            // The Video Player
+            if (_isInitialized && _controller != null)
+              Center(
+                child: AspectRatio(
+                  aspectRatio: _controller!.value.aspectRatio,
+                  child: VideoPlayer(_controller!),
+                ),
+              ),
+
+            // Large Play Button Overlay (when paused or not started)
+            if (!_isPlaying && !_isLoading)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.black26,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white24, width: 2),
+                ),
+                child: const Icon(
+                  Icons.play_arrow_rounded,
+                  color: Colors.white,
+                  size: 48,
+                ),
+              ),
+
+            // Loading indicator
+            if (_isLoading)
+              const CircularProgressIndicator(
+                color: Colors.white,
+                strokeWidth: 2,
+              ),
+
+            // Simple Replay Overlay
+            if (_isInitialized &&
+                _controller != null &&
+                _controller!.value.position == _controller!.value.duration)
+              const Center(
+                child: Icon(Icons.replay, color: Colors.white, size: 48),
+              ),
+          ],
         ),
       ),
     );

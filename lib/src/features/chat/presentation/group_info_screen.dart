@@ -120,8 +120,8 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
                     children: [
                       CircleAvatar(
                         radius: 50,
-                        backgroundColor: AppColors.secondaryTeal.withOpacity(
-                          0.1,
+                        backgroundColor: AppColors.secondaryTeal.withValues(
+                          alpha: 0.1,
                         ),
                         backgroundImage: channel.displayAvatarUrl != null
                             ? CachedNetworkImageProvider(
@@ -244,7 +244,9 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: AppColors.secondaryTeal.withOpacity(0.1),
+                                color: AppColors.secondaryTeal.withValues(
+                                  alpha: 0.1,
+                                ),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: const Text(
@@ -264,7 +266,7 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.blue.withOpacity(0.1),
+                                color: Colors.blue.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: const Text(

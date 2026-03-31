@@ -34,6 +34,7 @@ class NavigationController {
             'overview': window.analyticsController,
             'users': window.usersController,
             'posts': window.postsController,
+            'stories': window.storiesController,
             'chats': window.chatsController,
             'events': window.eventsController,
             'groups': window.groupsController,
@@ -41,7 +42,12 @@ class NavigationController {
             'analytics': window.analyticsController,
             'broadcasts': window.broadcastController,
             'reports': window.reportsController,
-            'presence': window.presenceController
+            'presence': window.presenceController,
+            'sos': window.sosController,
+            'verification': window.verificationController,
+            'config': window.configController,
+            'staff': window.staffController,
+            'audit': window.auditController
         };
 
         const controller = controllers[tabId];
@@ -59,16 +65,42 @@ document.addEventListener('DOMContentLoaded', () => {
     window.authController = new AuthController();
     window.usersController = new UsersController();
     window.postsController = new PostsController();
+    window.storiesController = new StoriesController();
     window.chatsController = new ChatsController();
+    window.marketplaceController = new MarketplaceController();
     window.broadcastController = new BroadcastController();
     window.reportsController = new ReportsController();
     window.presenceController = new PresenceController();
+    window.verificationController = new VerificationController();
+    window.configController = new ConfigController();
+    window.sosController = new SOSController();
+    window.monitorController = new MonitorController();
 
-    // Some are objects-literal from legacy code
-    // window.eventsController (already global)
-    // window.resourcesController (already global)
-    // window.analyticsController (already global)
+    // 2. Monitoring will be started by NavigationController when tab is active
+    // window.monitorController.init();
+    // window.sosController.load(); 
 
-    // 2. Initialize Navigation
+    // 2. Global Search Logic
+    const globalSearch = document.getElementById('global-search');
+    if (globalSearch) {
+        globalSearch.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const query = globalSearch.value;
+                if (query.length > 2) {
+                    window.navigationController.switchTab('users');
+                    window.usersController.filterUsers(query);
+                }
+            }
+        });
+    }
+
+    // 3. Update Header Admin Info
+    firebase.auth().onAuthStateChanged(user => {
+        if (user) {
+            document.getElementById('admin-name').innerText = user.displayName || 'Administrator';
+        }
+    });
+
+    // 4. Initialize Navigation
     window.navigationController = new NavigationController();
 });

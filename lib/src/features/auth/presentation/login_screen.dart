@@ -20,6 +20,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
 
+  Future<void> _googleLogin() async {
+    setState(() => _isLoading = true);
+    try {
+      await ref.read(authRepositoryProvider).signInWithGoogle();
+      if (!mounted) return;
+      // Navigation is usually handled by listening to auth state changes in the router
+    } catch (e) {
+      if (!mounted) return;
+      CustomSnackbar.show(
+        context,
+        message: AuthErrorHandler.getErrorMessage(e),
+        isError: true,
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -142,6 +160,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               labelStyle: const TextStyle(
                                 color: Color.fromARGB(255, 255, 255, 255),
                               ),
+                              hintStyle: TextStyle(
+                                color: Colors.white.withOpacity(0.3),
+                              ),
                               prefixIcon: const Icon(
                                 Icons.email_outlined,
                                 color: Colors.white70,
@@ -227,6 +248,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                           const SizedBox(height: 16),
 
+                          const SizedBox(height: 16),
+
                           // Login Button
                           FilledButton(
                             onPressed: _isLoading ? null : _login,
@@ -254,6 +277,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
+                          ),
+                          const SizedBox(height: 16),
+                          // Google Sign-In Button
+                          OutlinedButton.icon(
+                            onPressed: _isLoading ? null : _googleLogin,
+                            icon: const Icon(Icons.g_mobiledata, size: 28),
+                            label: const Text(
+                              'Sign in with Google',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              side: const BorderSide(color: Colors.white),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              foregroundColor: Colors.white,
+                            ),
                           ),
                           const SizedBox(height: 16),
 

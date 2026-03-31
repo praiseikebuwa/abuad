@@ -1,30 +1,17 @@
-import 'package:google_generative_ai/google_generative_ai.dart';
-
 class AiService {
-  // TODO: Replace with your actual Gemini API Key from https://aistudio.google.com/
-  static const String _apiKey = 'AIzaSyAPyI3lWGt0kWrvCIu0sYvdoWqeTBwaQE8';
+  // AI Service stubbed due to removed dependency
 
-  late final GenerativeModel _model;
-  late final ChatSession _chatSession;
+  // late final GenerativeModel _model;
+  // late final ChatSession _chatSession;
 
   AiService() {
-    _model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: _apiKey);
-    _chatSession = _model.startChat();
+    // _model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: _apiKey);
+    // _chatSession = _model.startChat();
   }
 
-  /// Streams the chat response from Gemini
+  /// Streams a placeholder response since Gemini is disabled
   Stream<String> streamChat(String message) async* {
-    try {
-      final response = _chatSession.sendMessageStream(Content.text(message));
-
-      await for (final chunk in response) {
-        if (chunk.text != null) {
-          yield chunk.text!;
-        }
-      }
-    } catch (e) {
-      yield "Error: Unable to connect to AI. Please check your API key and internet connection.";
-    }
+    yield "AI features are currently disabled for this build. Please contact support to re-enable.";
   }
 
   /// Returns a system prompt based on the selected mode

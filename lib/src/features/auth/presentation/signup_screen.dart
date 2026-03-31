@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../data/auth_repository.dart';
 import '../../user/data/user_repository.dart';
+import '../../../core/services/geofence_service.dart';
 
 import '../../../core/utils/auth_error_handler.dart';
 import '../../../core/presentation/widgets/custom_snackbar.dart';
@@ -37,6 +38,23 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     setState(() => _isLoading = true);
 
     try {
+      // 0. Geofence Check: Only allow registration if user is within ABUAD campus
+      final geofenceService = ref.read(geofenceServiceProvider);
+      final isWithinCampus = await geofenceService.isWithinABUAD();
+
+      if (!isWithinCampus) {
+        if (mounted) {
+          CustomSnackbar.show(
+            context,
+            message:
+                'Registration is restricted to ABUAD campus only. Please register while you are within the school area.',
+            isError: true,
+          );
+        }
+        setState(() => _isLoading = false);
+        return;
+      }
+
       // 1. Sign up with Firebase Auth
       await ref
           .read(authRepositoryProvider)
@@ -44,6 +62,8 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
             _emailController.text.trim(),
             _passwordController.text.trim(),
           );
+
+      // ... existing profile creation logic ...
 
       // 2. Create User Profile in Firestore
       final user = ref.read(authRepositoryProvider).currentUser;
@@ -71,6 +91,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
           status: 'online',
           college: 'ABUAD', // Default college
           streakCount: 0,
+          createdAt: DateTime.now(),
         );
 
         // Save to Firestore

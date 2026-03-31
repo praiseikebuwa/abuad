@@ -4,30 +4,78 @@ import 'package:url_launcher/url_launcher.dart';
 import '../data/resource_repository.dart';
 import '../domain/resource.dart';
 
-class ResourcesScreen extends ConsumerWidget {
+class ResourcesScreen extends ConsumerStatefulWidget {
   const ResourcesScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ResourcesScreen> createState() => _ResourcesScreenState();
+}
+
+class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
+  String _selectedLevel = 'All';
+
+  void _showFilterDialog() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        final levels = ['All', '100', '200', '300', '400', '500'];
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Text(
+                  'Filter by Level',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+              ...levels.map(
+                (level) => ListTile(
+                  title: Text('$level Level'),
+                  trailing: _selectedLevel == level
+                      ? Icon(Icons.check, color: Theme.of(context).primaryColor)
+                      : null,
+                  onTap: () {
+                    setState(() => _selectedLevel = level);
+                    Navigator.pop(context);
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final repo = ref.watch(resourceRepositoryProvider);
+    final resourcesStream = _selectedLevel == 'All'
+        ? repo.watchResources()
+        : repo.watchResourcesByLevel(_selectedLevel);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text("Academic Resources"),
         actions: [
           IconButton(
-            icon: const Icon(Icons.filter_list),
-            onPressed: () {
-              // TODO: Implement level filtering
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Filtering coming soon!")),
-              );
-            },
+            icon: Icon(
+              Icons.filter_list,
+              color: _selectedLevel == 'All'
+                  ? null
+                  : Theme.of(context).primaryColor,
+            ),
+            onPressed: _showFilterDialog,
           ),
         ],
       ),
       body: StreamBuilder<List<Resource>>(
-        stream: repo.watchResources(),
+        stream: resourcesStream,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());

@@ -15,6 +15,8 @@ class MarketplaceScreen extends ConsumerStatefulWidget {
 
 class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
   String _selectedCategory = 'all';
+  String _sortBy = 'newest';
+  double? _maxPrice;
 
   bool _isSearching = false;
   final _searchController = TextEditingController();
@@ -32,6 +34,8 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
         .watchItems(
           category: _selectedCategory == 'all' ? null : _selectedCategory,
           searchQuery: _searchController.text,
+          sortBy: _sortBy,
+          maxPrice: _maxPrice,
         );
 
     return Scaffold(
@@ -40,7 +44,7 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
             ? TextField(
                 controller: _searchController,
                 autofocus: true,
-                style: const TextStyle(color: Color.fromARGB(255, 0, 0, 0)),
+                style: const TextStyle(color: Colors.white),
                 cursorColor: Colors.white,
                 decoration: const InputDecoration(
                   hintText: 'Search items...',
@@ -94,6 +98,45 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
                 _buildCategoryChip('lost_found', 'Lost & Found'),
                 _buildCategoryChip('fashion', 'Fashion'),
                 _buildCategoryChip('services', 'Services'),
+              ],
+            ),
+          ),
+
+          // Sorting and Options
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Row(
+              children: [
+                const Text(
+                  'Sort by:',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(width: 8),
+                _buildSortChip('newest', 'Newest'),
+                const SizedBox(width: 8),
+                _buildSortChip('price_asc', 'Cheapest'),
+                const Spacer(),
+                PopupMenuButton<double?>(
+                  icon: Icon(
+                    Icons.filter_list,
+                    color: _maxPrice != null
+                        ? AppColors.accentAmber
+                        : Colors.grey,
+                  ),
+                  onSelected: (val) => setState(() => _maxPrice = val),
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(value: null, child: Text('All Prices')),
+                    const PopupMenuItem(value: 5000, child: Text('Under ₦5k')),
+                    const PopupMenuItem(
+                      value: 15000,
+                      child: Text('Under ₦15k'),
+                    ),
+                    const PopupMenuItem(
+                      value: 50000,
+                      child: Text('Under ₦50k'),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -166,6 +209,28 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
           foregroundColor: AppColors.primaryInk,
           child: const Icon(Icons.add),
           // label: const Text('Sell Item'), // Removed to fix "too fat" issue
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSortChip(String value, String label) {
+    final isSelected = _sortBy == value;
+    return GestureDetector(
+      onTap: () => setState(() => _sortBy = value),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.accentAmber : Colors.grey[200],
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            color: isSelected ? AppColors.primaryInk : Colors.grey[700],
+          ),
         ),
       ),
     );

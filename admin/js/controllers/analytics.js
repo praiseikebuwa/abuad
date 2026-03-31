@@ -8,59 +8,106 @@ const analyticsController = {
         const updateStat = (id, val) => this.animateValue(id, 0, val, 1000);
 
         try {
-            // Efficient Counting (Firebase v9.22.0+)
-            const usersCount = await db.collection('users').count().get();
-            updateStat('stat-total-users', usersCount.data().count);
+            // Live Status Listener (System Config Tool)
+            db.collection('system').doc('config').onSnapshot(doc => {
+                if (doc.exists) {
+                    const data = doc.data();
+                    const mStatus = document.getElementById('summary-maintenance-status');
+                    const sStatus = document.getElementById('summary-signups-status');
+                    
+                    if (mStatus) {
+                        mStatus.innerText = data.maintenanceMode ? '🚫 ACTIVE' : '✅ DISABLED';
+                        mStatus.style.color = data.maintenanceMode ? 'var(--color-accent-rose)' : 'var(--color-primary-light)';
+                    }
+                    if (sStatus) {
+                        sStatus.innerText = data.allowSignups !== false ? '✅ OPEN' : '🚫 CLOSED';
+                        sStatus.style.color = data.allowSignups !== false ? 'var(--color-primary-light)' : 'var(--color-accent-rose)';
+                    }
+                }
+            });
 
-            const verifiedCount = await db.collection('users').where('isVerified', '==', true).count().get();
-            updateStat('stat-verified-users', verifiedCount.data().count);
+            // Efficient Counting (Parallelized)
+            const [usersSnap, verifiedSnap] = await Promise.all([
+                db.collection('users').get(),
+                db.collection('users').where('isVerified', '==', true).get()
+            ]);
+            
+            updateStat('stat-total-users', usersSnap.size);
+            updateStat('stat-verified-users', verifiedSnap.size);
 
             // Live Online Count (Listener)
             db.collection('users').where('status', '==', 'online').onSnapshot(snap => {
-                document.getElementById('stat-online-users').innerText = snap.size;
-                // Update Live Traffic Chart
+                const el = document.getElementById('stat-online-users');
+                if (el) el.innerText = snap.size;
                 this.updateTrafficChart(snap.size);
             });
 
-            // Feature Counts
-            const [posts, groups, events, market] = await Promise.all([
-                db.collection('posts').count().get(),
-                db.collection('groups').count().get(),
-                db.collection('events').count().get(),
-                db.collection('marketplace').count().get()
-            ]);
+            // Feature Counts (Parallelized)
+            const collections = ['posts', 'groups', 'events', 'marketplace_items'];
+            const snaps = await Promise.all(collections.map(c => db.collection(c).get()));
+
+            // Growth Trends (Real Data)
+            const growthData = await this.fetchGrowthData();
 
             this.initCharts({
-                posts: posts.data().count,
-                groups: groups.data().count,
-                events: events.data().count,
-                market: market.data().count
-            });
+                posts: snaps[0].size,
+                groups: snaps[1].size,
+                events: snaps[2].size,
+                market: snaps[3].size
+            }, growthData);
 
         } catch (err) {
-            console.error("Aggregation Error (fallback to basic get):", err);
-            // Fallback for older environments
-            db.collection('users').get().then(s => updateStat('stat-total-users', s.size));
+            console.error("Aggregation Error:", err);
             this.initCharts();
         }
     },
 
-    trafficChart: null,
+    fetchGrowthData: async function () {
+        const now = new Date();
+        const promises = [];
+        const labels = [];
 
-    initCharts: function (realData) {
-        // ... (Existing implementation for Feature/Growth charts) ...
-        // Growth Chart (Mocked trend)
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(now.getDate() - i);
+            d.setHours(0, 0, 0, 0);
+
+            const start = firebase.firestore.Timestamp.fromDate(d);
+            const end = firebase.firestore.Timestamp.fromDate(new Date(d.getTime() + 24 * 60 * 60 * 1000));
+
+            labels.push(d.toLocaleDateString(undefined, { weekday: 'short' }));
+            promises.push(
+                db.collection('users')
+                    .where('createdAt', '>=', start)
+                    .where('createdAt', '<', end)
+                    .get()
+            );
+        }
+
+        const results = await Promise.all(promises);
+        return { 
+            labels, 
+            data: results.map(s => s.size) 
+        };
+    },
+
+    initCharts: function (realData, growth) {
+        // Growth Chart
         const ctxGrowth = document.getElementById('growthChart');
         if (ctxGrowth) {
+            const chartData = growth || {
+                labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                data: [0, 0, 0, 0, 0, 0, 0]
+            };
             new Chart(ctxGrowth, {
                 type: 'line',
                 data: {
-                    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                    labels: chartData.labels,
                     datasets: [{
                         label: 'New Users',
-                        data: [12, 19, 15, 25, 22, 30, 45],
-                        borderColor: '#2196f3',
-                        backgroundColor: 'rgba(33, 150, 243, 0.1)',
+                        data: chartData.data,
+                        borderColor: '#00897b',
+                        backgroundColor: 'rgba(0, 137, 123, 0.1)',
                         fill: true,
                         tension: 0.4
                     }]
@@ -72,7 +119,7 @@ const analyticsController = {
         // Feature Chart
         const ctxFeature = document.getElementById('featureChart');
         if (ctxFeature) {
-            const counts = realData || { posts: 45, groups: 12, events: 8, market: 15 };
+            const counts = realData || { posts: 0, groups: 0, events: 0, market: 0 };
             new Chart(ctxFeature, {
                 type: 'bar',
                 data: {
@@ -89,16 +136,24 @@ const analyticsController = {
         }
     },
 
+    animateValue: function (id, start, end, duration) {
+        const obj = document.getElementById(id);
+        if (!obj) return;
+        let startTimestamp = null;
+        const step = (timestamp) => {
+            if (!startTimestamp) startTimestamp = timestamp;
+            const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+            obj.innerHTML = Math.floor(progress * (end - start) + start);
+            if (progress < 1) {
+                window.requestAnimationFrame(step);
+            }
+        };
+        window.requestAnimationFrame(step);
+    },
+
     updateTrafficChart: function (currentOnline) {
-        // Implement a live scrolling chart if you had a canvas for it
-        // For now, we update the dashboard "Online Now" text which is already done.
-        // We could add a "Real-time" chart here if desired by the user.
+        // Placeholder for future live chart
     },
 };
 
-document.addEventListener('DOMContentLoaded', () => {
-    if (!window.analyticsControllerInitialized) {
-        analyticsController.init();
-        window.analyticsControllerInitialized = true;
-    }
-});
+// Auto-init removed. Will be called by NavigationController after Auth.

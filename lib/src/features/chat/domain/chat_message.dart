@@ -21,6 +21,8 @@ class ChatMessage {
   final Map<String, String> reactions; // userId -> emoji
   final List<String> mentions; // List of user IDs mentioned in the message
   final bool isSnap; // Whether it disappears after viewing
+  final bool isEdited;
+  final bool isDeleted;
 
   ChatMessage({
     required this.id,
@@ -43,6 +45,8 @@ class ChatMessage {
     this.reactions = const {},
     this.mentions = const [],
     this.isSnap = false,
+    this.isEdited = false,
+    this.isDeleted = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -66,6 +70,8 @@ class ChatMessage {
       'reactions': reactions,
       'mentions': mentions,
       'is_snap': isSnap,
+      'is_edited': isEdited,
+      'is_deleted': isDeleted,
     };
   }
 
@@ -91,6 +97,8 @@ class ChatMessage {
       reactions: Map<String, String>.from(map['reactions'] ?? {}),
       mentions: List<String>.from(map['mentions'] ?? []),
       isSnap: map['is_snap'] ?? false,
+      isEdited: map['is_edited'] ?? false,
+      isDeleted: map['is_deleted'] ?? false,
     );
   }
 }

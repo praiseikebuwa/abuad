@@ -95,9 +95,14 @@ class UsersController {
                 <td>
                     ${badgeHtml}
                 </td>
-                <td>${formatDate(user.createdAt)}</td>
+                <td>${formatDate(user.createdAt || user.created_at)}</td>
                 <td>
                     <div class="action-buttons">
+                        <button class="btn-icon btn-view" 
+                                onclick="window.usersController.openUserModal('${user.id}')"
+                                title="View Profile" style="color: var(--color-primary-light)">
+                            <i class="fas fa-id-badge"></i>
+                        </button>
                         <div class="verification-tier-buttons">
                             <button class="btn-icon btn-tier-none ${vType === 'none' ? 'active' : ''}" 
                                     onclick="window.usersController.setVerification('${user.id}', 'none')"
@@ -137,27 +142,106 @@ class UsersController {
         if (totalCount) totalCount.innerText = this.users.length + '+';
     }
 
+    openUserModal(uid) {
+        const user = this.users.find(u => u.id === uid);
+        if (!user) return;
+
+        let modal = document.getElementById('user-detail-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'user-detail-modal';
+            modal.className = 'modal-overlay';
+            document.body.appendChild(modal);
+        }
+
+        const vBadge = user.verificationType === 'gold' ? '🥇 Gold' : (user.verificationType === 'blue' ? 'Verified' : 'None');
+
+        modal.innerHTML = `
+            <div class="modal-content" style="width: 500px;">
+                <div class="modal-header">
+                    <h2>User Profile Details</h2>
+                    <button onclick="document.getElementById('user-detail-modal').style.display='none'" class="btn-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div style="display:flex; gap:20px; align-items:center; margin-bottom:25px;">
+                        <div class="avatar-initial" style="width:80px; height:80px; font-size:2rem; background-color: ${seededColor(user.displayName)}">
+                            ${user.displayName ? user.displayName[0].toUpperCase() : '?'}
+                        </div>
+                        <div>
+                            <h2 style="margin:0">${user.displayName || 'No Name'}</h2>
+                            <p style="color:var(--text-secondary); margin:4px 0;">@${user.handle || 'no_handle'}</p>
+                            <span class="status-badge ${user.status || 'offline'}">${user.status || 'Offline'}</span>
+                        </div>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
+                        <div class="card" style="padding:15px; background:rgba(255,255,255,0.02)">
+                            <small style="color:var(--text-muted)">Email</small>
+                            <div style="font-weight:500; word-break:break-all;">${user.email}</div>
+                        </div>
+                        <div class="card" style="padding:15px; background:rgba(255,255,255,0.02)">
+                            <small style="color:var(--text-muted)">College/Department</small>
+                            <div style="font-weight:500;">${user.college || user.department || 'N/A'}</div>
+                        </div>
+                        <div class="card" style="padding:15px; background:rgba(255,255,255,0.02)">
+                            <small style="color:var(--text-muted)">Followers</small>
+                            <div style="font-weight:500;">${user.followers_count || 0}</div>
+                        </div>
+                        <div class="card" style="padding:15px; background:rgba(255,255,255,0.02)">
+                            <small style="color:var(--text-muted)">Verification</small>
+                            <div style="font-weight:500;">${vBadge}</div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top:20px;">
+                        <small style="color:var(--text-muted)">Biography</small>
+                        <p style="margin-top:5px; line-height:1.4;">${user.bio || '<i>No biography provided.</i>'}</p>
+                    </div>
+
+                    <div style="margin-top:20px;">
+                        <small style="color:var(--text-muted)">Streak/Activity</small>
+                        <div style="display:flex; gap:10px; margin-top:5px;">
+                             <span>🔥 ${user.streak || 0} Day Streak</span>
+                             <span>📅 Joined ${formatDate(user.createdAt)}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-primary" style="width:100%" onclick="document.getElementById('user-detail-modal').style.display='none'">Done</button>
+                </div>
+            </div>
+        `;
+
+        modal.style.display = 'flex';
+    }
+
     setVerification(uid, type) {
         db.collection('users').doc(uid).update({
             verificationType: type,
             isVerified: type !== 'none'
+        }).then(() => {
+            window.logAdminAction('VERIFY_USER', `Updated verification tier to ${type} for User ${uid}`, 'user', uid);
         }).catch(err => alert("Error: " + err.message));
     }
 
     toggleBan(uid, isBanned) {
-        const newStatus = isBanned ? 'offline' : 'banned'; // Default to offline when unbanned
+        const newStatus = isBanned ? 'offline' : 'banned';
         const confirmMsg = isBanned ? "Unban this user?" : "Permenantly BAN this user from the platform?";
 
         if (confirm(confirmMsg)) {
             db.collection('users').doc(uid).update({
                 status: newStatus
+            }).then(() => {
+                window.logAdminAction(isBanned ? 'UNBAN_USER' : 'BAN_USER', `Toggled ban status for User ${uid}`, 'user', uid);
             }).catch(err => alert("Error: " + err.message));
         }
     }
 
     deleteUser(uid) {
         if (confirm("DANGER: This will delete the user's profile data permanently. Continue?")) {
-            db.collection('users').doc(uid).delete()
+            db.collection('users').doc(uid).delete().then(() => {
+                window.logAdminAction('DELETE_USER', `Permanently deleted user profile for ${uid}`, 'user', uid);
+            })
                 .catch(err => alert("Error: " + err.message));
         }
     }
@@ -176,7 +260,8 @@ function seededColor(name) {
 
 function formatDate(timestamp) {
     if (!timestamp) return 'N/A';
-    return new Date(timestamp).toLocaleDateString(undefined, {
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    return date.toLocaleDateString(undefined, {
         day: 'numeric', month: 'short', year: 'numeric'
     });
 }

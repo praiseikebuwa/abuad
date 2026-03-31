@@ -27,15 +27,17 @@ class BroadcastController {
 
         try {
             // Write to 'announcements' collection
-            await db.collection('announcements').add({
+            const docRef = await db.collection('announcements').add({
                 title: title,
                 body: message,
                 type: type,
-                senderId: auth.currentUser.uid,
+                senderId: firebase.auth().currentUser.uid,
                 senderName: 'Admin',
                 timestamp: firebase.firestore.FieldValue.serverTimestamp(),
                 active: true
             });
+
+            window.logAdminAction('SEND_BROADCAST', `Sent broadcast: ${title}`, 'announcement', docRef.id);
 
             // Reset form
             this.form.reset();
@@ -88,7 +90,9 @@ class BroadcastController {
 
     delete(id) {
         if (confirm("Remove this announcement?")) {
-            db.collection('announcements').doc(id).delete();
+            db.collection('announcements').doc(id).delete().then(() => {
+                window.logAdminAction('DELETE_BROADCAST', `Admin deleted announcement ${id}`, 'announcement', id);
+            });
         }
     }
 }

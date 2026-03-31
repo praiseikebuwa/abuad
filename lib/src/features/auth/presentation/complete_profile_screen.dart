@@ -6,6 +6,7 @@ import '../../auth/data/auth_repository.dart';
 import '../../../core/services/firebase_storage_service.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
+import 'dart:async';
 
 class CompleteProfileScreen extends ConsumerStatefulWidget {
   const CompleteProfileScreen({super.key});
@@ -19,6 +20,7 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final _phoneController = TextEditingController();
   final _nameController = TextEditingController(); // Added Name Controller
+  final _bioController = TextEditingController(); // Added Bio Controller
   String? _department;
   String? _college;
   XFile? _pickedFile;
@@ -40,6 +42,7 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
   void dispose() {
     _phoneController.dispose();
     _nameController.dispose();
+    _bioController.dispose();
     super.dispose();
   }
 
@@ -63,17 +66,17 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
       'Civil',
       'Mechatronics',
       'Chemical',
+      'Biomedical',
+      'Aeronautical',
       'Petroleum',
     ],
     'Law': ['Law'],
     'Sciences': [
       'Computer Science',
-      'Microbiology',
+      'Cyber Security',
       'Biochemistry',
-      'Industrial Chemistry',
-      'Physics',
-      'Mathematics',
-      'Statistics',
+      'Software Engineering',
+      'Data Science',
       'Geology',
     ],
     'Social & Management Sciences': [
@@ -97,40 +100,6 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
       'Pharmacy',
       'Radiography',
       'Optometry',
-    ],
-    'Arts & Humanities': [
-      'Performing Arts',
-      'English',
-      'History',
-      'International Relations',
-      'Philosophy',
-      'Religious Studies',
-      'Linguistics',
-      'Music',
-    ],
-    'Agriculture': [
-      'Agricultural Science',
-      'Fisheries',
-      'Forestry',
-      'Animal Science',
-      'Crop Science',
-      'Soil Science',
-    ],
-    'Education': [
-      'Guidance & Counseling',
-      'Educational Management',
-      'Science Education',
-      'Arts Education',
-      'Social Science Education',
-      'Library Science',
-    ],
-    'Environmental Sciences': [
-      'Architecture',
-      'Estate Management',
-      'Urban & Regional Planning',
-      'Quantity Surveying',
-      'Building',
-      'Surveying & Geoinformatics',
     ],
   };
 
@@ -176,26 +145,45 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
         );
       }
 
-      final existingUser = await userRepo.getUserById(currentUser.uid);
+      debugPrint('🔍 Fetching existing user for ${currentUser.uid}...');
+      final existingUser = await userRepo
+          .getUserById(currentUser.uid)
+          .timeout(const Duration(seconds: 8));
+      debugPrint('✅ Fetched existing user: ${existingUser?.handle}');
       String? handle = existingUser?.handle;
 
       if (handle == null || handle.isEmpty) {
-        handle = await userRepo.generateHandle(_nameController.text.trim());
+        debugPrint(
+          '🔍 Generating handle for ${_nameController.text.trim()}...',
+        );
+        handle = await userRepo
+            .generateHandle(_nameController.text.trim())
+            .timeout(const Duration(seconds: 8));
+        debugPrint('✅ Generated handle: $handle');
       }
 
-      await userRepo.updateUser(currentUser.uid, {
-        'display_name': _nameController.text.trim(),
-        'handle': handle,
-        'email': currentUser.email ?? '',
-        'phone_number': _phoneController.text.trim(),
-        'college': _college,
-        'department': _department,
-        if (photoUrl != null) 'avatar_url': photoUrl,
-      });
+      debugPrint('📝 Updating user profile in Firestore...');
+      await userRepo
+          .updateUser(currentUser.uid, {
+            'display_name': _nameController.text.trim(),
+            'handle': handle,
+            'email': currentUser.email ?? '',
+            'phone_number': _phoneController.text.trim(),
+            'college': _college,
+            'department': _department,
+            'bio': _bioController.text.trim(),
+            if (photoUrl != null) 'avatar_url': photoUrl,
+          })
+          .timeout(const Duration(seconds: 8));
+      debugPrint('✅ Firestore update successful!');
 
       // Force refresh of the user provider to ensure the navigation guard
       // in ScaffoldWithBottomNav sees the updated data immediately.
+      debugPrint('⏳ Refreshing user provider...');
       ref.invalidate(currentUserProvider);
+      // Wait for the next value to be emitted by the StreamProvider
+      await ref.read(currentUserProvider.future);
+      debugPrint('✅ User provider refreshed!');
 
       // Allow a small delay for the provider to update before navigating
       await Future.delayed(const Duration(milliseconds: 500));
@@ -203,11 +191,30 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
       if (mounted) {
         context.go('/'); // Navigate to Feed
       }
+    } on TimeoutException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Connection timed out. Please check your internet and try again.',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+        String errorMessage = 'Error: $e';
+        if (e.toString().contains('UnknownHostException') ||
+            e.toString().contains('UNAVAILABLE')) {
+          errorMessage =
+              'Network error: Unable to connect to database. Please check your connection.';
+        }
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errorMessage), backgroundColor: Colors.red),
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -268,8 +275,14 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
                   labelText: 'College',
                   border: OutlineInputBorder(),
                 ),
+                isExpanded: true,
                 items: _colleges
-                    .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                    .map(
+                      (c) => DropdownMenuItem(
+                        value: c,
+                        child: Text(c, overflow: TextOverflow.ellipsis),
+                      ),
+                    )
                     .toList(),
                 onChanged: (val) {
                   setState(() {
@@ -285,8 +298,14 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
                   labelText: 'Department',
                   border: OutlineInputBorder(),
                 ),
+                isExpanded: true,
                 items: _availableDepartments
-                    .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+                    .map(
+                      (d) => DropdownMenuItem(
+                        value: d,
+                        child: Text(d, overflow: TextOverflow.ellipsis),
+                      ),
+                    )
                     .toList(),
                 onChanged: (val) => setState(() => _department = val),
               ),
@@ -296,10 +315,25 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
                 decoration: const InputDecoration(
                   labelText: 'Phone Number',
                   border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.phone),
                 ),
                 keyboardType: TextInputType.phone,
                 validator: (val) => val == null || val.length < 10
                     ? 'Enter a valid phone number'
+                    : null,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _bioController,
+                decoration: const InputDecoration(
+                  labelText: 'Bio (Share something about yourself)',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.info_outline),
+                ),
+                maxLines: 3,
+                maxLength: 150,
+                validator: (val) => val == null || val.trim().isEmpty
+                    ? 'Please share a short bio'
                     : null,
               ),
               const SizedBox(height: 32),

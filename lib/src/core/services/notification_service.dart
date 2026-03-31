@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -109,14 +110,12 @@ class NotificationService {
       // Subscribe to global topic
       await _fcm.subscribeToTopic('all_users');
 
-      // Handle Foreground Messages
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
         RemoteNotification? notification = message.notification;
         AndroidNotification? android = message.notification?.android;
 
-        // If notification available, show local notification
         if (notification != null && android != null) {
-          _showLocalNotification(notification, android, channel);
+          _showLocalNotification(message, channel);
         }
       });
 
@@ -159,10 +158,13 @@ class NotificationService {
   }
 
   Future<void> _showLocalNotification(
-    RemoteNotification notification,
-    AndroidNotification android,
+    RemoteMessage message,
     AndroidNotificationChannel channel,
   ) async {
+    final notification = message.notification;
+    final android = message.notification?.android;
+    if (notification == null || android == null) return;
+
     await _localNotifications.show(
       notification.hashCode,
       notification.title,
@@ -177,26 +179,9 @@ class NotificationService {
           priority: Priority.high,
         ),
       ),
-      // Pass the payload string for navigation handling
-      // We encode the key data points we need: type and id
-      payload: _encodePayload(
-        notification.title ?? '',
-        notification.body ?? '',
-      ),
+      payload: jsonEncode(message.data),
     );
   }
-
-  // Simple payload encoding/decoding could be improved with JSON
-  String _encodePayload(String title, String body) {
-    // For now, local notifications triggered by FCM onMessage don't have the original data map
-    // passed easily to payload unless we get 'data' from message.
-    // The onMessage handler above access notification/android, but we can change signature to pass message.
-    return 'local_notification';
-  }
-
-  // Update: To handle navigation properly, we need the data from the RemoteMessage.
-  // Let's refactor _showLocalNotification to accept RemoteMessage if possible,
-  // or just pass the data map.
 
   void _handleMessageNavigation(RemoteMessage message) {
     debugPrint("Handling navigation for message: ${message.data}");
@@ -205,13 +190,14 @@ class NotificationService {
   }
 
   void _handleLocalNotificationTap(NotificationResponse response) {
-    // Since we can't easily pass full map in payload string without encoding,
-    // and this is strictly for foreground->local notification, users are already in app.
-    // Tapping it should maybe go to Notifications screen or just root.
-    // Ideally, we'd pass the 'type' and 'id' from the FCM message data to the local notification payload.
-
-    // For now, let's just go to Notifications if we have one, or Home.
-    // Proper implementation requires JSON encoding the data map into the payload.
+    if (response.payload != null) {
+      try {
+        final Map<String, dynamic> data = jsonDecode(response.payload!);
+        _navigateBasedOnData(data);
+      } catch (e) {
+        debugPrint('Error decoding notification payload: $e');
+      }
+    }
   }
 
   void _navigateBasedOnData(Map<String, dynamic> data) {
@@ -226,7 +212,7 @@ class NotificationService {
     } else if ((type == 'user' || type == 'follower') && id != null) {
       GoRouter.of(context).push('/user/$id');
     } else if (type == 'post' && id != null) {
-      GoRouter.of(context).push('/post-detail?postId=$id');
+      GoRouter.of(context).push('/post/$id');
     }
   }
 

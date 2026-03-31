@@ -1,0 +1,159 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // --- Helper Functions ---
+    
+    // Check if user is signed in
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Check if the user is the owner of the data (comparing User ID)
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // Check if the user is an Admin
+    // Assumes the user document has a boolean field 'isAdmin' set to true
+    function isAdmin() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
+    
+    // Validation helpers
+    function hasRequiredFields(required) {
+      return request.resource.data.keys().hasAll(required);
+    }
+    
+    function isNow(time) {
+      return time == request.time;
+    }
+
+    // --- Users Collection ---
+    match /users/{userId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && isOwner(userId);
+      // User can update own profile. Admin can update any profile (e.g. to verify/ban).
+      allow update: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      // Only Admin can delete users (prevent accidental self-deletion via client, or allow if policy permits)
+      allow delete: if isAdmin(); 
+
+      // Subcollections for Social Graph
+      match /followers/{followerId} { 
+        allow read: if true; 
+        allow write: if isAuthenticated(); // Simplified for follow/unfollow batch writes
+      }
+      match /following/{followingId} { 
+        allow read: if true; 
+        allow write: if isAuthenticated(); 
+      }
+    }
+
+    // --- Posts Collection ---
+    match /posts/{postId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && request.resource.data.authorId == request.auth.uid;
+      
+      // Update: Owner can edit content. Admin can edit/moderate. 
+      // Note: Also allows updating likes/stats if logic runs client-side
+      allow update: if isAuthenticated() && (resource.data.authorId == request.auth.uid || isAdmin());
+      
+      // Delete: Owner can delete own post. Admin can delete any post (Moderation).
+      allow delete: if isAuthenticated() && (resource.data.authorId == request.auth.uid || isAdmin());
+
+      // Comments Subcollection
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if isAuthenticated();
+        // Comment owner OR Post Owner OR Admin can delete comments
+        allow delete: if isAuthenticated() && (
+          resource.data.userId == request.auth.uid || 
+          get(/databases/$(database)/documents/posts/$(postId)).data.authorId == request.auth.uid ||
+          isAdmin()
+        );
+      }
+      
+      // Likes Subcollection
+      match /likes/{userId} {
+        allow read: if true;
+        allow write: if isAuthenticated() && isOwner(userId);
+      }
+    }
+
+    // --- Stories Collection ---
+    // Story data model from StoryRepository
+    match /stories/{storyId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+
+      // Views Subcollection
+      match /views/{viewerId} {
+        allow read: if isAuthenticated() && (
+           get(/databases/$(database)/documents/stories/$(storyId)).data.userId == request.auth.uid
+        );
+        allow create: if isAuthenticated() && isOwner(viewerId);
+      }
+    }
+
+    // --- Channels Collection (Chat) ---
+    match /channels/{channelId} {
+      // Members can read. Admins can read (for moderation/investigation).
+      // Updated to check `memberIds` list as per application code
+      allow read: if isAuthenticated() && (request.auth.uid in resource.data.memberIds || isAdmin());
+      
+      allow create: if isAuthenticated();
+      // Update allowed if user is a member (e.g. updating lastMessage, typing status) or Admin
+      allow update: if isAuthenticated() && (request.auth.uid in resource.data.memberIds || isAdmin());
+
+      // Messages Subcollection
+      match /messages/{messageId} {
+         allow read: if isAuthenticated() && (
+           request.auth.uid in get(/databases/$(database)/documents/channels/$(channelId)).data.memberIds || 
+           isAdmin()
+         );
+         allow create: if isAuthenticated() && request.resource.data.senderId == request.auth.uid;
+         allow update: if false; // Messages acts as a log, usually shouldn't be edited
+      }
+    }
+
+    // --- Events Collection ---
+    match /events/{eventId} {
+      allow read: if true;
+      // Depending on app logic, creating events might be restricted to Admins or specific organizers
+      // Allowing any authenticated user to create for now, modify if needed.
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && (resource.data.organizerId == request.auth.uid || isAdmin());
+    }
+
+    // --- Groups Collection ---
+    match /groups/{groupId} {
+      allow read: if true;
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated(); // Allow users to join (update memberCount/members)
+      allow delete: if isAuthenticated() && (resource.data.adminId == request.auth.uid || isAdmin());
+    }
+    
+    // --- Resources Collection ---
+    match /resources/{resourceId} {
+      allow read: if true;
+      // Resources seem to be official content, so only Admin or maybe 'uploader' can write
+      allow create: if isAuthenticated(); // or isAdmin()
+      allow update, delete: if isAuthenticated() && (resource.data.uploaderId == request.auth.uid || isAdmin());
+    }
+
+    // --- Marketplace Items Collection ---
+    match /marketplace_items/{itemId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && request.resource.data.sellerId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && (resource.data.sellerId == request.auth.uid || isAdmin());
+    }
+    
+    // --- Utilities / Announcements ---
+    match /announcements/{announcementId} {
+        allow read: if true;
+        allow write: if isAdmin();
+    }
+  }
+}

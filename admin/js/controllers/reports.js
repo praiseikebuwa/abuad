@@ -20,7 +20,7 @@ class ReportsController {
             });
     }
 
-    render(snap) {
+    async render(snap) {
         this.tableBody.innerHTML = '';
 
         if (snap.empty) {
@@ -28,11 +28,37 @@ class ReportsController {
             return;
         }
 
-        snap.forEach(doc => {
+        for (const doc of snap.docs) {
             const report = doc.data();
             const tr = document.createElement('tr');
 
-            // Determine severity/style based on type
+            // Fetch Reporter Info
+            let reporterInfo = 'Anon';
+            if (report.reporterId) {
+                const repDoc = await db.collection('users').doc(report.reporterId).get();
+                if (repDoc.exists) {
+                    const repData = repDoc.data();
+                    reporterInfo = `<div class="user-cell-mini">
+                        <small><b>${repData.displayName || 'User'}</b></small><br>
+                        <small class="text-muted">${repData.email || ''}</small>
+                    </div>`;
+                } else {
+                    reporterInfo = `<small class="text-muted">${report.reporterId.substring(0, 8)}...</small>`;
+                }
+            }
+
+            // Fetch Target Content Preview
+            let contentPreview = `<div class="reason-text">${report.reason || 'No reason'}</div>`;
+            if (report.reportType === 'post') {
+                const postDoc = await db.collection('posts').doc(report.targetId).get();
+                if (postDoc.exists) {
+                    const postData = postDoc.data();
+                    contentPreview += `<div class="content-snippet">
+                        <i>"${postData.content ? postData.content.substring(0, 60) + '...' : 'No text'}"</i>
+                    </div>`;
+                }
+            }
+
             const typeBadge = `<span class="badge badge-gray">${report.reportType}</span>`;
             const statusBadge = report.status === 'resolved'
                 ? `<span class="badge badge-success">Resolved</span>`
@@ -41,10 +67,9 @@ class ReportsController {
             tr.innerHTML = `
                 <td>${typeBadge}</td>
                 <td>
-                    <div style="font-weight:500">${report.reason || 'No reason provided'}</div>
-                    <small class="text-muted">Target ID: ${report.targetId}</small>
+                    ${contentPreview}
                 </td>
-                <td>${report.reporterId ? report.reporterId.substring(0, 8) + '...' : 'Anon'}</td>
+                <td>${reporterInfo}</td>
                 <td>${this.formatDate(report.timestamp)}</td>
                 <td>${statusBadge}</td>
                 <td>
@@ -63,12 +88,14 @@ class ReportsController {
                 </td>
             `;
             this.tableBody.appendChild(tr);
-        });
+        }
     }
 
     resolveReport(reportId) {
         db.collection('reports').doc(reportId).update({
             status: 'resolved'
+        }).then(() => {
+            window.logAdminAction('RESOLVE_REPORT', `Report ${reportId} marked as resolved`, 'report', reportId);
         }).catch(err => alert("Error: " + err.message));
     }
 
@@ -81,29 +108,28 @@ class ReportsController {
                 console.log(`Post ${targetId} deleted.`);
             } else if (type === 'user') {
                 await db.collection('users').doc(targetId).update({
-                    isBlocked: true,
-                    status: 'offline' // Force offline UI
+                    status: 'banned',
+                    isBlocked: true
                 });
-                console.log(`User ${targetId} blocked.`);
+                console.log(`User ${targetId} banned.`);
             } else if (type === 'comment') {
-                // Comments are subcollections, require parent postId. 
-                // If the report doesn't have parentId, we can't delete directly without a collectionGroup query which is slow.
-                alert("Comment deletion requires parent Post ID. Please handle manually in Firestore for now.");
+                alert("Please handle comment deletion via Firestore subcollection for now.");
                 return;
             }
 
             // Mark report resolved
             await this.resolveReport(reportId);
-            alert("Action taken and report resolved.");
+            alert("Action taken successfully.");
 
         } catch (err) {
             console.error("Moderation Error:", err);
-            alert("Error taking action: " + err.message);
+            alert("Error: " + err.message);
         }
     }
 
     formatDate(timestamp) {
         if (!timestamp) return 'N/A';
-        return new Date(timestamp.toDate()).toLocaleString();
+        const d = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+        return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
 }

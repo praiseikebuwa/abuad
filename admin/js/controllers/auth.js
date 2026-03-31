@@ -76,10 +76,10 @@ class AuthController {
     showDashboard() {
         this.loginSection.classList.add('hidden-section');
         this.dashboardSection.classList.remove('hidden-section');
-        // Trigger initial data load via global event or direct call if we had a main controller
-        // For now, relies on the default tab being triggered
+        
+        // Trigger initial data load explicitly after verification
         if (window.navigationController) {
-            window.navigationController.loadCurrentTab();
+            window.navigationController.switchTab('overview');
         }
     }
 }

@@ -35,7 +35,7 @@ final allStoriesGroupedProvider = StreamProvider<Map<String, List<Story>>>((
       return Stream.value(groups);
     },
     loading: () => const Stream.empty(),
-    error: (_, __) => const Stream.empty(),
+    error: (_, _) => const Stream.empty(),
   );
 });
 
@@ -67,6 +67,9 @@ class StoryRepository {
     required String content, // If text
     String type = 'image',
     String? caption,
+    List<String> mentions = const [],
+    String? linkUrl,
+    String visibility = 'everyone',
     int? backgroundColor,
     int? textColor,
     String? fontFamily,
@@ -97,6 +100,9 @@ class StoryRepository {
       content: finalContent,
       type: type,
       caption: caption,
+      mentions: mentions,
+      linkUrl: linkUrl,
+      visibility: visibility,
       createdAt: now,
       expiresAt: expiresAt,
       viewers: [],

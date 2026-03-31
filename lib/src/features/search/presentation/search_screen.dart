@@ -7,6 +7,7 @@ import '../../user/data/user_repository.dart';
 import '../../feed/data/post_repository.dart';
 import '../../feed/domain/post.dart';
 import '../../feed/presentation/widgets/post_card.dart';
+import '../../../core/providers/shared_preferences_provider.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
@@ -20,11 +21,51 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
   final _searchController = TextEditingController();
   late TabController _tabController;
   String _query = '';
+  List<String> _searchHistory = [];
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _loadSearchHistory();
+  }
+
+  Future<void> _loadSearchHistory() async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    setState(() {
+      _searchHistory = prefs.getStringList('search_history') ?? [];
+    });
+  }
+
+  Future<void> _saveToHistory(String query) async {
+    if (query.isEmpty) return;
+    final prefs = ref.read(sharedPreferencesProvider);
+    final history = prefs.getStringList('search_history') ?? [];
+    history.remove(query);
+    history.insert(0, query);
+    if (history.length > 10) history.removeLast();
+    await prefs.setStringList('search_history', history);
+    setState(() {
+      _searchHistory = history;
+    });
+  }
+
+  Future<void> _removeFromHistory(String query) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    final history = prefs.getStringList('search_history') ?? [];
+    history.remove(query);
+    await prefs.setStringList('search_history', history);
+    setState(() {
+      _searchHistory = history;
+    });
+  }
+
+  Future<void> _clearHistory() async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.remove('search_history');
+    setState(() {
+      _searchHistory = [];
+    });
   }
 
   @override
@@ -77,6 +118,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
                   : null,
             ),
             onChanged: (value) => setState(() => _query = value),
+            onSubmitted: (value) {
+              if (value.isNotEmpty) {
+                _saveToHistory(value.trim());
+              }
+            },
           ),
         ),
         bottom: TabBar(
@@ -99,8 +145,30 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
       body: TabBarView(
         controller: _tabController,
         children: [
-          _PeopleSearch(query: _query),
-          _PostSearch(query: _query),
+          _PeopleSearch(
+            query: _query,
+            history: _searchHistory,
+            onHistoryTap: (q) {
+              setState(() {
+                _searchController.text = q;
+                _query = q;
+              });
+            },
+            onRemoveHistory: _removeFromHistory,
+            onClearHistory: _clearHistory,
+          ),
+          _PostSearch(
+            query: _query,
+            history: _searchHistory,
+            onHistoryTap: (q) {
+              setState(() {
+                _searchController.text = q;
+                _query = q;
+              });
+            },
+            onRemoveHistory: _removeFromHistory,
+            onClearHistory: _clearHistory,
+          ),
           _TrendingSearch(
             query: _query,
             onTagSelected: (tag) {
@@ -108,10 +176,265 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
                 _searchController.text = "#$tag";
                 _query = "#$tag";
                 _tabController.animateTo(1);
+                _saveToHistory("#$tag");
               });
             },
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SearchInitialContent extends StatelessWidget {
+  final List<String> history;
+  final Function(String) onHistoryTap;
+  final Function(String) onRemoveHistory;
+  final VoidCallback onClearHistory;
+  final Widget suggestions;
+  final String suggestionTitle;
+
+  const _SearchInitialContent({
+    required this.history,
+    required this.onHistoryTap,
+    required this.onRemoveHistory,
+    required this.onClearHistory,
+    required this.suggestions,
+    this.suggestionTitle = 'Suggested for you',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      children: [
+        if (history.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Recent Searches',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                TextButton(
+                  onPressed: onClearHistory,
+                  child: const Text('Clear All'),
+                ),
+              ],
+            ),
+          ),
+          ...history.map(
+            (query) => ListTile(
+              leading: const Icon(Icons.history, color: Colors.grey),
+              title: Text(query),
+              trailing: IconButton(
+                icon: const Icon(Icons.close, size: 18),
+                onPressed: () => onRemoveHistory(query),
+              ),
+              onTap: () => onHistoryTap(query),
+            ),
+          ),
+          const Divider(),
+        ],
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Text(
+            suggestionTitle,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+        ),
+        suggestions,
+      ],
+    );
+  }
+}
+
+class _SuggestedUsers extends ConsumerWidget {
+  const _SuggestedUsers();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final userRepo = ref.watch(userRepositoryProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return StreamBuilder<List<AppUser>>(
+      stream: userRepo.watchPopularUsers(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(20.0),
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return _ErrorRetryWidget(
+            error: snapshot.error.toString(),
+            onRetry: () {
+              // Trigger a rebuild
+            },
+          );
+        }
+
+        final users = snapshot.data ?? [];
+        if (users.isEmpty) {
+          return const Padding(
+            padding: EdgeInsets.all(16.0),
+            child: Text(
+              'No suggestions found',
+              style: TextStyle(color: Colors.grey),
+            ),
+          );
+        }
+
+        return Column(
+          children: users
+              .map(
+                (user) => ListTile(
+                  leading: CircleAvatar(
+                    backgroundImage: user.avatarUrl != null
+                        ? CachedNetworkImageProvider(user.avatarUrl!)
+                        : null,
+                    child: user.avatarUrl == null
+                        ? Text(user.displayName[0].toUpperCase())
+                        : null,
+                  ),
+                  title: Row(
+                    children: [
+                      Text(
+                        user.displayName,
+                        style: TextStyle(
+                          color: isDark ? Colors.white : Colors.black,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (user.isVerified) ...[
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.verified,
+                          size: 14,
+                          color: user.verificationType == 'gold'
+                              ? Colors.amber
+                              : AppColors.secondaryTeal,
+                        ),
+                      ],
+                    ],
+                  ),
+                  subtitle: Text(
+                    '@${user.handle}',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                  onTap: () => context.push('/user/${user.uid}'),
+                ),
+              )
+              .toList(),
+        );
+      },
+    );
+  }
+}
+
+class _SuggestedPosts extends ConsumerWidget {
+  const _SuggestedPosts();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final postRepo = ref.watch(postRepositoryProvider);
+
+    return StreamBuilder<List<Post>>(
+      stream: postRepo.watchSuggestedPosts(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(20.0),
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return _ErrorRetryWidget(
+            error: snapshot.error.toString(),
+            onRetry: () {},
+          );
+        }
+
+        final posts = snapshot.data ?? [];
+        if (posts.isEmpty) {
+          return const Padding(
+            padding: EdgeInsets.all(16.0),
+            child: Text(
+              'No suggestions found',
+              style: TextStyle(color: Colors.grey),
+            ),
+          );
+        }
+
+        return Column(
+          children: posts.map((post) => PostCard(post: post)).toList(),
+        );
+      },
+    );
+  }
+}
+
+class _ErrorRetryWidget extends StatelessWidget {
+  final String error;
+  final VoidCallback onRetry;
+
+  const _ErrorRetryWidget({required this.error, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final isOffline =
+        error.contains('UNAVAILABLE') || error.contains('UnknownHostException');
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              isOffline ? Icons.wifi_off : Icons.error_outline,
+              size: 64,
+              color: Colors.grey[400],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              isOffline ? "Connect to Interest" : "Something went wrong",
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              isOffline
+                  ? "We couldn't reach Nest. Please check your internet connection."
+                  : "We encountered an error while searching. Please try again.",
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: onRetry,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.secondaryTeal,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text("Try Again"),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -172,7 +495,12 @@ class _TrendingSearch extends ConsumerWidget {
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, stack) => Center(child: Text('Error: $error')),
+      error: (error, stack) => _ErrorRetryWidget(
+        error: error.toString(),
+        onRetry: () {
+          ref.invalidate(trendingTagsProvider);
+        },
+      ),
     );
   }
 }
@@ -233,10 +561,31 @@ class _TrendingItem extends StatelessWidget {
 
 class _PeopleSearch extends ConsumerWidget {
   final String query;
-  const _PeopleSearch({required this.query});
+  final List<String> history;
+  final Function(String) onHistoryTap;
+  final Function(String) onRemoveHistory;
+  final VoidCallback onClearHistory;
+
+  const _PeopleSearch({
+    required this.query,
+    required this.history,
+    required this.onHistoryTap,
+    required this.onRemoveHistory,
+    required this.onClearHistory,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (query.isEmpty) {
+      return _SearchInitialContent(
+        history: history,
+        onHistoryTap: onHistoryTap,
+        onRemoveHistory: onRemoveHistory,
+        onClearHistory: onClearHistory,
+        suggestions: const _SuggestedUsers(),
+      );
+    }
+
     final userRepo = ref.watch(userRepositoryProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -259,7 +608,7 @@ class _PeopleSearch extends ConsumerWidget {
                 Icon(Icons.person_off, size: 64, color: Colors.grey[400]),
                 const SizedBox(height: 16),
                 Text(
-                  query.isEmpty ? 'Search for people' : 'No users found',
+                  'No users found',
                   style: TextStyle(color: Colors.grey[600], fontSize: 16),
                 ),
               ],
@@ -302,10 +651,32 @@ class _PeopleSearch extends ConsumerWidget {
 
 class _PostSearch extends ConsumerWidget {
   final String query;
-  const _PostSearch({required this.query});
+  final List<String> history;
+  final Function(String) onHistoryTap;
+  final Function(String) onRemoveHistory;
+  final VoidCallback onClearHistory;
+
+  const _PostSearch({
+    required this.query,
+    required this.history,
+    required this.onHistoryTap,
+    required this.onRemoveHistory,
+    required this.onClearHistory,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (query.isEmpty) {
+      return _SearchInitialContent(
+        history: history,
+        onHistoryTap: onHistoryTap,
+        onRemoveHistory: onRemoveHistory,
+        onClearHistory: onClearHistory,
+        suggestionTitle: 'Suggested Posts',
+        suggestions: const _SuggestedPosts(),
+      );
+    }
+
     final postRepo = ref.watch(postRepositoryProvider);
 
     return StreamBuilder<List<Post>>(
@@ -327,7 +698,7 @@ class _PostSearch extends ConsumerWidget {
                 Icon(Icons.article_outlined, size: 64, color: Colors.grey[400]),
                 const SizedBox(height: 16),
                 Text(
-                  query.isEmpty ? 'Search for posts' : 'No posts found',
+                  'No posts found',
                   style: TextStyle(color: Colors.grey[600], fontSize: 16),
                 ),
               ],

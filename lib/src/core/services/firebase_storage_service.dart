@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 
 class FirebaseStorageService {
   final FirebaseStorage _storage = FirebaseStorage.instance;
-  final String _bucket = 'gs://abuadapp.firebasestorage.app';
 
   /// Upload an image to Firebase Storage
   /// Returns the public URL
@@ -29,7 +28,7 @@ class FirebaseStorageService {
         filePath = 'uploads/$fileName';
       }
 
-      final storageRef = _storage.refFromURL(_bucket).child(filePath);
+      final storageRef = _storage.ref().child(filePath);
 
       TaskSnapshot snapshot;
       final metadata = SettableMetadata(
@@ -67,7 +66,7 @@ class FirebaseStorageService {
         filePath = path;
       }
 
-      final storageRef = _storage.refFromURL(_bucket).child(filePath);
+      final storageRef = _storage.ref().child(filePath);
       final snapshot = await storageRef.putData(
         bytes,
         SettableMetadata(contentType: 'image/jpeg'),
@@ -107,7 +106,7 @@ class FirebaseStorageService {
         filePath = 'videos/$fileName';
       }
 
-      final storageRef = _storage.refFromURL(_bucket).child(filePath);
+      final storageRef = _storage.ref().child(filePath);
 
       TaskSnapshot snapshot;
       if (kIsWeb) {
@@ -153,7 +152,7 @@ class FirebaseStorageService {
         filePath = 'audio/$fileName';
       }
 
-      final storageRef = _storage.refFromURL(_bucket).child(filePath);
+      final storageRef = _storage.ref().child(filePath);
 
       // Determine content type
       String contentType = 'audio/mpeg'; // Default

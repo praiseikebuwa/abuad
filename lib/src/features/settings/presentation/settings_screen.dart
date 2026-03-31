@@ -1,29 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'legal_screen.dart';
+import 'support_screens.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../user/data/user_repository.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/providers/shared_preferences_provider.dart';
 
 // Theme Mode Provider with Persistence
-final themeModeProvider = FutureProvider.autoDispose<ThemeMode>((ref) async {
-  final prefs = await ref.watch(sharedPreferencesProvider.future);
+final themeModeProvider = Provider.autoDispose<ThemeMode>((ref) {
+  final prefs = ref.watch(sharedPreferencesProvider);
   final savedMode = prefs.getString('theme_mode');
   if (savedMode != null) {
-    return ThemeMode.values.firstWhere(
-      (mode) => mode.name == savedMode,
-      orElse: () => ThemeMode.system,
-    );
+    try {
+      return ThemeMode.values.firstWhere((mode) => mode.name == savedMode);
+    } catch (_) {
+      return ThemeMode.system;
+    }
   }
   return ThemeMode.system;
 });
 
 // Notification Settings Provider
-final notificationSettingsProvider = FutureProvider.autoDispose<bool>((
-  ref,
-) async {
-  final prefs = await ref.watch(sharedPreferencesProvider.future);
+final notificationSettingsProvider = Provider.autoDispose<bool>((ref) {
+  final prefs = ref.watch(sharedPreferencesProvider);
   return prefs.getBool('notifications_enabled') ?? true;
 });
 
@@ -31,21 +32,21 @@ class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   Future<void> _setThemeMode(WidgetRef ref, ThemeMode mode) async {
-    final prefs = await ref.read(sharedPreferencesProvider.future);
+    final prefs = ref.read(sharedPreferencesProvider);
     await prefs.setString('theme_mode', mode.name);
     ref.invalidate(themeModeProvider);
   }
 
   Future<void> _toggleNotifications(WidgetRef ref, bool value) async {
-    final prefs = await ref.read(sharedPreferencesProvider.future);
+    final prefs = ref.read(sharedPreferencesProvider);
     await prefs.setBool('notifications_enabled', value);
     ref.invalidate(notificationSettingsProvider);
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final themeModeAsync = ref.watch(themeModeProvider);
-    final notificationsAsync = ref.watch(notificationSettingsProvider);
+    final themeMode = ref.watch(themeModeProvider);
+    final notificationsEnabled = ref.watch(notificationSettingsProvider);
     final user = ref.watch(currentUserProvider).value;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -68,78 +69,65 @@ class SettingsScreen extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(vertical: 16),
         children: [
           _SectionHeader(title: "APPEARANCE"),
-          themeModeAsync.when(
-            data: (themeMode) => _SettingsTile(
-              icon: Icons.dark_mode_outlined,
-              title: "Theme",
-              trailing: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 4,
+          _SettingsTile(
+            icon: Icons.dark_mode_outlined,
+            title: "Theme",
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isDark ? AppColors.borderDark : AppColors.borderLight,
                 ),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isDark
-                        ? AppColors.borderDark
-                        : AppColors.borderLight,
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<ThemeMode>(
+                  value: themeMode,
+                  isDense: true,
+                  icon: Icon(
+                    Icons.arrow_drop_down,
+                    color: theme.iconTheme.color,
                   ),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<ThemeMode>(
-                    value: themeMode,
-                    isDense: true,
-                    icon: Icon(
-                      Icons.arrow_drop_down,
-                      color: theme.iconTheme.color,
+                  onChanged: (mode) {
+                    if (mode != null) {
+                      _setThemeMode(ref, mode);
+                    }
+                  },
+                  dropdownColor: theme.cardTheme.color,
+                  style: theme.textTheme.bodyMedium,
+                  items: [
+                    DropdownMenuItem(
+                      value: ThemeMode.system,
+                      child: Text("System"),
                     ),
-                    onChanged: (mode) {
-                      if (mode != null) {
-                        _setThemeMode(ref, mode);
-                      }
-                    },
-                    dropdownColor: theme.cardTheme.color,
-                    style: theme.textTheme.bodyMedium,
-                    items: [
-                      DropdownMenuItem(
-                        value: ThemeMode.system,
-                        child: Text("System"),
-                      ),
-                      DropdownMenuItem(
-                        value: ThemeMode.light,
-                        child: Text("Light"),
-                      ),
-                      DropdownMenuItem(
-                        value: ThemeMode.dark,
-                        child: Text("Dark"),
-                      ),
-                    ],
-                  ),
+                    DropdownMenuItem(
+                      value: ThemeMode.light,
+                      child: Text("Light"),
+                    ),
+                    DropdownMenuItem(
+                      value: ThemeMode.dark,
+                      child: Text("Dark"),
+                    ),
+                  ],
                 ),
               ),
             ),
-            loading: () => const ListTile(title: Text("Loading...")),
-            error: (_, __) => const SizedBox(),
           ),
 
           const SizedBox(height: 24),
           _SectionHeader(title: "NOTIFICATIONS"),
-          notificationsAsync.when(
-            data: (notificationsEnabled) => _SettingsTile(
-              icon: Icons.notifications_outlined,
-              title: "Push Notifications",
-              subtitle: "Receive updates for new messages and posts",
-              trailing: Switch.adaptive(
-                value: notificationsEnabled,
-                onChanged: (val) {
-                  _toggleNotifications(ref, val);
-                },
-                activeColor: AppColors.secondaryTeal,
-              ),
+          _SettingsTile(
+            icon: Icons.notifications_outlined,
+            title: "Push Notifications",
+            subtitle: "Receive updates for new messages and posts",
+            trailing: Switch.adaptive(
+              value: notificationsEnabled,
+              onChanged: (val) {
+                _toggleNotifications(ref, val);
+              },
+              activeColor: AppColors.secondaryTeal,
             ),
-            loading: () => const ListTile(title: Text("Loading...")),
-            error: (_, __) => const SizedBox(),
           ),
 
           const SizedBox(height: 24),
@@ -153,20 +141,61 @@ class SettingsScreen extends ConsumerWidget {
           ),
           _SettingsTile(
             icon: Icons.lock_outline,
-            title: "Change Password",
+            title: ref.read(authRepositoryProvider).isPasswordLinked
+                ? "Change Password"
+                : "Set Account Password",
             showArrow: true,
-            onTap: () => _showChangePasswordDialog(context, ref),
+            onTap: () {
+              if (ref.read(authRepositoryProvider).isPasswordLinked) {
+                _showChangePasswordDialog(context, ref);
+              } else {
+                _showSetPasswordDialog(context, ref);
+              }
+            },
           ),
           _SettingsTile(
             icon: Icons.privacy_tip_outlined,
-            title: "Privacy & Security",
+            title: "Privacy Policy",
             showArrow: true,
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Privacy settings coming soon")),
-              );
-            },
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const LegalScreen(
+                  title: 'Privacy Policy',
+                  markdownPath: 'assets/privacy.md',
+                ),
+              ),
+            ),
           ),
+          _SettingsTile(
+            icon: Icons.description_outlined,
+            title: "Terms of Service",
+            showArrow: true,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const LegalScreen(
+                  title: 'Terms of Service',
+                  markdownPath: 'assets/terms.md',
+                ),
+              ),
+            ),
+          ),
+          if (user != null)
+            _SettingsTile(
+              icon: Icons.visibility_outlined,
+              title: "Show Following List",
+              subtitle: "Allow others to see who you follow",
+              trailing: Switch.adaptive(
+                value: user.isFollowingVisible,
+                onChanged: (val) {
+                  ref.read(userRepositoryProvider).updateUser(user.uid, {
+                    'is_following_visible': val,
+                  });
+                },
+                activeColor: AppColors.secondaryTeal,
+              ),
+            ),
           _SettingsTile(
             icon: Icons.delete_outline,
             title: "Delete Account",
@@ -181,13 +210,56 @@ class SettingsScreen extends ConsumerWidget {
             icon: Icons.help_outline,
             title: "Help Center",
             showArrow: true,
-            onTap: () {},
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const HelpCenterScreen(),
+                ),
+              );
+            },
+          ),
+          _SettingsTile(
+            icon: Icons.feedback_outlined,
+            title: "Send Feedback",
+            showArrow: true,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SupportFormScreen(
+                    title: 'Send Feedback',
+                    type: 'feedback',
+                  ),
+                ),
+              );
+            },
+          ),
+          _SettingsTile(
+            icon: Icons.star_outline,
+            title: "Rate App",
+            showArrow: true,
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Redirecting to App Store...")),
+              );
+            },
           ),
           _SettingsTile(
             icon: Icons.bug_report_outlined,
             title: "Report a Bug",
             showArrow: true,
-            onTap: () {},
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SupportFormScreen(
+                    title: 'Report a Bug',
+                    type: 'bug',
+                  ),
+                ),
+              );
+            },
           ),
 
           const SizedBox(height: 24),
@@ -409,6 +481,145 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
+  void _showSetPasswordDialog(BuildContext context, WidgetRef ref) {
+    final passwordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    bool isLoading = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            final user = ref.read(currentUserProvider).value;
+            final email = user?.email ?? "your email";
+
+            return AlertDialog(
+              title: const Text('Set Account Password'),
+              content: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Set a password for $email to enable logging in without Google.",
+                      style: const TextStyle(fontSize: 13, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 20),
+                    TextFormField(
+                      controller: passwordController,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'New Password',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.lock_open),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Enter password';
+                        }
+                        if (value.length < 6) {
+                          return 'Password must be at least 6 characters';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: confirmPasswordController,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Confirm Password',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.lock),
+                      ),
+                      validator: (value) {
+                        if (value != passwordController.text) {
+                          return 'Passwords do not match';
+                        }
+                        return null;
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isLoading ? null : () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: isLoading
+                      ? null
+                      : () async {
+                          if (!formKey.currentState!.validate()) return;
+
+                          setState(() => isLoading = true);
+
+                          try {
+                            final userEmail = ref
+                                .read(currentUserProvider)
+                                .value
+                                ?.email;
+                            if (userEmail == null) {
+                              throw Exception('Email not found');
+                            }
+
+                            await ref
+                                .read(authRepositoryProvider)
+                                .linkWithEmailPassword(
+                                  userEmail,
+                                  passwordController.text.trim(),
+                                );
+
+                            if (context.mounted) {
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Password set successfully!'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                              // Refresh current user info
+                              ref.invalidate(currentUserProvider);
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Error: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          } finally {
+                            if (context.mounted) {
+                              setState(() => isLoading = false);
+                            }
+                          }
+                        },
+                  child: isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('Set Password'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showDeleteAccountDialog(BuildContext context, WidgetRef ref) async {
     final confirmed = await _showConfirmationDialog(
       context,
@@ -417,9 +628,26 @@ class SettingsScreen extends ConsumerWidget {
       isDestructive: true,
     );
     if (confirmed == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Account deletion coming soon")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Deleting account...")));
+      try {
+        await ref.read(authRepositoryProvider).deleteAccount();
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Account deleted successfully")),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Error deleting account: $e"),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
     }
   }
 }

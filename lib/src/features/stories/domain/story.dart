@@ -10,6 +10,9 @@ class Story {
   final DateTime expiresAt;
   final List<String> viewers;
   final List<String> likes;
+  final List<String> mentions;
+  final String? linkUrl;
+  final String visibility; // 'everyone', 'followers', 'close_friends'
   final int? backgroundColor;
   final int? textColor;
   final String? fontFamily;
@@ -27,6 +30,9 @@ class Story {
     required this.expiresAt,
     this.viewers = const [],
     this.likes = const [],
+    this.mentions = const [],
+    this.linkUrl,
+    this.visibility = 'everyone',
     this.backgroundColor,
     this.textColor,
     this.fontFamily,
@@ -49,6 +55,9 @@ class Story {
       'expires_at': Timestamp.fromDate(expiresAt),
       'viewers': viewers,
       'likes': likes,
+      'mentions': mentions,
+      'link_url': linkUrl,
+      'visibility': visibility,
       'background_color': backgroundColor,
       'text_color': textColor,
       'font_family': fontFamily,
@@ -69,6 +78,9 @@ class Story {
       expiresAt: (map['expires_at'] as Timestamp).toDate(),
       viewers: List<String>.from(map['viewers'] ?? []),
       likes: List<String>.from(map['likes'] ?? []),
+      mentions: List<String>.from(map['mentions'] ?? []),
+      linkUrl: map['link_url'],
+      visibility: map['visibility'] ?? 'everyone',
       backgroundColor: map['background_color'],
       textColor: map['text_color'],
       fontFamily: map['font_family'],

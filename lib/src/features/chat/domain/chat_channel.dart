@@ -20,6 +20,8 @@ class ChatChannel {
   final int streakCount;
   final Map<String, DateTime> lastSnapTime;
   final DateTime? streakExpiry;
+  final List<String> pinnedBy;
+  final List<String> archivedBy;
 
   ChatChannel({
     required this.id,
@@ -41,6 +43,8 @@ class ChatChannel {
     this.streakCount = 0,
     this.lastSnapTime = const {},
     this.streakExpiry,
+    this.pinnedBy = const [],
+    this.archivedBy = const [],
   });
 
   Map<String, dynamic> toMap() {
@@ -68,6 +72,8 @@ class ChatChannel {
       'streak_expiry': streakExpiry != null
           ? Timestamp.fromDate(streakExpiry!)
           : null,
+      'pinned_by': pinnedBy,
+      'archived_by': archivedBy,
     };
   }
 
@@ -99,6 +105,8 @@ class ChatChannel {
           ) ??
           {},
       streakExpiry: (map['streak_expiry'] as Timestamp?)?.toDate(),
+      pinnedBy: List<String>.from(map['pinned_by'] ?? []),
+      archivedBy: List<String>.from(map['archived_by'] ?? []),
     );
   }
 }

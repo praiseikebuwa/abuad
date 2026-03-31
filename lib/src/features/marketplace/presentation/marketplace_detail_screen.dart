@@ -164,8 +164,9 @@ class MarketplaceDetailScreen extends ConsumerWidget {
                   const SizedBox(height: 16),
                   sellerAsync.when(
                     data: (seller) {
-                      if (seller == null)
+                      if (seller == null) {
                         return const Text('Seller info unavailable');
+                      }
                       return GestureDetector(
                         onTap: () => context.push('/profile/${item.sellerId}'),
                         child: Container(

@@ -69,16 +69,20 @@ class ChatsController {
             modal.id = 'chat-spy-modal';
             modal.className = 'modal-overlay';
             modal.innerHTML = `
-                <div class="modal-content" style="width: 500px; height: 600px; display: flex; flex-direction: column;">
+                <div class="modal-content" style="width: 550px; height: 750px; display: flex; flex-direction: column;">
                     <div class="modal-header">
-                        <h2>🕵️ Chat Spy</h2>
+                        <div>
+                            <h2>🕵️ Channel Spy</h2>
+                            <small id="spy-channel-id" style="color:var(--text-secondary)"></small>
+                        </div>
                         <button onclick="window.chatsController.closeSpy()" class="btn-close">&times;</button>
                     </div>
-                    <div id="spy-messages" class="modal-body" style="flex: 1; overflow-y: auto; background: #f5f5f5; padding: 15px;">
+                    <div id="spy-messages" class="modal-body spy-messages-container" style="flex: 1; overflow-y: auto; padding: 20px;">
                         <div class="loading-spinner"></div>
                     </div>
-                    <div class="modal-footer">
-                        <small>You are viewing this chat in Read-Only mode.</small>
+                    <div class="modal-footer" style="display:flex; justify-content:space-between; align-items:center;">
+                        <span class="badge badge-admin">Live Feed</span>
+                        <small>Administrative Oversight Mode</small>
                     </div>
                 </div>
             `;
@@ -86,49 +90,71 @@ class ChatsController {
         }
 
         modal.style.display = 'flex';
+        document.getElementById('spy-channel-id').innerText = `ID: ${channelId}`;
         const container = document.getElementById('spy-messages');
-        container.innerHTML = '<div class="loading-spinner"></div>';
+        container.innerHTML = '<div class="loading-text">Establishing secure connection...</div>';
+
+        // Session cache for user names to avoid redundant fetches
+        const userCache = {};
 
         // Subscribe to messages
         if (this.spyUnsubscribe) this.spyUnsubscribe();
 
         this.spyUnsubscribe = db.collection('channels').doc(channelId).collection('messages')
             .orderBy('timestamp', 'asc')
-            .limit(50)
-            .onSnapshot(snap => {
-                container.innerHTML = '';
+            .limit(100)
+            .onSnapshot(async snap => {
+                // We use async here to fetch user names if missing
                 if (snap.empty) {
-                    container.innerHTML = '<div class="no-data">No messages yet.</div>';
+                    container.innerHTML = '<div class="no-data" style="text-align:center; margin-top:50px; color:var(--text-muted)">No messages found in this channel.</div>';
                     return;
                 }
 
-                snap.forEach(doc => {
+                const messagesFragment = document.createDocumentFragment();
+                
+                for (const doc of snap.docs) {
                     const msg = doc.data();
+                    const senderId = msg.senderId || 'system';
+                    
+                    // Fetch user name if not in cache
+                    if (senderId !== 'system' && !userCache[senderId]) {
+                        try {
+                            const userDoc = await db.collection('users').doc(senderId).get();
+                            userCache[senderId] = userDoc.exists ? userDoc.data().displayName : `User (${senderId.substring(0,4)})`;
+                        } catch (e) {
+                            userCache[senderId] = `User (${senderId.substring(0,4)})`;
+                        }
+                    }
+
                     const div = document.createElement('div');
-                    div.style.marginBottom = '10px';
-                    div.style.padding = '8px 12px';
-                    div.style.borderRadius = '12px';
-                    div.style.background = 'white';
-                    div.style.maxWidth = '85%';
-                    div.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
-                    // Simple alignment: Left (assuming we don't know who is who easily without user map, just show logs)
+                    div.className = `chat-bubble ${senderId === 'system' ? 'received' : 'received'}`; 
+                    // Note: In Spy mode, we don't necessarily have a "sent/received" relative to admin, 
+                    // but we can color-code multiple participants.
+                    
+                    const time = this.formatTime(msg.timestamp);
 
                     div.innerHTML = `
-                        <div style="font-size: 0.8rem; color: #888; display:flex; justify-content:space-between;">
-                            <span>${msg.senderId ? msg.senderId.substring(0, 6) : 'System'}</span>
-                            <span>${this.formatTime(msg.timestamp?.toDate ? msg.timestamp.toDate() : msg.timestamp)}</span>
+                        <div class="bubble-meta">
+                            <span style="font-weight:700; color:var(--color-primary-light)">${userCache[senderId] || 'System'}</span>
+                            <span>${time}</span>
                         </div>
-                        <div style="margin-top: 4px; word-wrap: break-word;">
-                            ${msg.type === 'image' ? `<img src="${msg.imageUrl}" style="max-width:100%; border-radius:8px;">` :
-                            msg.type === 'voice' ? `🎤 Voice Message (${msg.duration}s)` :
-                                (msg.content || '')}
+                        <div class="bubble-content">
+                            ${msg.type === 'image' ? `<img src="${msg.imageUrl}" alt="Shared Image">` :
+                              msg.type === 'voice' ? `<div style="display:flex; align-items:center; gap:8px;"><i class="fas fa-microphone"></i> Voice Message (${msg.duration}s)</div>` :
+                              msg.type === 'video' ? `<div style="display:flex; align-items:center; gap:8px;"><i class="fas fa-video"></i> Shared Video</div>` :
+                              (msg.content || '<i style="color:var(--text-muted)">No content</i>')}
                         </div>
                     `;
-                    container.appendChild(div);
-                });
+                    messagesFragment.appendChild(div);
+                }
+
+                container.innerHTML = '';
+                container.appendChild(messagesFragment);
 
                 // Scroll to bottom
                 container.scrollTop = container.scrollHeight;
+            }, err => {
+                container.innerHTML = `<div class="error-text">Failed to load messages: ${err.message}</div>`;
             });
     }
 

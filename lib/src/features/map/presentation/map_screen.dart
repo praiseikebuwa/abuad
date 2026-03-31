@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'dart:math' as math;
+// import 'dart:math' as math; // Removed unused import
+// import 'dart:ui' as ui; // Removed unused import
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -11,16 +12,13 @@ import '../../../core/theme/app_colors.dart';
 import '../../user/data/user_repository.dart';
 
 enum MapStyle {
-  streets('Streets', 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'),
+  normal('Normal', 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'),
   satellite(
     'Satellite',
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
   ),
-  dark(
-    'Dark',
-    'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png',
-  ),
-  terrain('Terrain', 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png');
+  terrain('Terrain', 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png'),
+  hybrid('Hybrid', 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png');
 
   final String label;
   final String urlTemplate;
@@ -42,16 +40,63 @@ enum LocationCategory {
 }
 
 class MapMarkerData {
+  static const double hueRed = 0.0;
+  static const double hueOrange = 30.0;
+  static const double hueYellow = 60.0;
+  static const double hueGreen = 120.0;
+  static const double hueCyan = 180.0;
+  static const double hueAzure = 210.0;
+  static const double hueBlue = 240.0;
+  static const double hueViolet = 270.0;
+  static const double hueMagenta = 300.0;
+  static const double hueRose = 330.0;
+
   final String title;
   final LatLng point;
   final LocationCategory category;
-  final Color? color;
+  final double hue;
+  final List<String>? rooms;
 
   MapMarkerData({
     required this.title,
     required this.point,
     required this.category,
-    this.color,
+    required this.hue,
+    this.rooms,
+  });
+}
+
+class MapReport {
+  final LatLng point;
+  final String title;
+  final String description;
+  final String type; // e.g. 'Traffic', 'Security', 'Maintenance'
+  final DateTime timestamp;
+
+  MapReport({
+    required this.point,
+    required this.title,
+    required this.description,
+    required this.type,
+    required this.timestamp,
+  });
+}
+
+class Shuttle {
+  final String id;
+  final String name;
+  final LatLng position;
+  final int capacity;
+  final int currentPassengers;
+  final String status; // 'Moving', 'Stopped', 'Full'
+
+  Shuttle({
+    required this.id,
+    required this.name,
+    required this.position,
+    required this.capacity,
+    required this.currentPassengers,
+    required this.status,
   });
 }
 
@@ -72,10 +117,44 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   bool _isLoadingLocation = false;
   bool _isTracking = false;
   bool _followUser = true;
-  MapStyle _currentMapStyle = MapStyle.satellite;
+  MapStyle _currentMapStyle =
+      MapStyle.normal; // Changed from hybrid to normal for better reliability
   LocationCategory _selectedCategory = LocationCategory.all;
   MapMarkerData? _selectedDestination;
   double? _distanceToDestinationMeters;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  List<LatLng> _routePoints = []; // New: In-app navigation route
+  final List<MapReport> _userReports = [
+    // Pre-populating with some mock reports for Phase 4 demo
+    MapReport(
+      point: const LatLng(7.6035, 5.3055),
+      title: 'Road Blocked',
+      description: 'Construction work near College of Law.',
+      type: 'Maintenance',
+      timestamp: DateTime.now().subtract(const Duration(hours: 2)),
+    ),
+  ];
+  final List<Shuttle> _shuttles = [
+    Shuttle(
+      id: 'S1',
+      name: 'Campus Shuttle 1',
+      position: const LatLng(7.6010, 5.3085),
+      capacity: 30,
+      currentPassengers: 12,
+      status: 'Moving',
+    ),
+    Shuttle(
+      id: 'S2',
+      name: 'Campus Shuttle 2',
+      position: const LatLng(7.6045, 5.3065),
+      capacity: 30,
+      currentPassengers: 28,
+      status: 'Stopped',
+    ),
+  ];
+  bool _showShuttles = true;
+  // Set<Marker> _markers = {}; // Removed unused field
 
   // Define Markers Data
   final List<MapMarkerData> _allMarkersData = [
@@ -83,37 +162,50 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       title: 'Senate Building',
       point: const LatLng(7.60250, 5.30610),
       category: LocationCategory.academic,
-      color: const Color(0xFF3B82F6),
+      hue: MapMarkerData.hueBlue,
+      rooms: [
+        'Vice Chancellor\'s Office',
+        'Registry',
+        'Bursary',
+        'Senate Chamber',
+      ],
     ),
     MapMarkerData(
       title: 'Engineering',
       point: const LatLng(7.59950, 5.30910),
       category: LocationCategory.academic,
-      color: const Color(0xFF10B981),
+      hue: MapMarkerData.hueGreen,
+      rooms: [
+        'Lecture Theatre 1',
+        'Mechanical Lab',
+        'Electrical Lab',
+        'Dean\'s Office',
+      ],
     ),
     MapMarkerData(
       title: 'Afe Babalola Hospital',
       point: const LatLng(7.60450, 5.30310),
       category: LocationCategory.health,
-      color: const Color(0xFFEF4444),
+      hue: MapMarkerData.hueRed,
+      rooms: ['Emergency Ward', 'Pharmacy', 'Diagnostic Center', 'ICU'],
     ),
     MapMarkerData(
       title: 'Cafeteria 1',
       point: const LatLng(7.59750, 5.30510),
       category: LocationCategory.food,
-      color: const Color(0xFFF59E0B),
+      hue: MapMarkerData.hueOrange,
     ),
     MapMarkerData(
       title: 'Law Library',
       point: const LatLng(7.60100, 5.30760),
       category: LocationCategory.academic,
-      color: const Color(0xFF8B5CF6),
+      hue: MapMarkerData.hueViolet,
     ),
     MapMarkerData(
       title: 'Sports Complex',
       point: const LatLng(7.59850, 5.30360),
       category: LocationCategory.sports,
-      color: const Color(0xFF06B6D4),
+      hue: MapMarkerData.hueCyan,
     ),
   ];
 
@@ -126,6 +218,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   @override
   void dispose() {
     _positionSub?.cancel();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -151,10 +244,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             _updateDistanceToSelected();
 
             if (_followUser) {
-              _mapController.move(
-                point,
-                math.max(_mapController.camera.zoom, 17.0),
-              );
+              _mapController.move(point, _mapController.camera.zoom);
             }
 
             // Sync to Firestore if tracking is active
@@ -202,10 +292,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
 
     try {
+      debugPrint('MapScreen: Fetching current position...');
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
         ),
+      ).timeout(const Duration(seconds: 8));
+
+      debugPrint(
+        'MapScreen: Position fetched: ${position.latitude}, ${position.longitude}',
       );
       setState(() {
         _latestPosition = position;
@@ -213,11 +308,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         _isLoadingLocation = false;
       });
       _updateDistanceToSelected();
-      _mapController.move(
-        _currentPosition!,
-        math.max(_mapController.camera.zoom, 17.0),
-      );
+
+      if (_currentPosition != null) {
+        _mapController.move(_currentPosition!, 17.0);
+      }
+    } on TimeoutException {
+      debugPrint('MapScreen: Location fetch timed out');
+      if (mounted) {
+        _showToast("Location request timed out. Using default center.");
+      }
+      setState(() => _isLoadingLocation = false);
     } catch (e) {
+      debugPrint('MapScreen: Error getting location: $e');
       if (mounted) _showToast("Error getting location: $e");
       setState(() => _isLoadingLocation = false);
     }
@@ -232,10 +334,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   void _toggleFollowMode() {
     setState(() => _followUser = !_followUser);
     if (_followUser && _currentPosition != null) {
-      _mapController.move(
-        _currentPosition!,
-        math.max(_mapController.camera.zoom, 17.0),
-      );
+      _mapController.move(_currentPosition!, 17.0);
     }
   }
 
@@ -272,15 +371,289 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
   }
 
+  void _showReportDetails(MapReport report) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).cardTheme.color,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    report.type == 'Security' ? Icons.warning : Icons.info,
+                    color: report.type == 'Security'
+                        ? Colors.red
+                        : Colors.orange,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    report.type,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: report.type == 'Security'
+                          ? Colors.red
+                          : Colors.orange,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '${DateTime.now().difference(report.timestamp).inMinutes}m ago',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                report.title,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(report.description),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Close'),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showReportDialog() {
+    String title = '';
+    String description = '';
+    String selectedType = 'Traffic';
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Report Campus Issue'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButton<String>(
+                      value: selectedType,
+                      isExpanded: true,
+                      items: ['Traffic', 'Security', 'Maintenance', 'Other']
+                          .map(
+                            (t) => DropdownMenuItem(value: t, child: Text(t)),
+                          )
+                          .toList(),
+                      onChanged: (v) => setDialogState(() => selectedType = v!),
+                    ),
+                    TextField(
+                      decoration: const InputDecoration(
+                        labelText: 'Focus (e.g. Road Blocked)',
+                      ),
+                      onChanged: (v) => title = v,
+                    ),
+                    TextField(
+                      decoration: const InputDecoration(labelText: 'Details'),
+                      maxLines: 2,
+                      onChanged: (v) => description = v,
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (title.isNotEmpty && _currentPosition != null) {
+                      setState(() {
+                        _userReports.add(
+                          MapReport(
+                            point: _currentPosition!,
+                            title: title,
+                            description: description,
+                            type: selectedType,
+                            timestamp: DateTime.now(),
+                          ),
+                        );
+                      });
+                      Navigator.pop(context);
+                      _showToast(
+                        'Report submitted. Thank you for helping ABUAD!',
+                      );
+                    } else {
+                      _showToast(
+                        'Please provide a title and ensure location is active.',
+                      );
+                    }
+                  },
+                  child: const Text('Submit'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _calculateRoute(MapMarkerData destination) {
+    if (_currentPosition == null) {
+      _showToast("Current location unknown. Cannot calculate route.");
+      return;
+    }
+
+    // Mocking an in-app routing logic for ABUAD Campus
+    // In a real production app, this would integrate with OSRM, GraphHopper, or Google Directions API
+    setState(() {
+      _routePoints = [
+        _currentPosition!,
+        // Generate a simple intermediate point to simulate following a path/road
+        LatLng(
+          (_currentPosition!.latitude + destination.point.latitude) / 2 +
+              0.0001,
+          (_currentPosition!.longitude + destination.point.longitude) / 2 -
+              0.0001,
+        ),
+        destination.point,
+      ];
+    });
+  }
+
+  void _showShuttleDetails(Shuttle shuttle) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).cardTheme.color,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        final percent = (shuttle.currentPassengers / shuttle.capacity) * 100;
+        return Container(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.secondaryTeal.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.directions_bus,
+                      color: AppColors.secondaryTeal,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        shuttle.name,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        'Status: ${shuttle.status}',
+                        style: TextStyle(
+                          color: shuttle.status == 'Moving'
+                              ? Colors.green
+                              : Colors.orange,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'Occupancy',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: LinearProgressIndicator(
+                  value: shuttle.currentPassengers / shuttle.capacity,
+                  minHeight: 12,
+                  backgroundColor: Colors.grey[200],
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    percent > 90 ? Colors.red : AppColors.secondaryTeal,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '${shuttle.currentPassengers} / ${shuttle.capacity} passengers (${percent.toStringAsFixed(0)}%)',
+                style: const TextStyle(color: Colors.grey),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.secondaryTeal,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Close'),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   void _showLocationDetails(MapMarkerData data) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final color = data.color ?? theme.primaryColor;
+
+    // Map Hue back to a color for UI (approximate)
+    Color color = Colors.blue;
+    if (data.hue == MapMarkerData.hueRed) {
+      color = Colors.red;
+    } else if (data.hue == MapMarkerData.hueGreen) {
+      color = Colors.green;
+    } else if (data.hue == MapMarkerData.hueOrange) {
+      color = Colors.orange;
+    } else if (data.hue == MapMarkerData.hueViolet) {
+      color = Colors.purple;
+    } else if (data.hue == MapMarkerData.hueCyan) {
+      color = Colors.cyan;
+    }
+
     setState(() {
       _selectedDestination = data;
       _updateDistanceToSelected();
     });
-    _mapController.move(data.point, math.max(_mapController.camera.zoom, 17.0));
+
+    _mapController.move(data.point, 18.0);
 
     showModalBottomSheet(
       context: context,
@@ -363,15 +736,77 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ),
                 ),
               ],
+              if (data.rooms != null && data.rooms!.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Building Directory',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 90,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: data.rooms!.length,
+                    itemBuilder: (context, index) {
+                      return Container(
+                        width: 130,
+                        margin: const EdgeInsets.only(right: 12),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.white10 : Colors.grey[100],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isDark ? Colors.white10 : Colors.black12,
+                          ),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.meeting_room, size: 18, color: color),
+                            const SizedBox(height: 6),
+                            Text(
+                              data.rooms![index],
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
               const SizedBox(height: 24),
 
               Row(
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.route),
-                      label: const Text('Preview'),
+                      onPressed: () {
+                        if (_routePoints.isEmpty) {
+                          _calculateRoute(data);
+                        } else {
+                          setState(() => _routePoints = []);
+                        }
+                        Navigator.pop(context);
+                      },
+                      icon: Icon(
+                        _routePoints.isEmpty
+                            ? Icons.route_rounded
+                            : Icons.layers_clear_rounded,
+                      ),
+                      label: Text(
+                        _routePoints.isEmpty ? 'Show Route' : 'Clear Route',
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -442,8 +877,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     leading: Icon(
                       style == MapStyle.satellite
                           ? Icons.satellite_alt
-                          : style == MapStyle.dark
-                          ? Icons.dark_mode
+                          : style == MapStyle.hybrid
+                          ? Icons.layers
                           : style == MapStyle.terrain
                           ? Icons.terrain
                           : Icons.map,
@@ -480,6 +915,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ),
                 );
               }),
+              const Divider(),
+              SwitchListTile(
+                title: const Text('Show Shuttles'),
+                secondary: const Icon(
+                  Icons.directions_bus_rounded,
+                  color: AppColors.secondaryTeal,
+                ),
+                value: _showShuttles,
+                onChanged: (val) {
+                  setState(() => _showShuttles = val);
+                  Navigator.pop(context);
+                },
+              ),
               const SizedBox(height: 10),
             ],
           ),
@@ -488,103 +936,83 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
   }
 
-  // --- Markers Logic ---
-  List<Marker> get _markers {
+  List<Marker> _buildMarkers(List<AppUser> otherUsers, String? curUid) {
+    final List<Marker> markers = [];
+
+    // 1. Campus Markers
     final filteredData = _selectedCategory == LocationCategory.all
         ? _allMarkersData
         : _allMarkersData
               .where((m) => m.category == _selectedCategory)
               .toList();
 
-    return filteredData.map((data) {
-      final color = data.color ?? Colors.red;
-      return Marker(
-        point: data.point,
-        width: 80,
-        height: 110,
-        child: GestureDetector(
-          onTap: () => _showLocationDetails(data),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              // 3D-style marker
-              Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: color.withValues(alpha: 0.5),
-                      blurRadius: 12,
-                      spreadRadius: 2,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [color, color.withValues(alpha: 0.8)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 3),
-                  ),
-                  child: Icon(
-                    data.category.icon,
-                    color: Colors.white,
-                    size: 24,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 4),
+    for (var data in filteredData) {
+      // Filter by Search Query
+      if (_searchQuery.isNotEmpty) {
+        if (!data.title.toLowerCase().contains(_searchQuery) &&
+            !data.category.label.toLowerCase().contains(_searchQuery)) {
+          continue;
+        }
+      }
 
-              // Label
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.9),
-                  borderRadius: BorderRadius.circular(8),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
-                      blurRadius: 4,
-                    ),
-                  ],
-                ),
-                child: Text(
-                  data.title,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                ),
-              ),
-            ],
+      Color markerColor = Colors.blue;
+      if (data.hue == MapMarkerData.hueRed) {
+        markerColor = Colors.red;
+      } else if (data.hue == MapMarkerData.hueGreen) {
+        markerColor = Colors.green;
+      } else if (data.hue == MapMarkerData.hueOrange) {
+        markerColor = Colors.orange;
+      } else if (data.hue == MapMarkerData.hueViolet) {
+        markerColor = Colors.purple;
+      } else if (data.hue == MapMarkerData.hueCyan) {
+        markerColor = Colors.cyan;
+      }
+
+      markers.add(
+        Marker(
+          point: data.point,
+          width: 80,
+          height: 80,
+          child: GestureDetector(
+            onTap: () => _showLocationDetails(data),
+            child: Icon(Icons.location_on, color: markerColor, size: 40),
           ),
         ),
       );
-    }).toList();
-  }
+    }
 
-  // Markers for other users (Snap Map Style)
-  List<Marker> _buildUserMarkers(List<AppUser> users, {String? curUid}) {
-    return users.where((u) => u.uid != curUid && u.latitude != null).map((
-      user,
-    ) {
-      return Marker(
-        point: LatLng(user.latitude!, user.longitude!),
-        width: 60,
-        height: 60,
-        child: Column(
-          children: [
-            Container(
+    // 2. User Markers
+    for (var user in otherUsers) {
+      if (user.uid != curUid && user.latitude != null) {
+        markers.add(
+          Marker(
+            point: LatLng(user.latitude!, user.longitude!),
+            width: 80,
+            height: 80,
+            child: const Icon(
+              Icons.person_pin_circle,
+              color: Colors.purple,
+              size: 40,
+            ),
+          ),
+        );
+      }
+    }
+
+    // 3. Report Markers
+    for (var report in _userReports) {
+      markers.add(
+        Marker(
+          point: report.point,
+          width: 60,
+          height: 60,
+          child: GestureDetector(
+            onTap: () => _showReportDetails(report),
+            child: Container(
+              padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
+                color: Colors.white,
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 2),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.2),
@@ -592,36 +1020,81 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ),
                 ],
               ),
-              child: CircleAvatar(
-                radius: 20,
-                backgroundImage: user.avatarUrl != null
-                    ? NetworkImage(user.avatarUrl!)
-                    : null,
-                child: user.avatarUrl == null
-                    ? Text(user.displayName[0].toUpperCase())
-                    : null,
+              child: Icon(
+                report.type == 'Security'
+                    ? Icons.warning_rounded
+                    : report.type == 'Traffic'
+                    ? Icons.traffic_rounded
+                    : Icons.info_outline,
+                color: report.type == 'Security' ? Colors.red : Colors.orange,
+                size: 24,
               ),
             ),
-            const SizedBox(height: 2),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.9),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                user.displayName.split(' ')[0],
-                style: const TextStyle(
-                  fontSize: 8,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       );
-    }).toList();
+    }
+
+    // 4. Shuttle Markers
+    if (_showShuttles) {
+      for (var shuttle in _shuttles) {
+        markers.add(
+          Marker(
+            point: shuttle.position,
+            width: 70,
+            height: 70,
+            child: GestureDetector(
+              onTap: () => _showShuttleDetails(shuttle),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: AppColors.secondaryTeal,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.2),
+                          blurRadius: 6,
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.directions_bus_rounded,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                  Container(
+                    margin: const EdgeInsets.only(top: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.secondaryTeal),
+                    ),
+                    child: Text(
+                      '${shuttle.currentPassengers}/${shuttle.capacity}',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.secondaryTeal,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
+    }
+
+    return markers;
   }
 
   List<MapMarkerData> get _nearbyPlaces {
@@ -659,6 +1132,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final otherUsers = ref.watch(usersLocationsProvider).value ?? [];
+    final currentUid = ref.watch(currentUserIdProvider);
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -669,6 +1143,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.layers_outlined),
+            onPressed: _showMapStyleSheet,
+            tooltip: 'Map Style',
+          ),
+          const SizedBox(width: 8),
+        ],
         flexibleSpace: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -683,21 +1165,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ),
           ),
         ),
-        actions: [
-          Container(
-            margin: const EdgeInsets.only(right: 16),
-            decoration: BoxDecoration(
-              color: theme.cardTheme.color,
-              shape: BoxShape.circle,
-              boxShadow: AppColors.softShadow,
-            ),
-            child: IconButton(
-              icon: const Icon(Icons.layers),
-              onPressed: _showMapStyleSheet,
-              tooltip: 'Map Style',
-            ),
-          ),
-        ],
       ),
       body: Stack(
         children: [
@@ -706,119 +1173,116 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             options: MapOptions(
               initialCenter: _initialCenter,
               initialZoom: 16.5,
-              minZoom: 13.0,
-              maxZoom: 19.0,
-              interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.all, // Enable all including rotate
-              ),
-              onPositionChanged: (_, hasGesture) {
-                if (hasGesture && _followUser) {
-                  setState(() => _followUser = false);
+              onMapReady: () {
+                debugPrint('MapScreen: onMapReady successfully');
+                if (_currentPosition != null && _followUser) {
+                  _mapController.move(_currentPosition!, 17.0);
                 }
               },
             ),
             children: [
               TileLayer(
                 urlTemplate: _currentMapStyle.urlTemplate,
-                userAgentPackageName: 'com.example.abuad',
+                userAgentPackageName: 'com.pronown.abuad',
                 subdomains: const ['a', 'b', 'c'],
               ),
-              if (_currentPosition != null && _selectedDestination != null)
-                PolylineLayer(
-                  polylines: [
-                    Polyline(
-                      points: [_currentPosition!, _selectedDestination!.point],
-                      strokeWidth: 4,
-                      color: AppColors.secondaryTeal.withValues(alpha: 0.9),
-                      borderStrokeWidth: 1.5,
-                      borderColor: _isTracking
-                          ? Colors.white
-                          : Colors.white.withValues(alpha: 0.6),
-                    ),
-                  ],
-                ),
-              // Campus Zone Polygon
               PolygonLayer(
                 polygons: [
                   Polygon(
-                    points: [
+                    points: const [
                       LatLng(7.6070, 5.3015),
                       LatLng(7.6070, 5.3105),
                       LatLng(7.5980, 5.3105),
                       LatLng(7.5980, 5.3015),
                     ],
                     color: Colors.blue.withValues(alpha: 0.1),
-                    borderStrokeWidth: 2,
                     borderColor: Colors.blue.withValues(alpha: 0.3),
-                    label: "ABUAD Campus",
-                    labelStyle: const TextStyle(
-                      color: Colors.blue,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    borderStrokeWidth: 2,
                   ),
                 ],
               ),
-
-              MarkerLayer(
-                markers: [
-                  ..._markers,
-                  ..._buildUserMarkers(
-                    otherUsers,
-                    curUid: ref.watch(currentUserIdProvider),
-                  ),
-                  if (_currentPosition != null)
-                    Marker(
-                      point: _currentPosition!,
-                      width: 80,
-                      height: 80,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          // Pulsing effect for current location
-                          Container(
-                            width: 60,
-                            height: 60,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: AppColors.info.withValues(alpha: 0.2),
-                            ),
-                            child: Container(
-                              margin: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: [
-                                    Color(0xFF3B82F6),
-                                    Color(0xFF2563EB),
-                                  ],
-                                ),
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: Colors.white,
-                                  width: 3,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.blue.withValues(alpha: 0.5),
-                                    blurRadius: 12,
-                                    spreadRadius: 2,
-                                  ),
-                                ],
-                              ),
-                              child: const Icon(
-                                Icons.navigation,
-                                color: Colors.white,
-                                size: 20,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+              if (_selectedDestination != null)
+                PolylineLayer(
+                  polylines: [
+                    Polyline(
+                      points: _routePoints.isNotEmpty
+                          ? _routePoints
+                          : (_currentPosition != null
+                                ? [
+                                    _currentPosition!,
+                                    _selectedDestination!.point,
+                                  ]
+                                : []),
+                      color: _routePoints.isNotEmpty
+                          ? AppColors.secondaryTeal
+                          : AppColors.secondaryTeal.withValues(alpha: 0.5),
+                      strokeWidth: 4,
                     ),
-                ],
-              ),
+                  ],
+                ),
+              MarkerLayer(markers: _buildMarkers(otherUsers, currentUid)),
             ],
           ),
 
+          // 🔍 New: Search Bar
+          Positioned(
+            top: 70,
+            left: 16,
+            right: 16,
+            child: SafeArea(
+              top: false,
+              child: Container(
+                height: 52,
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1F2937) : Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.1),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                  border: Border.all(
+                    color: isDark ? Colors.white10 : Colors.black12,
+                  ),
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (value) {
+                    setState(() => _searchQuery = value.toLowerCase());
+                  },
+                  decoration: InputDecoration(
+                    hintText: 'Search campus...',
+                    hintStyle: TextStyle(
+                      color: isDark ? Colors.grey[400] : Colors.grey[500],
+                      fontSize: 15,
+                    ),
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      color: theme.colorScheme.primary,
+                    ),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear_rounded),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _searchQuery = '');
+                            },
+                          )
+                        : null,
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // Filters
           Positioned(
             top: 100,
             left: 0,
@@ -896,6 +1360,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               ),
             ),
           ),
+
+          // Location Status
           Positioned(
             top: 148,
             left: 16,
@@ -952,6 +1418,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               ),
             ),
           ),
+
           // Nearby Places List (moved down)
           Positioned(
             left: 12,
@@ -979,91 +1446,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     itemCount: _nearbyPlaces.length,
                     separatorBuilder: (_, separatorIndex) =>
                         const SizedBox(width: 8),
-                    itemBuilder: (context, index) {
-                      final place = _nearbyPlaces[index];
-                      final color = place.color ?? theme.colorScheme.primary;
-                      final distance = _currentPosition == null
-                          ? null
-                          : Geolocator.distanceBetween(
-                              _currentPosition!.latitude,
-                              _currentPosition!.longitude,
-                              place.point.latitude,
-                              place.point.longitude,
-                            );
-                      return InkWell(
-                        onTap: () => _showLocationDetails(place),
-                        borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          width: 210,
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: isDark
-                                ? Colors.white10
-                                : const Color(0xFFF7F7F7),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: color.withValues(alpha: 0.3),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 34,
-                                height: 34,
-                                decoration: BoxDecoration(
-                                  color: color.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Icon(
-                                  place.category.icon,
-                                  color: color,
-                                  size: 18,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(
-                                      place.title,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      distance == null
-                                          ? place.category.label
-                                          : '${place.category.label} · ${_distanceLabel(distance)}',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: isDark
-                                            ? Colors.grey[300]
-                                            : Colors.grey[700],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.directions, size: 18),
-                                onPressed: () => _launchMaps(
-                                  place.point.latitude,
-                                  place.point.longitude,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
+                    itemBuilder: (context, index) =>
+                        _buildPlaceItem(_nearbyPlaces[index], isDark),
                   ),
                 ),
               ),
@@ -1071,104 +1455,234 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           ),
         ],
       ),
-      floatingActionButton: Padding(
-        padding: EdgeInsets.only(
-          bottom: 105.0 + MediaQuery.of(context).padding.bottom,
-        ), // Clears List + Bottom Nav
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            FloatingActionButton.small(
-              heroTag: 'map_follow_fab',
-              onPressed: _toggleFollowMode,
-              backgroundColor: _followUser
-                  ? const Color(0xFF16A34A)
-                  : theme.cardTheme.color,
-              foregroundColor: _followUser
-                  ? Colors.white
-                  : theme.iconTheme.color,
-              tooltip: _followUser
-                  ? 'Following location'
-                  : 'Follow my location',
-              child: Icon(_followUser ? Icons.gps_fixed : Icons.gps_not_fixed),
-            ),
-            const SizedBox(height: 10),
-            Container(
-              decoration: BoxDecoration(
-                color: theme.cardTheme.color,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: AppColors.softShadow,
-                border: Border.all(
-                  color: isDark ? AppColors.borderDark : AppColors.borderLight,
-                ),
-              ),
-              child: Column(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.add),
-                    onPressed: () {
-                      final currentZoom = _mapController.camera.zoom;
-                      _mapController.move(
-                        _mapController.camera.center,
-                        currentZoom + 1,
-                      );
-                    },
-                  ),
-                  Container(
-                    height: 1,
-                    width: 30,
-                    color: isDark
-                        ? AppColors.borderDark
-                        : AppColors.borderLight,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.remove),
-                    onPressed: () {
-                      final currentZoom = _mapController.camera.zoom;
-                      _mapController.move(
-                        _mapController.camera.center,
-                        currentZoom - 1,
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
+      floatingActionButton: _buildFABs(theme, isDark),
+    );
+  }
 
+  Widget _buildPlaceItem(MapMarkerData place, bool isDark) {
+    Color color = Colors.blue;
+    if (place.hue == MapMarkerData.hueRed) {
+      color = Colors.red;
+    } else if (place.hue == MapMarkerData.hueGreen) {
+      color = Colors.green;
+    } else if (place.hue == MapMarkerData.hueOrange) {
+      color = Colors.orange;
+    } else if (place.hue == MapMarkerData.hueViolet) {
+      color = Colors.purple;
+    } else if (place.hue == MapMarkerData.hueCyan) {
+      color = Colors.cyan;
+    }
+
+    final distance = _currentPosition == null
+        ? null
+        : Geolocator.distanceBetween(
+            _currentPosition!.latitude,
+            _currentPosition!.longitude,
+            place.point.latitude,
+            place.point.longitude,
+          );
+    return InkWell(
+      onTap: () => _showLocationDetails(place),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: 210,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.white10 : const Color(0xFFF7F7F7),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
             Container(
+              width: 34,
+              height: 34,
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF3B82F6), Color(0xFF2563EB)],
-                ),
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.blue.withValues(alpha: 0.3),
-                    blurRadius: 12,
-                    spreadRadius: 2,
+                color: color.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(place.category.icon, color: color, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    place.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    distance == null
+                        ? place.category.label
+                        : '${place.category.label} · ${_distanceLabel(distance)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark ? Colors.grey[300] : Colors.grey[700],
+                    ),
                   ),
                 ],
               ),
-              child: FloatingActionButton(
-                heroTag: 'map_location_fab',
-                onPressed: _getCurrentLocation,
-                backgroundColor: Colors.transparent,
-                elevation: 0,
-                child: _isLoadingLocation
-                    ? const SizedBox(
-                        height: 24,
-                        width: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.my_location, color: Colors.white),
-              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.directions, size: 18),
+              onPressed: () =>
+                  _launchMaps(place.point.latitude, place.point.longitude),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildFABs(ThemeData theme, bool isDark) {
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: 105.0 + MediaQuery.of(context).padding.bottom,
+      ), // Clears List + Bottom Nav
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          FloatingActionButton.small(
+            heroTag: 'map_follow_fab',
+            onPressed: _toggleFollowMode,
+            backgroundColor: _followUser
+                ? const Color(0xFF16A34A)
+                : theme.cardTheme.color,
+            foregroundColor: _followUser ? Colors.white : theme.iconTheme.color,
+            tooltip: _followUser ? 'Following location' : 'Follow my location',
+            child: Icon(_followUser ? Icons.gps_fixed : Icons.gps_not_fixed),
+          ),
+          const SizedBox(height: 10),
+
+          // Zoom buttons
+          Container(
+            decoration: BoxDecoration(
+              color: theme.cardTheme.color,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: AppColors.softShadow,
+              border: Border.all(
+                color: isDark ? AppColors.borderDark : AppColors.borderLight,
+              ),
+            ),
+            child: Column(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  onPressed: () {
+                    _mapController.move(
+                      _mapController.camera.center,
+                      _mapController.camera.zoom + 1,
+                    );
+                  },
+                ),
+                Container(
+                  height: 1,
+                  width: 30,
+                  color: isDark ? AppColors.borderDark : AppColors.borderLight,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.remove),
+                  onPressed: () {
+                    _mapController.move(
+                      _mapController.camera.center,
+                      _mapController.camera.zoom - 1,
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+          // Report Issue Button
+          Container(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFFF59E0B), Color(0xFFD97706)],
+              ),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.orange.withValues(alpha: 0.3),
+                  blurRadius: 8,
+                ),
+              ],
+            ),
+            child: FloatingActionButton.small(
+              heroTag: 'map_report_fab',
+              onPressed: _showReportDialog,
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              child: const Icon(Icons.add_alert_rounded, color: Colors.white),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // SOS Button
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.red[600],
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.red.withValues(alpha: 0.4),
+                  blurRadius: 12,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: FloatingActionButton.small(
+              heroTag: 'map_sos_fab',
+              onPressed: () {
+                _showToast('SOS Alert Sent! Dispatching Security...');
+              },
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              child: const Icon(Icons.emergency, color: Colors.white),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          Container(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF3B82F6), Color(0xFF2563EB)],
+              ),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.blue.withValues(alpha: 0.3),
+                  blurRadius: 12,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: FloatingActionButton(
+              heroTag: 'map_location_fab',
+              onPressed: _getCurrentLocation,
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              child: _isLoadingLocation
+                  ? const SizedBox(
+                      height: 24,
+                      width: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.my_location, color: Colors.white),
+            ),
+          ),
+        ],
       ),
     );
   }
