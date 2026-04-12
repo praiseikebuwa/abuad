@@ -9,3 +9,6 @@ void main() {
     print('AutoDisposeAsyncNotifier not found: $e');
   }
 }
+
+class AutoDisposeAsyncNotifier {
+}

@@ -94,6 +94,7 @@ graph TD
 1. **Clone & Install**:
    ```bash
    git clone https://github.com/Egcasy/abuad.git
+   cd abuad
    flutter pub get
    ```
 2. **Generate Code**:
