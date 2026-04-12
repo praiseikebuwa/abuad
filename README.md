@@ -93,7 +93,7 @@ graph TD
 ### Quick Start
 1. **Clone & Install**:
    ```bash
-   git clone <repo-url>
+   git clone https://github.com/Egcasy/abuad.git
    flutter pub get
    ```
 2. **Generate Code**:
