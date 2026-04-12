@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../../core/utils/url_validator.dart';
 import '../../user/data/user_repository.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/firebase_storage_service.dart';
@@ -197,6 +198,8 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final user = ref.watch(currentUserProvider).value;
+    final bannerUrl = user?.bannerUrl;
+    final avatarUrl = user?.avatarUrl;
 
     return Scaffold(
       backgroundColor: isDark ? Colors.black : const Color(0xFFF8F9FA),
@@ -245,11 +248,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                         width: double.infinity,
                         decoration: BoxDecoration(
                           color: isDark ? Colors.grey[900] : Colors.grey[200],
-                          image: user?.bannerUrl != null
+                          image: (bannerUrl != null &&
+                                  UrlValidator.isValidUrl(bannerUrl))
                               ? DecorationImage(
-                                  image: CachedNetworkImageProvider(
-                                    user!.bannerUrl!,
-                                  ),
+                                  image: CachedNetworkImageProvider(bannerUrl),
                                   fit: BoxFit.cover,
                                 )
                               : null,
@@ -290,12 +292,12 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                                 backgroundColor: isDark
                                     ? Colors.grey[800]
                                     : Colors.grey[200],
-                                backgroundImage: user?.avatarUrl != null
-                                    ? CachedNetworkImageProvider(
-                                        user!.avatarUrl!,
-                                      )
+                                backgroundImage: (avatarUrl != null &&
+                                        UrlValidator.isValidUrl(avatarUrl))
+                                    ? CachedNetworkImageProvider(avatarUrl)
                                     : null,
-                                child: (user?.avatarUrl == null)
+                                child: (avatarUrl == null ||
+                                        !UrlValidator.isValidUrl(avatarUrl))
                                     ? Text(
                                         user?.displayName.isNotEmpty == true
                                             ? user!.displayName[0].toUpperCase()

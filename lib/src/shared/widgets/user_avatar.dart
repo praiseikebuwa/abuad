@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../features/stories/data/story_repository.dart';
 import '../../features/stories/domain/story.dart';
 import '../../features/auth/data/auth_repository.dart';
+import '../../core/utils/url_validator.dart';
 
 class UserAvatar extends ConsumerWidget {
   final String userId;
@@ -159,10 +160,11 @@ class UserAvatar extends ConsumerWidget {
   Widget _buildAvatar(BuildContext context, {bool internalTap = false}) {
     final avatar = CircleAvatar(
       radius: radius,
-      backgroundImage:
-          (avatarUrl != null && avatarUrl!.isNotEmpty)
-              ? CachedNetworkImageProvider(avatarUrl!)
-              : null,
+      backgroundImage: (avatarUrl != null &&
+              avatarUrl!.isNotEmpty &&
+              UrlValidator.isValidUrl(avatarUrl))
+          ? CachedNetworkImageProvider(avatarUrl!)
+          : null,
       backgroundColor: backgroundColor ?? const Color(0xFF8B5CF6),
       child:
           (avatarUrl == null || avatarUrl!.isEmpty)

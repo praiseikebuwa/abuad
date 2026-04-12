@@ -19,6 +19,7 @@ import 'package:flutter_slidable/flutter_slidable.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../data/chat_search_history_service.dart';
 import 'package:toastification/toastification.dart';
+import '../../../core/utils/url_validator.dart';
 
 
 class ChatListScreen extends ConsumerStatefulWidget {
@@ -213,7 +214,6 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
             child: _currentIndex == 1
                 ? _StatusListView(
                     isDark: isDark,
-                    onCameraTap: () => _pickStoryImage(context),
                   )
                 : StreamBuilder<List<ChatChannel>>(
                     stream: channelsStream,
@@ -537,8 +537,11 @@ class _CapsuleSwitcher extends StatelessWidget {
 // Vertical Status List View
 class _StatusListView extends ConsumerStatefulWidget {
   final bool isDark;
-  final VoidCallback onCameraTap;
-  const _StatusListView({required this.isDark, required this.onCameraTap});
+
+  const _StatusListView({
+    super.key,
+    required this.isDark,
+  });
 
   @override
   ConsumerState<_StatusListView> createState() => _StatusListViewState();
@@ -594,15 +597,9 @@ class _StatusListViewState extends ConsumerState<_StatusListView> {
                         child: ListView.builder(
                           scrollDirection: Axis.horizontal,
                           padding: const EdgeInsets.symmetric(horizontal: 16),
-                          itemCount: followingStoriesIds.length + 2,
+                          itemCount: followingStoriesIds.length + 1,
                           itemBuilder: (context, index) {
                             if (index == 0) {
-                              return _CameraActionItem(
-                                isDark: widget.isDark,
-                                onTap: widget.onCameraTap,
-                              );
-                            }
-                            if (index == 1) {
                               final myStories = currentUserId != null
                                   ? storiesGrouped[currentUserId] ?? []
                                   : [];
@@ -617,7 +614,7 @@ class _StatusListViewState extends ConsumerState<_StatusListView> {
                                 currentUserId: currentUserId,
                               );
                             }
-                            final userId = followingStoriesIds[index - 2];
+                            final userId = followingStoriesIds[index - 1];
                             final userStories = storiesGrouped[userId] ?? [];
                             if (userStories.isEmpty) {
                               return const SizedBox.shrink();
@@ -827,53 +824,6 @@ class _StatusListViewState extends ConsumerState<_StatusListView> {
   }
 }
 
-// Camera Action Item Widget
-class _CameraActionItem extends StatelessWidget {
-  final bool isDark;
-  final VoidCallback onTap;
-  const _CameraActionItem({required this.isDark, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.only(right: 16),
-        child: Column(
-          children: [
-            Container(
-              width: 70,
-              height: 70,
-              decoration: BoxDecoration(
-                color: isDark ? Colors.white10 : Colors.grey[100],
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: isDark ? Colors.white24 : Colors.grey[300]!,
-                  width: 1.5,
-                ),
-              ),
-              child: Icon(
-                Icons.camera_alt_outlined,
-                size: 32,
-                color: isDark ? Colors.white70 : Colors.grey[700],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Camera',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.grey[400] : Colors.grey[700],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 // My Story Item Widget
 class _MyStoryItem extends StatelessWidget {
   final bool isDark;
@@ -1001,7 +951,9 @@ class _StatusCard extends StatelessWidget {
         child: Stack(
           children: [
             // Story Content Image
-            if (contentUrl != null && contentUrl!.isNotEmpty)
+            if (contentUrl != null &&
+                contentUrl!.isNotEmpty &&
+                UrlValidator.isValidUrl(contentUrl))
               Positioned.fill(
                 child: CachedNetworkImage(
                   imageUrl: contentUrl!,

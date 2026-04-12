@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../../../core/utils/url_validator.dart';
 
 /// Camera story button widget
 class CameraStoryItem extends StatelessWidget {
@@ -105,19 +106,23 @@ class StoryItem extends StatelessWidget {
                 ),
                 child: CircleAvatar(
                   radius: 28,
-                  backgroundImage: avatarUrl != null && avatarUrl!.isNotEmpty
+                  backgroundImage: (avatarUrl != null &&
+                          avatarUrl!.isNotEmpty &&
+                          UrlValidator.isValidUrl(avatarUrl))
                       ? CachedNetworkImageProvider(avatarUrl!)
                       : null,
                   backgroundColor: const Color(0xFF8B5CF6),
-                  child: avatarUrl == null || avatarUrl!.isEmpty
+                  child: (avatarUrl == null ||
+                          avatarUrl!.isEmpty ||
+                          !UrlValidator.isValidUrl(avatarUrl))
                       ? Text(
-                          name[0].toUpperCase(),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 20,
-                          ),
-                        )
+                        name[0].toUpperCase(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 20,
+                        ),
+                      )
                       : null,
                 ),
               ),

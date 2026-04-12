@@ -1203,15 +1203,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-            top: 12,
-            left: 20,
-            right: 20,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom + 12,
+                top: 12,
+                left: 20,
+                right: 20,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
               // Drag Indicator
               Container(
                 width: 40,
@@ -1353,6 +1356,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 },
               ),
             ],
+          ),
+            ),
           ),
         );
       },
@@ -1578,10 +1583,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
                 'Message Info',
@@ -1638,6 +1646,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               const SizedBox(height: 24),
             ],
           ),
+            ),
+          ),
         );
       },
     );
@@ -1654,8 +1664,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
-          padding: const EdgeInsets.symmetric(vertical: 24),
-          child: Column(
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
@@ -1705,7 +1718,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ),
             ],
           ),
-        );
+        ),
+      ),
+    );
       },
     );
   }
@@ -1724,8 +1739,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
-          padding: const EdgeInsets.all(24),
-          child: Column(
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
             children: [
               const Text(
                 'Forward to...',
@@ -1787,6 +1805,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ),
             ],
           ),
+            ),
+          ),
         );
       },
     );
@@ -1797,16 +1817,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        margin: const EdgeInsets.all(16),
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: isDark ? AppColors.surfaceDarkElevated : Colors.white,
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+      builder: (context) => SafeArea(
+        child: Container(
+          margin: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.surfaceDarkElevated : Colors.white,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
@@ -1841,6 +1862,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ),
           ],
         ),
+      ),
       ),
     );
   }

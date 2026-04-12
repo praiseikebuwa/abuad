@@ -9,6 +9,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/verification_badge.dart';
+import '../../../core/utils/url_validator.dart';
 import '../../user/data/user_repository.dart';
 import '../../feed/data/post_repository.dart';
 import '../../feed/domain/post.dart';
@@ -593,24 +594,13 @@ class _SuggestedUsersCarousel extends ConsumerWidget {
                           children: [
                             Stack(
                               children: [
-                                CircleAvatar(
-                                  radius: 30,
-                                  backgroundColor: AppColors.secondaryTeal
-                                      .withValues(alpha: 0.1),
-                                  backgroundImage: user.avatarUrl != null
-                                      ? CachedNetworkImageProvider(
-                                          user.avatarUrl!,
-                                        )
-                                      : null,
-                                  child: user.avatarUrl == null
-                                      ? Text(
-                                          user.displayName[0],
-                                          style: const TextStyle(
-                                            color: AppColors.secondaryTeal,
-                                          ),
-                                        )
-                                      : null,
-                                ),
+                            UserAvatar(
+                              userId: user.uid,
+                              avatarUrl: user.avatarUrl,
+                              displayName: user.displayName,
+                              radius: 30,
+                              showStoryRing: true,
+                            ),
                                 if (user.isVerified)
                                   Positioned(
                                     right: 0,
@@ -780,7 +770,7 @@ class _MasonryPostItem extends StatelessWidget {
               children: [
                 // Background Content
                 Positioned.fill(
-                  child: hasMedia
+                  child: (hasMedia && UrlValidator.isValidUrl(post.mediaUrl))
                       ? CachedNetworkImage(
                           imageUrl: post.mediaUrl,
                           fit: BoxFit.cover,
@@ -876,18 +866,13 @@ class _MasonryPostItem extends StatelessWidget {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            CircleAvatar(
+                            UserAvatar(
+                              userId: post.authorId,
+                              avatarUrl: post.authorAvatarUrl,
+                              displayName: post.authorName,
                               radius: 12,
-                              backgroundColor: AppColors.secondaryTeal.withOpacity(0.2),
-                              backgroundImage: post.authorAvatarUrl != null
-                                  ? CachedNetworkImageProvider(post.authorAvatarUrl!)
-                                  : null,
-                              child: post.authorAvatarUrl == null
-                                  ? Text(
-                                      post.authorName[0],
-                                      style: const TextStyle(fontSize: 10, color: Colors.white),
-                                    )
-                                  : null,
+                              showStoryRing: false,
+                              enableDefaultTap: false,
                             ),
                             const SizedBox(width: 8),
                             const Text(

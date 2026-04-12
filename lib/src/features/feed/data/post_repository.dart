@@ -8,6 +8,7 @@ import '../../notifications/data/notification_repository.dart';
 import '../../notifications/domain/notification.dart';
 import '../../user/data/user_repository.dart';
 import '../../../core/utils/profanity_filter.dart';
+import '../../../core/services/moderation_service.dart';
 
 final postRepositoryProvider = Provider<PostRepository>((ref) {
   return PostRepository(
@@ -45,9 +46,15 @@ class PostRepository {
   String? get currentUserId => auth.FirebaseAuth.instance.currentUser?.uid;
 
   Future<void> addPost(Post post) async {
-    // Automated Moderation
-    final hasProfanity = ProfanityFilter.hasProfanity(post.content);
-    final status = hasProfanity ? 'flagged' : post.status;
+    // Stage 1: Local Moderation (Fast)
+    bool isSafe = !ProfanityFilter.hasProfanity(post.content);
+
+    // Stage 2: AI Moderation (Robust)
+    if (isSafe && post.content.isNotEmpty) {
+      isSafe = await ModerationService.isContentSafe(post.content);
+    }
+
+    final status = isSafe ? post.status : 'flagged';
 
     await _firestore
         .collection('posts')
@@ -92,6 +99,7 @@ class PostRepository {
   }) {
     return _firestore
         .collection('posts')
+        .where('status', isEqualTo: 'active')
         .orderBy('created_at', descending: true)
         .limit(limit)
         .snapshots()
@@ -138,6 +146,7 @@ class PostRepository {
           postsSub = _firestore
               .collection('posts')
               .where('author_id', whereIn: followingUids)
+              .where('status', isEqualTo: 'active')
               .orderBy('created_at', descending: true)
               .limit(limit)
               .snapshots()
@@ -399,6 +408,16 @@ class PostRepository {
     final userId = currentUserId;
     if (userId == null) return;
 
+    // Stage 1: Local Moderation (Fast)
+    bool isSafe = !ProfanityFilter.hasProfanity(content);
+
+    // Stage 2: AI Moderation (Robust)
+    if (isSafe && content.isNotEmpty) {
+      isSafe = await ModerationService.isContentSafe(content);
+    }
+
+    final status = isSafe ? 'active' : 'flagged';
+
     final parentPath = parentId != null
         ? 'posts/$postId/comments/$parentId/replies'
         : 'posts/$postId/comments';
@@ -412,10 +431,6 @@ class PostRepository {
     await _firestore.runTransaction((transaction) async {
       final postRef = _firestore.collection('posts').doc(postId);
       final commentRef = _firestore.collection(parentPath).doc(commentId);
-
-      // Automated Moderation
-      final hasProfanity = ProfanityFilter.hasProfanity(content);
-      final status = hasProfanity ? 'flagged' : 'active';
 
       transaction.set(commentRef, {
         'id': commentId,
@@ -499,6 +514,7 @@ class PostRepository {
         .collection('posts')
         .doc(postId)
         .collection('comments')
+        .where('status', isEqualTo: 'active')
         .orderBy('created_at', descending: false)
         .snapshots()
         .map((snapshot) {
@@ -536,6 +552,7 @@ class PostRepository {
         .collection('comments')
         .doc(commentId)
         .collection('replies')
+        .where('status', isEqualTo: 'active')
         .orderBy('created_at', descending: false)
         .snapshots()
         .map((snapshot) {
@@ -593,6 +610,16 @@ class PostRepository {
     final user = await _userRepository.getUserById(userId);
     if (user == null) return;
 
+    // Stage 1: Local Moderation
+    bool isSafe = !ProfanityFilter.hasProfanity(commentary);
+
+    // Stage 2: AI Moderation (Robust)
+    if (isSafe && commentary.isNotEmpty) {
+      isSafe = await ModerationService.isContentSafe(commentary);
+    }
+
+    final status = isSafe ? 'active' : 'flagged';
+
     final newPostId = _firestore.collection('posts').doc().id;
     final now = DateTime.now();
 
@@ -637,6 +664,7 @@ class PostRepository {
       repostData: finalRepostData,
       isVerified: user.isVerified,
       verificationType: user.verificationType,
+      status: status,
     );
 
     // Run transaction
@@ -800,6 +828,12 @@ class PostRepository {
     await batch.commit();
   }
 
+  Future<void> incrementShareCount(String postId) async {
+    await _firestore.collection('posts').doc(postId).update({
+      'shares_count': FieldValue.increment(1),
+    });
+  }
+
   // New: Watch trending tags (aggregates from recent posts)
   Stream<List<Map<String, dynamic>>> watchTrendingTags() {
     return _firestore
@@ -837,6 +871,7 @@ class PostRepository {
     return _firestore
         .collection('posts')
         .where('media_type', isEqualTo: 'video')
+        .where('status', isEqualTo: 'active')
         .orderBy('created_at', descending: true)
         .limit(limit)
         .snapshots()
@@ -876,6 +911,7 @@ class PostRepository {
     var query = _firestore
         .collection('posts')
         .where('author_id', whereIn: followingUids)
+        .where('status', isEqualTo: 'active')
         .orderBy('created_at', descending: true)
         .limit(limit);
 
@@ -903,6 +939,7 @@ class PostRepository {
       int limit = 15}) async {
     var query = _firestore.collection('posts')
         .where('channel_id', isEqualTo: channelId)
+        .where('status', isEqualTo: 'active')
         .orderBy('created_at', descending: true);
     final res = await fetchPostsPage(query, startAfter: startAfter, limit: limit);
     return PaginatedPostsResult(
@@ -917,6 +954,7 @@ class PostRepository {
       DocumentSnapshot<Map<String, dynamic>>? startAfter,
       int limit = 15}) async {
     var query = _firestore.collection('posts')
+        .where('status', isEqualTo: 'active')
         .orderBy('created_at', descending: true);
     final res = await fetchPostsPage(query, startAfter: startAfter, limit: limit);
     return PaginatedPostsResult(
@@ -932,6 +970,7 @@ class PostRepository {
       int limit = 15}) async {
     var query = _firestore.collection('posts')
         .where('media_type', isEqualTo: 'video')
+        .where('status', isEqualTo: 'active')
         .orderBy('created_at', descending: true);
     final res = await fetchPostsPage(query, startAfter: startAfter, limit: limit);
     return PaginatedPostsResult(

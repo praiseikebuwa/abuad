@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../../../core/utils/url_validator.dart';
 import '../../data/story_repository.dart';
 import '../../domain/story.dart';
 import '../../../user/data/user_repository.dart';
@@ -51,12 +52,18 @@ class StoriesBar extends ConsumerWidget {
                           child: Padding(
                             padding: const EdgeInsets.all(2),
                             child: CircleAvatar(
-                              backgroundImage: currentUser.avatarUrl != null
+                              backgroundImage: (currentUser.avatarUrl != null &&
+                                      UrlValidator.isValidUrl(
+                                        currentUser.avatarUrl!,
+                                      ))
                                   ? CachedNetworkImageProvider(
-                                      currentUser.avatarUrl!,
-                                    )
+                                    currentUser.avatarUrl!,
+                                  )
                                   : null,
-                              child: currentUser.avatarUrl == null
+                              child: (currentUser.avatarUrl == null ||
+                                      !UrlValidator.isValidUrl(
+                                        currentUser.avatarUrl!,
+                                      ))
                                   ? const Icon(Icons.person)
                                   : null,
                             ),
@@ -143,12 +150,19 @@ class StoriesBar extends ConsumerWidget {
                                   child: Padding(
                                     padding: const EdgeInsets.all(2),
                                     child: CircleAvatar(
-                                      backgroundImage: author.avatarUrl != null
+                                      backgroundImage: (author.avatarUrl !=
+                                                  null &&
+                                              UrlValidator.isValidUrl(
+                                                author.avatarUrl!,
+                                              ))
                                           ? CachedNetworkImageProvider(
-                                              author.avatarUrl!,
-                                            )
+                                            author.avatarUrl!,
+                                          )
                                           : null,
-                                      child: author.avatarUrl == null
+                                      child: (author.avatarUrl == null ||
+                                              !UrlValidator.isValidUrl(
+                                                author.avatarUrl!,
+                                              ))
                                           ? Text(author.displayName[0])
                                           : null,
                                     ),

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../../core/utils/url_validator.dart';
+import '../../../shared/widgets/user_avatar.dart';
 import '../domain/snap_model.dart';
 import '../data/snap_repository.dart';
 
@@ -64,13 +66,16 @@ class _SnapViewerScreenState extends ConsumerState<SnapViewerScreen> {
             children: [
               // Snap Image
               Positioned.fill(
-                child: CachedNetworkImage(
-                  imageUrl: snaps[_currentSnapIndex].imageUrl,
-                  fit: BoxFit.cover,
-                  placeholder: (context, url) => const Center(
-                    child: CircularProgressIndicator(color: Colors.white),
-                  ),
-                ),
+                child: UrlValidator.isValidUrl(snaps[_currentSnapIndex].imageUrl)
+                    ? CachedNetworkImage(
+                        imageUrl: snaps[_currentSnapIndex].imageUrl,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => const Center(
+                          child: CircularProgressIndicator(color: Colors.white),
+                        ),
+                        errorWidget: (context, url, error) => _buildErrorContent(),
+                      )
+                    : _buildErrorContent(),
               ),
 
               // Gradient Overlay
@@ -121,11 +126,12 @@ class _SnapViewerScreenState extends ConsumerState<SnapViewerScreen> {
                 right: 16,
                 child: Row(
                   children: [
-                    CircleAvatar(
+                    UserAvatar(
+                      userId: snaps[_currentSnapIndex].userId,
+                      avatarUrl: snaps[_currentSnapIndex].userAvatar,
                       radius: 18,
-                      backgroundImage: CachedNetworkImageProvider(
-                        snaps[_currentSnapIndex].userAvatar,
-                      ),
+                      showStoryRing: false,
+                      enableDefaultTap: false,
                     ),
                     const SizedBox(width: 10),
                     Text(
@@ -210,6 +216,25 @@ class _SnapViewerScreenState extends ConsumerState<SnapViewerScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildErrorContent() {
+    return Container(
+      color: Colors.black,
+      child: const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.broken_image, color: Colors.white54, size: 64),
+            SizedBox(height: 16),
+            Text(
+              'Content unavailable',
+              style: TextStyle(color: Colors.white54, fontSize: 16),
+            ),
+          ],
+        ),
       ),
     );
   }

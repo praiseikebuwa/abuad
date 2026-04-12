@@ -19,6 +19,7 @@ import '../domain/post.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../../core/providers/shared_preferences_provider.dart';
 import '../../../core/router/app_router.dart';
+import '../../../shared/widgets/user_avatar.dart';
 
 class CreatePostScreen extends ConsumerStatefulWidget {
   final String? initialChannelId;
@@ -614,16 +615,12 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   currentUserAsync.when(
-                    data: (user) => CircleAvatar(
+                    data: (user) => UserAvatar(
+                      userId: user?.uid ?? '',
+                      avatarUrl: _isAnonymous ? null : user?.avatarUrl,
+                      displayName: _isAnonymous ? '?' : user?.displayName,
                       radius: 20,
-                      backgroundColor: Colors.grey[300],
-                      backgroundImage:
-                          (user?.avatarUrl != null && !_isAnonymous)
-                          ? CachedNetworkImageProvider(user!.avatarUrl!)
-                          : null,
-                      child: (user?.avatarUrl == null || _isAnonymous)
-                          ? const Icon(Icons.person, color: Colors.white)
-                          : null,
+                      showStoryRing: false,
                     ),
                     loading: () => const CircleAvatar(
                       radius: 20,

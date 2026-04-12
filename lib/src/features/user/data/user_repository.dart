@@ -500,21 +500,27 @@ class UserRepository {
     final uid = currentUserId;
     if (uid == null) return;
 
+    final postRef = _firestore.collection('posts').doc(postId);
     final savedRef = _firestore
         .collection('users')
         .doc(uid)
         .collection('saved_posts')
         .doc(postId);
 
-    final doc = await savedRef.get();
-    if (doc.exists) {
-      await savedRef.delete();
-    } else {
-      await savedRef.set({
-        'post_id': postId,
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-    }
+    await _firestore.runTransaction((transaction) async {
+      final savedSnapshot = await transaction.get(savedRef);
+
+      if (savedSnapshot.exists) {
+        transaction.delete(savedRef);
+        transaction.update(postRef, {'saves_count': FieldValue.increment(-1)});
+      } else {
+        transaction.set(savedRef, {
+          'post_id': postId,
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+        transaction.update(postRef, {'saves_count': FieldValue.increment(1)});
+      }
+    });
   }
 
   // Check if post is saved

@@ -6,12 +6,14 @@ class VideoPostWidget extends StatefulWidget {
   final String videoUrl;
   final String? thumbnailUrl;
   final double height;
+  final VoidCallback? onTap;
 
   const VideoPostWidget({
     super.key,
     required this.videoUrl,
     this.thumbnailUrl,
     this.height = 250,
+    this.onTap,
   });
 
   @override
@@ -116,7 +118,7 @@ class _VideoPostWidgetState extends State<VideoPostWidget> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: GestureDetector(
-        onTap: _hasError ? null : _togglePlayback,
+        onTap: widget.onTap ?? (_hasError ? null : _togglePlayback),
         child: Container(
           height: widget.height,
           width: double.infinity,
@@ -177,8 +179,8 @@ class _VideoPostWidgetState extends State<VideoPostWidget> {
         fit: BoxFit.cover,
         width: double.infinity,
         height: widget.height,
-        errorWidget: (_, __, ___) => Container(color: Colors.grey[900]),
-        placeholder: (_, __) => Container(color: Colors.grey[900]),
+        errorWidget: (_, _, _) => Container(color: Colors.grey[900]),
+        placeholder: (_, _) => Container(color: Colors.grey[900]),
       );
     }
     return const Center(

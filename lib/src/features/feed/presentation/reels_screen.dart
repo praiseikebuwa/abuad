@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/post_repository.dart';
 import '../domain/post.dart';
@@ -64,18 +64,34 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
           },
         ),
         Positioned(
-          top: 32,
-          left: 16,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.4),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              '/ videos',
-              style: const TextStyle(color: Colors.white70, fontSize: 12),
-            ),
+          top: MediaQuery.of(context).padding.top + 16,
+          left: 12,
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(
+                  Icons.arrow_back_ios_new_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
+                onPressed: () => Navigator.pop(context),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  '/ videos',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ],

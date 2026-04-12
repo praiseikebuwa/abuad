@@ -5,6 +5,8 @@ import 'package:timeago/timeago.dart' as timeago;
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:share_plus/share_plus.dart';
+import '../../../core/utils/url_validator.dart';
+import '../../../shared/widgets/user_avatar.dart';
 import '../data/post_repository.dart';
 import '../domain/post.dart' as domain;
 import 'widgets/poll_widget.dart';
@@ -465,9 +467,29 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Post'),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        } else {
+          context.go('/');
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () {
+              if (Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+              } else {
+                context.go('/');
+              }
+            },
+          ),
+          title: const Text('Post'),
         centerTitle: true,
         actions: [
           IconButton(
@@ -612,33 +634,12 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
 
                                 return Row(
                                   children: [
-                                    CircleAvatar(
+                                    UserAvatar(
+                                      userId: post.authorId,
+                                      avatarUrl: displayIsAnonymous ? null : effectiveAvatarUrl,
+                                      displayName: displayIsAnonymous ? '?' : effectiveAuthorName,
                                       radius: 24,
-                                      backgroundColor: Colors.grey[200],
-                                      backgroundImage:
-                                          (effectiveAvatarUrl != null &&
-                                              !displayIsAnonymous)
-                                          ? CachedNetworkImageProvider(
-                                              effectiveAvatarUrl,
-                                            )
-                                          : null,
-                                      child: displayIsAnonymous
-                                          ? const Icon(Icons.person_outline)
-                                          : (effectiveAvatarUrl == null
-                                                ? Text(
-                                                    effectiveAuthorName
-                                                            .isNotEmpty
-                                                        ? effectiveAuthorName[0]
-                                                              .toUpperCase()
-                                                        : '?',
-                                                    style: TextStyle(
-                                                      color: theme.primaryColor,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      fontSize: 20,
-                                                    ),
-                                                  )
-                                                : null),
+                                      showStoryRing: !displayIsAnonymous,
                                     ),
                                     const SizedBox(width: 12),
                                     Expanded(
@@ -715,27 +716,43 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                             if (displayMediaUrl.isNotEmpty) ...[
                               const SizedBox(height: 16),
                               displayMediaType == domain.MediaType.video
-                                  ? VideoPostWidget(videoUrl: displayMediaUrl)
+                                  ? VideoPostWidget(
+                                      videoUrl: displayMediaUrl,
+                                      onTap: () {
+                                        context.push(
+                                          '/reels',
+                                          extra: {
+                                            'videos': [post],
+                                            'initialIndex': 0,
+                                          },
+                                        );
+                                      },
+                                    )
                                   : Hero(
                                       tag: 'post_media_${post.id}',
                                       child: ClipRRect(
                                         borderRadius: BorderRadius.circular(16),
-                                        child: CachedNetworkImage(
-                                          imageUrl: displayMediaUrl,
-                                          width: double.infinity,
-                                          fit: BoxFit.cover,
-                                          placeholder: (context, url) =>
-                                              Container(
-                                                height: 300,
-                                                color: Colors.grey[100],
-                                                child: const Center(
-                                                  child:
-                                                      CircularProgressIndicator(),
+                                        child: (displayMediaUrl.isNotEmpty &&
+                                                UrlValidator.isValidUrl(
+                                                  displayMediaUrl,
+                                                ))
+                                            ? CachedNetworkImage(
+                                                imageUrl: displayMediaUrl,
+                                                width: double.infinity,
+                                                fit: BoxFit.cover,
+                                                placeholder: (context, url) =>
+                                                    Container(
+                                                  height: 300,
+                                                  color: Colors.grey[100],
+                                                  child: const Center(
+                                                    child:
+                                                        CircularProgressIndicator(),
+                                                  ),
                                                 ),
-                                              ),
-                                          errorWidget: (_, __, ___) =>
-                                              const SizedBox(),
-                                        ),
+                                                errorWidget: (_, __, ___) =>
+                                                    const SizedBox(),
+                                              )
+                                            : const SizedBox(),
                                       ),
                                     ),
                             ],
@@ -1087,6 +1104,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
           );
         },
       ),
+      ),
     );
   }
 
@@ -1238,18 +1256,20 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
             ),
-            if (mediaUrl != null && mediaUrl.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: CachedNetworkImage(
-                  imageUrl: mediaUrl,
-                  height: 150,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
+              if (mediaUrl != null && mediaUrl.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: (UrlValidator.isValidUrl(mediaUrl))
+                      ? CachedNetworkImage(
+                          imageUrl: mediaUrl,
+                          height: 150,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                        )
+                      : const SizedBox(),
                 ),
-              ),
-            ],
+              ],
           ],
         ),
       ),
@@ -1344,24 +1364,12 @@ class _CommentItemState extends ConsumerState<_CommentItem> {
                       onTap: () {
                         if (userId != null) context.push('/user/$userId');
                       },
-                      child: CircleAvatar(
+                      child: UserAvatar(
+                        userId: userId ?? '',
+                        avatarUrl: effectiveAvatar,
+                        displayName: effectiveName,
                         radius: 18,
-                        backgroundColor: theme.primaryColor.withOpacity(0.1),
-                        backgroundImage: effectiveAvatar != null
-                            ? CachedNetworkImageProvider(effectiveAvatar)
-                            : null,
-                        child: effectiveAvatar == null
-                            ? Text(
-                                effectiveName.isNotEmpty
-                                    ? effectiveName[0].toUpperCase()
-                                    : '?',
-                                style: TextStyle(
-                                  color: theme.primaryColor,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                ),
-                              )
-                            : null,
+                        showStoryRing: true,
                       ),
                     ),
                     const SizedBox(width: 12),

@@ -5,6 +5,8 @@ import '../domain/story.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/services/firebase_storage_service.dart';
 import '../../user/data/user_repository.dart';
+import '../../../core/utils/profanity_filter.dart';
+import '../../../core/services/moderation_service.dart';
 
 final storyRepositoryProvider = Provider<StoryRepository>((ref) {
   return StoryRepository(
@@ -54,6 +56,7 @@ class StoryRepository {
     return _firestore
         .collection('stories')
         .where('expires_at', isGreaterThan: Timestamp.now())
+        .where('status', isEqualTo: 'active')
         .orderBy('expires_at', descending: false)
         .snapshots()
         .map(
@@ -75,9 +78,28 @@ class StoryRepository {
     int? textColor,
     String? fontFamily,
     String? textAlign,
+    String? reshareAuthorId,
+    String? reshareAuthorName,
+    String? reshareStoryId,
   }) async {
     final uid = currentUserId;
     if (uid == null) return;
+
+    // Stage 1 & 2: Moderation for caption and text content
+    String textToModerate = [content, caption ?? ''].join(' ').trim();
+    bool isSafe = true;
+
+    if (textToModerate.isNotEmpty) {
+      // Local Moderation (Fast)
+      isSafe = !ProfanityFilter.hasProfanity(textToModerate);
+
+      // AI Moderation (Robust)
+      if (isSafe) {
+        isSafe = await ModerationService.isContentSafe(textToModerate);
+      }
+    }
+
+    final status = isSafe ? 'active' : 'flagged';
 
     // Fetch user details for denormalization
     final user = await _ref.read(userRepositoryProvider).getUserById(uid);
@@ -114,6 +136,10 @@ class StoryRepository {
       textAlign: textAlign,
       userName: user.displayName,
       userAvatar: user.avatarUrl ?? '',
+      status: status,
+      reshareAuthorId: reshareAuthorId,
+      reshareAuthorName: reshareAuthorName,
+      reshareStoryId: reshareStoryId,
     );
 
     await _firestore.collection('stories').doc(id).set(story.toMap());

@@ -10,6 +10,7 @@ import '../../feed/domain/post.dart' as domain;
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../core/widgets/verification_badge.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../../core/utils/url_validator.dart';
 import '../../feed/presentation/widgets/post_card.dart';
 import '../../chat/data/chat_repository.dart';
 import '../../../core/theme/app_colors.dart';
@@ -44,9 +45,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
     final userAsync = ref.watch(userProvider(targetUserId));
 
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      body: userAsync.when(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        } else {
+          context.go('/');
+        }
+      },
+      child: Scaffold(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        body: userAsync.when(
         data: (user) {
           if (user == null) {
             return const Center(child: Text("User not found"));
@@ -68,22 +79,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           ? (isDark ? Colors.white : Colors.black)
                           : Colors.white,
                     ),
-                    leading: Navigator.canPop(context)
-                        ? Padding(
-                            padding: const EdgeInsets.all(8.0),
-                            child: CircleAvatar(
-                              backgroundColor: Colors.black.withValues(alpha: 0.3),
-                              child: IconButton(
-                                icon: const Icon(
-                                  Icons.arrow_back,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                                onPressed: () => Navigator.pop(context),
-                              ),
-                            ),
-                          )
-                        : null,
+                    leading: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: CircleAvatar(
+                        backgroundColor: Colors.black.withValues(alpha: 0.3),
+                        child: IconButton(
+                          icon: const Icon(
+                            Icons.arrow_back,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                          onPressed: () {
+                            if (Navigator.of(context).canPop()) {
+                              Navigator.of(context).pop();
+                            } else {
+                              context.go('/');
+                            }
+                          },
+                        ),
+                      ),
+                    ),
                     flexibleSpace: Stack(
                       clipBehavior: Clip.none,
                       fit: StackFit.expand,
@@ -102,7 +117,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                 ),
                                 child:
                                     (user.bannerUrl != null &&
-                                        user.bannerUrl!.isNotEmpty)
+                                        user.bannerUrl!.isNotEmpty &&
+                                        UrlValidator.isValidUrl(
+                                          user.bannerUrl!,
+                                        ))
                                     ? CachedNetworkImage(
                                         imageUrl: user.bannerUrl!,
                                         fit: BoxFit.cover,
@@ -180,14 +198,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                         .withValues(alpha: 0.15),
                                     backgroundImage:
                                         (user.avatarUrl != null &&
-                                            user.avatarUrl!.isNotEmpty)
+                                            user.avatarUrl!.isNotEmpty &&
+                                            UrlValidator.isValidUrl(
+                                              user.avatarUrl!,
+                                            ))
                                         ? CachedNetworkImageProvider(
                                             user.avatarUrl!,
                                           )
                                         : null,
-                                    child:
-                                        (user.avatarUrl == null ||
-                                            user.avatarUrl!.isEmpty)
+                                    child: (user.avatarUrl == null ||
+                                            user.avatarUrl!.isEmpty ||
+                                            !UrlValidator.isValidUrl(
+                                              user.avatarUrl!,
+                                            ))
                                         ? Text(
                                             user.displayName.isNotEmpty
                                                 ? user.displayName[0]
@@ -355,6 +378,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         error: (e, stack) => Center(
           child: Text('Error: $e', style: const TextStyle(color: Colors.red)),
         ),
+        ),
       ),
     );
   }
@@ -364,7 +388,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     String? imageUrl,
     String displayName,
   ) {
-    if (imageUrl == null || imageUrl.isEmpty) return;
+    if (imageUrl == null ||
+        imageUrl.isEmpty ||
+        !UrlValidator.isValidUrl(imageUrl)) {
+      return;
+    }
 
     showDialog(
       context: context,

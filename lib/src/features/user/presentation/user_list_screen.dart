@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../data/user_repository.dart';
+import '../../../core/utils/url_validator.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/verification_badge.dart';
 
@@ -99,10 +100,12 @@ class _UserList extends ConsumerWidget {
               leading: CircleAvatar(
                 radius: 20,
                 backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
-                backgroundImage: user.avatarUrl != null
+                backgroundImage: (user.avatarUrl != null &&
+                        UrlValidator.isValidUrl(user.avatarUrl!))
                     ? CachedNetworkImageProvider(user.avatarUrl!)
                     : null,
-                child: user.avatarUrl == null
+                child: (user.avatarUrl == null ||
+                        !UrlValidator.isValidUrl(user.avatarUrl!))
                     ? Text(
                         user.displayName.isNotEmpty
                             ? user.displayName[0].toUpperCase()

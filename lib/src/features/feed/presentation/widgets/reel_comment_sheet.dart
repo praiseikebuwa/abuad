@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timeago/timeago.dart' as timeago;
-import 'package:cached_network_image/cached_network_image.dart';
 import '../../domain/post.dart';
 import '../../data/post_repository.dart';
 import '../../../../core/widgets/verification_badge.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../shared/widgets/user_avatar.dart';
 import 'dart:ui';
+import 'dart:math' as math;
 
 class ReelCommentSheet extends ConsumerStatefulWidget {
   final Post post;
@@ -143,7 +144,11 @@ class _ReelCommentSheetState extends ConsumerState<ReelCommentSheet> {
               // Input field
               Padding(
                 padding: EdgeInsets.only(
-                  bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+                  bottom: math.max(
+                        MediaQuery.of(context).viewInsets.bottom,
+                        MediaQuery.of(context).padding.bottom,
+                      ) +
+                      16,
                   left: 16,
                   right: 16,
                   top: 8,
@@ -217,14 +222,12 @@ class _CommentTile extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircleAvatar(
+          UserAvatar(
+            userId: comment['userId'] ?? '',
+            avatarUrl: avatarUrl,
+            displayName: authorName,
             radius: 18,
-            backgroundImage: avatarUrl != null
-                ? CachedNetworkImageProvider(avatarUrl)
-                : null,
-            child: avatarUrl == null
-                ? const Icon(Icons.person, size: 20)
-                : null,
+            showStoryRing: true,
           ),
           const SizedBox(width: 12),
           Expanded(

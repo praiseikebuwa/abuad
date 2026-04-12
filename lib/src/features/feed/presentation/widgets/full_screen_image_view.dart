@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:gal/gal.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:toastification/toastification.dart';
+import '../../../../core/utils/url_validator.dart';
 
 class FullScreenImageView extends StatelessWidget {
   final String imageUrl;
@@ -82,17 +83,21 @@ class FullScreenImageView extends StatelessWidget {
       extendBodyBehindAppBar: true,
       body: Hero(
         tag: heroTag ?? imageUrl,
-        child: PhotoView(
-          imageProvider: CachedNetworkImageProvider(imageUrl),
-          minScale: PhotoViewComputedScale.contained,
-          maxScale: PhotoViewComputedScale.covered * 2,
-          loadingBuilder: (context, event) => const Center(
-            child: CircularProgressIndicator(color: Colors.white),
-          ),
-          errorBuilder: (context, error, stackTrace) => const Center(
-            child: Icon(Icons.broken_image, color: Colors.white, size: 64),
-          ),
-        ),
+        child: UrlValidator.isValidUrl(imageUrl)
+            ? PhotoView(
+                imageProvider: CachedNetworkImageProvider(imageUrl),
+                minScale: PhotoViewComputedScale.contained,
+                maxScale: PhotoViewComputedScale.covered * 2,
+                loadingBuilder: (context, event) => const Center(
+                  child: CircularProgressIndicator(color: Colors.white),
+                ),
+                errorBuilder: (context, error, stackTrace) => const Center(
+                  child: Icon(Icons.broken_image, color: Colors.white, size: 64),
+                ),
+              )
+            : const Center(
+                child: Icon(Icons.broken_image, color: Colors.white, size: 64),
+              ),
       ),
     );
   }

@@ -30,6 +30,11 @@ class ShareSheet extends ConsumerStatefulWidget {
 class _ShareSheetState extends ConsumerState<ShareSheet> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  
+  /// Selected IDs map to their data
+  /// Keys are uids (for users) or channelIds (for existing chats)
+  final Map<String, ({String type, dynamic data})> _selectedRecipients = {};
+  bool _isSending = false;
 
   @override
   void dispose() {
@@ -161,11 +166,25 @@ class _ShareSheetState extends ConsumerState<ShareSheet> {
                                         ? channel.displayAvatarUrl
                                         : channel.memberAvatars[otherId];
 
+                                    final isSelected = _selectedRecipients.containsKey(channel.id);
+
                                     return _ShareRecipientItem(
                                       name: name,
                                       avatarUrl: avatar,
                                       userId: otherId,
-                                      onShare: () => _shareToChannel(channel.id),
+                                      isSelected: isSelected,
+                                      onToggle: () {
+                                        setState(() {
+                                          if (isSelected) {
+                                            _selectedRecipients.remove(channel.id);
+                                          } else {
+                                            _selectedRecipients[channel.id] = (
+                                              type: 'channel',
+                                              data: channel.id
+                                            );
+                                          }
+                                        });
+                                      },
                                     );
                                   },
                                 ),
@@ -197,9 +216,22 @@ class _ShareSheetState extends ConsumerState<ShareSheet> {
                                 delegate: SliverChildBuilderDelegate(
                                   (context, index) {
                                     final user = following[index];
+                                    final isSelected = _selectedRecipients.containsKey(user.uid);
                                     return _ShareListTile(
                                       user: user,
-                                      onShare: () => _shareToUser(user),
+                                      isSelected: isSelected,
+                                      onToggle: () {
+                                        setState(() {
+                                          if (isSelected) {
+                                            _selectedRecipients.remove(user.uid);
+                                          } else {
+                                            _selectedRecipients[user.uid] = (
+                                              type: 'user',
+                                              data: user
+                                            );
+                                          }
+                                        });
+                                      },
                                     );
                                   },
                                   childCount: following.length,
@@ -217,9 +249,22 @@ class _ShareSheetState extends ConsumerState<ShareSheet> {
                                   delegate: SliverChildBuilderDelegate(
                                     (context, index) {
                                       final user = users[index];
+                                      final isSelected = _selectedRecipients.containsKey(user.uid);
                                       return _ShareListTile(
                                         user: user,
-                                        onShare: () => _shareToUser(user),
+                                        isSelected: isSelected,
+                                        onToggle: () {
+                                          setState(() {
+                                            if (isSelected) {
+                                              _selectedRecipients.remove(user.uid);
+                                            } else {
+                                              _selectedRecipients[user.uid] = (
+                                                type: 'user',
+                                                data: user
+                                              );
+                                            }
+                                          });
+                                        },
                                       );
                                     },
                                     childCount: users.length,
@@ -238,28 +283,37 @@ class _ShareSheetState extends ConsumerState<ShareSheet> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          _BottomActionButton(
-                            icon: Icons.link,
-                            label: 'Copy Link',
-                            onTap: () {
-                              Clipboard.setData(ClipboardData(text: 'https://abuadapp.web.app/post/${widget.post.id}'));
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Link copied to clipboard')),
-                              );
-                              Navigator.pop(context);
-                            },
-                          ),
-                          _BottomActionButton(
-                            icon: Icons.share,
-                            label: 'More',
-                            onTap: () {
-                              Share.share(
-                                'Check out this post on ABUAD Nest: https://abuadapp.web.app/post/${widget.post.id}',
-                                subject: 'Share Post',
-                              );
-                              Navigator.pop(context);
-                            },
-                          ),
+                          if (_selectedRecipients.isNotEmpty)
+                            _MultiSendButton(
+                              count: _selectedRecipients.length,
+                              isLoading: _isSending,
+                              onTap: _handleBulkSend,
+                            )
+                          else ...[
+                            _BottomActionButton(
+                              icon: Icons.link,
+                              label: 'Copy Link',
+                              onTap: () {
+                                Clipboard.setData(ClipboardData(
+                                    text: 'https://abuadapp.web.app/post/${widget.post.id}'));
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Link copied to clipboard')),
+                                );
+                                Navigator.pop(context);
+                              },
+                            ),
+                            _BottomActionButton(
+                              icon: Icons.share,
+                              label: 'More',
+                              onTap: () {
+                                Share.share(
+                                  'Check out this post on ABUAD Nest: https://abuadapp.web.app/post/${widget.post.id}',
+                                  subject: 'Share Post',
+                                );
+                                Navigator.pop(context);
+                              },
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -273,14 +327,42 @@ class _ShareSheetState extends ConsumerState<ShareSheet> {
     );
   }
 
-  Future<void> _shareToChannel(String channelId) async {
+  Future<void> _handleBulkSend() async {
+    if (_isSending) return;
+    setState(() => _isSending = true);
+
     try {
-      await ref.read(chatRepositoryProvider).sendMessage(
-        channelId,
-        'Shared a post with you',
-        type: 'text',
-        sharedPostId: widget.post.id,
-      );
+      final repo = ref.read(chatRepositoryProvider);
+      final currentUser = ref.read(currentUserProvider).value;
+      if (currentUser == null) throw Exception('Not logged in');
+
+      for (final entry in _selectedRecipients.values) {
+        if (entry.type == 'channel') {
+          final channelId = entry.data as String;
+          await repo.sendMessage(
+            channelId,
+            'Shared a post with you',
+            type: 'text',
+            sharedPostId: widget.post.id,
+          );
+        } else {
+          final user = entry.data as AppUser;
+          final channelId = await repo.createOrGetChannel(
+            user.uid,
+            otherUserName: user.displayName,
+            otherUserAvatar: user.avatarUrl,
+            currentUserName: currentUser.displayName,
+            currentUserAvatar: currentUser.avatarUrl,
+          );
+          await repo.sendMessage(
+            channelId,
+            'Shared a post with you',
+            type: 'text',
+            sharedPostId: widget.post.id,
+          );
+        }
+      }
+
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -289,6 +371,7 @@ class _ShareSheetState extends ConsumerState<ShareSheet> {
       }
     } catch (e) {
       if (mounted) {
+        setState(() => _isSending = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error sharing: $e')),
         );
@@ -296,27 +379,32 @@ class _ShareSheetState extends ConsumerState<ShareSheet> {
     }
   }
 
+  Future<void> _shareToChannel(String channelId) async {
+    // Legacy support or kept for individual usage if needed
+    try {
+      await ref.read(chatRepositoryProvider).sendMessage(
+            channelId,
+            'Shared a post with you',
+            type: 'text',
+            sharedPostId: widget.post.id,
+          );
+    } catch (_) {}
+  }
+
   Future<void> _shareToUser(AppUser user) async {
+    // Legacy support
     try {
       final currentUser = ref.read(currentUserProvider).value;
       if (currentUser == null) return;
-      
       final channelId = await ref.read(chatRepositoryProvider).createOrGetChannel(
-        user.uid,
-        otherUserName: user.displayName,
-        otherUserAvatar: user.avatarUrl,
-        currentUserName: currentUser.displayName,
-        currentUserAvatar: currentUser.avatarUrl,
-      );
-      
+            user.uid,
+            otherUserName: user.displayName,
+            otherUserAvatar: user.avatarUrl,
+            currentUserName: currentUser.displayName,
+            currentUserAvatar: currentUser.avatarUrl,
+          );
       await _shareToChannel(channelId);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
-    }
+    } catch (_) {}
   }
 }
 
@@ -324,13 +412,15 @@ class _ShareRecipientItem extends StatelessWidget {
   final String name;
   final String? avatarUrl;
   final String userId;
-  final VoidCallback onShare;
+  final bool isSelected;
+  final VoidCallback onToggle;
 
   const _ShareRecipientItem({
     required this.name,
     this.avatarUrl,
     required this.userId,
-    required this.onShare,
+    required this.isSelected,
+    required this.onToggle,
   });
 
   @override
@@ -338,20 +428,45 @@ class _ShareRecipientItem extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: GestureDetector(
-        onTap: onShare,
+        onTap: onToggle,
         child: Column(
           children: [
-            UserAvatar(
-              userId: userId,
-              avatarUrl: avatarUrl,
-              radius: 30,
+            Stack(
+              children: [
+                UserAvatar(
+                  userId: userId,
+                  avatarUrl: avatarUrl,
+                  radius: 30,
+                ),
+                if (isSelected)
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: const BoxDecoration(
+                        color: AppColors.secondaryTeal,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.check,
+                        color: Colors.white,
+                        size: 14,
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 8),
             SizedBox(
               width: 70,
               child: Text(
                 name.split(' ')[0],
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
+                  color: isSelected ? AppColors.secondaryTeal : null,
+                ),
                 textAlign: TextAlign.center,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -365,13 +480,19 @@ class _ShareRecipientItem extends StatelessWidget {
 
 class _ShareListTile extends StatelessWidget {
   final AppUser user;
-  final VoidCallback onShare;
+  final bool isSelected;
+  final VoidCallback onToggle;
 
-  const _ShareListTile({required this.user, required this.onShare});
+  const _ShareListTile({
+    required this.user,
+    required this.isSelected,
+    required this.onToggle,
+  });
 
   @override
   Widget build(BuildContext context) {
     return ListTile(
+      onTap: onToggle,
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
       leading: UserAvatar(
         userId: user.uid,
@@ -382,19 +503,31 @@ class _ShareListTile extends StatelessWidget {
         user.displayName,
         style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
       ),
-      subtitle: Text('@${user.handle}', style: const TextStyle(fontSize: 13, color: Colors.grey)),
-      trailing: ElevatedButton(
-        onPressed: onShare,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.secondaryTeal,
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          elevation: 0,
-          minimumSize: const Size(60, 32),
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-        ),
-        child: const Text('Send', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-      ),
+      subtitle: Text('@${user.handle}',
+          style: const TextStyle(fontSize: 13, color: Colors.grey)),
+      trailing: isSelected
+          ? Container(
+              padding: const EdgeInsets.all(8),
+              decoration: const BoxDecoration(
+                color: AppColors.secondaryTeal,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.check, color: Colors.white, size: 16),
+            )
+          : ElevatedButton(
+              onPressed: onToggle,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.secondaryTeal.withOpacity(0.1),
+                foregroundColor: AppColors.secondaryTeal,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+                elevation: 0,
+                minimumSize: const Size(60, 32),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+              ),
+              child: const Text('Select',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+            ),
     );
   }
 }
@@ -420,15 +553,85 @@ class _BottomActionButton extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.04),
+              color: isDark
+                  ? Colors.white.withOpacity(0.05)
+                  : Colors.black.withOpacity(0.04),
               shape: BoxShape.circle,
             ),
             child: Icon(icon, size: 24),
           ),
         ),
         const SizedBox(height: 8),
-        Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+        Text(label,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
       ],
+    );
+  }
+}
+
+class _MultiSendButton extends StatelessWidget {
+  final int count;
+  final bool isLoading;
+  final VoidCallback onTap;
+
+  const _MultiSendButton({
+    required this.count,
+    required this.isLoading,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        height: 56,
+        decoration: BoxDecoration(
+          gradient: AppColors.primaryGradient,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primaryBlue.withOpacity(0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: isLoading ? null : onTap,
+            borderRadius: BorderRadius.circular(20),
+            child: Center(
+              child: isLoading
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Send to $count ${count == 1 ? 'person' : 'people'}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(Icons.send_rounded,
+                            color: Colors.white, size: 20),
+                      ],
+                    ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -48,6 +48,8 @@ class AppColors {
     end: Alignment.bottomRight,
   );
 
+  static Gradient? primaryGradient;
+
   // Shadows
   static List<BoxShadow> get softShadow => [
     BoxShadow(

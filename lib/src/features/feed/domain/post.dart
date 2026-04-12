@@ -16,6 +16,8 @@ class Post {
   final int commentsCount;
   final int repostCount;
   final int viewsCount;
+  final int sharesCount;
+  final int savesCount;
   final bool isLiked;
   final String channelId;
   final bool isVerified;
@@ -47,6 +49,8 @@ class Post {
     this.commentsCount = 0,
     this.repostCount = 0,
     this.viewsCount = 0,
+    this.sharesCount = 0,
+    this.savesCount = 0,
     this.isLiked = false,
     this.channelId = 'general',
     this.isVerified = false,
@@ -80,6 +84,8 @@ class Post {
       'comments_count': commentsCount,
       'repost_count': repostCount,
       'views_count': viewsCount,
+      'shares_count': sharesCount,
+      'saves_count': savesCount,
       'poll_data': pollData,
       'repost_data': repostData,
       'created_at': Timestamp.fromDate(timestamp),
@@ -157,6 +163,8 @@ class Post {
       commentsCount: map['comments_count'] ?? 0,
       repostCount: map['repost_count'] ?? 0,
       viewsCount: map['views_count'] ?? 0,
+      sharesCount: map['shares_count'] ?? 0,
+      savesCount: map['saves_count'] ?? 0,
       channelId: (map['channel_id'] == 'public')
           ? 'general'
           : (map['channel_id'] ?? 'general'),
@@ -188,6 +196,8 @@ class Post {
     int? commentsCount,
     int? repostCount,
     int? viewsCount,
+    int? sharesCount,
+    int? savesCount,
     bool? isLiked,
     String? channelId,
     bool? isVerified,
@@ -219,6 +229,8 @@ class Post {
       commentsCount: commentsCount ?? this.commentsCount,
       repostCount: repostCount ?? this.repostCount,
       viewsCount: viewsCount ?? this.viewsCount,
+      sharesCount: sharesCount ?? this.sharesCount,
+      savesCount: savesCount ?? this.savesCount,
       isLiked: isLiked ?? this.isLiked,
       channelId: channelId ?? this.channelId,
       isVerified: isVerified ?? this.isVerified,

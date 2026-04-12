@@ -7,6 +7,8 @@ import '../../chat/data/chat_repository.dart';
 import '../../user/data/user_repository.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/verification_badge.dart';
+import '../../../core/utils/url_validator.dart';
+import '../../../shared/widgets/user_avatar.dart';
 
 class MarketplaceDetailScreen extends ConsumerWidget {
   final MarketplaceItem item;
@@ -35,11 +37,27 @@ class MarketplaceDetailScreen extends ConsumerWidget {
                         PageView.builder(
                           itemCount: item.images.length,
                           itemBuilder: (context, index) {
-                            return CachedNetworkImage(
-                              imageUrl: item.images[index],
-                              fit: BoxFit.cover,
-                              width: double.infinity,
-                            );
+                            return (item.images[index].isNotEmpty &&
+                                    UrlValidator.isValidUrl(item.images[index]))
+                                ? CachedNetworkImage(
+                                    imageUrl: item.images[index],
+                                    fit: BoxFit.cover,
+                                    width: double.infinity,
+                                    placeholder: (context, url) => Container(
+                                      color: Colors.black12,
+                                      child: const Center(
+                                          child: CircularProgressIndicator()),
+                                    ),
+                                    errorWidget: (context, url, error) =>
+                                        Container(
+                                      color: Colors.black12,
+                                      child: const Icon(Icons.image, size: 48),
+                                    ),
+                                  )
+                                : Container(
+                                    color: Colors.black12,
+                                    child: const Icon(Icons.image, size: 48),
+                                  );
                           },
                         ),
                         if (item.images.length > 1)
@@ -66,10 +84,19 @@ class MarketplaceDetailScreen extends ConsumerWidget {
                       ],
                     )
                   : (item.imageUrl != null
-                        ? CachedNetworkImage(
-                            imageUrl: item.imageUrl!,
-                            fit: BoxFit.cover,
-                          )
+                        ? (UrlValidator.isValidUrl(item.imageUrl)
+                            ? CachedNetworkImage(
+                                imageUrl: item.imageUrl!,
+                                fit: BoxFit.cover,
+                              )
+                            : Container(
+                                color: Colors.grey[200],
+                                child: const Icon(
+                                  Icons.image,
+                                  size: 64,
+                                  color: Colors.grey,
+                                ),
+                              ))
                         : Container(
                             color: Colors.grey[200],
                             child: const Icon(
@@ -186,16 +213,12 @@ class MarketplaceDetailScreen extends ConsumerWidget {
                           ),
                           child: Row(
                             children: [
-                              CircleAvatar(
+                              UserAvatar(
+                                userId: item.sellerId,
+                                avatarUrl: seller.avatarUrl,
+                                displayName: seller.displayName,
                                 radius: 25,
-                                backgroundImage: seller.avatarUrl != null
-                                    ? CachedNetworkImageProvider(
-                                        seller.avatarUrl!,
-                                      )
-                                    : null,
-                                child: seller.avatarUrl == null
-                                    ? Text(seller.displayName[0].toUpperCase())
-                                    : null,
+                                showStoryRing: true,
                               ),
                               const SizedBox(width: 12),
                               Expanded(

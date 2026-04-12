@@ -11,6 +11,8 @@ import 'add_marketplace_item_screen.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'dart:ui';
 import 'package:share_plus/share_plus.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../../../core/utils/url_validator.dart';
 
 final recommendedMarketplaceItemsProvider =
     StreamProvider.autoDispose<List<MarketplaceItem>>((ref) {
@@ -598,11 +600,33 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
             children: [
               // Image background
               Positioned.fill(
-                child: item.imageUrl != null
-                    ? Image.network(item.imageUrl!, fit: BoxFit.cover)
+                child: (item.imageUrl != null &&
+                        UrlValidator.isValidUrl(item.imageUrl))
+                    ? CachedNetworkImage(
+                        imageUrl: item.imageUrl!,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => Container(
+                          color: Colors.white.withValues(alpha: 0.05),
+                          child: const Center(
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                        errorWidget: (context, url, error) => Container(
+                          color: Colors.white.withValues(alpha: 0.05),
+                          child: const Icon(
+                            Icons.shopping_bag_outlined,
+                            size: 48,
+                            color: Colors.white24,
+                          ),
+                        ),
+                      )
                     : Container(
                         color: Colors.white.withValues(alpha: 0.05),
-                        child: const Icon(Icons.shopping_bag_outlined, size: 48, color: Colors.white24),
+                        child: const Icon(
+                          Icons.shopping_bag_outlined,
+                          size: 48,
+                          color: Colors.white24,
+                        ),
                       ),
               ),
               // Gradient Overlay
@@ -732,12 +756,37 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
                   child: AspectRatio(
                     aspectRatio: 1,
-                    child: item.imageUrl != null
-                        ? Image.network(item.imageUrl!, fit: BoxFit.cover)
+                    child: (item.imageUrl != null &&
+                            UrlValidator.isValidUrl(item.imageUrl))
+                        ? CachedNetworkImage(
+                            imageUrl: item.imageUrl!,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => Container(
+                              color: Colors.white10,
+                              child: const Center(
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                            ),
+                            errorWidget: (context, url, error) => Container(
+                              color: Colors.white.withValues(alpha: 0.05),
+                              child: const Center(
+                                child: Icon(
+                                  Icons.image_outlined,
+                                  size: 30,
+                                  color: Colors.white24,
+                                ),
+                              ),
+                            ),
+                          )
                         : Container(
                             color: Colors.white.withValues(alpha: 0.05),
                             child: const Center(
-                              child: Icon(Icons.image_outlined, size: 30, color: Colors.white24),
+                              child: Icon(
+                                Icons.image_outlined,
+                                size: 30,
+                                color: Colors.white24,
+                              ),
                             ),
                           ),
                   ),

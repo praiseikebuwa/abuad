@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
+import '../../../core/utils/url_validator.dart';
 import '../data/story_repository.dart';
 import '../../user/data/user_repository.dart';
 import 'story_viewer_screen.dart';
@@ -68,14 +69,16 @@ class MyStoryScreen extends ConsumerWidget {
                       Container(
                         width: 60,
                         height: 60,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          color: isDark ? Colors.grey[800] : Colors.grey[200],
-                          image: DecorationImage(
-                            image: CachedNetworkImageProvider(story.content),
-                            fit: BoxFit.cover,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            color: isDark ? Colors.grey[800] : Colors.grey[200],
+                            image: UrlValidator.isValidUrl(story.content)
+                                ? DecorationImage(
+                                    image: CachedNetworkImageProvider(story.content),
+                                    fit: BoxFit.cover,
+                                  )
+                                : null,
                           ),
-                        ),
                       ),
                       const SizedBox(width: 16),
                       // Information

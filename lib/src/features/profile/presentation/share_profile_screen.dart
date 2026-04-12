@@ -4,11 +4,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../user/data/user_repository.dart';
 import '../../../core/widgets/verification_badge.dart';
+import '../../../shared/widgets/user_avatar.dart';
 
 class ShareProfileScreen extends ConsumerWidget {
   final String userId;
@@ -123,27 +123,12 @@ class ShareProfileScreen extends ConsumerWidget {
                                   child: Column(
                                     children: [
                                       // User Avatar
-                                      Container(
-                                        padding: const EdgeInsets.all(3),
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          border: Border.all(
-                                            color: AppColors.secondaryTeal,
-                                            width: 2,
-                                          ),
-                                        ),
-                                        child: CircleAvatar(
-                                          radius: 42,
-                                          backgroundImage: user.avatarUrl != null
-                                              ? CachedNetworkImageProvider(user.avatarUrl!)
-                                              : null,
-                                          child: user.avatarUrl == null
-                                              ? Text(
-                                                  user.displayName[0].toUpperCase(),
-                                                  style: const TextStyle(fontSize: 24),
-                                                )
-                                              : null,
-                                        ),
+                                      UserAvatar(
+                                        userId: user.uid,
+                                        avatarUrl: user.avatarUrl,
+                                        displayName: user.displayName,
+                                        radius: 42,
+                                        showStoryRing: false,
                                       ),
                                       const SizedBox(height: 16),
                                       Row(

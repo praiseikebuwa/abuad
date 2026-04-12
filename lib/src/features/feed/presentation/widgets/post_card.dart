@@ -11,6 +11,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:async';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/verification_badge.dart';
+import '../../../../core/utils/url_validator.dart';
 import 'package:abuad/src/features/feed/data/post_repository.dart';
 import '../../domain/post.dart' as domain;
 import '../providers/feed_provider.dart';
@@ -40,7 +41,6 @@ class _PostCardState extends ConsumerState<PostCard> {
   Timer? _captionTimer;
   bool _impressionFired = false;
   bool _showVideoCaption = false;
-  bool _isThreadExpanded = false;
 
   domain.Post get post => widget.post;
 
@@ -76,7 +76,6 @@ class _PostCardState extends ConsumerState<PostCard> {
     final repo = ref.watch(postRepositoryProvider);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final repliesAsync = ref.watch(postRepliesPreviewProvider(post.id));
     final livePost = ref.watch(postProvider(post.id)).value ?? post;
     final activeActionId = ref.watch(activePostActionProvider);
     final showActionOverlay = activeActionId == post.id;
@@ -344,21 +343,6 @@ class _PostCardState extends ConsumerState<PostCard> {
                               ),
                             ],
                           ),
-                          if (!displayIsAnonymous)
-                            Padding(
-                              padding: const EdgeInsets.only(
-                                top: 6.0,
-                                bottom: 8.0,
-                              ),
-                              child: Wrap(
-                                spacing: 6,
-                                runSpacing: 4,
-                                children: _buildBadgeChips(
-                                  isDark,
-                                  displayIsVerified,
-                                ),
-                              ),
-                            ),
                           if (post.latitude != null)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 4.0),
@@ -494,16 +478,25 @@ class _PostCardState extends ConsumerState<PostCard> {
                                             ?.isNotEmpty ??
                                         false) ...[
                                       const SizedBox(height: 10),
-                                      ClipRRect(
-                                        borderRadius: BorderRadius.circular(12),
-                                        child: CachedNetworkImage(
-                                          imageUrl:
-                                              post.repostData!['media_url'],
-                                          height: 160,
-                                          width: double.infinity,
-                                          fit: BoxFit.cover,
-                                        ),
-                                      ),
+                                      (post.repostData!['media_url'] != null &&
+                                              UrlValidator.isValidUrl(
+                                                post.repostData!['media_url'],
+                                              ))
+                                          ? CachedNetworkImage(
+                                              imageUrl:
+                                                  post.repostData!['media_url'],
+                                              height: 160,
+                                              width: double.infinity,
+                                              fit: BoxFit.cover,
+                                            )
+                                          : Container(
+                                              height: 160,
+                                              width: double.infinity,
+                                              color: isDark
+                                                  ? Colors.grey[900]
+                                                  : Colors.grey[200],
+                                              child: const Icon(Icons.image),
+                                            ),
                                     ],
                                   ],
                                 ),
@@ -553,6 +546,19 @@ class _PostCardState extends ConsumerState<PostCard> {
                                       alignment: Alignment.bottomCenter,
                                       children: [
                                         VideoPostWidget(
+                                          onTap: () {
+                                            if (widget.onVideoTap != null) {
+                                              widget.onVideoTap!();
+                                            } else {
+                                              context.push(
+                                                '/reels',
+                                                extra: {
+                                                  'videos': [post],
+                                                  'initialIndex': 0,
+                                                },
+                                              );
+                                            }
+                                          },
                                           videoUrl: displayMediaUrl,
                                         ),
                                         if (_showVideoCaption)
@@ -564,25 +570,47 @@ class _PostCardState extends ConsumerState<PostCard> {
                                     )
                                   : Hero(
                                       tag: 'post_media_${post.id}',
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(12),
-                                        child: CachedNetworkImage(
-                                          imageUrl: displayMediaUrl,
-                                          height: 250,
-                                          width: double.infinity,
-                                          fit: BoxFit.cover,
-                                          errorWidget: (context, url, error) =>
-                                              Container(
+                                      child: (displayMediaUrl.isNotEmpty &&
+                                              UrlValidator.isValidUrl(
+                                                displayMediaUrl,
+                                              ))
+                                          ? ClipRRect(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              child: CachedNetworkImage(
+                                                imageUrl: displayMediaUrl,
                                                 height: 250,
-                                                color: Colors.black,
-                                                child: const Icon(
+                                                width: double.infinity,
+                                                fit: BoxFit.cover,
+                                                errorWidget:
+                                                    (context, url, error) =>
+                                                        Container(
+                                                  height: 250,
+                                                  color: Colors.black,
+                                                  child: const Icon(
+                                                    Icons.broken_image_outlined,
+                                                    color: Colors.white,
+                                                    size: 48,
+                                                  ),
+                                                ),
+                                              ),
+                                            )
+                                          : Container(
+                                              height: 250,
+                                              decoration: BoxDecoration(
+                                                color: isDark
+                                                    ? Colors.grey[900]
+                                                    : Colors.grey[200],
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                              ),
+                                              child: const Center(
+                                                child: Icon(
                                                   Icons.broken_image_outlined,
-                                                  color: Colors.white,
                                                   size: 48,
                                                 ),
                                               ),
-                                        ),
-                                      ),
+                                            ),
                                     ),
                             ),
                             const SizedBox(height: 12),
@@ -710,50 +738,6 @@ class _PostCardState extends ConsumerState<PostCard> {
                               ),
                             ),
                           ),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              TextButton.icon(
-                                icon: Icon(
-                                  _isThreadExpanded
-                                      ? Icons.expand_less
-                                      : Icons.chat_bubble_outline,
-                                  size: 16,
-                                ),
-                                label: Text(
-                                  _isThreadExpanded
-                                      ? 'Hide thread'
-                                      : 'View thread',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: AppColors.secondaryTeal,
-                                  visualDensity: VisualDensity.compact,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
-                                  ),
-                                ),
-                                onPressed: () {
-                                  setState(() {
-                                    _isThreadExpanded = !_isThreadExpanded;
-                                  });
-                                },
-                              ),
-                              Text(
-                                '${livePost.commentsCount} replies',
-                                style: TextStyle(
-                                  color: isDark
-                                      ? Colors.grey[500]
-                                      : Colors.grey[600],
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (_isThreadExpanded)
-                            _buildThreadPreview(repliesAsync, isDark),
                         ],
                       ),
                     ),
@@ -777,85 +761,7 @@ class _PostCardState extends ConsumerState<PostCard> {
         .slideY(begin: 0.1, end: 0, duration: 300.ms);
   }
 
-  List<Widget> _buildBadgeChips(bool isDark, bool isVerified) {
-    final badges = <Widget>[];
-    badges.add(
-      _badgeChip(
-        _channelLabel(post.channelId),
-        isDark ? Colors.white10 : const Color.fromRGBO(0, 0, 0, 0.05),
-        isDark,
-      ),
-    );
-    if (isVerified && !post.isAnonymous) {
-      badges.add(
-        _badgeChip(
-          'Verified Student',
-          const Color.fromRGBO(255, 193, 7, 0.15),
-          isDark,
-          textColor: Colors.amber,
-        ),
-      );
-    }
-    if (_isPinnedPost(post)) {
-      badges.add(
-        _badgeChip(
-          'Pinned Update',
-          AppColors.secondaryTeal.withAlpha(38),
-          isDark,
-          textColor: AppColors.secondaryTeal,
-        ),
-      );
-    }
-    if (post.channelId == 'events' ||
-        post.hashtags.any((tag) => tag.toLowerCase().contains('event'))) {
-      badges.add(
-        _badgeChip(
-          'Campus Event',
-          Colors.purple.withAlpha(38),
-          isDark,
-          textColor: Colors.purpleAccent,
-        ),
-      );
-    }
-    final uniqueTags = <String>{};
-    for (final tag in post.hashtags.take(2)) {
-      final normalized = tag.trim();
-      if (normalized.isEmpty) continue;
-      if (uniqueTags.contains(normalized.toLowerCase())) continue;
-      uniqueTags.add(normalized.toLowerCase());
-      badges.add(
-        _badgeChip(
-          '#$normalized',
-          Colors.transparent,
-          isDark,
-          textColor: AppColors.secondaryTeal,
-        ),
-      );
-    }
-    return badges;
-  }
 
-  Widget _badgeChip(
-    String label,
-    Color backgroundColor,
-    bool isDark, {
-    Color? textColor,
-  }) {
-    return Chip(
-      label: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: textColor ?? (isDark ? Colors.white70 : AppColors.primaryInk),
-        ),
-      ),
-      backgroundColor: backgroundColor,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: VisualDensity.compact,
-    );
-  }
 
   String _channelLabel(String channelId) {
     if (channelId.isEmpty || channelId == 'general') return 'General';
@@ -866,143 +772,8 @@ class _PostCardState extends ConsumerState<PostCard> {
         .join(' ');
   }
 
-  bool _isPinnedPost(domain.Post post) {
-    if (post.status.toLowerCase() == 'pinned') return true;
-    return post.hashtags.any((tag) => tag.toLowerCase() == 'pinned');
-  }
 
-  Widget _buildThreadPreview(
-    AsyncValue<List<Map<String, dynamic>>> replies,
-    bool isDark,
-  ) {
-    return replies.when(
-      data: (items) {
-        if (items.isEmpty) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Text(
-              'No replies yet.',
-              style: TextStyle(
-                fontSize: 12,
-                color: isDark ? Colors.white60 : Colors.grey[600],
-              ),
-            ),
-          );
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: items
-              .map((reply) => _buildReplyRow(reply, isDark))
-              .toList(),
-        );
-      },
-      loading: () => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: isDark ? Colors.white70 : AppColors.secondaryTeal,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'Loading conversation…',
-              style: TextStyle(
-                fontSize: 12,
-                color: isDark ? Colors.white60 : Colors.grey[600],
-              ),
-            ),
-          ],
-        ),
-      ),
-      error: (_, __) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Text(
-          'Unable to load thread.',
-          style: TextStyle(
-            fontSize: 12,
-            color: isDark ? Colors.white60 : Colors.grey[600],
-          ),
-        ),
-      ),
-    );
-  }
 
-  Widget _buildReplyRow(Map<String, dynamic> reply, bool isDark) {
-    final timestampMs = reply['timestamp'] as int?;
-    final timestamp = timestampMs != null
-        ? DateTime.fromMillisecondsSinceEpoch(timestampMs)
-        : DateTime.now();
-    final timeLabel = timeago.format(timestamp, locale: 'en_short');
-    final avatarUrl = reply['userAvatar'] as String?;
-    final displayName = reply['userName'] as String? ?? 'Student';
-    final content = reply['content'] as String? ?? '';
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CircleAvatar(
-            radius: 16,
-            backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
-            backgroundColor: isDark ? Colors.white10 : Colors.black12,
-            child: avatarUrl == null
-                ? Text(
-                    displayName.isEmpty ? '👤' : displayName[0].toUpperCase(),
-                    style: TextStyle(
-                      color: isDark ? Colors.white : Colors.black87,
-                      fontSize: 14,
-                    ),
-                  )
-                : null,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: isDark ? Colors.white10 : Colors.grey[100],
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    displayName,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                      color: isDark ? Colors.white : Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    content,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: isDark ? Colors.white70 : Colors.grey[800],
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    timeLabel,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: isDark ? Colors.white60 : Colors.grey[500],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildVideoCaption(String text, bool isDark) {
     return Positioned(

@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 import 'create_story_screen.dart';
+import 'package:abuad/src/core/utils/url_validator.dart';
 
 /// Full-screen story viewer with Snapchat-style controls
 class StoryViewerScreen extends ConsumerStatefulWidget {
@@ -41,6 +42,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
   late TextEditingController _messageController;
   late FocusNode _focusNode;
   bool _isTyping = false;
+  bool _isNavigating = false;
 
   @override
   void initState() {
@@ -112,7 +114,20 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
     }
   }
 
+  void _safePop() {
+    if (_isNavigating || !mounted) return;
+    _isNavigating = true;
+    _storyTimer?.cancel();
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    } else {
+      context.go('/');
+    }
+  }
+
   void _nextStory() {
+    if (_isNavigating) return;
+    
     final currentUserId = _userIds[_currentUserIndex];
     final stories = widget.storiesGrouped[currentUserId]!;
 
@@ -139,7 +154,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
         _startStoryTimer();
       } else {
         // End of all stories
-        Navigator.pop(context);
+        _safePop();
       }
     }
   }
@@ -203,7 +218,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
           ).showSnackBar(const SnackBar(content: Text('Story deleted')));
           // Move to next or close
           if (stories.length == 1) {
-            Navigator.pop(context);
+            _safePop();
           } else {
             _nextStory();
           }
@@ -373,20 +388,25 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
           builder: (context, ref, child) {
             final userAsync = ref.watch(userProvider(userId));
             return userAsync.when(
-              data: (user) => ListTile(
-                leading: CircleAvatar(
-                  backgroundImage: user?.avatarUrl != null
-                      ? CachedNetworkImageProvider(user!.avatarUrl!)
+              data: (user) {
+                final avatarUrl = user?.avatarUrl;
+                return ListTile(
+                  leading: CircleAvatar(
+                    backgroundImage: (avatarUrl != null &&
+                            UrlValidator.isValidUrl(avatarUrl))
+                        ? CachedNetworkImageProvider(avatarUrl)
+                        : null,
+                    child: (avatarUrl == null ||
+                            !UrlValidator.isValidUrl(avatarUrl))
+                        ? Text(user?.displayName[0].toUpperCase() ?? '?')
+                        : null,
+                  ),
+                  title: Text(user?.displayName ?? 'Unknown'),
+                  trailing: isLikeList
+                      ? const Icon(Icons.favorite, color: Colors.red, size: 20)
                       : null,
-                  child: user?.avatarUrl == null
-                      ? Text(user?.displayName[0].toUpperCase() ?? '?')
-                      : null,
-                ),
-                title: Text(user?.displayName ?? 'Unknown'),
-                trailing: isLikeList
-                    ? const Icon(Icons.favorite, color: Colors.red, size: 20)
-                    : null,
-              ),
+                );
+              },
               loading: () => const ListTile(title: Text('Loading...')),
               error: (_, _) => const SizedBox(),
             );
@@ -398,8 +418,14 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _safePop();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
       body: GestureDetector(
         onTapDown: (details) {
           final width = MediaQuery.of(context).size.width;
@@ -423,7 +449,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
         },
         onVerticalDragEnd: (details) {
           if (details.primaryVelocity! > 0) {
-            Navigator.pop(context);
+            _safePop();
           }
         },
         child: PageView.builder(
@@ -592,7 +618,10 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                                     children: [
                                       CircleAvatar(
                                         radius: 20,
-                                        backgroundImage: userAvatar != null
+                                        backgroundImage: (userAvatar != null &&
+                                                UrlValidator.isValidUrl(
+                                                  userAvatar,
+                                                ))
                                             ? CachedNetworkImageProvider(
                                               userAvatar,
                                             )
@@ -600,16 +629,20 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                                         backgroundColor: const Color(
                                           0xFF8B5CF6,
                                         ),
-                                        child:
-                                            userAvatar == null
-                                                ? Text(
-                                                  userName.isNotEmpty ? userName[0].toUpperCase() : '?',
-                                                  style: const TextStyle(
-                                                    color: Colors.white,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                )
-                                                : null,
+                                        child: (userAvatar == null ||
+                                                !UrlValidator.isValidUrl(
+                                                  userAvatar,
+                                                ))
+                                            ? Text(
+                                              userName.isNotEmpty
+                                                  ? userName[0].toUpperCase()
+                                                  : '?',
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            )
+                                            : null,
                                       ),
                                       const SizedBox(width: 12),
                                       Expanded(
@@ -725,7 +758,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                                   ),
                                 ),
                               IconButton(
-                                onPressed: () => Navigator.pop(context),
+                                onPressed: _safePop,
                                 icon: const Icon(
                                   Icons.close,
                                   color: Colors.white,
@@ -761,6 +794,54 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                             ],
                           ),
                         ),
+
+                        // Reshare indicator (Attribution)
+                        if (story.reshareAuthorName != null)
+                          Positioned(
+                            top: MediaQuery.of(context).padding.top + 85,
+                            left: 12,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(15),
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.3),
+                                    borderRadius: BorderRadius.circular(15),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.15,
+                                      ),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.repeat,
+                                        color: Color(0xFFC4B5FD),
+                                        size: 14,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Reshared from @${story.reshareAuthorName}',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          letterSpacing: 0.2,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
 
                         // Mentions and Caption
                         Positioned(
@@ -909,7 +990,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                                     mainAxisSize: MainAxisSize.min,
                                     children: const [
                                       Icon(
-                                        Icons.open_in_new,
+                                        Icons.share_outlined,
                                         color: Colors.white,
                                         size: 16,
                                       ),
@@ -991,10 +1072,33 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                                       ),
                                       IconButton(
                                         onPressed: () => _reshareStory(story),
-                                        icon: const Icon(
-                                          Icons.repeat,
-                                          color: Colors.white,
-                                          size: 24,
+                                        icon: Container(
+                                          padding: const EdgeInsets.all(8),
+                                          decoration: BoxDecoration(
+                                            color: const Color(
+                                              0xFF8B5CF6,
+                                            ).withValues(alpha: 0.15),
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: const Color(
+                                                0xFF8B5CF6,
+                                              ).withValues(alpha: 0.3),
+                                            ),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: const Color(
+                                                  0xFF8B5CF6,
+                                                ).withValues(alpha: 0.2),
+                                                blurRadius: 8,
+                                                spreadRadius: 0,
+                                              ),
+                                            ],
+                                          ),
+                                          child: const Icon(
+                                            Icons.repeat,
+                                            color: Colors.white,
+                                            size: 20,
+                                          ),
                                         ),
                                       ),
                                       IconButton(
@@ -1038,6 +1142,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
           },
         ),
       ),
+    ),
     );
   }
 

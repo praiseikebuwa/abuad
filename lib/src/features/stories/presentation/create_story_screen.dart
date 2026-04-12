@@ -10,6 +10,7 @@ import '../../camera/presentation/camera_screen.dart';
 import '../domain/story.dart';
 import '../../shared/presentation/unified_image_editor.dart';
 import '../../../core/router/app_router.dart';
+import '../../../core/utils/url_validator.dart';
 
 /// Screen for creating a new story
 /// Allows user to take a photo or select from gallery
@@ -408,6 +409,9 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
           textColor: textColor,
           fontFamily: isTextMode ? fontFamily : null,
           textAlign: isTextMode ? textAlignName : null,
+          reshareAuthorId: resharedStory?.authorId,
+          reshareAuthorName: resharedStory?.userName,
+          reshareStoryId: resharedStory?.id,
         );
 
         messenger.showSnackBar(
@@ -591,15 +595,29 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                               children: [
                                 CircleAvatar(
                                   radius: 12,
-                                  backgroundImage: story.userAvatar.isNotEmpty
-                                      ? CachedNetworkImageProvider(story.userAvatar)
+                                  backgroundImage: (story.userAvatar.isNotEmpty &&
+                                          UrlValidator.isValidUrl(
+                                            story.userAvatar,
+                                          ))
+                                      ? CachedNetworkImageProvider(
+                                        story.userAvatar,
+                                      )
                                       : null,
                                   backgroundColor: const Color(0xFF8B5CF6),
-                                  child: story.userAvatar.isEmpty
+                                  child: (story.userAvatar.isEmpty ||
+                                          !UrlValidator.isValidUrl(
+                                            story.userAvatar,
+                                          ))
                                       ? Text(
-                                          story.userName.isNotEmpty ? story.userName[0].toUpperCase() : '?',
-                                          style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
-                                        )
+                                        story.userName.isNotEmpty
+                                            ? story.userName[0].toUpperCase()
+                                            : '?',
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      )
                                       : null,
                                 ),
                                 const SizedBox(width: 8),
