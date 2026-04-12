@@ -295,6 +295,19 @@ service cloud.firestore {
       return isChannelMemberFromDoc(channel.data);
     }
 
+    function canUpdateMessageSavedBy(channelId) {
+      let channel = get(/databases/$(database)/documents/channels/$(channelId));
+      let affected = request.resource.data.diff(resource.data).affectedKeys();
+      
+      return isSignedInAndActive() &&
+        isChannelMemberFromDoc(channel.data) &&
+        affected.hasOnly(["saved_by"]) &&
+        (
+          (request.auth.uid in request.resource.data.get('saved_by', []) && !(request.auth.uid in resource.data.get('saved_by', []))) ||
+          (!(request.auth.uid in request.resource.data.get('saved_by', [])) && request.auth.uid in resource.data.get('saved_by', []))
+        );
+    }
+
 
 
     function isValidSnapViewUpdate() {
@@ -407,7 +420,7 @@ service cloud.firestore {
     // posts/{postId}
     // --------------------------------------------------------------------------
     match /posts/{postId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow create: if canCreatePost(postId);
       allow update: if canUpdateOwnPost() || canUpdatePostEngagement();
       allow delete: if isSignedIn() && resource.data.author_id == request.auth.uid;
@@ -512,9 +525,46 @@ service cloud.firestore {
         );
         allow update: if isSignedIn() && (
           (resource.data.sender_id == request.auth.uid && 
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['content', 'is_edited', 'is_deleted', 'reactions'])
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['content', 'is_edited', 'is_deleted', 'reactions', 'is_pinned'])
           ) || 
           canUpdateMessageReactions(channelId) || 
+          canUpdateMessageReadBy(channelId) ||
+          canUpdateMessageSavedBy(channelId)
+        );
+        allow delete: if isSignedIn() && resource.data.sender_id == request.auth.uid;
+      }
+      
+      // Support for settings subcollection if used
+      match /settings/{settingId} {
+        allow read: if isChannelMemberFromDoc(get(/databases/$(database)/documents/channels/$(channelId)).data);
+        allow write: if isChannelAdminFromDoc(get(/databases/$(database)/documents/channels/$(channelId)).data);
+      }
+    }
+
+    // --------------------------------------------------------------------------
+    // chat_channels/{channelId}
+    // Parallel collection used by some versions of the app for messages.
+    // --------------------------------------------------------------------------
+    match /chat_channels/{channelId} {
+      allow read: if isSignedIn() && (
+        exists(/databases/$(database)/documents/channels/$(channelId)) && 
+        isChannelMemberFromDoc(get(/databases/$(database)/documents/channels/$(channelId)).data) ||
+        (channelId.matches('direct_.*' + request.auth.uid + '.*'))
+      );
+      allow create: if isSignedInAndActive(); // Usually created via functions or alongside channels
+      allow update: if canUpdateChannel(channelId);
+
+      match /messages/{messageId} {
+        allow read: if isSignedIn() && (
+          (exists(/databases/$(database)/documents/channels/$(channelId)) && isChannelMemberFromDoc(get(/databases/$(database)/documents/channels/$(channelId)).data)) ||
+          (channelId.matches('direct_.*' + request.auth.uid + '.*'))
+        );
+        allow create: if isSignedInAndActive() && (
+          (exists(/databases/$(database)/documents/channels/$(channelId)) && isChannelMemberFromDoc(get(/databases/$(database)/documents/channels/$(channelId)).data)) ||
+          (channelId.matches('direct_.*' + request.auth.uid + '.*'))
+        ) && request.resource.data.sender_id == request.auth.uid;
+        allow update: if isSignedIn() && (
+          resource.data.sender_id == request.auth.uid || 
           canUpdateMessageReadBy(channelId)
         );
         allow delete: if isSignedIn() && resource.data.sender_id == request.auth.uid;

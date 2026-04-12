@@ -72,7 +72,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         ? Padding(
                             padding: const EdgeInsets.all(8.0),
                             child: CircleAvatar(
-                              backgroundColor: Colors.black.withOpacity(0.3),
+                              backgroundColor: Colors.black.withValues(alpha: 0.3),
                               child: IconButton(
                                 icon: const Icon(
                                   Icons.arrow_back,
@@ -140,7 +140,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                     icon: Container(
                                       padding: const EdgeInsets.all(6),
                                       decoration: BoxDecoration(
-                                        color: Colors.black.withOpacity(0.6),
+                                        color: Colors.black.withValues(alpha: 0.6),
                                         shape: BoxShape.circle,
                                       ),
                                       child: const Icon(
@@ -177,7 +177,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                   child: CircleAvatar(
                                     radius: 50, // Larger size
                                     backgroundColor: theme.colorScheme.secondary
-                                        .withOpacity(0.15),
+                                        .withValues(alpha: 0.15),
                                     backgroundImage:
                                         (user.avatarUrl != null &&
                                             user.avatarUrl!.isNotEmpty)
@@ -536,29 +536,41 @@ class _ProfileHeader extends ConsumerWidget {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 isCurrentUser
-                    ? OutlinedButton(
-                        onPressed: () => context.push('/profile/edit'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: isDark
-                              ? Colors.white
-                              : AppColors.primaryInk,
-                          side: BorderSide(
-                            color: isDark
-                                ? Colors.white24
-                                : const Color(0xFFE8E1D7),
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            onPressed: () => context.push('/user/${user.uid}/share'),
+                            icon: Icon(
+                              Icons.share_outlined,
+                              color: isDark ? Colors.white : AppColors.primaryInk,
+                            ),
                           ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
+                          const SizedBox(width: 8),
+                          OutlinedButton(
+                            onPressed: () => context.push('/profile/edit'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor:
+                                  isDark ? Colors.white : AppColors.primaryInk,
+                              side: BorderSide(
+                                color: isDark
+                                    ? Colors.white24
+                                    : const Color(0xFFE8E1D7),
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                                vertical: 8,
+                              ),
+                            ),
+                            child: const Text(
+                              "Edit Profile",
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
                           ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 8,
-                          ),
-                        ),
-                        child: const Text(
-                          "Edit Profile",
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
+                        ],
                       )
                     : _ProfileActionButtons(targetUser: user, isDark: isDark),
               ],
@@ -993,53 +1005,69 @@ class _ProfileActionButtonsState extends ConsumerState<_ProfileActionButtons> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       ),
                     )
-                  : IconButton(
-                      onPressed: () async {
-                        final currentUser = currentUserAsync.value;
-                        if (currentUser == null) return;
+                    : GestureDetector(
+                        onTap: () async {
+                          HapticFeedback.mediumImpact();
+                          final currentUser = currentUserAsync.value;
+                          if (currentUser == null) return;
 
-                        setState(() => _isCreatingChannel = true);
+                          setState(() => _isCreatingChannel = true);
 
-                        try {
-                          final channelId = await chatRepo.createOrGetChannel(
-                            targetUserId,
-                            otherUserName: widget.targetUser.displayName,
-                            otherUserAvatar: widget.targetUser.avatarUrl,
-                            currentUserName: currentUser.displayName,
-                            currentUserAvatar: currentUser.avatarUrl,
-                          );
-                          if (context.mounted) {
-                            context.push('/chat/$channelId');
+                          try {
+                            final channelId = await chatRepo.createOrGetChannel(
+                              targetUserId,
+                              otherUserName: widget.targetUser.displayName,
+                              otherUserAvatar: widget.targetUser.avatarUrl,
+                              currentUserName: currentUser.displayName,
+                              currentUserAvatar: currentUser.avatarUrl,
+                            ).timeout(const Duration(seconds: 15));
+                            
+                            if (context.mounted) {
+                              context.push('/chat/$channelId');
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              String errorMessage = "Failed to open chat. Please check your connection.";
+                              if (e.toString().contains('unavailable')) {
+                                errorMessage = "Chat service is currently unavailable. Retrying soon...";
+                              }
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(errorMessage),
+                                  behavior: SnackBarBehavior.floating,
+                                  backgroundColor: Colors.redAccent,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                              );
+                            }
+                          } finally {
+                            if (mounted) {
+                              setState(() => _isCreatingChannel = false);
+                            }
                           }
-                        } catch (e) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(e.toString())),
-                            );
-                          }
-                        } finally {
-                          if (mounted) {
-                            setState(() => _isCreatingChannel = false);
-                          }
-                        }
-                      },
-                      icon: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: widget.isDark
-                              ? Colors.white10
-                              : Colors.grey[200],
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.chat_bubble_outline,
-                          size: 20,
-                          color: widget.isDark
-                              ? Colors.white
-                              : AppColors.primaryInk,
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: widget.isDark
+                                ? Colors.white.withValues(alpha: 0.1)
+                                : Colors.grey[200],
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: widget.isDark
+                                  ? Colors.white.withValues(alpha: 0.1)
+                                  : Colors.transparent,
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.chat_bubble_outline,
+                            size: 20,
+                            color: widget.isDark
+                                ? Colors.white
+                                : AppColors.primaryInk,
+                          ),
                         ),
                       ),
-                    ),
             ),
 
             // Follow/Unfollow Button
@@ -1047,6 +1075,7 @@ class _ProfileActionButtonsState extends ConsumerState<_ProfileActionButtons> {
               data: (isFollowing) {
                 return ElevatedButton(
                   onPressed: () async {
+                    HapticFeedback.lightImpact();
                     if (isFollowing) {
                       await repo.unfollowUser(targetUserId);
                     } else {
@@ -1060,10 +1089,11 @@ class _ProfileActionButtonsState extends ConsumerState<_ProfileActionButtons> {
                     foregroundColor: isFollowing
                         ? (widget.isDark ? Colors.white : AppColors.primaryInk)
                         : (widget.isDark ? AppColors.primaryInk : Colors.white),
+                    elevation: isFollowing ? 0 : 2,
                     side: BorderSide(
                       color: isFollowing
                           ? (widget.isDark
-                                ? Colors.white24
+                                ? Colors.white.withValues(alpha: 0.2)
                                 : const Color(0xFFE8E1D7))
                           : Colors.transparent,
                     ),
@@ -1077,7 +1107,7 @@ class _ProfileActionButtonsState extends ConsumerState<_ProfileActionButtons> {
                   ),
                   child: Text(
                     isFollowing ? "Following" : "Follow",
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                 );
               },
@@ -1092,7 +1122,9 @@ class _ProfileActionButtonsState extends ConsumerState<_ProfileActionButtons> {
             // More Options (Block)
             PopupMenuButton<String>(
               onSelected: (value) async {
-                if (value == 'block') {
+                if (value == 'share') {
+                  context.push('/user/${widget.targetUser.uid}/share');
+                } else if (value == 'block') {
                   final confirmed = await showDialog<bool>(
                     context: context,
                     builder: (context) => AlertDialog(
@@ -1135,6 +1167,19 @@ class _ProfileActionButtonsState extends ConsumerState<_ProfileActionButtons> {
                 color: widget.isDark ? Colors.grey[400] : Colors.grey[600],
               ),
               itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'share',
+                  child: Row(
+                    children: [
+                      Icon(Icons.share_outlined, color: Colors.blue, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        'Share Profile',
+                        style: TextStyle(color: Colors.blue),
+                      ),
+                    ],
+                  ),
+                ),
                 const PopupMenuItem(
                   value: 'block',
                   child: Row(

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as auth;
@@ -24,6 +25,10 @@ final isPostLikedProvider = StreamProvider.family<bool, String>((ref, postId) {
 final trendingTagsProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
   final repo = ref.watch(postRepositoryProvider);
   return repo.watchTrendingTags();
+});
+
+final postProvider = StreamProvider.family<Post?, String>((ref, postId) {
+  return ref.watch(postRepositoryProvider).watchPost(postId);
 });
 
 class PostRepository {
@@ -81,11 +86,14 @@ class PostRepository {
     }
   }
 
-  Stream<List<Post>> watchPosts({List<String> blockedUserIds = const []}) {
+  Stream<List<Post>> watchPosts({
+    List<String> blockedUserIds = const [],
+    int limit = 50,
+  }) {
     return _firestore
         .collection('posts')
         .orderBy('created_at', descending: true)
-        .limit(50)
+        .limit(limit)
         .snapshots()
         .map(
           (snapshot) => snapshot.docs
@@ -95,13 +103,73 @@ class PostRepository {
         );
   }
 
+  // New: Watch posts from users you follow
+  Stream<List<Post>> watchFollowingPosts(
+    String userId, {
+    List<String> blockedUserIds = const [],
+    int limit = 50,
+  }) {
+    late StreamController<List<Post>> controller;
+    StreamSubscription? followingSub;
+    StreamSubscription? postsSub;
+
+    controller = StreamController<List<Post>>.broadcast(
+      onListen: () {
+        followingSub = _firestore
+            .collection('users')
+            .doc(userId)
+            .collection('following')
+            .orderBy('timestamp', descending: true)
+            .limit(30)
+            .snapshots()
+            .listen((snapshot) {
+          final followingUids = snapshot.docs
+              .map((doc) => doc.id)
+              .take(30)
+              .toList();
+
+          postsSub?.cancel();
+
+          if (followingUids.isEmpty) {
+            controller.add([]);
+            return;
+          }
+
+          postsSub = _firestore
+              .collection('posts')
+              .where('author_id', whereIn: followingUids)
+              .orderBy('created_at', descending: true)
+              .limit(limit)
+              .snapshots()
+              .listen((postSnapshot) {
+            final posts = postSnapshot.docs
+                .map((doc) => Post.fromMap(doc.data()))
+                .where((p) => !blockedUserIds.contains(p.authorId))
+                .toList();
+            controller.add(posts);
+          }, onError: (e) {
+            if (!controller.isClosed) controller.addError(e);
+          });
+        }, onError: (e) {
+          if (!controller.isClosed) controller.addError(e);
+        });
+      },
+      onCancel: () {
+        followingSub?.cancel();
+        postsSub?.cancel();
+        controller.close();
+      },
+    );
+
+    return controller.stream;
+  }
   // New: Watch user specific posts (for Profile)
-  Stream<List<Post>> watchUserPosts(String userId) {
+  Stream<List<Post>> watchUserPosts(String userId, {int limit = 20}) {
     return _firestore
         .collection('posts')
         .where('author_id', isEqualTo: userId)
         .orderBy('created_at', descending: true)
-        .limit(20)
+        .limit(limit)
         .snapshots()
         .map(
           (snapshot) =>
@@ -113,6 +181,7 @@ class PostRepository {
   Stream<List<Post>> watchChannelPosts(
     String channelId, {
     List<String> blockedUserIds = const [],
+    int limit = 50,
   }) {
     Query query = _firestore.collection('posts');
 
@@ -124,7 +193,7 @@ class PostRepository {
 
     return query
         .orderBy('created_at', descending: true)
-        .limit(50)
+        .limit(limit)
         .snapshots()
         .map(
           (snapshot) => snapshot.docs
@@ -138,12 +207,13 @@ class PostRepository {
   Stream<List<Post>> watchPostsByTag(
     String tag, {
     List<String> blockedUserIds = const [],
+    int limit = 50,
   }) {
     return _firestore
         .collection('posts')
         .where('hashtags', arrayContains: tag.toLowerCase())
         .orderBy('created_at', descending: true)
-        .limit(50)
+        .limit(limit)
         .snapshots()
         .map(
           (snapshot) => snapshot.docs
@@ -179,29 +249,70 @@ class PostRepository {
 
   // New: Watch posts liked by user
   Stream<List<Post>> watchUserLikes(String userId) {
-    return _firestore
-        .collectionGroup('likes')
-        .where('uid', isEqualTo: userId)
-        .orderBy('timestamp', descending: true)
-        .limit(20)
-        .snapshots()
-        .asyncMap((snapshot) async {
+    late StreamController<List<Post>> controller;
+    StreamSubscription? likesSub;
+    final Map<String, StreamSubscription> postSubs = {};
+    final Map<String, Post> cachedPosts = {};
+
+    controller = StreamController<List<Post>>.broadcast(
+      onListen: () {
+        likesSub = _firestore
+            .collectionGroup('likes')
+            .where('uid', isEqualTo: userId)
+            .orderBy('timestamp', descending: true)
+            .limit(20)
+            .snapshots()
+            .listen((snapshot) {
           final postIds = snapshot.docs
               .map((doc) => doc.reference.parent.parent!.id)
               .toList();
-          if (postIds.isEmpty) return [];
+          
+          if (postIds.isEmpty) {
+            controller.add([]);
+            return;
+          }
 
-          final posts = <Post>[];
+          final idsToRemove = postSubs.keys.where((id) => !postIds.contains(id)).toList();
+          for (final id in idsToRemove) {
+            postSubs[id]?.cancel();
+            postSubs.remove(id);
+            cachedPosts.remove(id);
+          }
+
           for (final id in postIds) {
-            final doc = await _firestore.collection('posts').doc(id).get();
-            if (doc.exists) {
-              posts.add(Post.fromMap(doc.data()!));
+            if (!postSubs.containsKey(id)) {
+              postSubs[id] = _firestore
+                  .collection('posts')
+                  .doc(id)
+                  .snapshots()
+                  .listen((doc) {
+                if (doc.exists) {
+                  cachedPosts[id] = Post.fromMap(doc.data()!);
+                } else {
+                  cachedPosts.remove(id);
+                }
+                
+                final results = postIds.map((pid) => cachedPosts[pid]).whereType<Post>().toList();
+                controller.add(results);
+              }, onError: (e) {
+              });
             }
           }
-          return posts;
+        }, onError: (e) {
+          if (!controller.isClosed) controller.addError(e);
         });
-  }
+      },
+      onCancel: () {
+        likesSub?.cancel();
+        for (final sub in postSubs.values) {
+          sub.cancel();
+        }
+        controller.close();
+      },
+    );
 
+    return controller.stream;
+  }
   Stream<Post?> watchPost(String postId) {
     return _firestore
         .collection('posts')
@@ -211,13 +322,13 @@ class PostRepository {
   }
 
   // New: Watch user media (images/videos)
-  Stream<List<Post>> watchUserMedia(String userId) {
+  Stream<List<Post>> watchUserMedia(String userId, {int limit = 20}) {
     return _firestore
         .collection('posts')
         .where('author_id', isEqualTo: userId)
         .where('media_type', whereIn: ['image', 'video', 'gif'])
         .orderBy('created_at', descending: true)
-        .limit(20)
+        .limit(limit)
         .snapshots()
         .map(
           (snapshot) =>
@@ -719,12 +830,15 @@ class PostRepository {
   }
 
   // New: Watch all video posts specifically for Reels
-  Stream<List<Post>> watchVideoPosts({List<String> blockedUserIds = const []}) {
+  Stream<List<Post>> watchVideoPosts({
+    List<String> blockedUserIds = const [],
+    int limit = 50,
+  }) {
     return _firestore
         .collection('posts')
         .where('media_type', isEqualTo: 'video')
         .orderBy('created_at', descending: true)
-        .limit(50)
+        .limit(limit)
         .snapshots()
         .map(
           (snapshot) => snapshot.docs
@@ -733,4 +847,152 @@ class PostRepository {
               .toList(),
         );
   }
+
+
+  Future<PaginatedPostsResult> fetchFollowingPostsPage(
+    String userId, {
+    List<String> blockedUserIds = const [],
+    DocumentSnapshot<Map<String, dynamic>>? startAfter,
+    int limit = 15,
+  }) async {
+    final followingSnapshot = await _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('following')
+        .orderBy('timestamp', descending: true)
+        .limit(30)
+        .get();
+
+    final followingUids = followingSnapshot.docs.map((doc) => doc.id).toList();
+
+    if (followingUids.isEmpty) {
+      return PaginatedPostsResult(
+        posts: [],
+        lastDocument: null,
+        hasMore: false,
+      );
+    }
+
+    var query = _firestore
+        .collection('posts')
+        .where('author_id', whereIn: followingUids)
+        .orderBy('created_at', descending: true)
+        .limit(limit);
+
+    if (startAfter != null) {
+      query = query.startAfterDocument(startAfter);
+    }
+
+    final postSnapshot = await query.get();
+    final posts = postSnapshot.docs
+        .map((doc) => Post.fromMap(doc.data()))
+        .where((p) => !blockedUserIds.contains(p.authorId))
+        .toList();
+
+    return PaginatedPostsResult(
+      posts: posts,
+      lastDocument: postSnapshot.docs.isNotEmpty ? postSnapshot.docs.last : null,
+      hasMore: postSnapshot.docs.length == limit,
+    );
+  }
+
+  Future<PaginatedPostsResult> fetchChannelPostsPage(
+      String channelId, {
+      List<String> blockedUserIds = const [],
+      DocumentSnapshot<Map<String, dynamic>>? startAfter,
+      int limit = 15}) async {
+    var query = _firestore.collection('posts')
+        .where('channel_id', isEqualTo: channelId)
+        .orderBy('created_at', descending: true);
+    final res = await fetchPostsPage(query, startAfter: startAfter, limit: limit);
+    return PaginatedPostsResult(
+      posts: res.posts.where((p) => !blockedUserIds.contains(p.authorId)).toList(),
+      lastDocument: res.lastDocument,
+      hasMore: res.hasMore,
+    );
+  }
+
+  Future<PaginatedPostsResult> fetchDiscoveryPostsPage({
+      List<String> blockedUserIds = const [],
+      DocumentSnapshot<Map<String, dynamic>>? startAfter,
+      int limit = 15}) async {
+    var query = _firestore.collection('posts')
+        .orderBy('created_at', descending: true);
+    final res = await fetchPostsPage(query, startAfter: startAfter, limit: limit);
+    return PaginatedPostsResult(
+      posts: res.posts.where((p) => !blockedUserIds.contains(p.authorId)).toList(),
+      lastDocument: res.lastDocument,
+      hasMore: res.hasMore,
+    );
+  }
+
+  Future<PaginatedPostsResult> fetchVideoPostsPage({
+      List<String> blockedUserIds = const [],
+      DocumentSnapshot<Map<String, dynamic>>? startAfter,
+      int limit = 15}) async {
+    var query = _firestore.collection('posts')
+        .where('media_type', isEqualTo: 'video')
+        .orderBy('created_at', descending: true);
+    final res = await fetchPostsPage(query, startAfter: startAfter, limit: limit);
+    return PaginatedPostsResult(
+      posts: res.posts.where((p) => !blockedUserIds.contains(p.authorId)).toList(),
+      lastDocument: res.lastDocument,
+      hasMore: res.hasMore,
+    );
+  }
+
+  Future<PaginatedPostsResult> loadFirstPageForQuery(
+    Query<Map<String, dynamic>> query, {
+    int limit = 15,
+  }) {
+    return fetchPostsPage(
+      query,
+      limit: limit,
+    );
+  }
+
+  Future<PaginatedPostsResult> loadMoreForQuery(
+    Query<Map<String, dynamic>> query,
+    DocumentSnapshot<Map<String, dynamic>>? cursor, {
+    int limit = 15,
+  }) {
+    return fetchPostsPage(
+      query,
+      startAfter: cursor,
+      limit: limit,
+    );
+  }
+
+  Future<PaginatedPostsResult> fetchPostsPage(
+    Query<Map<String, dynamic>> query, {
+    DocumentSnapshot<Map<String, dynamic>>? startAfter,
+    int limit = 15,
+  }) async {
+    var pagedQuery = query.limit(limit);
+    if (startAfter != null) {
+      pagedQuery = pagedQuery.startAfterDocument(startAfter);
+    }
+
+    final snapshot = await pagedQuery.get();
+    final posts = snapshot.docs.map((doc) => Post.fromMap(doc.data())).toList();
+
+    return PaginatedPostsResult(
+      posts: posts,
+      lastDocument:
+          snapshot.docs.isNotEmpty ? snapshot.docs.last : null,
+      hasMore: snapshot.docs.length == limit,
+    );
+  }
+}
+
+class PaginatedPostsResult {
+  final List<Post> posts;
+  final DocumentSnapshot<Map<String, dynamic>>? lastDocument;
+  final bool hasMore;
+
+  PaginatedPostsResult({
+    required this.posts,
+    required this.lastDocument,
+    required this.hasMore,
+  });
 }

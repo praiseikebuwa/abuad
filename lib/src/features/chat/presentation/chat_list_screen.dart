@@ -14,7 +14,12 @@ import '../../user/data/user_repository.dart';
 import '../../stories/data/story_repository.dart';
 import '../../stories/presentation/create_story_screen.dart';
 import '../../stories/presentation/story_viewer_screen.dart';
+import '../../stories/presentation/my_story_screen.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import '../../../shared/widgets/user_avatar.dart';
+import '../data/chat_search_history_service.dart';
+import 'package:toastification/toastification.dart';
+
 
 class ChatListScreen extends ConsumerStatefulWidget {
   const ChatListScreen({super.key});
@@ -46,7 +51,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text(
-          'Chat',
+          'Chat and stories',
           style: TextStyle(
             fontWeight: FontWeight.w800,
             fontSize: 24,
@@ -60,27 +65,52 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
         flexibleSpace: Container(
           decoration: const BoxDecoration(gradient: AppColors.inkTealGradient),
         ),
-        leading: IconButton(
-          icon: const Icon(
-            Icons.settings_outlined,
-            color: Colors.white,
-            size: 26,
-          ),
-          onPressed: () => context.push('/settings'),
-        ),
         actions: [
           PopupMenuButton<String>(
-            icon: const Icon(
-              Icons.more_vert,
-              color: Colors.white,
-              size: 26,
-            ),
-            onSelected: (value) {
+            icon: const Icon(Icons.more_vert, color: Colors.white, size: 26),
+            onSelected: (value) async {
               if (value == 'new_chat') context.push('/chat/user-search');
               if (value == 'new_group') context.push('/chat/create-group');
               if (value == 'chat_settings') context.push('/chat/settings');
+              
+              if (value == 'scan_qr') context.push('/chat/scanner');
+              if (value == 'broadcast') context.push('/chat/broadcast');
+              if (value == 'archived') setState(() => _selectedFilter = 'Archived');
+              
+              if (value == 'mark_all_read') {
+                await ref.read(chatRepositoryProvider).markAllAsRead();
+                if (mounted) {
+                  toastification.show(
+                    context: context,
+                    title: const Text('All chats marked as read'),
+                    autoCloseDuration: const Duration(seconds: 3),
+                    type: ToastificationType.success,
+                    style: ToastificationStyle.flatColored,
+                  );
+                }
+              }
+              
+              if (value == 'clear_history') {
+                await ref.read(chatSearchHistoryProvider.notifier).clearHistory();
+                if (mounted) {
+                  toastification.show(
+                    context: context,
+                    title: const Text('Search history cleared'),
+                    autoCloseDuration: const Duration(seconds: 2),
+                  );
+                }
+              }
             },
             itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'scan_qr',
+                child: ListTile(
+                  leading: Icon(Icons.qr_code_scanner, color: AppColors.secondaryTeal),
+                  title: const Text('Scan Profile QR'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const PopupMenuDivider(),
               const PopupMenuItem(
                 value: 'new_group',
                 child: ListTile(
@@ -98,6 +128,40 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                 ),
               ),
               const PopupMenuItem(
+                value: 'broadcast',
+                child: ListTile(
+                  leading: Icon(Icons.campaign_outlined),
+                  title: Text('Broadcast Message'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: 'mark_all_read',
+                child: ListTile(
+                  leading: Icon(Icons.done_all),
+                  title: Text('Mark All as Read'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'archived',
+                child: ListTile(
+                  leading: Icon(Icons.archive_outlined),
+                  title: Text('Archived Chats'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'clear_history',
+                child: ListTile(
+                  leading: Icon(Icons.history_toggle_off),
+                  title: Text('Clear Search History'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem(
                 value: 'chat_settings',
                 child: ListTile(
                   leading: Icon(Icons.settings_outlined),
@@ -110,17 +174,40 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
           const SizedBox(width: 4),
         ],
       ),
-      body: Row(
+      body: Column(
         children: [
-          // Vertical Navigation Switcher
+          // Horizontal Navigation Switcher
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-            child: _CapsuleSwitcher(
-              currentIndex: _currentIndex,
-              onChanged: (index) => setState(() => _currentIndex = index),
-              isDark: isDark,
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Center(
+              child: _CapsuleSwitcher(
+                currentIndex: _currentIndex,
+                onChanged: (index) => setState(() => _currentIndex = index),
+                isDark: isDark,
+              ),
             ),
           ),
+          
+          if (_currentIndex == 0)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: TextField(
+                controller: _searchController,
+                onChanged: (val) => setState(() => _searchQuery = val.trim()),
+                onSubmitted: (val) => ref.read(chatSearchHistoryProvider.notifier).addQuery(val),
+                decoration: InputDecoration(
+                  hintText: 'Search chats, groups...',
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  filled: true,
+                  fillColor: isDark ? const Color(0xFF1E1E1E) : Colors.grey[200],
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ),
           // Main View Content
           Expanded(
             child: _currentIndex == 1
@@ -143,7 +230,8 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
 
                       if (allChannels.isEmpty) {
                         return _EmptyState(
-                          onStartConversation: () => context.push('/chat/user-search'),
+                          onStartConversation: () =>
+                              context.push('/chat/user-search'),
                           isDark: isDark,
                         );
                       }
@@ -207,17 +295,22 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
     }
   }
 
-  Widget _buildChatView(List<ChatChannel> allChannels, String? currentUserId, bool isDark) {
+  Widget _buildChatView(
+    List<ChatChannel> allChannels,
+    String? currentUserId,
+    bool isDark,
+  ) {
     final filteredChannels = allChannels.where((c) {
       final isArchived = c.archivedBy.contains(currentUserId);
-      if (isArchived) return false;
+      if (_selectedFilter == 'Archived') {
+        if (!isArchived) return false;
+      } else {
+        if (isArchived) return false;
+      }
 
       if (_selectedFilter == 'Unread') {
         final unreadCount = c.unreadCounts[currentUserId] ?? 0;
         if (unreadCount == 0) return false;
-      } else if (_selectedFilter == 'Favourites') {
-        final isPinned = c.pinnedBy.contains(currentUserId);
-        if (!isPinned) return false;
       } else if (_selectedFilter == 'Groups') {
         if (c.type != 'group') return false;
       }
@@ -267,9 +360,9 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                 isDark: isDark,
               ),
               _FilterChip(
-                label: 'Favourites',
-                isSelected: _selectedFilter == 'Favourites',
-                onTap: () => setState(() => _selectedFilter = 'Favourites'),
+                label: 'Archived',
+                isSelected: _selectedFilter == 'Archived',
+                onTap: () => setState(() => _selectedFilter = 'Archived'),
                 isDark: isDark,
               ),
               _FilterChip(
@@ -288,36 +381,6 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
           ),
         ),
 
-        // Archived Row
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          child: InkWell(
-            onTap: () {},
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.archive_outlined,
-                    size: 20,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Archived',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: isDark ? Colors.grey[300] : Colors.grey[700],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
 
         // Header
         Padding(
@@ -354,8 +417,6 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
       ],
     );
   }
-
-
 }
 
 // Capsule Switcher (Vertical Pill Toggle)
@@ -373,16 +434,16 @@ class _CapsuleSwitcher extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 54,
-      height: 120,
+      width: 320,
+      height: 52,
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1A1A1A) : Colors.grey[200],
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.circular(26),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.2),
             blurRadius: 8,
-            offset: const Offset(2, 4),
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -392,40 +453,42 @@ class _CapsuleSwitcher extends StatelessWidget {
           AnimatedPositioned(
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeInOut,
-                top: currentIndex == 0 ? 4 : 64,
-            left: 4,
-            right: 4,
+            left: currentIndex == 0 ? 4 : 164,
+            top: 4,
+            bottom: 4,
             child: Container(
-              height: 52,
+              width: 152,
               decoration: BoxDecoration(
                 color: const Color(0xFF2E7D32),
-                borderRadius: BorderRadius.circular(26),
+                borderRadius: BorderRadius.circular(22),
               ),
             ),
           ),
-          // Icons
-          Column(
+          // Items
+          Row(
             children: [
               Expanded(
                 child: GestureDetector(
                   onTap: () => onChanged(0),
                   behavior: HitTestBehavior.opaque,
                   child: Center(
-                    child: Column(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
                           Icons.chat_bubble_outline,
                           color: currentIndex == 0 ? Colors.white : Colors.grey,
-                          size: 20,
+                          size: 18,
                         ),
-                        const SizedBox(height: 2),
+                        const SizedBox(width: 8),
                         Text(
                           'Chat',
                           style: TextStyle(
-                            fontSize: 10,
+                            fontSize: 13,
                             fontWeight: FontWeight.bold,
-                            color: currentIndex == 0 ? Colors.white : Colors.grey,
+                            color: currentIndex == 0
+                                ? Colors.white
+                                : Colors.grey,
                           ),
                         ),
                       ],
@@ -438,21 +501,23 @@ class _CapsuleSwitcher extends StatelessWidget {
                   onTap: () => onChanged(1),
                   behavior: HitTestBehavior.opaque,
                   child: Center(
-                    child: Column(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
                           Icons.circle_outlined,
                           color: currentIndex == 1 ? Colors.white : Colors.grey,
-                          size: 20,
+                          size: 18,
                         ),
-                        const SizedBox(height: 2),
+                        const SizedBox(width: 8),
                         Text(
                           'Status',
                           style: TextStyle(
-                            fontSize: 10,
+                            fontSize: 13,
                             fontWeight: FontWeight.bold,
-                            color: currentIndex == 1 ? Colors.white : Colors.grey,
+                            color: currentIndex == 1
+                                ? Colors.white
+                                : Colors.grey,
                           ),
                         ),
                       ],
@@ -473,10 +538,7 @@ class _CapsuleSwitcher extends StatelessWidget {
 class _StatusListView extends ConsumerStatefulWidget {
   final bool isDark;
   final VoidCallback onCameraTap;
-  const _StatusListView({
-    required this.isDark,
-    required this.onCameraTap,
-  });
+  const _StatusListView({required this.isDark, required this.onCameraTap});
 
   @override
   ConsumerState<_StatusListView> createState() => _StatusListViewState();
@@ -487,23 +549,210 @@ class _StatusListViewState extends ConsumerState<_StatusListView> {
   Widget build(BuildContext context) {
     final storiesAsync = ref.watch(allStoriesGroupedProvider);
     final currentUserId = ref.watch(currentUserIdProvider);
+    final followingAsync = ref.watch(followingProvider(currentUserId ?? ''));
 
     return storiesAsync.when(
       data: (storiesGrouped) {
-        final storyUserIds = storiesGrouped.keys.toList();
+        return followingAsync.when(
+          data: (followingUsers) {
+            final followingIds = followingUsers.map((u) => u.uid).toSet();
+            final allStoryUserIds = storiesGrouped.keys.toList();
 
-        return CustomScrollView(
-          physics: const BouncingScrollPhysics(),
-          slivers: [
-            // Friends / My Stories Horizontal Section
-            SliverToBoxAdapter(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(20, 16, 20, 12),
+            // Following Stories: From users you follow
+            final followingStoriesIds = allStoryUserIds
+                .where((id) => followingIds.contains(id))
+                .toList();
+
+            // Discover Stories: From users you don't follow and not yourself
+            final discoverStoriesIds = allStoryUserIds
+                .where(
+                  (id) => !followingIds.contains(id) && id != currentUserId,
+                )
+                .toList();
+
+            return CustomScrollView(
+              physics: const BouncingScrollPhysics(),
+              slivers: [
+                // Friends / My Stories Horizontal Section
+                SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(20, 16, 20, 12),
+                        child: Text(
+                          'Friends',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        height: 115,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: followingStoriesIds.length + 2,
+                          itemBuilder: (context, index) {
+                            if (index == 0) {
+                              return _CameraActionItem(
+                                isDark: widget.isDark,
+                                onTap: widget.onCameraTap,
+                              );
+                            }
+                            if (index == 1) {
+                              final myStories = currentUserId != null
+                                  ? storiesGrouped[currentUserId] ?? []
+                                  : [];
+                              final hasStories = myStories.isNotEmpty;
+                              final firstStoryImageUrl =
+                                  hasStories ? myStories.first.content : null;
+                              
+                              return _MyStoryItem(
+                                isDark: widget.isDark,
+                                hasStories: hasStories,
+                                firstStoryImageUrl: firstStoryImageUrl,
+                                currentUserId: currentUserId,
+                              );
+                            }
+                            final userId = followingStoriesIds[index - 2];
+                            final userStories = storiesGrouped[userId] ?? [];
+                            if (userStories.isEmpty) {
+                              return const SizedBox.shrink();
+                            }
+
+                            final user = userStories.first;
+
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 16),
+                              child: Column(
+                                children: [
+                                  UserAvatar(
+                                    userId: userId,
+                                    avatarUrl: user.userAvatar,
+                                    radius: 35,
+                                    showStoryRing: true,
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => StoryViewerScreen(
+                                            storiesGrouped: storiesGrouped,
+                                            initialUserId: userId,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                  const SizedBox(height: 8),
+                                  SizedBox(
+                                    width: 75,
+                                    child: Text(
+                                      user.userName,
+                                      textAlign: TextAlign.center,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: widget.isDark
+                                            ? Colors.grey[300]
+                                            : Colors.grey[900],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Following Section (Horizontal Cards)
+                SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Following',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.5,
+                              ),
+                            ),
+                            Icon(
+                              Icons.chevron_right,
+                              color: widget.isDark
+                                  ? Colors.grey[400]
+                                  : Colors.grey[600],
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(
+                        height: 220,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: (followingStoriesIds.length > 5
+                              ? 5
+                              : followingStoriesIds.length),
+                          itemBuilder: (context, index) {
+                            final userId = followingStoriesIds[index];
+                            final userStories = storiesGrouped[userId] ?? [];
+                            final user = userStories.first;
+
+                            return _StatusCard(
+                              name: user.userName,
+                              avatarUrl: user.userAvatar,
+                              contentUrl: user.content,
+                              isDark: widget.isDark,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => StoryViewerScreen(
+                                      storiesGrouped: storiesGrouped,
+                                      initialUserId: userId,
+                                    ),
+                                  ),
+                                );
+                              },
+                              width: 140,
+                              gradient: index % 2 == 0
+                                  ? [
+                                      const Color(0xFF66BB6A).withOpacity(0.9),
+                                      const Color(0xFF81C784),
+                                    ]
+                                  : [
+                                      const Color(0xFFC0CA33).withOpacity(0.9),
+                                      const Color(0xFFDCE775),
+                                    ],
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Discover Section (Grid)
+                const SliverPadding(
+                  padding: EdgeInsets.fromLTRB(20, 24, 20, 12),
+                  sliver: SliverToBoxAdapter(
                     child: Text(
-                      'Friends',
+                      'Discover',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
@@ -511,160 +760,65 @@ class _StatusListViewState extends ConsumerState<_StatusListView> {
                       ),
                     ),
                   ),
-                  SizedBox(
-                    height: 115,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: storyUserIds.length + 2,
-                      itemBuilder: (context, index) {
-                        if (index == 0) {
-                          return _CameraActionItem(
-                            isDark: widget.isDark,
-                            onTap: widget.onCameraTap,
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  sliver: SliverGrid(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          childAspectRatio: 0.75,
+                          mainAxisSpacing: 12,
+                          crossAxisSpacing: 12,
+                        ),
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      final userId = discoverStoriesIds[index];
+                      final userStories = storiesGrouped[userId] ?? [];
+                      if (userStories.isEmpty) return const SizedBox.shrink();
+
+                      final user = userStories.first;
+
+                      return _StatusCard(
+                        name: user.userName,
+                        avatarUrl: user.userAvatar,
+                        contentUrl: user.content,
+                        storyCount: userStories.length,
+                        isDark: widget.isDark,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => StoryViewerScreen(
+                                storiesGrouped: storiesGrouped,
+                                initialUserId: userId,
+                              ),
+                            ),
                           );
-                        }
-                        if (index == 1) {
-                          return _MyStoryItem(isDark: widget.isDark);
-                        }
-                        final userId = storyUserIds[index - 2];
-                        final userStories = storiesGrouped[userId] ?? [];
-                        if (userStories.isEmpty) return const SizedBox.shrink();
-
-                        final user = userStories.first;
-                        final hasUnviewed = userStories.any((s) => !s.hasViewed(currentUserId ?? ''));
-
-                        return _StoryAvatar(
-                          name: user.userName,
-                          avatarUrl: user.userAvatar,
-                          hasStory: true,
-                          hasUnviewed: hasUnviewed,
-                          isDark: widget.isDark,
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => StoryViewerScreen(
-                                  storiesGrouped: storiesGrouped,
-                                  initialUserId: userId,
-                                ),
-                              ),
-                            );
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Following Section (Horizontal Cards)
-            SliverToBoxAdapter(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Following',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.5,
-                          ),
-                        ),
-                        Icon(
-                          Icons.chevron_right,
-                          color: widget.isDark ? Colors.grey[400] : Colors.grey[600],
-                        ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(
-                    height: 220,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: (storyUserIds.length > 5 ? 5 : storyUserIds.length),
-                      itemBuilder: (context, index) {
-                        final userId = storyUserIds[index];
-                        final userStories = storiesGrouped[userId] ?? [];
-                        final user = userStories.first;
-                        
-                        return _StatusCard(
-                          name: user.userName,
-                          avatarUrl: user.userAvatar,
-                          contentUrl: user.content,
-                          isDark: widget.isDark,
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => StoryViewerScreen(
-                                  storiesGrouped: storiesGrouped,
-                                  initialUserId: userId,
-                                ),
-                              ),
-                            );
-                          },
-                          width: 140,
-                          gradient: index % 2 == 0 
-                              ? [const Color(0xFF66BB6A).withOpacity(0.9), const Color(0xFF81C784)]
-                              : [const Color(0xFFC0CA33).withOpacity(0.9), const Color(0xFFDCE775)],
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Discover Section (Grid)
-            const SliverPadding(
-              padding: EdgeInsets.fromLTRB(20, 24, 20, 12),
-              sliver: SliverToBoxAdapter(
-                child: Text(
-                  'Discover',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.5,
+                        },
+                        gradient: index % 3 == 0
+                            ? [
+                                const Color(0xFF2E7D32),
+                                const Color(0xFF4CAF50).withOpacity(0.7),
+                              ]
+                            : index % 3 == 1
+                            ? [
+                                const Color(0xFF9E9D24),
+                                const Color(0xFFCDDC39).withOpacity(0.7),
+                              ]
+                            : [
+                                const Color(0xFFF9A825),
+                                const Color(0xFFFBC02D).withOpacity(0.7),
+                              ],
+                      );
+                    }, childCount: discoverStoriesIds.length),
                   ),
                 ),
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              sliver: SliverGrid(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  childAspectRatio: 0.75,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    return _StatusCard(
-                      name: 'Discover ${index + 1}',
-                      isDark: widget.isDark,
-                      onTap: () {},
-                      gradient: index % 3 == 0
-                        ? [const Color(0xFF2E7D32), const Color(0xFF4CAF50).withOpacity(0.7)]
-                        : index % 3 == 1
-                          ? [const Color(0xFF9E9D24), const Color(0xFFCDDC39).withOpacity(0.7)]
-                          : [const Color(0xFFF9A825), const Color(0xFFFBC02D).withOpacity(0.7)],
-                    );
-                  },
-                  childCount: 6,
-                ),
-              ),
-            ),
-            const SliverToBoxAdapter(child: SizedBox(height: 100)),
-          ],
+                const SliverToBoxAdapter(child: SizedBox(height: 100)),
+              ],
+            );
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (err, stack) => Center(child: Text('Error: $err')),
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -723,16 +877,32 @@ class _CameraActionItem extends StatelessWidget {
 // My Story Item Widget
 class _MyStoryItem extends StatelessWidget {
   final bool isDark;
-  const _MyStoryItem({required this.isDark});
+  final bool hasStories;
+  final String? firstStoryImageUrl;
+  final String? currentUserId;
+
+  const _MyStoryItem({
+    required this.isDark,
+    this.hasStories = false,
+    this.firstStoryImageUrl,
+    this.currentUserId,
+  });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const CreateStoryScreen()),
-        );
+        if (hasStories) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const MyStoryScreen()),
+          );
+        } else {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const CreateStoryScreen()),
+          );
+        }
       },
       child: Padding(
         padding: const EdgeInsets.only(right: 16),
@@ -741,39 +911,28 @@ class _MyStoryItem extends StatelessWidget {
             Stack(
               clipBehavior: Clip.none,
               children: [
-                Container(
-                  width: 70,
-                  height: 70,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: isDark ? Colors.white24 : Colors.grey[300]!,
-                      width: 1.5,
-                    ),
-                  ),
-                  child: const Padding(
-                    padding: EdgeInsets.all(3),
-                    child: CircleAvatar(
-                      backgroundColor: Colors.transparent,
-                      child: Icon(Icons.person, size: 36, color: Colors.grey),
-                    ),
-                  ),
+                UserAvatar(
+                  userId: currentUserId ?? 'my_story', // Dummy ID for My Story fallback if missing
+                  avatarUrl: firstStoryImageUrl, // Current user image or story
+                  radius: 35,
+                  showStoryRing: hasStories,
+                  enableDefaultTap: false,
                 ),
-                Positioned(
-                  right: 0,
-                  bottom: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
+                if (!hasStories)
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
                     decoration: BoxDecoration(
                       color: const Color(0xFF2196F3),
                       shape: BoxShape.circle,
-                      border: Border.all(color: isDark ? Colors.black : Colors.white, width: 2),
+                      border: Border.all(
+                        color: isDark ? Colors.black : Colors.white,
+                        width: 2,
+                      ),
                     ),
-                    child: const Icon(
-                      Icons.add,
-                      size: 14,
-                      color: Colors.white,
-                    ),
+                    child: const Icon(Icons.add, size: 14, color: Colors.white),
                   ),
                 ),
               ],
@@ -794,74 +953,6 @@ class _MyStoryItem extends StatelessWidget {
   }
 }
 
-// Friend Story Avatar Widget
-class _StoryAvatar extends StatelessWidget {
-  final String name;
-  final String? avatarUrl;
-  final bool hasStory;
-  final bool hasUnviewed;
-  final bool isDark;
-  final VoidCallback onTap;
-
-  const _StoryAvatar({
-    required this.name,
-    this.avatarUrl,
-    required this.hasStory,
-    required this.hasUnviewed,
-    required this.isDark,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.only(right: 16),
-        child: Column(
-          children: [
-            Container(
-              width: 70,
-              height: 70,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: hasUnviewed 
-                      ? const Color(0xFFFBC02D) 
-                      : Colors.grey[400]!,
-                  width: 2.5,
-                ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(3),
-                child: CircleAvatar(
-                  backgroundImage: avatarUrl != null && avatarUrl!.isNotEmpty ? CachedNetworkImageProvider(avatarUrl!) : null,
-                  child: avatarUrl == null || avatarUrl!.isEmpty ? Text(name[0].toUpperCase()) : null,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: 75,
-              child: Text(
-                name,
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: isDark ? Colors.grey[300] : Colors.grey[900],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 // Status Card Widget (Following/Discover)
 class _StatusCard extends StatelessWidget {
   final String name;
@@ -871,6 +962,7 @@ class _StatusCard extends StatelessWidget {
   final VoidCallback onTap;
   final List<Color> gradient;
   final double? width;
+  final int? storyCount;
 
   const _StatusCard({
     required this.name,
@@ -880,6 +972,7 @@ class _StatusCard extends StatelessWidget {
     required this.onTap,
     required this.gradient,
     this.width,
+    this.storyCount,
   });
 
   @override
@@ -913,12 +1006,13 @@ class _StatusCard extends StatelessWidget {
                 child: CachedNetworkImage(
                   imageUrl: contentUrl!,
                   fit: BoxFit.cover,
-                  placeholder: (context, url) => Container(color: Colors.black12),
+                  placeholder: (context, url) =>
+                      Container(color: Colors.black12),
                   errorWidget: (context, url, error) => const SizedBox.shrink(),
                 ),
               ),
-            
-            // Darker overlay for better text readability if there's an image
+
+            // Darker overlay
             if (contentUrl != null && contentUrl!.isNotEmpty)
               Positioned.fill(
                 child: Container(
@@ -927,6 +1021,7 @@ class _StatusCard extends StatelessWidget {
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
+                        Colors.black.withOpacity(0.2),
                         Colors.transparent,
                         Colors.black.withOpacity(0.6),
                       ],
@@ -935,18 +1030,42 @@ class _StatusCard extends StatelessWidget {
                 ),
               ),
 
-            // User Info Overlay
+            // Story Count in Center
+            if (storyCount != null && storyCount! > 0)
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white24, width: 1),
+                  ),
+                  child: Text(
+                    '$storyCount',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+
+            // User Info (Bottom)
             Positioned(
               left: 12,
               bottom: 12,
               right: 12,
               child: Row(
                 children: [
-                  CircleAvatar(
-                    radius: 12,
-                    backgroundColor: Colors.white30,
-                    backgroundImage: avatarUrl != null && avatarUrl!.isNotEmpty ? CachedNetworkImageProvider(avatarUrl!) : null,
-                    child: avatarUrl == null || avatarUrl!.isEmpty ? Text(name[0].toUpperCase(), style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold)) : null,
+                  UserAvatar(
+                    userId: '', // ID not essential here as it's a fixed card
+                    avatarUrl: avatarUrl,
+                    radius: 16,
+                    showStoryRing: false,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -954,9 +1073,15 @@ class _StatusCard extends StatelessWidget {
                       name,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        shadows: [Shadow(color: Colors.black38, blurRadius: 4, offset: Offset(0, 1))],
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black45,
+                            blurRadius: 4,
+                            offset: Offset(0, 1),
+                          ),
+                        ],
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -1019,8 +1144,6 @@ class _FilterChip extends StatelessWidget {
     );
   }
 }
-
-
 
 // Chat List Item
 class _SnapchatListItem extends ConsumerWidget {
@@ -1183,46 +1306,13 @@ class _SnapchatListItem extends ConsumerWidget {
               Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: isUnread
-                          ? Border.all(
-                              color: AppColors.secondaryTeal,
-                              width: 2.5,
-                            )
-                          : null,
-                    ),
-                    child: Padding(
-                      padding: EdgeInsets.all(isUnread ? 2.0 : 0),
-                      child: displayAvatar != null && displayAvatar.isNotEmpty
-                          ? CircleAvatar(
-                              backgroundImage: CachedNetworkImageProvider(
-                                displayAvatar,
-                              ),
-                            )
-                          : CircleAvatar(
-                              backgroundColor: isGroup
-                                  ? AppColors.secondaryTeal.withOpacity(0.2)
-                                  : Colors.grey[300],
-                              child: isGroup
-                                  ? const Icon(
-                                      Icons.groups,
-                                      color: AppColors.secondaryTeal,
-                                    )
-                                  : Text(
-                                      displayName.isNotEmpty
-                                          ? displayName[0].toUpperCase()
-                                          : '?',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 20,
-                                      ),
-                                    ),
-                            ),
-                    ),
+                  UserAvatar(
+                    userId: otherUserId ?? '',
+                    avatarUrl: displayAvatar,
+                    displayName: displayName,
+                    radius: 28,
+                    showStoryRing: true,
+                    highlightColor: isUnread ? AppColors.secondaryTeal : null,
                   ),
                   if (isOnline)
                     Positioned(
@@ -1275,6 +1365,28 @@ class _SnapchatListItem extends ConsumerWidget {
                                 'none',
                             size: 14,
                           ),
+                        // Streak Display
+                        if (channel.streakCount > 0) ...[
+                          const SizedBox(width: 6),
+                          Text(
+                            '🔥 ${channel.streakCount}',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          if (channel.streakExpiry != null &&
+                              channel.streakExpiry!
+                                      .difference(DateTime.now())
+                                      .inHours <
+                                  2) ...[
+                            const SizedBox(width: 2),
+                            const Text(
+                              '⏳',
+                              style: TextStyle(fontSize: 14),
+                            ),
+                          ],
+                        ],
                         if (isPinned)
                           Padding(
                             padding: const EdgeInsets.only(left: 4),

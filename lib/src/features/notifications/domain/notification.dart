@@ -9,6 +9,9 @@ enum NotificationType {
   system,
   chat,
   sos,
+  streakExpiring,
+  streakMissed,
+  storyUpdate,
 }
 
 class AppNotification {

@@ -1,42 +1,124 @@
-# abuad
+<div align="center">
+  <img src="assets/logo.png" width="120" height="120" alt="ABUAD Logo">
+  <h1>ABUAD NEST</h1>
+  <p><strong>The Elite Campus Super App for Afe Babalola University</strong></p>
 
-A new Flutter project.
+  [![Flutter](https://img.shields.io/badge/Flutter-3.10.7+-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
+  [![Firebase](https://img.shields.io/badge/Firebase-Backend-FFCA28?logo=firebase&logoColor=black)](https://firebase.google.com)
+  [![Riverpod](https://img.shields.io/badge/Riverpod-State%20Management-764ABC?logo=dart&logoColor=white)](https://riverpod.dev)
+  [![License](https://img.shields.io/badge/License-Private-red.svg)](LICENSE)
+</div>
 
-## Getting Started
+---
 
-This project is a starting point for a Flutter application.
+## 🚀 Overview
 
-A few resources to get you started if this is your first Flutter project:
+**ABUAD Nest** is a high-performance, feature-rich campus ecosystem designed to centralize and elevate the student experience at Afe Babalola University. From immersive social discovery to real-time communication and essential academic utilities, ABUAD Nest is the digital backbone of campus life.
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+> [!IMPORTANT]
+> This application is built with a **Premium UI/UX** philosophy, utilizing glassmorphism, advanced animations, and high-fidelity design tokens to deliver a "WOW" factor at every interaction.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+---
 
-## Firestore index troubleshooting
+## ✨ Feature Galaxy
 
-If you see a runtime error like:
+### 📱 Social & Discovery
+- **Discovery Hub**: A functional search engine for finding trending hashtags, students, and content.
+- **Dynamic Feed**: Real-time media sharing with TikTok-style immersion, likes, and nested comments.
+- **Stories & Reels**: Vertical video and transient story support with high-fidelity capture.
+- **Premium Profiles**: Customizable user identities with verification badges (👑 Gold, 🎓 Student).
 
-`[cloud_firestore/failed-precondition] The query requires an index`
+### 💬 Communication
+- **Real-time Chat**: High-performance DMs and group channels with read receipts and media sharing.
+- **Broadcast Hub**: Departmental or interest-based one-to-many communication channels.
+- **QR Engine**: Instant student profile sharing and verification via mobile scanning.
 
-use this checklist:
+### 🏛️ Campus & Utility
+- **Campus Map**: Intelligent geolocation and landmark discovery across the ABUAD landscape.
+- **Marketplace**: P2P campus commerce for students to buy and sell securely.
+- **Academic Portal**: Centralized access to school results, newsletters, and departmental resources.
+- **Events & Groups**: Discovering and joining campus organizations and upcoming festivals.
 
-1. Open the URL provided in the error message.
-2. Compare the suggested index with `firestore.indexes.json`.
-3. If missing, add it to `firestore.indexes.json`.
-4. Deploy indexes:
+---
 
-```bash
-firebase deploy --only firestore:indexes
+## 🛠️ Technology Stack
+
+| Category | Technology |
+| :--- | :--- |
+| **Framework** | [Flutter](https://flutter.dev) (v3.10.7+) |
+| **State Management** | [Riverpod](https://riverpod.dev) (Notifier & AsyncValue patterns) |
+| **Backend** | [Firebase](https://firebase.google.com) (Firestore, Auth, Storage, Messaging) |
+| **Navigation** | [GoRouter](https://pub.dev/packages/go_router) (Declarative & Shell Routing) |
+| **Performance** | [Shorebird](https://shorebird.dev) (OTA Hot Push updates) |
+| **Animations** | [Flutter Animate](https://pub.dev/packages/flutter_animate) & Shimmer |
+
+---
+
+## 🏗️ Architectural Blueprint
+
+The application follows a **Feature-First Clean Architecture** to ensure massive scalability and maintainability.
+
+```mermaid
+graph TD
+    A[lib/src] --> B[features]
+    A --> C[core]
+    A --> D[shared]
+    
+    B --> B1[feed]
+    B --> B2[chat]
+    B --> B3[map]
+    
+    B1 --> B1a[presentation]
+    B1 --> B1b[domain]
+    B1 --> B1c[data]
+    
+    C --> C1[services]
+    C --> C2[router]
+    C --> C3[theme]
 ```
 
-5. Wait for index build completion in Firestore Console before retesting.
+- **Presentation**: UI components, Notifiers, and Screen-specific widgets.
+- **Domain**: Pure Dart models and business logic entities.
+- **Data**: Repositories, API services, and DTOs.
 
-### Chat queries that require composite indexes
+---
 
-Current chat feature uses these index-sensitive queries on `channels`:
+## 🛠️ Developer Guide
 
-1. `where('member_ids', arrayContains: uid).orderBy('last_message_time', descending: true)`
-2. `where('type', isEqualTo: 'direct').where('member_ids', arrayContains: uid)`
+### Prerequisites
+- Flutter SDK (Channel Stable)
+- Firebase CLI (`npm install -g firebase-tools`)
+- CocoaPods (for iOS builds)
+
+### Quick Start
+1. **Clone & Install**:
+   ```bash
+   git clone <repo-url>
+   flutter pub get
+   ```
+2. **Generate Code**:
+   ```bash
+   flutter pub run build_runner build --delete-conflicting-outputs
+   ```
+3. **Run Design System Check**:
+   Ensure your theme tokens are synced with `AppColors` and `AppTheme`.
+
+---
+
+## 📝 Firestore Index Troubleshooting
+
+If you encounter `[cloud_firestore/failed-precondition]` errors, follow this protocol:
+
+1. **Deploy Missing Indexes**:
+   ```bash
+   firebase deploy --only firestore:indexes
+   ```
+2. **Key Critical Indexes**:
+   - `channels`: `member_ids` (array-contains) + `last_message_time` (descending)
+   - `posts`: `hashtags` (array-contains) + `created_at` (descending)
+
+---
+
+<div align="center">
+  <p>© 2026 ABUAD App Team. Built with ❤️ for Afe Babalola University.</p>
+</div>

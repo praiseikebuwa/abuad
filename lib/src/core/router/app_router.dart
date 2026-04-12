@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../features/camera/presentation/camera_screen.dart';
 
 import '../../features/feed/presentation/feed_screen.dart';
 import '../../features/feed/presentation/create_post_screen.dart';
@@ -11,10 +12,12 @@ import '../../features/chat/presentation/chat_list_screen.dart';
 import '../../features/chat/presentation/chat_screen.dart';
 import '../../features/chat/presentation/user_search_screen.dart';
 import '../../features/chat/presentation/create_group_screen.dart';
+import '../../features/notifications/presentation/notifications_screen.dart';
 import '../../features/chat/presentation/group_info_screen.dart';
 import '../../features/chat/presentation/chat_settings_screen.dart';
 import '../../features/map/presentation/map_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
+import '../../features/profile/presentation/share_profile_screen.dart';
 import '../../shared/widgets/scaffold_with_bottom_nav.dart';
 import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/presentation/signup_screen.dart';
@@ -37,6 +40,11 @@ import '../../features/feed/presentation/reels_screen.dart';
 import '../../features/feed/domain/post.dart';
 import '../../features/user/presentation/user_list_screen.dart';
 import '../../features/user/data/user_repository.dart';
+import '../../features/stories/domain/story.dart';
+import '../../features/stories/presentation/story_viewer_screen.dart';
+import '../../features/chat/presentation/qr_scanner_screen.dart';
+import '../../features/chat/presentation/broadcast_search_screen.dart';
+import '../../features/chat/presentation/broadcast_message_screen.dart';
 
 final rootNavigatorKey = GlobalKey<NavigatorState>();
 final _feedNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'feed');
@@ -146,8 +154,46 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const CompleteProfileScreen(),
       ),
       GoRoute(
+        path: '/create-post',
+        builder: (context, state) {
+          final extra = state.extra;
+          if (extra is Map<String, dynamic>) {
+            return CreatePostScreen(
+              initialChannelId: extra['channelId'],
+              initialMedia: extra['media'],
+              initialMode: extra['mode'],
+            );
+          }
+          final channelId = extra as String?;
+          return CreatePostScreen(initialChannelId: channelId);
+        },
+      ),
+      GoRoute(
         path: '/banned',
         builder: (context, state) => const BannedScreen(),
+      ),
+      GoRoute(
+        path: '/camera',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>?;
+          return CameraScreen(
+            isForStory: extra?['isForStory'] ?? false,
+            onMediaCaptured: extra?['onMediaCaptured'],
+          );
+        },
+      ),
+      GoRoute(
+        path: '/stories/:userId',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) {
+          final userId = state.pathParameters['userId']!;
+          final storiesGrouped = state.extra as Map<String, List<Story>>? ?? {};
+          return StoryViewerScreen(
+            storiesGrouped: storiesGrouped,
+            initialUserId: userId,
+          );
+        },
       ),
       GoRoute(
         path: '/user/:userId',
@@ -170,6 +216,14 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         ],
       ),
       GoRoute(
+        path: '/user/:userId/share',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) {
+          final userId = state.pathParameters['userId']!;
+          return ShareProfileScreen(userId: userId);
+        },
+      ),
+      GoRoute(
         path: '/events',
         parentNavigatorKey: rootNavigatorKey,
         builder: (context, state) => const EventsScreen(),
@@ -188,6 +242,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/settings',
         parentNavigatorKey: rootNavigatorKey,
         builder: (context, state) => const SettingsScreen(),
+      ),
+      GoRoute(
+        path: '/notifications',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) => const NotificationsScreen(),
       ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {
@@ -217,10 +276,19 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                     path: 'reels',
                     parentNavigatorKey: rootNavigatorKey,
                     builder: (context, state) {
-                      final extra = state.extra as Map<String, dynamic>;
-                      final videos = extra['videos'] as List<Post>;
-                      final index = extra['index'] as int;
-                      return ReelsScreen(videos: videos, initialIndex: index);
+                      final payload = state.extra;
+                      final extraMap = payload is Map<String, dynamic>
+                          ? payload
+                          : null;
+                      final rawVideos = extraMap?['videos'];
+                      final videos = rawVideos is Iterable
+                          ? rawVideos.whereType<Post>().toList()
+                          : <Post>[];
+                      final initialIndex = (extraMap?['index'] as int?) ?? 0;
+                      return ReelsScreen(
+                        videos: videos,
+                        initialIndex: initialIndex,
+                      );
                     },
                   ),
                   GoRoute(
@@ -326,9 +394,24 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                     builder: (context, state) => const CreateGroupScreen(),
                   ),
                   GoRoute(
-                    path: 'settings',
+                    path: 'scanner',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const ChatSettingsScreen(),
+                    builder: (context, state) => const QRScannerScreen(),
+                  ),
+                  GoRoute(
+                    path: 'broadcast',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const BroadcastSearchScreen(),
+                    routes: [
+                      GoRoute(
+                        path: 'compose',
+                        parentNavigatorKey: rootNavigatorKey,
+                        builder: (context, state) {
+                          final recipients = state.extra as List<AppUser>;
+                          return BroadcastMessageScreen(recipients: recipients);
+                        },
+                      ),
+                    ],
                   ),
                   GoRoute(
                     path: ':channelId',
@@ -344,6 +427,14 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                         builder: (context, state) {
                           final channelId = state.pathParameters['channelId']!;
                           return GroupInfoScreen(channelId: channelId);
+                        },
+                      ),
+                      GoRoute(
+                        path: 'settings',
+                        parentNavigatorKey: rootNavigatorKey,
+                        builder: (context, state) {
+                          final channelId = state.pathParameters['channelId']!;
+                          return ChatSettingsScreen(channelId: channelId);
                         },
                       ),
                     ],

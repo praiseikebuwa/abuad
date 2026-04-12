@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../domain/chat_channel.dart';
 import '../domain/chat_message.dart';
 import '../../../core/utils/profanity_filter.dart';
+import '../../../core/services/notification_service.dart';
 
 final chatRepositoryProvider = Provider<ChatRepository>((ref) {
   return ChatRepository(FirebaseFirestore.instance, FirebaseDatabase.instance);
@@ -23,6 +24,10 @@ final unreadChatCountProvider = StreamProvider<int>((ref) {
     }
     return total;
   });
+});
+
+final chatChannelsProvider = StreamProvider<List<ChatChannel>>((ref) {
+  return ref.watch(chatRepositoryProvider).watchChannels();
 });
 
 class ChatRepository {
@@ -61,12 +66,10 @@ class ChatRepository {
 
   // Stream messages for a specific channel
   Stream<List<ChatMessage>> watchMessages(String channelId) {
-    final cutoff = DateTime.now().subtract(const Duration(hours: 24));
     return _firestore
         .collection('channels')
         .doc(channelId)
         .collection('messages')
-        .where('created_at', isGreaterThan: Timestamp.fromDate(cutoff))
         .orderBy('created_at', descending: true)
         .snapshots()
         .map(
@@ -93,6 +96,7 @@ class ChatRepository {
     List<String>? mentions,
     String? audioUrl,
     int? duration,
+    String? sharedPostId,
   }) async {
     final uid = currentUserId;
     if (uid == null) return;
@@ -127,6 +131,7 @@ class ChatRepository {
       if (mentions != null) 'mentions': mentions,
       if (audioUrl != null) 'audio_url': audioUrl,
       if (duration != null) 'duration': duration,
+      if (sharedPostId != null) 'shared_post_id': sharedPostId,
     };
 
     final channelRef = _firestore.collection('channels').doc(channelId);
@@ -171,7 +176,6 @@ class ChatRepository {
 
       // Streak Logic (Only for direct chats)
       if (isSnap && channelData['type'] == 'direct') {
-        // Get other user ID
         final memberIds = List<String>.from(channelData['member_ids']);
         final otherId = memberIds.firstWhere(
           (id) => id != uid,
@@ -183,44 +187,46 @@ class ChatRepository {
           final theirLastSnap = (lastSnapTimeMap[otherId] as Timestamp?)
               ?.toDate();
 
-          // Update my last snap time
-          lastSnapTimeMap[uid] = Timestamp.fromDate(now);
-
-          // Check if streak expires
-          if (streakExpiry != null && now.isAfter(streakExpiry)) {
+          // 1. Lazy Expiration: Check if streak was already dead
+          if (streakCount > 0 && streakExpiry != null && now.isAfter(streakExpiry)) {
             streakCount = 0;
             streakExpiry = null;
           }
 
-          // Check for streak increment
-          // Logic: If they snapped within last 24h AND I haven't snapped today (to avoid double counting)
-          // Simplified Logic: Streak increments if BOTH snap within 24h window.
-          // We set expiry to 24h from now whenever a streak is active.
+          // 2. Update my last snap time
+          lastSnapTimeMap[uid] = Timestamp.fromDate(now);
 
+          // 3. Bi-directional Increment Logic
           if (theirLastSnap != null) {
-            final difference = now.difference(theirLastSnap);
-            // If they snapped within 24 hours
-            if (difference.inHours < 24) {
-              // Extend/Start Streak
-              // We only increment if this is a "new" exchange day or to start off
-              // Ideally we need more robust logic but for MVP:
-              // If streak is 0, set to 1.
-              // If streak > 0, check if we already incremented today?
-              // Let's keep it simple: Reset expiry to 24h from now.
-              streakExpiry = now.add(const Duration(hours: 24));
-
-              // To avoid spam incrementing, we could check if I already snapped in this window.
-              // For now, let's just update timestamp and maybe increment if it was 0 or expiring.
+            final hoursSinceTheirLastSnap = now.difference(theirLastSnap).inHours;
+            
+            // If they snapped within the last 24 hours (maintenance window)
+            if (hoursSinceTheirLastSnap < 24) {
               if (streakCount == 0) {
+                // Initial creation: Both have snapped within 24h of each other
                 streakCount = 1;
               } else {
-                // Increment if my previous snap was > 12 hours ago (approx "next day")
-                if (myLastSnap == null ||
-                    now.difference(myLastSnap).inHours > 12) {
+                // Increment: Only if I haven't already incremented in this "turn" (approx 12-24h)
+                // This prevents spam-incrementing from one user
+                final hoursSinceMyLastSnap = myLastSnap != null 
+                    ? now.difference(myLastSnap).inHours 
+                    : 100;
+                
+                if (hoursSinceMyLastSnap >= 12) {
                   streakCount++;
                 }
               }
+              // Reset expiry to 48 hours to be lenient (user: "one or two days")
+              // This gives the other person plenty of time to respond without losing it
+              streakExpiry = now.add(const Duration(hours: 48));
+            } else {
+              // They haven't snapped in > 24h. Streak isn't necessarily dead yet (if we are within 48h expiry),
+              // but we don't increment it.
             }
+          } else {
+            // First ever snap in this channel, or they never snapped
+            // Just set expiry for them to respond
+            streakExpiry = now.add(const Duration(hours: 48));
           }
         }
       }
@@ -248,6 +254,17 @@ class ChatRepository {
           if (memberId != uid)
             'unread_counts.$memberId': FieldValue.increment(1),
       });
+
+      // 3. Handle Streak Notifications
+      if (isSnap && streakExpiry != null && channelData['type'] == 'direct') {
+        // Cancel any pending warning and schedule a new one
+        await NotificationService().cancelStreakWarning(channelId);
+        await NotificationService().scheduleStreakWarning(
+          channelId: channelId,
+          otherUserName: (channelData['member_names'] as Map)[uid] ?? 'Your friend',
+          expiryTime: streakExpiry,
+        );
+      }
     });
 
     // 3. Send Notification to other members
@@ -444,6 +461,29 @@ class ChatRepository {
     });
   }
 
+  Future<void> markAllAsRead() async {
+    final uid = currentUserId;
+    if (uid == null) return;
+
+    final batch = _firestore.batch();
+    final channels = await _firestore
+        .collection('channels')
+        .where('member_ids', arrayContains: uid)
+        .get();
+
+    for (final doc in channels.docs) {
+      final data = doc.data();
+      final counts = Map<String, dynamic>.from(data['unread_counts'] ?? {});
+      if ((counts[uid] ?? 0) > 0) {
+        batch.update(doc.reference, {
+          'unread_counts.$uid': 0,
+        });
+      }
+    }
+
+    await batch.commit();
+  }
+
   // Typing logic using Realtime Database
   Future<void> setTypingStatus(String channelId, bool isTyping) async {
     final uid = currentUserId;
@@ -556,16 +596,93 @@ class ChatRepository {
     }
   }
 
-  Future<void> deleteMessage(String channelId, String messageId) async {
+  Future<void> deleteMessage(
+    String channelId,
+    String messageId, {
+    bool forEveryone = false,
+  }) async {
     final uid = currentUserId;
     if (uid == null) return;
 
+    if (forEveryone) {
+      await _firestore
+          .collection('channels')
+          .doc(channelId)
+          .collection('messages')
+          .doc(messageId)
+          .update({'is_deleted': true, 'content': 'This message was deleted'});
+    } else {
+      // Delete just for me (hide it)
+      await _firestore
+          .collection('channels')
+          .doc(channelId)
+          .collection('messages')
+          .doc(messageId)
+          .update({
+            'hidden_for': FieldValue.arrayUnion([uid]),
+          });
+    }
+  }
+
+  Future<void> togglePinMessage(
+    String channelId,
+    String messageId,
+    bool pin,
+  ) async {
     await _firestore
         .collection('channels')
         .doc(channelId)
         .collection('messages')
         .doc(messageId)
-        .delete();
+        .update({'is_pinned': pin});
+  }
+
+  Future<void> toggleSaveMessage(String channelId, String messageId) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+
+    final msgRef = _firestore
+        .collection('channels')
+        .doc(channelId)
+        .collection('messages')
+        .doc(messageId);
+
+    final doc = await msgRef.get();
+    if (!doc.exists) return;
+
+    final data = doc.data()!;
+    final savedBy = List<String>.from(data['saved_by'] ?? []);
+
+    if (savedBy.contains(uid)) {
+      savedBy.remove(uid);
+    } else {
+      savedBy.add(uid);
+    }
+
+    await msgRef.update({'saved_by': savedBy});
+  }
+
+  Future<void> forwardMessage(
+    String targetChannelId,
+    ChatMessage originalMessage,
+  ) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+
+    await sendMessage(
+      targetChannelId,
+      originalMessage.content,
+      type: originalMessage.type,
+      imageUrl: originalMessage.imageUrl,
+      imageWidth: originalMessage.imageWidth,
+      imageHeight: originalMessage.imageHeight,
+      latitude: originalMessage.latitude,
+      longitude: originalMessage.longitude,
+      audioUrl: originalMessage.audioUrl,
+      duration: originalMessage.duration,
+    );
+    
+    // We could add 'forwardedFrom' logic here if needed by updating the newly sent message
   }
 
   Future<void> viewSnap(String channelId, String messageId) async {

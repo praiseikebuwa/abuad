@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../camera/presentation/camera_screen.dart';
+import '../../../core/theme/app_colors.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
@@ -10,16 +12,25 @@ import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../data/post_repository.dart';
+import '../../shared/presentation/unified_image_editor.dart';
 import '../../user/data/user_repository.dart';
 import '../../../core/services/firebase_storage_service.dart';
 import '../domain/post.dart';
 import '../../auth/data/auth_repository.dart';
-import '../../../core/theme/app_colors.dart';
 import '../../../core/providers/shared_preferences_provider.dart';
+import '../../../core/router/app_router.dart';
 
 class CreatePostScreen extends ConsumerStatefulWidget {
   final String? initialChannelId;
-  const CreatePostScreen({super.key, this.initialChannelId});
+  final XFile? initialMedia;
+  final CameraMode? initialMode;
+
+  const CreatePostScreen({
+    super.key,
+    this.initialChannelId,
+    this.initialMedia,
+    this.initialMode,
+  });
 
   @override
   ConsumerState<CreatePostScreen> createState() => _CreatePostScreenState();
@@ -78,6 +89,14 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     }
     _contentController.addListener(_updateState);
     _loadDraft();
+
+    if (widget.initialMedia != null) {
+      if (widget.initialMode == CameraMode.video) {
+        _selectedVideo = widget.initialMedia;
+      } else {
+        _selectedImage = widget.initialMedia;
+      }
+    }
   }
 
   @override
@@ -392,114 +411,130 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     }
   }
 
-  Future<String> _uploadImage(XFile image, String uid) async {
-    final storage = FirebaseStorageService();
-    return await storage.uploadImage(image, path: 'post_images/$uid/');
-  }
 
-  Future<String> _uploadVideo(XFile video, String uid) async {
-    final storage = FirebaseStorageService();
-    return await storage.uploadVideo(video, path: 'post_videos/$uid/');
-  }
-
-  Future<void> _submitPost() async {
+  void _submitPost() async {
     if (!_canPost) return;
 
-    setState(() => _isPosting = true);
+    final messenger = ScaffoldMessenger.of(rootNavigatorKey.currentContext!);
+    final authRepo = ref.read(authRepositoryProvider);
+    final user = authRepo.currentUser;
+    if (user == null) return;
 
-    try {
-      final authRepo = ref.read(authRepositoryProvider);
-      final user = authRepo.currentUser;
-      if (user == null) throw Exception("Not logged in");
+    final userRepo = ref.read(userRepositoryProvider);
+    final postRepo = ref.read(postRepositoryProvider);
+    final storage = FirebaseStorageService();
 
-      final userRepo = ref.read(userRepositoryProvider);
-      final appUser = await userRepo.getUserById(user.uid);
+    // Capture all UI state before popping
+    final content = _contentController.text.trim();
+    final channelId = _channelId;
+    final isAnonymous = _isAnonymous;
+    final visibility = _visibility;
+    final replyPermission = _replyPermission;
+    final scheduledAt = _scheduledAt;
+    final mediaAltText = _mediaAltText;
+    final selectedImage = _selectedImage;
+    final selectedVideo = _selectedVideo;
+    final selectedGif = _selectedGif;
+    final showPollCreator = _showPollCreator;
+    final pollOptionsText = _pollOptions.map((c) => c.text.trim()).toList();
+    final pollDuration = _pollDuration;
+    final latitude = _latitude;
+    final longitude = _longitude;
 
-      String mediaUrl = '';
-      MediaType mediaType = MediaType.none;
+    // Pop immediately
+    context.pop();
 
-      if (_selectedImage != null) {
-        mediaUrl = await _uploadImage(_selectedImage!, user.uid);
-        mediaType = MediaType.image;
-      } else if (_selectedVideo != null) {
-        mediaUrl = await _uploadVideo(_selectedVideo!, user.uid);
-        mediaType = MediaType.video;
-      } else if (_selectedGif != null) {
-        mediaUrl =
-            _selectedGif!.images?.fixedWidth.url ??
-            _selectedGif!.images?.original?.url ??
-            '';
-        mediaType = MediaType.gif;
-      }
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('📤 Uploading post...'),
+        duration: Duration(seconds: 2),
+      ),
+    );
 
-      Map<String, dynamic>? pollData;
-      if (_showPollCreator) {
-        final optionsStrings = _pollOptions
-            .map((c) => c.text.trim())
-            .where((t) => t.isNotEmpty)
-            .toList();
+    // Background process
+    () async {
+      try {
+        final appUser = await userRepo.getUserById(user.uid);
 
-        if (optionsStrings.length >= 2) {
-          int days = 1;
-          if (_pollDuration.contains('3')) days = 3;
-          if (_pollDuration.contains('7')) days = 7;
+        String mediaUrl = '';
+        MediaType mediaType = MediaType.none;
 
-          pollData = {
-            'options': optionsStrings,
-            'votes': List<int>.filled(optionsStrings.length, 0),
-            'voters': <String, int>{},
-            'ends_at': DateTime.now()
-                .add(Duration(days: days))
-                .toIso8601String(),
-          };
+        if (selectedImage != null) {
+          mediaUrl = await storage.uploadImage(selectedImage, path: 'post_images/${user.uid}/');
+          mediaType = MediaType.image;
+        } else if (selectedVideo != null) {
+          mediaUrl = await storage.uploadVideo(selectedVideo, path: 'post_videos/${user.uid}/');
+          mediaType = MediaType.video;
+        } else if (selectedGif != null) {
+          mediaUrl = selectedGif.images?.fixedWidth.url ?? selectedGif.images?.original?.url ?? '';
+          mediaType = MediaType.gif;
         }
-      }
 
-      final post = Post(
-        id: const Uuid().v4(),
-        authorId: user.uid,
-        authorName: _isAnonymous
-            ? 'Anonymous'
-            : (appUser?.displayName ?? 'Anonymous'),
-        authorHandle: _isAnonymous ? '@hidden' : (appUser?.handle ?? '@anon'),
-        authorAvatarUrl: _isAnonymous ? null : appUser?.avatarUrl,
-        content: _contentController.text.trim(),
-        mediaUrl: mediaUrl,
-        mediaType: mediaType,
-        timestamp: DateTime.now(),
-        channelId: _channelId,
-        isVerified: _isAnonymous ? false : (appUser?.isVerified ?? false),
-        verificationType: _isAnonymous
-            ? 'none'
-            : (appUser?.verificationType ?? 'none'),
-        isAnonymous: _isAnonymous,
-        pollData: pollData,
-        hashtags: RegExp(r"#(\w+)")
-            .allMatches(_contentController.text)
-            .map((m) => m.group(1)!.toLowerCase())
-            .toList(),
-        mentions: RegExp(
-          r"@(\w+)",
-        ).allMatches(_contentController.text).map((m) => m.group(1)!).toList(),
-        visibility: _visibility,
-        latitude: _latitude,
-        longitude: _longitude,
-        replyPermission: _replyPermission,
-        scheduledAt: _scheduledAt,
-        mediaAltText: _mediaAltText,
-      );
+        Map<String, dynamic>? pollData;
+        if (showPollCreator) {
+          final optionsStrings = pollOptionsText.where((t) => t.isNotEmpty).toList();
+          if (optionsStrings.length >= 2) {
+            int days = 1;
+            if (pollDuration.contains('3')) days = 3;
+            if (pollDuration.contains('7')) days = 7;
 
-      await ref.read(postRepositoryProvider).addPost(post);
-      if (mounted) context.pop();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Error: $e")));
+            pollData = {
+              'options': optionsStrings,
+              'votes': List<int>.filled(optionsStrings.length, 0),
+              'voters': <String, int>{},
+              'ends_at': DateTime.now().add(Duration(days: days)).toIso8601String(),
+            };
+          }
+        }
+
+        final post = Post(
+          id: const Uuid().v4(),
+          authorId: user.uid,
+          authorName: isAnonymous ? 'Anonymous' : (appUser?.displayName ?? 'Anonymous'),
+          authorHandle: isAnonymous ? '@hidden' : (appUser?.handle ?? '@anon'),
+          authorAvatarUrl: isAnonymous ? null : appUser?.avatarUrl,
+          content: content,
+          mediaUrl: mediaUrl,
+          mediaType: mediaType,
+          timestamp: DateTime.now(),
+          channelId: channelId,
+          isVerified: isAnonymous ? false : (appUser?.isVerified ?? false),
+          verificationType: isAnonymous ? 'none' : (appUser?.verificationType ?? 'none'),
+          isAnonymous: isAnonymous,
+          pollData: pollData,
+          hashtags: RegExp(r"#(\w+)").allMatches(content).map((m) => m.group(1)!.toLowerCase()).toList(),
+          mentions: RegExp(r"@(\w+)").allMatches(content).map((m) => m.group(1)!).toList(),
+          visibility: visibility,
+          latitude: latitude,
+          longitude: longitude,
+          replyPermission: replyPermission,
+          scheduledAt: scheduledAt,
+          mediaAltText: mediaAltText,
+        );
+
+        await postRepo.addPost(post);
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('✅ Post shared!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } catch (e) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('❌ Failed to upload post: $e'),
+            backgroundColor: Colors.red,
+            action: SnackBarAction(
+              label: 'Retry',
+              textColor: Colors.white,
+              onPressed: () {
+                // In a full implementation, we might save the failed post to a 'Drafts' list here.
+              },
+            ),
+          ),
+        );
       }
-    } finally {
-      if (mounted) setState(() => _isPosting = false);
-    }
+    }();
   }
 
   @override
@@ -936,6 +971,35 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                                     width: double.infinity,
                                     fit: BoxFit.cover,
                                     height: 300,
+                                  ),
+                                ),
+                                Positioned(
+                                  top: 8,
+                                  right: 48,
+                                  child: IconButton(
+                                    onPressed: () {
+                                      UnifiedImageEditor.open(
+                                        context,
+                                        file: File(_selectedImage!.path),
+                                        onDone: (editedFile) {
+                                          setState(() {
+                                            _selectedImage = editedFile;
+                                          });
+                                        },
+                                      );
+                                    },
+                                    icon: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: const BoxDecoration(
+                                        color: Colors.black54,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.brush,
+                                        color: Colors.white,
+                                        size: 20,
+                                      ),
+                                    ),
                                   ),
                                 ),
                                 _buildRemoveButton(

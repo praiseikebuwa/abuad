@@ -1,13 +1,21 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/theme/app_colors.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import '../../../shared/widgets/user_avatar.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/verification_badge.dart';
 import '../../user/data/user_repository.dart';
 import '../../feed/data/post_repository.dart';
 import '../../feed/domain/post.dart';
 import '../../feed/presentation/widgets/post_card.dart';
-import '../../../core/providers/shared_preferences_provider.dart';
+import '../data/search_history_service.dart';
+import 'package:shimmer/shimmer.dart';
+
 
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
@@ -21,51 +29,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
   final _searchController = TextEditingController();
   late TabController _tabController;
   String _query = '';
-  List<String> _searchHistory = [];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _loadSearchHistory();
-  }
-
-  Future<void> _loadSearchHistory() async {
-    final prefs = ref.read(sharedPreferencesProvider);
-    setState(() {
-      _searchHistory = prefs.getStringList('search_history') ?? [];
-    });
-  }
-
-  Future<void> _saveToHistory(String query) async {
-    if (query.isEmpty) return;
-    final prefs = ref.read(sharedPreferencesProvider);
-    final history = prefs.getStringList('search_history') ?? [];
-    history.remove(query);
-    history.insert(0, query);
-    if (history.length > 10) history.removeLast();
-    await prefs.setStringList('search_history', history);
-    setState(() {
-      _searchHistory = history;
-    });
-  }
-
-  Future<void> _removeFromHistory(String query) async {
-    final prefs = ref.read(sharedPreferencesProvider);
-    final history = prefs.getStringList('search_history') ?? [];
-    history.remove(query);
-    await prefs.setStringList('search_history', history);
-    setState(() {
-      _searchHistory = history;
-    });
-  }
-
-  Future<void> _clearHistory() async {
-    final prefs = ref.read(sharedPreferencesProvider);
-    await prefs.remove('search_history');
-    setState(() {
-      _searchHistory = [];
-    });
+    _tabController = TabController(length: 4, vsync: this);
   }
 
   @override
@@ -82,563 +50,1081 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        toolbarHeight: 70,
-        title: Container(
-          height: 42,
-          decoration: BoxDecoration(
-            color: isDark ? Colors.white10 : Colors.grey[200],
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: TextField(
-            controller: _searchController,
-            autofocus: false,
-            style: TextStyle(color: isDark ? Colors.white : Colors.black),
-            decoration: InputDecoration(
-              hintText: 'Search Nest',
-              hintStyle: TextStyle(
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
-                fontSize: 15,
-              ),
-              border: InputBorder.none,
-              prefixIcon: Icon(
-                Icons.search,
-                size: 20,
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
-              ),
-              contentPadding: const EdgeInsets.symmetric(vertical: 10),
-              suffixIcon: _query.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.cancel, size: 20),
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() => _query = '');
-                      },
-                    )
-                  : null,
-            ),
-            onChanged: (value) => setState(() => _query = value),
-            onSubmitted: (value) {
-              if (value.isNotEmpty) {
-                _saveToHistory(value.trim());
-              }
-            },
-          ),
-        ),
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: AppColors.secondaryTeal,
-          labelColor: isDark ? Colors.white : Colors.black,
-          unselectedLabelColor: Colors.grey,
-          labelStyle: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 14,
-          ),
-          indicatorWeight: 3,
-          tabs: const [
-            Tab(text: 'People'),
-            Tab(text: 'Posts'),
-            Tab(text: 'Trending'),
-          ],
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
+      body: Stack(
         children: [
-          _PeopleSearch(
-            query: _query,
-            history: _searchHistory,
-            onHistoryTap: (q) {
-              setState(() {
-                _searchController.text = q;
-                _query = q;
-              });
-            },
-            onRemoveHistory: _removeFromHistory,
-            onClearHistory: _clearHistory,
-          ),
-          _PostSearch(
-            query: _query,
-            history: _searchHistory,
-            onHistoryTap: (q) {
-              setState(() {
-                _searchController.text = q;
-                _query = q;
-              });
-            },
-            onRemoveHistory: _removeFromHistory,
-            onClearHistory: _clearHistory,
-          ),
-          _TrendingSearch(
-            query: _query,
-            onTagSelected: (tag) {
-              setState(() {
-                _searchController.text = "#$tag";
-                _query = "#$tag";
-                _tabController.animateTo(1);
-                _saveToHistory("#$tag");
-              });
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SearchInitialContent extends StatelessWidget {
-  final List<String> history;
-  final Function(String) onHistoryTap;
-  final Function(String) onRemoveHistory;
-  final VoidCallback onClearHistory;
-  final Widget suggestions;
-  final String suggestionTitle;
-
-  const _SearchInitialContent({
-    required this.history,
-    required this.onHistoryTap,
-    required this.onRemoveHistory,
-    required this.onClearHistory,
-    required this.suggestions,
-    this.suggestionTitle = 'Suggested for you',
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      children: [
-        if (history.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Recent Searches',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          // Background Gradient
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: isDark
+                      ? [const Color(0xFF0F172A), const Color(0xFF1E293B)]
+                      : [const Color(0xFFF8FAFC), const Color(0xFFF1F5F9)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
-                TextButton(
-                  onPressed: onClearHistory,
-                  child: const Text('Clear All'),
+              ),
+            ),
+          ),
+
+          // Main Content
+          SafeArea(
+            bottom: false,
+            child: Column(
+              children: [
+                _buildSearchHeader(isDark),
+
+                // Content View (Discover or Search Results)
+                Expanded(
+                  child: _query.isEmpty
+                      ? _buildDiscoverView(isDark)
+                      : _buildSearchResultsView(isDark),
                 ),
               ],
             ),
           ),
-          ...history.map(
-            (query) => ListTile(
-              leading: const Icon(Icons.history, color: Colors.grey),
-              title: Text(query),
-              trailing: IconButton(
-                icon: const Icon(Icons.close, size: 18),
-                onPressed: () => onRemoveHistory(query),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchHeader(bool isDark) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Column(
+        children: [
+          // Glassmorphic Search Bar
+          ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: Container(
+                height: 48,
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : Colors.black.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.1)
+                        : Colors.black.withValues(alpha: 0.1),
+                    width: 0.5,
+                  ),
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (value) => setState(() => _query = value),
+                  onSubmitted: (value) {
+                    if (value.isNotEmpty) {
+                      ref.read(searchHistoryProvider.notifier).addQuery(value.trim());
+                    }
+                  },
+                  style: const TextStyle(fontSize: 16),
+                  decoration: InputDecoration(
+                    hintText: 'Search Nest, people, groups...',
+                    hintStyle: TextStyle(
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      fontSize: 15,
+                    ),
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      size: 22,
+                    ),
+                    suffixIcon: _query.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.cancel_rounded, size: 20),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _query = '');
+                            },
+                          )
+                        : null,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
               ),
-              onTap: () => onHistoryTap(query),
             ),
           ),
-          const Divider(),
+
+          // Categorized Search Tabs (Shown only when searching)
+          if (_query.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Theme(
+              data: Theme.of(context).copyWith(
+                splashColor: Colors.transparent,
+                highlightColor: Colors.transparent,
+              ),
+              child: TabBar(
+                controller: _tabController,
+                isScrollable: true,
+                indicatorColor: AppColors.secondaryTeal,
+                labelColor: isDark ? Colors.white : Colors.black,
+                unselectedLabelColor: Colors.grey,
+                labelStyle: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14,
+                ),
+                unselectedLabelStyle: const TextStyle(
+                  fontWeight: FontWeight.w500,
+                  fontSize: 13,
+                ),
+                tabs: const [
+                  Tab(text: "Top"),
+                  Tab(text: "Latest"),
+                  Tab(text: "People"),
+                  Tab(text: "Media"),
+                ],
+              ),
+            ),
+          ],
+
+          if (_query.isEmpty) ...[
+            const SizedBox(height: 12),
+            // Quick Tags (Horizontal)
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _TrendChip(
+                    label: "🔥 Trending",
+                    isDark: isDark,
+                    onTap: () {
+                      final q = "#trending";
+                      setState(() {
+                        _searchController.text = q;
+                        _query = q;
+                      });
+                      ref.read(searchHistoryProvider.notifier).addQuery(q);
+                    },
+                  ),
+                  _TrendChip(
+                    label: "🎓 News",
+                    isDark: isDark,
+                    onTap: () {
+                      final q = "#news";
+                      setState(() {
+                        _searchController.text = q;
+                        _query = q;
+                      });
+                      ref.read(searchHistoryProvider.notifier).addQuery(q);
+                    },
+                  ),
+                  _TrendChip(
+                    label: "🏆 Sports",
+                    isDark: isDark,
+                    onTap: () {
+                      final q = "#sports";
+                      setState(() {
+                        _searchController.text = q;
+                        _query = q;
+                      });
+                      ref.read(searchHistoryProvider.notifier).addQuery(q);
+                    },
+                  ),
+                  _TrendChip(
+                    label: "🎭 Life",
+                    isDark: isDark,
+                    onTap: () {
+                      final q = "#life";
+                      setState(() {
+                        _searchController.text = q;
+                        _query = q;
+                      });
+                      ref.read(searchHistoryProvider.notifier).addQuery(q);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Text(
-            suggestionTitle,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+      ),
+    );
+  }
+
+  Widget _buildDiscoverView(bool isDark) {
+    return ListView(
+      padding: const EdgeInsets.only(top: 8),
+      children: [
+        // Recent History
+        _buildHistorySection(isDark),
+
+        // Suggested Users Carousel
+        const _SuggestedUsersCarousel(),
+
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 24, 16, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "Trending Now",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              Text(
+                "What people are talking about",
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+            ],
           ),
         ),
-        suggestions,
+
+        // Trending Tags Cloud
+        _buildTrendingTags(isDark),
+
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 24, 16, 12),
+          child: Text(
+            "Discover Campus",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+          ),
+        ),
+
+        // Masonry Grid for Posts
+        const _DiscoverMasonryGrid(),
+
+        const SizedBox(height: 100), // Bottom navigation space
       ],
+    );
+  }
+
+  Widget _buildSearchResultsView(bool isDark) {
+    return TabBarView(
+      controller: _tabController,
+      children: [
+        _SearchResultsList(query: _query, filter: 'top'),
+        _SearchResultsList(query: _query, filter: 'latest'),
+        _PeopleSearchResults(query: _query),
+        _SearchResultsList(query: _query, filter: 'media'),
+      ],
+    );
+  }
+
+  Widget _buildHistorySection(bool isDark) {
+    final searchHistory = ref.watch(searchHistoryProvider);
+    if (searchHistory.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                "Recent",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              GestureDetector(
+                onTap: () => ref.read(searchHistoryProvider.notifier).clearHistory(),
+                child: Text(
+                  "Clear all",
+                  style: TextStyle(
+                    color: AppColors.secondaryTeal,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 36,
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            scrollDirection: Axis.horizontal,
+            itemCount: searchHistory.length,
+            itemBuilder: (context, index) {
+              final query = searchHistory[index];
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: InputChip(
+                  label: Text(query),
+                  onPressed: () {
+                    HapticFeedback.selectionClick();
+                    setState(() {
+                      _searchController.text = query;
+                      _query = query;
+                    });
+                    ref.read(searchHistoryProvider.notifier).addQuery(query);
+                  },
+                  onDeleted: () => ref.read(searchHistoryProvider.notifier).removeQuery(query),
+                  deleteIcon: Icon(
+                    Icons.close,
+                    size: 14,
+                    color: isDark ? Colors.white38 : Colors.black38,
+                  ),
+                  backgroundColor: isDark
+                      ? Colors.white.withValues(alpha: 0.05)
+                      : Colors.black.withValues(alpha: 0.04),
+                  labelStyle: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.white70 : Colors.black87,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  side: BorderSide.none,
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  Widget _buildTrendingTags(bool isDark) {
+    final trendingTagsAsync = ref.watch(trendingTagsProvider);
+
+    return trendingTagsAsync.when(
+      data: (tags) {
+        if (tags.isEmpty) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Text("No trending tags yet", style: TextStyle(color: Colors.grey, fontSize: 13)),
+          );
+        }
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: tags.map((tagData) {
+              final tag = tagData['tag'] as String;
+              final count = tagData['count'] as int;
+              final hashtag = tag.startsWith('#') ? tag : '#$tag';
+
+              return InkWell(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  setState(() {
+                    _searchController.text = hashtag;
+                    _query = hashtag;
+                  });
+                  ref.read(searchHistoryProvider.notifier).addQuery(hashtag);
+                },
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.secondaryTeal.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: AppColors.secondaryTeal.withValues(alpha: 0.1),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        hashtag,
+                        style: const TextStyle(
+                          color: AppColors.secondaryTeal,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                      if (count > 1) ...[
+                        const SizedBox(width: 4),
+                        Text(
+                          "• $count",
+                          style: TextStyle(
+                            color: AppColors.secondaryTeal.withValues(alpha: 0.6),
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        );
+      },
+      loading: () => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: List.generate(6, (i) => Shimmer.fromColors(
+            baseColor: isDark ? Colors.white10 : Colors.black12,
+            highlightColor: isDark ? Colors.white24 : Colors.black26,
+            child: Container(
+              width: 80 + (i * 10).toDouble(),
+              height: 32,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+          )),
+        ),
+      ),
+      error: (_, __) => const SizedBox.shrink(),
     );
   }
 }
 
-class _SuggestedUsers extends ConsumerWidget {
-  const _SuggestedUsers();
+class _TrendChip extends StatelessWidget {
+  final String label;
+  final bool isDark;
+  final VoidCallback onTap;
+
+  const _TrendChip({
+    required this.label,
+    required this.isDark,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap();
+      },
+      child: Container(
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.black.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.05)
+                : Colors.black.withValues(alpha: 0.05),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.8)
+                : Colors.black.withValues(alpha: 0.7),
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SuggestedUsersCarousel extends ConsumerWidget {
+  const _SuggestedUsersCarousel();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final userRepo = ref.watch(userRepositoryProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return StreamBuilder<List<AppUser>>(
-      stream: userRepo.watchPopularUsers(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(20.0),
-              child: CircularProgressIndicator(),
-            ),
-          );
-        }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: Text(
+            "Who to follow",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+        ),
+        SizedBox(
+          height: 200,
+          child: StreamBuilder<List<AppUser>>(
+            stream: userRepo.watchPopularUsers(),
+            builder: (context, snapshot) {
+              final users = snapshot.data ?? [];
+              if (users.isEmpty) return const SizedBox.shrink();
 
-        if (snapshot.hasError) {
-          return _ErrorRetryWidget(
-            error: snapshot.error.toString(),
-            onRetry: () {
-              // Trigger a rebuild
-            },
-          );
-        }
-
-        final users = snapshot.data ?? [];
-        if (users.isEmpty) {
-          return const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Text(
-              'No suggestions found',
-              style: TextStyle(color: Colors.grey),
-            ),
-          );
-        }
-
-        return Column(
-          children: users
-              .map(
-                (user) => ListTile(
-                  leading: CircleAvatar(
-                    backgroundImage: user.avatarUrl != null
-                        ? CachedNetworkImageProvider(user.avatarUrl!)
-                        : null,
-                    child: user.avatarUrl == null
-                        ? Text(user.displayName[0].toUpperCase())
-                        : null,
-                  ),
-                  title: Row(
-                    children: [
-                      Text(
-                        user.displayName,
-                        style: TextStyle(
-                          color: isDark ? Colors.white : Colors.black,
-                          fontWeight: FontWeight.bold,
-                        ),
+              return ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                scrollDirection: Axis.horizontal,
+                itemCount: users.length,
+                itemBuilder: (context, index) {
+                  final user = users[index];
+                  return Container(
+                    width: 140,
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.04)
+                          : Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.05)
+                            : Colors.black.withValues(alpha: 0.05),
                       ),
-                      if (user.isVerified) ...[
-                        const SizedBox(width: 4),
-                        Icon(
-                          Icons.verified,
-                          size: 14,
-                          color: user.verificationType == 'gold'
-                              ? Colors.amber
-                              : AppColors.secondaryTeal,
-                        ),
-                      ],
-                    ],
-                  ),
-                  subtitle: Text(
-                    '@${user.handle}',
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                  onTap: () => context.push('/user/${user.uid}'),
-                ),
-              )
-              .toList(),
+                      boxShadow: isDark
+                          ? null
+                          : [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.03),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                    ),
+                    child: Consumer(
+                      builder: (context, ref, child) {
+                        final isFollowing =
+                            ref.watch(isFollowingProvider(user.uid)).value ??
+                            false;
+                        final currentUid = ref.watch(currentUserIdProvider);
+                        final isMe = currentUid == user.uid;
+
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Stack(
+                              children: [
+                                CircleAvatar(
+                                  radius: 30,
+                                  backgroundColor: AppColors.secondaryTeal
+                                      .withValues(alpha: 0.1),
+                                  backgroundImage: user.avatarUrl != null
+                                      ? CachedNetworkImageProvider(
+                                          user.avatarUrl!,
+                                        )
+                                      : null,
+                                  child: user.avatarUrl == null
+                                      ? Text(
+                                          user.displayName[0],
+                                          style: const TextStyle(
+                                            color: AppColors.secondaryTeal,
+                                          ),
+                                        )
+                                      : null,
+                                ),
+                                if (user.isVerified)
+                                  Positioned(
+                                    right: 0,
+                                    bottom: 0,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        shape: BoxShape.circle,
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(
+                                              0.1,
+                                            ),
+                                            blurRadius: 4,
+                                          ),
+                                        ],
+                                      ),
+                                      child: VerificationBadge(
+                                        type: user.verificationType,
+                                        size: 12,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              user.displayName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              "@${user.handle}",
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 11,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 12),
+                            if (!isMe)
+                              ElevatedButton(
+                                onPressed: () {
+                                  HapticFeedback.mediumImpact();
+                                  if (isFollowing) {
+                                    ref
+                                        .read(userRepositoryProvider)
+                                        .unfollowUser(user.uid);
+                                  } else {
+                                    ref
+                                        .read(userRepositoryProvider)
+                                        .followUser(user.uid);
+                                  }
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isFollowing
+                                      ? Colors.transparent
+                                      : AppColors.secondaryTeal,
+                                  foregroundColor: isFollowing
+                                      ? AppColors.secondaryTeal
+                                      : Colors.white,
+                                  elevation: 0,
+                                  minimumSize: const Size(double.infinity, 30),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    side: isFollowing
+                                        ? const BorderSide(
+                                            color: AppColors.secondaryTeal,
+                                          )
+                                        : BorderSide.none,
+                                  ),
+                                  padding: EdgeInsets.zero,
+                                ),
+                                child: Text(
+                                  isFollowing ? "Following" : "Follow",
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DiscoverMasonryGrid extends ConsumerWidget {
+  const _DiscoverMasonryGrid();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final postRepo = ref.watch(postRepositoryProvider);
+    return StreamBuilder<List<Post>>(
+      stream: postRepo.watchSuggestedPosts(),
+      builder: (context, snapshot) {
+        final posts = snapshot.data ?? [];
+        if (posts.isEmpty) return const SizedBox.shrink();
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: MasonryGridView.count(
+            crossAxisCount: 2,
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: posts.length,
+            itemBuilder: (context, index) {
+              final post = posts[index];
+              return _MasonryPostItem(post: post, index: index)
+                  .animate(delay: (index * 50).ms)
+                  .fadeIn(duration: 500.ms)
+                  .slideY(begin: 0.2, end: 0, curve: Curves.easeOutQuart);
+            },
+          ),
         );
       },
     );
   }
 }
 
-class _SuggestedPosts extends ConsumerWidget {
-  const _SuggestedPosts();
+class _MasonryPostItem extends StatelessWidget {
+  final Post post;
+  final int index;
+
+  const _MasonryPostItem({required this.post, required this.index});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasMedia = post.mediaUrl.isNotEmpty;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return GestureDetector(
+      onTap: () => context.push('/post/${post.id}'),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(32),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.1),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(32),
+          child: AspectRatio(
+            aspectRatio: (index % 3 == 0) ? 0.8 : 1.1, // Dynamic aspect ratio
+            child: Stack(
+              children: [
+                // Background Content
+                Positioned.fill(
+                  child: hasMedia
+                      ? CachedNetworkImage(
+                          imageUrl: post.mediaUrl,
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) => _buildPlaceholder(isDark),
+                          errorWidget: (context, url, error) => _buildPlaceholder(isDark),
+                        )
+                      : _buildTextBackground(isDark),
+                ),
+
+                // Glassmorphic Overlay & Shine Effect
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.black.withValues(alpha: 0.6),
+                          Colors.transparent,
+                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.4),
+                        ],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Diagonal Shine
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.white.withValues(alpha: 0.0),
+                          Colors.white.withValues(alpha: 0.05),
+                          Colors.white.withValues(alpha: 0.0),
+                        ],
+                        begin: const Alignment(-1.5, -1.0),
+                        end: const Alignment(1.5, 1.0),
+                        stops: const [0.45, 0.5, 0.55],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Top Left: Content Type Icons
+                Positioned(
+                  top: 12,
+                  left: 12,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.play_arrow_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                        const SizedBox(height: 8),
+                        const Icon(
+                          Icons.image_outlined,
+                          color: Colors.white70,
+                          size: 18,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Bottom Left: Relevance Bubble (Profile + Stats)
+                Positioned(
+                  bottom: 12,
+                  left: 12,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                      child: Container(
+                        padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.2),
+                            width: 0.5,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CircleAvatar(
+                              radius: 12,
+                              backgroundColor: AppColors.secondaryTeal.withOpacity(0.2),
+                              backgroundImage: post.authorAvatarUrl != null
+                                  ? CachedNetworkImageProvider(post.authorAvatarUrl!)
+                                  : null,
+                              child: post.authorAvatarUrl == null
+                                  ? Text(
+                                      post.authorName[0],
+                                      style: const TextStyle(fontSize: 10, color: Colors.white),
+                                    )
+                                  : null,
+                            ),
+                            const SizedBox(width: 8),
+                            const Text(
+                              "1%",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Bottom Right: Engagement Bubble (Heart + Count)
+                Positioned(
+                  bottom: 12,
+                  right: 12,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.favorite_rounded,
+                          color: Colors.pinkAccent,
+                          size: 14,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          _formatCount(post.likesCount),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlaceholder(bool isDark) {
+    return Container(
+      color: isDark ? const Color(0xFF1E293B) : Colors.grey[200],
+      child: Center(
+        child: Icon(
+          Icons.image_outlined,
+          color: isDark ? Colors.white10 : Colors.black12,
+          size: 32,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextBackground(bool isDark) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.secondaryTeal.withOpacity(0.8),
+            AppColors.secondaryTeal.withOpacity(0.4),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Center(
+        child: Text(
+          post.content,
+          maxLines: 4,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String _formatCount(int count) {
+  if (count >= 1000000) return "${(count / 1000000).toStringAsFixed(1)}M";
+  if (count >= 1000) return "${(count / 1000).toStringAsFixed(1)}K";
+  return count.toString();
+}
+
+class _SearchResultsList extends ConsumerWidget {
+  final String query;
+  final String filter;
+
+  const _SearchResultsList({required this.query, required this.filter});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final postRepo = ref.watch(postRepositoryProvider);
 
     return StreamBuilder<List<Post>>(
-      stream: postRepo.watchSuggestedPosts(),
+      stream: postRepo.searchPosts(query),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(20.0),
-              child: CircularProgressIndicator(),
-            ),
-          );
+          return const _SearchSkeleton();
         }
 
-        if (snapshot.hasError) {
-          return _ErrorRetryWidget(
-            error: snapshot.error.toString(),
-            onRetry: () {},
-          );
+        var posts = snapshot.data ?? [];
+
+        // Apply filters
+        if (filter == 'top') {
+          posts.sort((a, b) => b.likesCount.compareTo(a.likesCount));
+        } else if (filter == 'media') {
+          posts = posts.where((p) => p.mediaUrl.isNotEmpty).toList();
         }
 
-        final posts = snapshot.data ?? [];
         if (posts.isEmpty) {
-          return const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Text(
-              'No suggestions found',
-              style: TextStyle(color: Colors.grey),
-            ),
-          );
+          return _NoResultsView(query: query);
         }
 
-        return Column(
-          children: posts.map((post) => PostCard(post: post)).toList(),
+        return ListView.builder(
+          padding: const EdgeInsets.only(top: 8),
+          itemCount: posts.length,
+          itemBuilder: (context, index) => PostCard(post: posts[index]),
         );
       },
     );
   }
 }
 
-class _ErrorRetryWidget extends StatelessWidget {
-  final String error;
-  final VoidCallback onRetry;
-
-  const _ErrorRetryWidget({required this.error, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    final isOffline =
-        error.contains('UNAVAILABLE') || error.contains('UnknownHostException');
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              isOffline ? Icons.wifi_off : Icons.error_outline,
-              size: 64,
-              color: Colors.grey[400],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              isOffline ? "Connect to Interest" : "Something went wrong",
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              isOffline
-                  ? "We couldn't reach Nest. Please check your internet connection."
-                  : "We encountered an error while searching. Please try again.",
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: onRetry,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.secondaryTeal,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 32,
-                  vertical: 12,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text("Try Again"),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _TrendingSearch extends ConsumerWidget {
+class _PeopleSearchResults extends ConsumerWidget {
   final String query;
-  final Function(String) onTagSelected;
 
-  const _TrendingSearch({required this.query, required this.onTagSelected});
+  const _PeopleSearchResults({required this.query});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (query.isNotEmpty) {
-      return Center(
-        child: Text(
-          "Results for '$query' in Trending",
-          style: TextStyle(color: Colors.grey),
-        ),
-      );
-    }
-
-    final trendingAsync = ref.watch(trendingTagsProvider);
-
-    return trendingAsync.when(
-      data: (tags) {
-        if (tags.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.trending_up, size: 64, color: Colors.grey[300]),
-                const SizedBox(height: 16),
-                Text(
-                  "No trending topics yet",
-                  style: TextStyle(color: Colors.grey[600], fontSize: 16),
-                ),
-              ],
-            ),
-          );
-        }
-
-        return ListView.separated(
-          itemCount: tags.length,
-          separatorBuilder: (context, index) => const Divider(height: 1),
-          itemBuilder: (context, index) {
-            final tagData = tags[index];
-            final tag = tagData['tag'] as String;
-            final count = tagData['count'] as int;
-
-            return _TrendingItem(
-              category: "Trending in ABUAD",
-              topic: "#${tag.toUpperCase()}",
-              posts: "$count",
-              onTap: () => onTagSelected(tag),
-            );
-          },
-        );
-      },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, stack) => _ErrorRetryWidget(
-        error: error.toString(),
-        onRetry: () {
-          ref.invalidate(trendingTagsProvider);
-        },
-      ),
-    );
-  }
-}
-
-class _TrendingItem extends StatelessWidget {
-  final String category;
-  final String topic;
-  final String posts;
-  final VoidCallback onTap;
-
-  const _TrendingItem({
-    required this.category,
-    required this.topic,
-    required this.posts,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  category,
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
-                ),
-                Icon(Icons.more_horiz, size: 16, color: Colors.grey),
-              ],
-            ),
-            const SizedBox(height: 2),
-            Text(
-              topic,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 15,
-                color: isDark ? Colors.white : Colors.black,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              "$posts posts",
-              style: TextStyle(color: Colors.grey, fontSize: 12),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PeopleSearch extends ConsumerWidget {
-  final String query;
-  final List<String> history;
-  final Function(String) onHistoryTap;
-  final Function(String) onRemoveHistory;
-  final VoidCallback onClearHistory;
-
-  const _PeopleSearch({
-    required this.query,
-    required this.history,
-    required this.onHistoryTap,
-    required this.onRemoveHistory,
-    required this.onClearHistory,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (query.isEmpty) {
-      return _SearchInitialContent(
-        history: history,
-        onHistoryTap: onHistoryTap,
-        onRemoveHistory: onRemoveHistory,
-        onClearHistory: onClearHistory,
-        suggestions: const _SuggestedUsers(),
-      );
-    }
-
     final userRepo = ref.watch(userRepositoryProvider);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return StreamBuilder<List<AppUser>>(
       stream: userRepo.searchUsers(query),
       builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const _SearchSkeleton();
         }
 
         final users = snapshot.data ?? [];
+
         if (users.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.person_off, size: 64, color: Colors.grey[400]),
-                const SizedBox(height: 16),
-                Text(
-                  'No users found',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 16),
-                ),
-              ],
-            ),
-          );
+          return _NoResultsView(query: query);
         }
 
-        return ListView.builder(
+        return ListView.separated(
+          padding: const EdgeInsets.only(top: 8),
           itemCount: users.length,
+          separatorBuilder: (context, index) => const Divider(height: 1),
           itemBuilder: (context, index) {
             final user = users[index];
             return ListTile(
-              leading: CircleAvatar(
-                backgroundImage: user.avatarUrl != null
-                    ? CachedNetworkImageProvider(user.avatarUrl!)
-                    : null,
-                child: user.avatarUrl == null
-                    ? Text(user.displayName[0].toUpperCase())
-                    : null,
+              leading: UserAvatar(
+                userId: user.uid,
+                avatarUrl: user.avatarUrl,
+                radius: 24,
               ),
-              title: Text(
-                user.displayName,
-                style: TextStyle(
-                  color: isDark ? Colors.white : Colors.black,
-                  fontWeight: FontWeight.bold,
-                ),
+              title: Row(
+                children: [
+                  Text(
+                    user.displayName,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  if (user.isVerified) ...[
+                    const SizedBox(width: 4),
+                    VerificationBadge(type: user.verificationType, size: 14),
+                  ],
+                ],
               ),
               subtitle: Text(
-                '@${user.handle}',
-                style: TextStyle(color: Colors.grey),
+                "@${user.handle}",
+                style: const TextStyle(color: Colors.grey),
+              ),
+              trailing: Consumer(
+                builder: (context, ref, child) {
+                  final isFollowing =
+                      ref.watch(isFollowingProvider(user.uid)).value ?? false;
+                  final currentUid = ref.watch(currentUserIdProvider);
+                  if (currentUid == user.uid) return const SizedBox.shrink();
+
+                  return ElevatedButton(
+                    onPressed: () {
+                      HapticFeedback.mediumImpact();
+                      if (isFollowing) {
+                        ref.read(userRepositoryProvider).unfollowUser(user.uid);
+                      } else {
+                        ref.read(userRepositoryProvider).followUser(user.uid);
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isFollowing
+                          ? Colors.transparent
+                          : AppColors.secondaryTeal,
+                      foregroundColor: isFollowing
+                          ? AppColors.secondaryTeal
+                          : Colors.white,
+                      elevation: 0,
+                      side: isFollowing
+                          ? const BorderSide(color: AppColors.secondaryTeal)
+                          : null,
+                      minimumSize: const Size(80, 32),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Text(
+                      isFollowing ? "Following" : "Follow",
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  );
+                },
               ),
               onTap: () => context.push('/user/${user.uid}'),
             );
@@ -649,72 +1135,57 @@ class _PeopleSearch extends ConsumerWidget {
   }
 }
 
-class _PostSearch extends ConsumerWidget {
+class _NoResultsView extends StatelessWidget {
   final String query;
-  final List<String> history;
-  final Function(String) onHistoryTap;
-  final Function(String) onRemoveHistory;
-  final VoidCallback onClearHistory;
 
-  const _PostSearch({
-    required this.query,
-    required this.history,
-    required this.onHistoryTap,
-    required this.onRemoveHistory,
-    required this.onClearHistory,
-  });
+  const _NoResultsView({required this.query});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (query.isEmpty) {
-      return _SearchInitialContent(
-        history: history,
-        onHistoryTap: onHistoryTap,
-        onRemoveHistory: onRemoveHistory,
-        onClearHistory: onClearHistory,
-        suggestionTitle: 'Suggested Posts',
-        suggestions: const _SuggestedPosts(),
-      );
-    }
-
-    final postRepo = ref.watch(postRepositoryProvider);
-
-    return StreamBuilder<List<Post>>(
-      stream: postRepo.searchPosts(query),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        final posts = snapshot.data ?? [];
-        if (posts.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.article_outlined, size: 64, color: Colors.grey[400]),
-                const SizedBox(height: 16),
-                Text(
-                  'No posts found',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 16),
-                ),
-              ],
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.search_off_rounded, size: 64, color: Colors.grey[400]),
+          const SizedBox(height: 16),
+          Text(
+            "No results for '$query'",
+            style: TextStyle(
+              color: Colors.grey[600],
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
             ),
-          );
-        }
-
-        return ListView.builder(
-          itemCount: posts.length,
-          itemBuilder: (context, index) {
-            return PostCard(post: posts[index]);
-          },
-        );
-      },
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            "Try searching for something else",
+            style: TextStyle(color: Colors.grey, fontSize: 14),
+          ),
+        ],
+      ),
     );
   }
 }
 
-// _TagSearch removed in favor of _TrendingSearch in redesign
+class _SearchSkeleton extends StatelessWidget {
+  const _SearchSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return ListView.builder(
+      itemCount: 5,
+      padding: const EdgeInsets.all(16),
+      itemBuilder: (context, index) => Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        height: 100,
+        decoration: BoxDecoration(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.grey[200],
+          borderRadius: BorderRadius.circular(20),
+        ),
+      ),
+    );
+  }
+}

@@ -17,6 +17,8 @@ class MarketplaceDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final currentUser = ref.watch(currentUserProvider).value;
+    final isSeller = currentUser?.uid == item.sellerId;
     final sellerAsync = ref.watch(userProvider(item.sellerId));
 
     return Scaffold(
@@ -261,21 +263,37 @@ class MarketplaceDetailScreen extends ConsumerWidget {
             ),
           ],
         ),
-        child: FilledButton.icon(
-          onPressed: () => _handleChat(context, ref),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.secondaryTeal,
-            minimumSize: const Size(double.infinity, 54),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-          ),
-          icon: const Icon(Icons.chat_bubble_outline),
-          label: const Text(
-            'Chat with Seller',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-        ),
+        child: isSeller
+            ? FilledButton.icon(
+                onPressed: () => _handleDelete(context, ref),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.error,
+                  minimumSize: const Size(double.infinity, 54),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                icon: const Icon(Icons.delete_outline),
+                label: const Text(
+                  'Delete Listing',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              )
+            : FilledButton.icon(
+                onPressed: () => _handleChat(context, ref),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.secondaryTeal,
+                  minimumSize: const Size(double.infinity, 54),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                icon: const Icon(Icons.chat_bubble_outline),
+                label: const Text(
+                  'Chat with Seller',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
       ),
     );
   }
@@ -328,6 +346,56 @@ class MarketplaceDetailScreen extends ConsumerWidget {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error starting chat: $e')));
+      }
+    }
+  }
+
+  Future<void> _handleDelete(BuildContext context, WidgetRef ref) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Listing'),
+        content: const Text(
+          'Are you sure you want to permanently delete this product?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      if (!context.mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      try {
+        await ref.read(marketplaceRepositoryProvider).deleteItem(item.id);
+        if (context.mounted) {
+          Navigator.pop(context); // Pop loading
+          context.pop(); // Go back to marketplace
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Listing deleted successfully')),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          Navigator.pop(context); // Pop loading
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Error deleting listing: $e')));
+        }
       }
     }
   }

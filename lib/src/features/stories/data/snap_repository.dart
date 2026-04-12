@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as auth;
 import 'package:image_picker/image_picker.dart';
 import '../../../core/services/firebase_storage_service.dart';
+import '../../../core/services/notification_service.dart';
+import '../../notifications/domain/notification.dart';
 import '../domain/snap_model.dart';
 
 final snapRepositoryProvider = Provider<SnapRepository>((ref) {
@@ -47,6 +49,32 @@ class SnapRepository {
 
     // Update Streak logic
     await _updateStreak(uid);
+
+    // Notify Followers
+    try {
+      final followersSnapshot = await _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('followers')
+          .get();
+
+      for (final doc in followersSnapshot.docs) {
+        final followerId = doc.id;
+        await NotificationService().sendInAppNotification(
+          recipientId: followerId,
+          title: 'New Story',
+          body: '$userName posted a new story!',
+          type: NotificationType.storyUpdate,
+          senderId: uid,
+          senderName: userName,
+          senderAvatarUrl: userAvatar,
+          data: {'id': uid, 'type': 'story'},
+        );
+      }
+    } catch (e) {
+      // ignore: avoid_print
+      print('Error notifying followers of new story: $e');
+    }
   }
 
   Stream<List<Snap>> watchActiveSnaps() {

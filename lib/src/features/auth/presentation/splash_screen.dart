@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../auth/data/auth_repository.dart';
+import '../../user/data/user_repository.dart';
 import '../../../core/theme/app_colors.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -85,14 +87,13 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Display the logo fully without cropping
+                // Display the profile picture or logo
                 Container(
                   width: 200,
                   height: 200,
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    shape: BoxShape
-                        .circle, // Optional: if logo needs a white bg circle container, else remove
+                    shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.1),
@@ -101,19 +102,74 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                       ),
                     ],
                   ),
-                  padding: const EdgeInsets.all(20),
-                  child: Image.asset('assets/logo.png', fit: BoxFit.contain),
-                ),
-                const SizedBox(height: 24),
-                const Text(
-                  'ABUAD',
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    letterSpacing: 2,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(100),
+                    child: ref.watch(currentUserProvider).when(
+                          data: (user) {
+                            if (user?.avatarUrl != null &&
+                                user!.avatarUrl!.isNotEmpty) {
+                              return CachedNetworkImage(
+                                imageUrl: user.avatarUrl!,
+                                fit: BoxFit.cover,
+                                placeholder: (context, url) => Image.asset(
+                                  'assets/logo.png',
+                                  fit: BoxFit.contain,
+                                  color: Colors.black12,
+                                ),
+                                errorWidget: (context, url, error) =>
+                                    Image.asset(
+                                  'assets/logo.png',
+                                  fit: BoxFit.contain,
+                                ),
+                              );
+                            }
+                            return Padding(
+                              padding: const EdgeInsets.all(20),
+                              child: Image.asset(
+                                'assets/logo.png',
+                                fit: BoxFit.contain,
+                              ),
+                            );
+                          },
+                          loading: () => const Center(
+                            child: CircularProgressIndicator(
+                              color: AppColors.secondaryTeal,
+                            ),
+                          ),
+                          error: (_, __) => Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Image.asset(
+                              'assets/logo.png',
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                        ),
                   ),
                 ),
+                const SizedBox(height: 24),
+                ref.watch(currentUserProvider).when(
+                      data: (user) => Text(
+                        user?.displayName != null
+                            ? 'Welcome, ${user!.displayName}'
+                            : 'ABUAD',
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                      loading: () => const SizedBox(),
+                      error: (_, __) => const Text(
+                        'ABUAD',
+                        style: TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          letterSpacing: 2,
+                        ),
+                      ),
+                    ),
               ],
             ),
           ),

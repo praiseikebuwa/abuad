@@ -1,18 +1,20 @@
 import 'package:abuad/src/features/user/data/user_repository.dart';
+import 'package:abuad/src/shared/widgets/user_avatar.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:async';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/verification_badge.dart';
 import 'package:abuad/src/features/feed/data/post_repository.dart';
 import '../../domain/post.dart' as domain;
+import '../providers/feed_provider.dart';
 
-import '../post_detail_screen.dart';
 import 'animated_like_button.dart';
 import 'poll_widget.dart';
 import 'video_post_widget.dart';
@@ -20,18 +22,64 @@ import '../../domain/report.dart';
 import 'report_bottom_sheet.dart';
 import 'full_screen_image_view.dart';
 import 'full_screen_video_view.dart';
+import '../../../../shared/widgets/share_sheet.dart';
 
-class PostCard extends ConsumerWidget {
+class PostCard extends ConsumerStatefulWidget {
   final domain.Post post;
   final VoidCallback? onTap;
+  final VoidCallback? onVideoTap;
 
-  const PostCard({super.key, required this.post, this.onTap});
+  const PostCard({super.key, required this.post, this.onTap, this.onVideoTap});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PostCard> createState() => _PostCardState();
+}
+
+class _PostCardState extends ConsumerState<PostCard> {
+  Timer? _impressionTimer;
+  Timer? _captionTimer;
+  bool _impressionFired = false;
+  bool _showVideoCaption = false;
+  bool _isThreadExpanded = false;
+
+  domain.Post get post => widget.post;
+
+  @override
+  void initState() {
+    super.initState();
+    // Feature 5: Impression tracking — fire view count after 1.5s of visibility
+    _impressionTimer = Timer(const Duration(milliseconds: 1500), () {
+      if (mounted && !_impressionFired) {
+        _impressionFired = true;
+        ref.read(postRepositoryProvider).incrementViewCount(post.id);
+      }
+    });
+    if (widget.post.mediaType == domain.MediaType.video) {
+      _showVideoCaption = true;
+      _captionTimer = Timer(const Duration(seconds: 3), () {
+        if (mounted) {
+          setState(() => _showVideoCaption = false);
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _impressionTimer?.cancel();
+    _captionTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final repo = ref.watch(postRepositoryProvider);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final repliesAsync = ref.watch(postRepliesPreviewProvider(post.id));
+    final livePost = ref.watch(postProvider(post.id)).value ?? post;
+    final activeActionId = ref.watch(activePostActionProvider);
+    final showActionOverlay = activeActionId == post.id;
 
     // Determine if this is a "Pure Repost" (no added commentary)
     final isPureRepost = post.repostData != null && post.content.trim().isEmpty;
@@ -69,6 +117,10 @@ class PostCard extends ConsumerWidget {
         ? (post.repostData!['is_anonymous'] == true)
         : post.isAnonymous;
 
+    final videoCaption = (post.mediaAltText?.trim().isNotEmpty ?? false)
+        ? post.mediaAltText!.trim()
+        : '$displayAuthorName • ${_channelLabel(post.channelId)} video';
+
     // Media Type Enum Conversion
     domain.MediaType displayMediaType = post.mediaType;
     if (isPureRepost && displayMediaTypeStr != null) {
@@ -94,29 +146,9 @@ class PostCard extends ConsumerWidget {
         : post.authorId;
     final shouldWatch = !displayIsAnonymous && authorIdToWatch != null;
 
-    return InkWell(
-      onTap:
-          onTap ??
-          () {
-            // If pure repost, navigate to ORIGINAL post
-            if (isPureRepost && post.repostData != null) {
-              final originalPost = domain.Post.fromMap(post.repostData!);
-              if (originalPost.id.isEmpty) return; // Safety check
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => PostDetailScreen(post: originalPost),
-                ),
-              );
-            } else {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => PostDetailScreen(post: post),
-                ),
-              );
-            }
-          },
+    final cardContent = InkWell(
+      onTap: widget.onTap ?? () => _openPostDetail(context),
+      onLongPress: _displayActionOverlay,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: const BoxDecoration(color: Colors.transparent),
@@ -167,40 +199,17 @@ class PostCard extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Left Column: Avatar (Displayed Author)
-                    GestureDetector(
-                      onTap: () {
-                        if (!displayIsAnonymous && authorIdToWatch != null) {
-                          context.push('/user/$authorIdToWatch');
-                        }
-                      },
-                      child: CircleAvatar(
-                        radius: 22,
-                        backgroundColor: displayIsAnonymous
-                            ? (isDark ? Colors.grey[700] : Colors.grey[800])
-                            : (isDark ? Colors.grey[800] : Colors.grey[200]),
-                        backgroundImage:
-                            (effectiveAvatarUrl != null && !displayIsAnonymous)
-                            ? CachedNetworkImageProvider(effectiveAvatarUrl)
-                            : null,
-                        child: displayIsAnonymous
-                            ? const Icon(
-                                Icons.person_outline,
-                                color: Colors.white,
-                                size: 22,
-                              )
-                            : (effectiveAvatarUrl == null
-                                  ? Text(
-                                      effectiveAuthorName.isNotEmpty
-                                          ? effectiveAuthorName[0].toUpperCase()
-                                          : '?',
-                                      style: TextStyle(
-                                        color: theme.colorScheme.primary,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 18,
-                                      ),
-                                    )
-                                  : null),
-                      ),
+                    UserAvatar(
+                      userId: authorIdToWatch ?? '',
+                      avatarUrl: displayIsAnonymous ? null : effectiveAvatarUrl,
+                      radius: 22,
+                      showStoryRing: !displayIsAnonymous,
+                      backgroundColor: displayIsAnonymous
+                          ? (isDark ? Colors.grey[700] : Colors.grey[800])
+                          : (isDark ? Colors.grey[800] : Colors.grey[200]),
+                      onTap: displayIsAnonymous
+                          ? () {} // No-op for anonymous
+                          : null, // Default navigation
                     ),
                     const SizedBox(width: 12),
 
@@ -213,38 +222,51 @@ class PostCard extends ConsumerWidget {
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
+                              // Name & Badge
                               Flexible(
-                                child: Text(
-                                  displayIsAnonymous
-                                      ? 'Anonymous Student'
-                                      : effectiveAuthorName,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 15,
-                                    letterSpacing: -0.2,
-                                    color: theme.textTheme.bodyLarge?.color,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                                flex: 3,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        displayIsAnonymous
+                                            ? 'Anonymous Student'
+                                            : effectiveAuthorName,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 15,
+                                          letterSpacing: -0.2,
+                                          color:
+                                              theme.textTheme.bodyLarge?.color,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ),
+                                    if (effectiveIsVerified &&
+                                        !displayIsAnonymous) ...[
+                                      const SizedBox(width: 4),
+                                      VerificationBadge(
+                                        type: effectiveVerificationType,
+                                        size: 14,
+                                      ),
+                                    ],
+                                  ],
                                 ),
                               ),
-                              if (effectiveIsVerified &&
-                                  !displayIsAnonymous) ...[
-                                const SizedBox(width: 4),
-                                VerificationBadge(
-                                  type: effectiveVerificationType,
-                                  size: 16,
-                                ),
-                              ],
+
+                              // Handle & Time
                               if (!displayIsAnonymous) ...[
                                 const SizedBox(width: 4),
                                 Flexible(
+                                  flex: 2,
                                   child: Text(
                                     '@$effectiveAuthorHandle',
                                     style: TextStyle(
                                       color: isDark
                                           ? Colors.grey[500]
                                           : Colors.grey[600],
-                                      fontSize: 14,
+                                      fontSize: 13,
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
@@ -256,7 +278,7 @@ class PostCard extends ConsumerWidget {
                                   color: isDark
                                       ? Colors.grey[500]
                                       : Colors.grey[600],
-                                  fontSize: 14,
+                                  fontSize: 13,
                                 ),
                               ),
                               const SizedBox(width: 8),
@@ -278,18 +300,24 @@ class PostCard extends ConsumerWidget {
                                       if (isFollowing) {
                                         return const SizedBox.shrink();
                                       }
-                                      return GestureDetector(
-                                        onTap: () {
-                                          ref
-                                              .read(userRepositoryProvider)
-                                              .followUser(post.authorId);
-                                        },
-                                        child: Text(
-                                          'Follow',
-                                          style: TextStyle(
-                                            color: AppColors.secondaryTeal,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 14,
+                                      return Padding(
+                                        padding: const EdgeInsets.only(
+                                          left: 8.0,
+                                          right: 4.0,
+                                        ),
+                                        child: GestureDetector(
+                                          onTap: () {
+                                            ref
+                                                .read(userRepositoryProvider)
+                                                .followUser(post.authorId);
+                                          },
+                                          child: Text(
+                                            'Follow',
+                                            style: TextStyle(
+                                              color: AppColors.secondaryTeal,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 13,
+                                            ),
                                           ),
                                         ),
                                       );
@@ -316,6 +344,21 @@ class PostCard extends ConsumerWidget {
                               ),
                             ],
                           ),
+                          if (!displayIsAnonymous)
+                            Padding(
+                              padding: const EdgeInsets.only(
+                                top: 6.0,
+                                bottom: 8.0,
+                              ),
+                              child: Wrap(
+                                spacing: 6,
+                                runSpacing: 4,
+                                children: _buildBadgeChips(
+                                  isDark,
+                                  displayIsVerified,
+                                ),
+                              ),
+                            ),
                           if (post.latitude != null)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 4.0),
@@ -327,7 +370,7 @@ class PostCard extends ConsumerWidget {
                                     color: AppColors.secondaryTeal,
                                   ),
                                   const SizedBox(width: 4),
-                                  Text(
+                                  const Text(
                                     "ABUAD Campus",
                                     style: TextStyle(
                                       color: AppColors.secondaryTeal,
@@ -388,12 +431,13 @@ class PostCard extends ConsumerWidget {
                                       children: [
                                         if (post.repostData!['author_avatar_url'] !=
                                             null) ...[
-                                          CircleAvatar(
+                                          UserAvatar(
+                                            userId:
+                                                post.repostData!['author_id'] ??
+                                                '',
+                                            avatarUrl: post
+                                                .repostData!['author_avatar_url'],
                                             radius: 10,
-                                            backgroundImage:
-                                                CachedNetworkImageProvider(
-                                                  post.repostData!['author_avatar_url'],
-                                                ),
                                           ),
                                           const SizedBox(width: 8),
                                         ],
@@ -479,16 +523,18 @@ class PostCard extends ConsumerWidget {
                               onTap: () {
                                 if (displayMediaType ==
                                     domain.MediaType.video) {
-                                  // View Video in Full Screen
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => FullScreenVideoView(
-                                        videoUrl: displayMediaUrl,
-                                        heroTag: 'post_media_${post.id}',
-                                      ),
-                                    ),
-                                  );
+                                  if (widget.onVideoTap != null) {
+                                    widget.onVideoTap!();
+                                  } else {
+                                    // View Video in TikTok Style
+                                    context.push(
+                                      '/reels',
+                                      extra: {
+                                        'videos': [post],
+                                        'index': 0,
+                                      },
+                                    );
+                                  }
                                 } else {
                                   // View Image in Full Screen
                                   Navigator.push(
@@ -502,28 +548,42 @@ class PostCard extends ConsumerWidget {
                                   );
                                 }
                               },
-                              child: Hero(
-                                tag: 'post_media_${post.id}',
-                                child:
-                                    displayMediaType == domain.MediaType.video
-                                    ? VideoPostWidget(videoUrl: displayMediaUrl)
-                                    : CachedNetworkImage(
-                                        imageUrl: displayMediaUrl,
-                                        height: 250,
-                                        width: double.infinity,
-                                        fit: BoxFit.cover,
-                                        errorWidget: (context, url, error) =>
-                                            Container(
-                                              height: 250,
-                                              color: Colors.black,
-                                              child: const Icon(
-                                                Icons.broken_image_outlined,
-                                                color: Colors.white,
-                                                size: 48,
+                              child: displayMediaType == domain.MediaType.video
+                                  ? Stack(
+                                      alignment: Alignment.bottomCenter,
+                                      children: [
+                                        VideoPostWidget(
+                                          videoUrl: displayMediaUrl,
+                                        ),
+                                        if (_showVideoCaption)
+                                          _buildVideoCaption(
+                                            videoCaption,
+                                            isDark,
+                                          ),
+                                      ],
+                                    )
+                                  : Hero(
+                                      tag: 'post_media_${post.id}',
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(12),
+                                        child: CachedNetworkImage(
+                                          imageUrl: displayMediaUrl,
+                                          height: 250,
+                                          width: double.infinity,
+                                          fit: BoxFit.cover,
+                                          errorWidget: (context, url, error) =>
+                                              Container(
+                                                height: 250,
+                                                color: Colors.black,
+                                                child: const Icon(
+                                                  Icons.broken_image_outlined,
+                                                  color: Colors.white,
+                                                  size: 48,
+                                                ),
                                               ),
-                                            ),
+                                        ),
                                       ),
-                              ),
+                                    ),
                             ),
                             const SizedBox(height: 12),
                           ],
@@ -534,7 +594,7 @@ class PostCard extends ConsumerWidget {
                             children: [
                               _ActionButton(
                                 icon: Icons.chat_bubble_outline,
-                                count: post.commentsCount,
+                                count: livePost.commentsCount,
                                 color: isDark
                                     ? Colors.grey[500]!
                                     : Colors.grey[600]!,
@@ -545,7 +605,7 @@ class PostCard extends ConsumerWidget {
                               ),
                               _ActionButton(
                                 icon: Icons.repeat,
-                                count: post.repostCount,
+                                count: livePost.repostCount,
                                 color: AppColors.secondaryTeal,
                                 onTap: () {
                                   _showRepostBottomSheet(context, ref, post);
@@ -553,18 +613,51 @@ class PostCard extends ConsumerWidget {
                               ),
                               Consumer(
                                 builder: (context, ref, child) {
-                                  final isLiked =
+                                  // Feature 6: Optimistic Likes
+                                  // Check if there's an optimistic override, otherwise use Firebase stream
+                                  final optimisticMap = ref.watch(
+                                    optimisticLikeProvider,
+                                  );
+                                  final firebaseLiked =
                                       ref
                                           .watch(isPostLikedProvider(post.id))
                                           .value ??
                                       false;
+                                  final isLiked =
+                                      optimisticMap.containsKey(post.id)
+                                      ? optimisticMap[post.id]!
+                                      : firebaseLiked;
+                                  final optimisticCount =
+                                      optimisticMap.containsKey(post.id)
+                                      ? livePost.likesCount +
+                                            (optimisticMap[post.id]! ? 1 : -1)
+                                      : livePost.likesCount;
                                   return AnimatedLikeButton(
                                     isLiked: isLiked,
-                                    count: post.likesCount,
-                                    onTap: () {
+                                    count: optimisticCount.clamp(0, 999999),
+                                    onTap: () async {
+                                      // Immediately update UI (optimistic)
                                       ref
-                                          .read(postRepositoryProvider)
-                                          .toggleLike(post.id);
+                                          .read(optimisticLikeProvider.notifier)
+                                          .toggle(post.id, firebaseLiked);
+                                      try {
+                                        await ref
+                                            .read(postRepositoryProvider)
+                                            .toggleLike(post.id);
+                                        // Confirm: remove optimistic override once Firebase responds
+                                        ref
+                                            .read(
+                                              optimisticLikeProvider.notifier,
+                                            )
+                                            .confirm(post.id);
+                                      } catch (_) {
+                                        // Revert on failure
+                                        ref
+                                            .read(
+                                              optimisticLikeProvider.notifier,
+                                            )
+                                            .revert(post.id, firebaseLiked);
+                                      }
                                     },
                                   );
                                 },
@@ -600,16 +693,67 @@ class PostCard extends ConsumerWidget {
                                 color: isDark
                                     ? Colors.grey[500]!
                                     : Colors.grey[600]!,
-                                onTap: () {
-                                  Share.share(
-                                    'Check out this post on ABUAD Nest: https://abuadapp.web.app/post/${post.id}',
-                                    subject: 'Check out this post on ABUAD',
-                                  );
-                                },
+                                onTap: () => ShareSheet.show(context, post),
                               ),
                               const SizedBox(width: 8), // Extra edge padding
                             ],
                           ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Text(
+                              'Live stats: ${livePost.likesCount} likes · ${livePost.commentsCount} replies · ${livePost.repostCount} reposts',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isDark
+                                    ? Colors.white60
+                                    : Colors.grey[600],
+                              ),
+                            ),
+                          ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              TextButton.icon(
+                                icon: Icon(
+                                  _isThreadExpanded
+                                      ? Icons.expand_less
+                                      : Icons.chat_bubble_outline,
+                                  size: 16,
+                                ),
+                                label: Text(
+                                  _isThreadExpanded
+                                      ? 'Hide thread'
+                                      : 'View thread',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: AppColors.secondaryTeal,
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                  ),
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _isThreadExpanded = !_isThreadExpanded;
+                                  });
+                                },
+                              ),
+                              Text(
+                                '${livePost.commentsCount} replies',
+                                style: TextStyle(
+                                  color: isDark
+                                      ? Colors.grey[500]
+                                      : Colors.grey[600],
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (_isThreadExpanded)
+                            _buildThreadPreview(repliesAsync, isDark),
                         ],
                       ),
                     ),
@@ -620,7 +764,267 @@ class PostCard extends ConsumerWidget {
           ],
         ),
       ),
-    ).animate().fadeIn(duration: 300.ms).slideY(begin: 0.1, end: 0, duration: 300.ms);
+    );
+    return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            cardContent,
+            if (showActionOverlay) _buildActionOverlay(context, isDark),
+          ],
+        )
+        .animate()
+        .fadeIn(duration: 300.ms)
+        .slideY(begin: 0.1, end: 0, duration: 300.ms);
+  }
+
+  List<Widget> _buildBadgeChips(bool isDark, bool isVerified) {
+    final badges = <Widget>[];
+    badges.add(
+      _badgeChip(
+        _channelLabel(post.channelId),
+        isDark ? Colors.white10 : const Color.fromRGBO(0, 0, 0, 0.05),
+        isDark,
+      ),
+    );
+    if (isVerified && !post.isAnonymous) {
+      badges.add(
+        _badgeChip(
+          'Verified Student',
+          const Color.fromRGBO(255, 193, 7, 0.15),
+          isDark,
+          textColor: Colors.amber,
+        ),
+      );
+    }
+    if (_isPinnedPost(post)) {
+      badges.add(
+        _badgeChip(
+          'Pinned Update',
+          AppColors.secondaryTeal.withAlpha(38),
+          isDark,
+          textColor: AppColors.secondaryTeal,
+        ),
+      );
+    }
+    if (post.channelId == 'events' ||
+        post.hashtags.any((tag) => tag.toLowerCase().contains('event'))) {
+      badges.add(
+        _badgeChip(
+          'Campus Event',
+          Colors.purple.withAlpha(38),
+          isDark,
+          textColor: Colors.purpleAccent,
+        ),
+      );
+    }
+    final uniqueTags = <String>{};
+    for (final tag in post.hashtags.take(2)) {
+      final normalized = tag.trim();
+      if (normalized.isEmpty) continue;
+      if (uniqueTags.contains(normalized.toLowerCase())) continue;
+      uniqueTags.add(normalized.toLowerCase());
+      badges.add(
+        _badgeChip(
+          '#$normalized',
+          Colors.transparent,
+          isDark,
+          textColor: AppColors.secondaryTeal,
+        ),
+      );
+    }
+    return badges;
+  }
+
+  Widget _badgeChip(
+    String label,
+    Color backgroundColor,
+    bool isDark, {
+    Color? textColor,
+  }) {
+    return Chip(
+      label: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: textColor ?? (isDark ? Colors.white70 : AppColors.primaryInk),
+        ),
+      ),
+      backgroundColor: backgroundColor,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+    );
+  }
+
+  String _channelLabel(String channelId) {
+    if (channelId.isEmpty || channelId == 'general') return 'General';
+    final parts = channelId.split(RegExp(r'[_\s]+'));
+    return parts
+        .where((part) => part.isNotEmpty)
+        .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+        .join(' ');
+  }
+
+  bool _isPinnedPost(domain.Post post) {
+    if (post.status.toLowerCase() == 'pinned') return true;
+    return post.hashtags.any((tag) => tag.toLowerCase() == 'pinned');
+  }
+
+  Widget _buildThreadPreview(
+    AsyncValue<List<Map<String, dynamic>>> replies,
+    bool isDark,
+  ) {
+    return replies.when(
+      data: (items) {
+        if (items.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Text(
+              'No replies yet.',
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark ? Colors.white60 : Colors.grey[600],
+              ),
+            ),
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: items
+              .map((reply) => _buildReplyRow(reply, isDark))
+              .toList(),
+        );
+      },
+      loading: () => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: isDark ? Colors.white70 : AppColors.secondaryTeal,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Loading conversation…',
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark ? Colors.white60 : Colors.grey[600],
+              ),
+            ),
+          ],
+        ),
+      ),
+      error: (_, __) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Text(
+          'Unable to load thread.',
+          style: TextStyle(
+            fontSize: 12,
+            color: isDark ? Colors.white60 : Colors.grey[600],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReplyRow(Map<String, dynamic> reply, bool isDark) {
+    final timestampMs = reply['timestamp'] as int?;
+    final timestamp = timestampMs != null
+        ? DateTime.fromMillisecondsSinceEpoch(timestampMs)
+        : DateTime.now();
+    final timeLabel = timeago.format(timestamp, locale: 'en_short');
+    final avatarUrl = reply['userAvatar'] as String?;
+    final displayName = reply['userName'] as String? ?? 'Student';
+    final content = reply['content'] as String? ?? '';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 16,
+            backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+            backgroundColor: isDark ? Colors.white10 : Colors.black12,
+            child: avatarUrl == null
+                ? Text(
+                    displayName.isEmpty ? '👤' : displayName[0].toUpperCase(),
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87,
+                      fontSize: 14,
+                    ),
+                  )
+                : null,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.white10 : Colors.grey[100],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    displayName,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    content,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isDark ? Colors.white70 : Colors.grey[800],
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    timeLabel,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark ? Colors.white60 : Colors.grey[500],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVideoCaption(String text, bool isDark) {
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: const Color.fromRGBO(0, 0, 0, 0.55),
+          borderRadius: const BorderRadius.vertical(
+            bottom: Radius.circular(12),
+          ),
+        ),
+        child: Text(
+          text,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: Colors.white, fontSize: 12),
+        ),
+      ),
+    );
   }
 
   static void _showPostMenu(
@@ -662,7 +1066,12 @@ class PostCard extends ConsumerWidget {
                         TextButton(
                           onPressed: () => Navigator.pop(context, true),
                           style: TextButton.styleFrom(
-                            foregroundColor: Colors.red,
+                            backgroundColor: const Color.fromARGB(
+                              255,
+                              30,
+                              30,
+                              30,
+                            ).withValues(alpha: 0.1),
                           ),
                           child: const Text('Delete'),
                         ),
@@ -710,9 +1119,7 @@ class PostCard extends ConsumerWidget {
               title: const Text('Share Post'),
               onTap: () {
                 Navigator.pop(context);
-                Share.share(
-                  'Check out this post on ABUAD Nest: https://abuadapp.web.app/post/${post.id}',
-                );
+                ShareSheet.show(context, post);
               },
             ),
             if (post.mediaUrl.isNotEmpty &&
@@ -745,6 +1152,76 @@ class PostCard extends ConsumerWidget {
                           imageUrl: post.mediaUrl,
                           heroTag: 'post_media_${post.id}',
                         ),
+                      ),
+                    );
+                  }
+                },
+              ),
+            // Feature 2: "Not Interested" option
+            if (!isOwnPost)
+              ListTile(
+                leading: const Icon(
+                  Icons.thumb_down_alt_outlined,
+                  color: Colors.blueGrey,
+                ),
+                title: const Text('Not Interested'),
+                subtitle: const Text('See fewer posts like this'),
+                onTap: () {
+                  Navigator.pop(context);
+                  // Hide this specific post
+                  ref.read(hiddenPostsProvider.notifier).hide(post.id);
+                  // Optionally mute its hashtags
+                  if (post.hashtags.isNotEmpty) {
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Tune your feed'),
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Also mute these topics?'),
+                            const SizedBox(height: 12),
+                            Wrap(
+                              spacing: 8,
+                              children: post.hashtags
+                                  .take(5)
+                                  .map(
+                                    (tag) => ActionChip(
+                                      label: Text('#$tag'),
+                                      onPressed: () {
+                                        ref
+                                            .read(
+                                              mutedHashtagsProvider.notifier,
+                                            )
+                                            .mute(tag);
+                                        Navigator.pop(ctx);
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Muted #$tag'),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
+                          ],
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Skip'),
+                          ),
+                        ],
+                      ),
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Post hidden from your feed'),
                       ),
                     );
                   }
@@ -1023,6 +1500,166 @@ class PostCard extends ConsumerWidget {
       text: TextSpan(
         style: const TextStyle(fontSize: 15, height: 1.3),
         children: spans,
+      ),
+    );
+  }
+
+  void _openPostDetail(BuildContext context) {
+    ref.read(activePostActionProvider.notifier).hide();
+    context.push('/post/${post.id}', extra: post);
+  }
+
+  void _displayActionOverlay() {
+    HapticFeedback.mediumImpact();
+    ref.read(activePostActionProvider.notifier).show(post.id);
+  }
+
+  Widget _buildActionOverlay(BuildContext context, bool isDark) {
+    final backgroundColor = isDark
+        ? const Color.fromRGBO(0, 0, 0, 0.55)
+        : const Color.fromRGBO(255, 255, 255, 0.9);
+    return Positioned.fill(
+      child: Stack(
+        children: [
+          GestureDetector(
+            onTap: () => ref.read(activePostActionProvider.notifier).hide(),
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              decoration: BoxDecoration(
+                color: backgroundColor,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: isDark ? Colors.white12 : Colors.black12,
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            right: 14,
+            top: 14,
+            bottom: 14,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                _overlayActionButton(
+                  icon: Icons.rocket_launch,
+                  label: 'Boost this post',
+                  color: AppColors.secondaryTeal,
+                  onTap: () => _handleBoost(context),
+                ),
+                const SizedBox(height: 12),
+                _overlayActionButton(
+                  icon: Icons.emoji_emotions_outlined,
+                  label: 'Add reaction',
+                  color: isDark ? Colors.white : Colors.black87,
+                  onTap: () => _handleAddReaction(context),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _overlayActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    final rootNotifier = ref.read(activePostActionProvider.notifier);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          onTap();
+          rootNotifier.hide();
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: color.withAlpha(40),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: color.withAlpha(120)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: color, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _handleBoost(BuildContext context) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Boost queued for this post'),
+        duration: Duration(milliseconds: 900),
+      ),
+    );
+  }
+
+  void _handleAddReaction(BuildContext context) {
+    if (!context.mounted) return;
+    final reactions = ['🔥', '❤️', '👏', '😮', '😂', '👍'];
+    final messenger = ScaffoldMessenger.of(context);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (modalContext) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Send a reaction',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: reactions.map((emoji) {
+                return ActionChip(
+                  label: Text(
+                    emoji,
+                    style: const TextStyle(fontSize: 26),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(modalContext);
+                    messenger.showSnackBar(
+                      SnackBar(content: Text('Reacted with $emoji')),
+                    );
+                  },
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: () => Navigator.pop(modalContext),
+              child: const Text('Cancel'),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -1,175 +1,381 @@
+import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/theme/app_colors.dart';
 
-class ChatSettingsScreen extends ConsumerWidget {
-  const ChatSettingsScreen({super.key});
+class ChatSettingsScreen extends ConsumerStatefulWidget {
+  final String channelId;
+  const ChatSettingsScreen({super.key, required this.channelId});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
+  ConsumerState<ChatSettingsScreen> createState() => _ChatSettingsScreenState();
+}
+
+class _ChatSettingsScreenState extends ConsumerState<ChatSettingsScreen> {
+  String? _wallpaperPath;
+  String _selectedTheme = 'Teal';
+  final _picker = ImagePicker();
+
+  final List<Map<String, dynamic>> _themes = [
+    {'name': 'Teal', 'color': AppColors.secondaryTeal},
+    {'name': 'Blue', 'color': Colors.blue},
+    {'name': 'Purple', 'color': Colors.purple},
+    {'name': 'Gold', 'color': const Color(0xFFFFD700)},
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _wallpaperPath = prefs.getString('chat_wallpaper_${widget.channelId}');
+      _selectedTheme = prefs.getString('chat_theme_${widget.channelId}') ?? 'Teal';
+    });
+  }
+
+  Future<void> _pickWallpaper() async {
+    final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+    if (image != null) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('chat_wallpaper_${widget.channelId}', image.path);
+      setState(() {
+        _wallpaperPath = image.path;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Wallpaper updated!')),
+        );
+      }
+    }
+  }
+
+  Future<void> _resetWallpaper() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('chat_wallpaper_${widget.channelId}');
+    setState(() {
+      _wallpaperPath = null;
+    });
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Wallpaper reset to default')),
+      );
+    }
+  }
+
+  Future<void> _setTheme(String themeName) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('chat_theme_${widget.channelId}', themeName);
+    setState(() {
+      _selectedTheme = themeName;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text(
-          'Chat Settings',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 24,
-            color: Colors.white,
-          ),
-        ),
-        centerTitle: false,
-        surfaceTintColor: Colors.transparent,
-        scrolledUnderElevation: 0,
+        title: const Text('Chat Settings', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.transparent,
+        elevation: 0,
         flexibleSpace: Container(
-          decoration: const BoxDecoration(gradient: AppColors.inkTealGradient),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.black.withOpacity(0.4),
+                Colors.transparent,
+              ],
+            ),
+          ),
         ),
       ),
-      body: ListView(
+      body: Stack(
         children: [
-          const SizedBox(height: 16),
-          _buildSectionHeader(context, 'Notifications'),
-          _buildSettingTile(
-            context,
-            icon: Icons.notifications_active_outlined,
-            title: 'Message Notifications',
-            subtitle: 'Enable or disable message alerts',
-            trailing: Switch(value: true, onChanged: (val) {}),
+          // Background Gradient
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: isDark
+                      ? [const Color(0xFF0F172A), const Color(0xFF1E293B)]
+                      : [const Color(0xFFF1F5F9), Colors.white],
+                ),
+              ),
+            ),
           ),
-          _buildSettingTile(
-            context,
-            icon: Icons.volume_up_outlined,
-            title: 'In-app Tones',
-            subtitle: 'Play sounds for incoming messages',
-            trailing: Switch(value: true, onChanged: (val) {}),
+          
+          // Glassmorphic Content
+          SafeArea(
+            child: ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                _buildSectionTitle('Personalization'),
+                const SizedBox(height: 12),
+                _buildGlassCard(
+                  child: Column(
+                    children: [
+                      _buildSettingTile(
+                        icon: Icons.image_outlined,
+                        title: 'Chat Wallpaper',
+                        subtitle: _wallpaperPath != null ? 'Custom wallpaper set' : 'Default pattern',
+                        onTap: _pickWallpaper,
+                        trailing: const Icon(Icons.chevron_right, size: 20),
+                      ),
+                      if (_wallpaperPath != null) ...[
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.file(
+                              File(_wallpaperPath!),
+                              height: 120,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: _resetWallpaper,
+                          icon: const Icon(Icons.refresh, size: 16, color: Colors.redAccent),
+                          label: const Text('Reset Wallpaper', style: TextStyle(color: Colors.redAccent, fontSize: 13)),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+                _buildSectionTitle('Chat Theme'),
+                const SizedBox(height: 12),
+                _buildGlassCard(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: _themes.map((theme) {
+                        final isSelected = _selectedTheme == theme['name'];
+                        return GestureDetector(
+                          onTap: () => _setTheme(theme['name'] as String),
+                          child: Container(
+                            width: 50,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              color: (theme['color'] as Color).withOpacity(0.8),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: isSelected ? Colors.white : Colors.transparent,
+                                width: 3,
+                              ),
+                              boxShadow: isSelected
+                                  ? [
+                                      BoxShadow(
+                                        color: (theme['color'] as Color).withOpacity(0.4),
+                                        blurRadius: 10,
+                                        spreadRadius: 2,
+                                      )
+                                    ]
+                                  : [],
+                            ),
+                            child: isSelected
+                                ? const Icon(Icons.check, color: Colors.white)
+                                : null,
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+                _buildSectionTitle('Guides & Help'),
+                const SizedBox(height: 12),
+                _buildGlassCard(
+                  child: Column(
+                    children: [
+                      _buildSettingTile(
+                        icon: Icons.auto_awesome_outlined,
+                        title: 'Using Snaps',
+                        subtitle: 'Learn how to send disappearing photos',
+                        onTap: () => _showGuide('Snaps', 'Send photos that can only be viewed once. Tap the camera icon in the attachment menu to start!'),
+                      ),
+                      const Divider(height: 1, indent: 56),
+                      _buildSettingTile(
+                        icon: Icons.mic_none_outlined,
+                        title: 'Voice Notes',
+                        subtitle: 'Tips for high-quality audio messages',
+                        onTap: () => _showGuide('Voice Notes', 'Hold the microphone icon to record. Swipe up to lock recording mode.'),
+                      ),
+                      const Divider(height: 1, indent: 56),
+                      _buildSettingTile(
+                        icon: Icons.alternate_email_outlined,
+                        title: 'Mentions',
+                        subtitle: 'How to get someone\'s attention',
+                        onTap: () => _showGuide('Mentions', 'Type @ followed by a name in group chats to notify specific members.'),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+                _buildSectionTitle('Media & Privacy'),
+                const SizedBox(height: 12),
+                _buildGlassCard(
+                  child: Column(
+                    children: [
+                      _buildSettingTile(
+                        icon: Icons.perm_media_outlined,
+                        title: 'Shared Media',
+                        subtitle: 'Photos, videos, and links (coming soon)',
+                        onTap: () => _showGuide(
+                          'Shared Media',
+                          'We are still building the dedicated media gallery. For now use the attachment menu to browse shared photos and videos.',
+                        ),
+                      ),
+                      const Divider(height: 1, indent: 56),
+                      _buildSettingTile(
+                        icon: Icons.timer_outlined,
+                        title: 'Disappearing Messages',
+                        subtitle: 'Off (coming soon)',
+                        onTap: () => _showGuide(
+                          'Disappearing Messages',
+                          'Disappearing messages are on the roadmap. We will let you choose a timer here once the feature ships.',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 40),
+              ],
+            ),
           ),
-          const Divider(),
-          _buildSectionHeader(context, 'Privacy'),
-          _buildSettingTile(
-            context,
-            icon: Icons.visibility_outlined,
-            title: 'Last Seen & Online',
-            subtitle: 'Manage who can see your status',
-            onTap: () {},
-          ),
-          _buildSettingTile(
-            context,
-            icon: Icons.lock_outline,
-            title: 'Read Receipts',
-            subtitle: 'If turned off, you won\'t send or receive read receipts',
-            trailing: Switch(value: true, onChanged: (val) {}),
-          ),
-          const Divider(),
-          _buildSectionHeader(context, 'Data & Storage'),
-          _buildSettingTile(
-            context,
-            icon: Icons.cloud_upload_outlined,
-            title: 'Chat Backup',
-            subtitle: 'Backup your chat history to the cloud',
-            onTap: () {},
-          ),
-          _buildSettingTile(
-            context,
-            icon: Icons.delete_outline,
-            title: 'Clear All Chats',
-            subtitle: 'Permanently delete all message history',
-            isDestructive: true,
-            onTap: () {
-               _showClearChatsDialog(context);
-            },
-          ),
-          const SizedBox(height: 40),
         ],
       ),
     );
   }
 
-  Widget _buildSectionHeader(BuildContext context, String title) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+  Widget _buildSectionTitle(String title) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      padding: const EdgeInsets.only(left: 4),
       child: Text(
         title.toUpperCase(),
-        style: TextStyle(
+        style: const TextStyle(
           fontSize: 12,
-          fontWeight: FontWeight.w900,
+          fontWeight: FontWeight.w800,
           letterSpacing: 1.2,
-          color: isDark ? AppColors.accentAmber : AppColors.secondaryTeal,
+          color: AppColors.secondaryTeal,
         ),
       ),
     );
   }
 
-  Widget _buildSettingTile(
-    BuildContext context, {
+  Widget _buildGlassCard({required Widget child}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          decoration: BoxDecoration(
+            color: isDark
+                ? Colors.white.withOpacity(0.05)
+                : Colors.black.withOpacity(0.03),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withOpacity(0.1)
+                  : Colors.black.withOpacity(0.05),
+              width: 1,
+            ),
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSettingTile({
     required IconData icon,
     required String title,
-    String? subtitle,
+    required String subtitle,
+    required VoidCallback onTap,
     Widget? trailing,
-    bool isDestructive = false,
-    VoidCallback? onTap,
   }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return ListTile(
       onTap: onTap,
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: isDestructive 
-              ? Colors.red.withOpacity(0.1) 
-              : (isDark ? Colors.white10 : Colors.grey[100]),
-          borderRadius: BorderRadius.circular(10),
+          color: AppColors.secondaryTeal.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
         ),
-        child: Icon(
-          icon,
-          color: isDestructive 
-              ? Colors.red 
-              : (isDark ? Colors.white70 : AppColors.primaryInk),
-          size: 22,
-        ),
+        child: Icon(icon, color: AppColors.secondaryTeal, size: 20),
       ),
       title: Text(
         title,
-        style: TextStyle(
-          fontWeight: FontWeight.w600,
-          color: isDestructive ? Colors.red : (isDark ? Colors.white : AppColors.primaryInk),
-        ),
+        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
       ),
-      subtitle: subtitle != null
-          ? Text(
-              subtitle,
-              style: TextStyle(
-                fontSize: 12,
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
-              ),
-            )
-          : null,
-      trailing: trailing ?? (onTap != null ? const Icon(Icons.chevron_right, size: 20) : null),
+      subtitle: Text(
+        subtitle,
+        style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+      ),
+      trailing: trailing,
     );
   }
 
-  void _showClearChatsDialog(BuildContext context) {
-    showDialog(
+  void _showGuide(String title, String content) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Clear All Chats?'),
-        content: const Text(
-          'This will permanently delete all your chat history. This action cannot be undone.',
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E293B) : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Clear All'),
-          ),
-        ],
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              content,
+              style: const TextStyle(fontSize: 16, height: 1.5),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.secondaryTeal,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+                child: const Text('Got it!', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
       ),
     );
   }

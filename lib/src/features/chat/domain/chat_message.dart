@@ -23,6 +23,10 @@ class ChatMessage {
   final bool isSnap; // Whether it disappears after viewing
   final bool isEdited;
   final bool isDeleted;
+  final bool isPinned;
+  final List<String> savedBy; // List of user IDs who have saved this message in chat
+  final String? forwardedFrom; // Name or ID of original sender
+  final String? sharedPostId; // ID of a post shared in this message
 
   ChatMessage({
     required this.id,
@@ -47,6 +51,10 @@ class ChatMessage {
     this.isSnap = false,
     this.isEdited = false,
     this.isDeleted = false,
+    this.isPinned = false,
+    this.savedBy = const [],
+    this.forwardedFrom,
+    this.sharedPostId,
   });
 
   Map<String, dynamic> toMap() {
@@ -72,6 +80,10 @@ class ChatMessage {
       'is_snap': isSnap,
       'is_edited': isEdited,
       'is_deleted': isDeleted,
+      'is_pinned': isPinned,
+      'saved_by': savedBy,
+      if (forwardedFrom != null) 'forwarded_from': forwardedFrom,
+      if (sharedPostId != null) 'shared_post_id': sharedPostId,
     };
   }
 
@@ -99,6 +111,10 @@ class ChatMessage {
       isSnap: map['is_snap'] ?? false,
       isEdited: map['is_edited'] ?? false,
       isDeleted: map['is_deleted'] ?? false,
+      isPinned: map['is_pinned'] ?? false,
+      savedBy: List<String>.from(map['saved_by'] ?? []),
+      forwardedFrom: map['forwarded_from'],
+      sharedPostId: map['shared_post_id'],
     );
   }
 }

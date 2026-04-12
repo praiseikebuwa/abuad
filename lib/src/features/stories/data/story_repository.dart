@@ -65,6 +65,7 @@ class StoryRepository {
   Future<void> createStory({
     XFile? mediaFile,
     required String content, // If text
+    bool isRawContent = false,
     String type = 'image',
     String? caption,
     List<String> mentions = const [],
@@ -127,12 +128,12 @@ class StoryRepository {
     });
   }
 
-  Future<void> likeStory(String storyId) async {
+  Future<void> likeStory(String storyId, {required bool isLiking}) async {
     final uid = currentUserId;
     if (uid == null) return;
 
     await _firestore.collection('stories').doc(storyId).update({
-      'likes': FieldValue.arrayUnion([uid]),
+      'likes': isLiking ? FieldValue.arrayUnion([uid]) : FieldValue.arrayRemove([uid]),
     });
   }
 

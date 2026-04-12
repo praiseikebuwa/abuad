@@ -13,11 +13,7 @@ import 'widgets/video_post_widget.dart';
 import 'package:flutter/gestures.dart';
 import '../../user/data/user_repository.dart';
 import '../../../core/widgets/verification_badge.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:giphy_get/giphy_get.dart';
-import 'package:geolocator/geolocator.dart';
-import 'dart:io';
-import '../../../core/services/image_upload_service.dart';
+
 import '../domain/report.dart';
 import 'widgets/report_bottom_sheet.dart';
 import '../../../core/theme/app_colors.dart';
@@ -38,13 +34,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
   final ScrollController _scrollController = ScrollController();
   bool _isPosting = false;
 
-  // Attachment State
-  XFile? _selectedImage;
-  String? _selectedGifUrl;
-  Map<String, dynamic>? _pollData;
-  double? _latitude;
-  double? _longitude;
-  String? _address;
+
 
   // Reply State
   String? _replyToCommentId;
@@ -57,98 +47,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     super.dispose();
   }
 
-  Future<void> _pickImage(ImageSource source) async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: source, imageQuality: 70);
 
-    if (pickedFile != null) {
-      setState(() {
-        _selectedImage = pickedFile;
-        _selectedGifUrl = null;
-        _pollData = null;
-        _latitude = null;
-        _longitude = null;
-        _address = null;
-      });
-    }
-  }
-
-  Future<void> _pickGif() async {
-    final gif = await GiphyGet.getGif(
-      context: context,
-      apiKey:
-          '3wP5y8Jm9vH1jY6Y3mX9vH1jY6Y3mX9v', // Using the key from chat_screen
-      tabColor: Theme.of(context).primaryColor,
-    );
-
-    if (gif != null && gif.images?.original?.url != null) {
-      setState(() {
-        _selectedGifUrl = gif.images!.original!.url;
-        _selectedImage = null;
-        _pollData = null;
-        _latitude = null;
-        _longitude = null;
-        _address = null;
-      });
-    }
-  }
-
-  Future<void> _getCurrentLocation() async {
-    bool serviceEnabled;
-    LocationPermission permission;
-
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Location services are disabled.')),
-        );
-      }
-      return;
-    }
-
-    permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Location permissions are denied')),
-          );
-        }
-        return;
-      }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Location permissions are permanently denied'),
-          ),
-        );
-      }
-      return;
-    }
-
-    try {
-      final position = await Geolocator.getCurrentPosition();
-      setState(() {
-        _latitude = position.latitude;
-        _longitude = position.longitude;
-        _address = "My Current Location";
-        _selectedImage = null;
-        _selectedGifUrl = null;
-        _pollData = null;
-      });
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error getting location: $e')));
-      }
-    }
-  }
 
   void _onReply(String commentId, String userName) {
     setState(() {
@@ -177,24 +76,11 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     }
   }
 
-  void _clearAttachments() {
-    setState(() {
-      _selectedImage = null;
-      _selectedGifUrl = null;
-      _pollData = null;
-      _latitude = null;
-      _longitude = null;
-      _address = null;
-    });
-  }
+
 
   Future<void> _postComment() async {
     final content = _commentController.text.trim();
-    if (content.isEmpty &&
-        _selectedImage == null &&
-        _selectedGifUrl == null &&
-        _pollData == null &&
-        _latitude == null) {
+    if (content.isEmpty) {
       return;
     }
 
@@ -204,32 +90,13 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
       final repo = ref.read(postRepositoryProvider);
       final postId = widget.post?.id ?? widget.postId!;
 
-      String? imageUrl = _selectedGifUrl;
-      String? mediaType = _selectedGifUrl != null ? 'gif' : null;
-
-      if (_selectedImage != null) {
-        final imageService = ref.read(imageUploadServiceProvider);
-        final uploadResult = await imageService.uploadImage(
-          _selectedImage!,
-          path: 'comments/$postId',
-        );
-        imageUrl = uploadResult.url;
-        mediaType = 'image';
-      }
-
       await repo.addComment(
         postId,
         content,
         parentId: _replyToCommentId,
-        imageUrl: imageUrl,
-        mediaType: mediaType,
-        pollData: _pollData,
-        latitude: _latitude,
-        longitude: _longitude,
       );
 
       _commentController.clear();
-      _clearAttachments();
       _cancelReply();
 
       // Scroll to bottom (optional)
@@ -257,85 +124,9 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     }
   }
 
-  void _showPollDialog() {
-    final questionController = TextEditingController();
-    final option1Controller = TextEditingController();
-    final option2Controller = TextEditingController();
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Create a Poll'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: questionController,
-              decoration: const InputDecoration(hintText: 'Ask a question...'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: option1Controller,
-              decoration: const InputDecoration(hintText: 'Option 1'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: option2Controller,
-              decoration: const InputDecoration(hintText: 'Option 2'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (questionController.text.isNotEmpty &&
-                  option1Controller.text.isNotEmpty &&
-                  option2Controller.text.isNotEmpty) {
-                setState(() {
-                  _pollData = {
-                    'question': questionController.text.trim(),
-                    'options': [
-                      option1Controller.text.trim(),
-                      option2Controller.text.trim(),
-                    ],
-                    'votes': {
-                      option1Controller.text.trim(): 0,
-                      option2Controller.text.trim(): 0,
-                    },
-                    'voters': [],
-                    'end_time': DateTime.now()
-                        .add(const Duration(days: 1))
-                        .toIso8601String(),
-                  };
-                  _selectedImage = null;
-                  _selectedGifUrl = null;
-                  _latitude = null;
-                  _longitude = null;
-                  _address = null;
-                });
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('Add Poll'),
-          ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildActionIcon(IconData icon, VoidCallback onTap) {
-    return IconButton(
-      icon: Icon(icon, color: Colors.grey[600], size: 22),
-      onPressed: onTap,
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints(),
-      splashRadius: 20,
-    );
-  }
+
 
   Future<void> _deleteComment(String commentId) async {
     final confirmed = await showDialog<bool>(
@@ -923,28 +714,30 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                             // Post Media
                             if (displayMediaUrl.isNotEmpty) ...[
                               const SizedBox(height: 16),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(16),
-                                child:
-                                    displayMediaType == domain.MediaType.video
-                                    ? VideoPostWidget(videoUrl: displayMediaUrl)
-                                    : CachedNetworkImage(
-                                        imageUrl: displayMediaUrl,
-                                        width: double.infinity,
-                                        fit: BoxFit.cover,
-                                        placeholder: (context, url) =>
-                                            Container(
-                                              height: 300,
-                                              color: Colors.grey[100],
-                                              child: const Center(
-                                                child:
-                                                    CircularProgressIndicator(),
+                              displayMediaType == domain.MediaType.video
+                                  ? VideoPostWidget(videoUrl: displayMediaUrl)
+                                  : Hero(
+                                      tag: 'post_media_${post.id}',
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(16),
+                                        child: CachedNetworkImage(
+                                          imageUrl: displayMediaUrl,
+                                          width: double.infinity,
+                                          fit: BoxFit.cover,
+                                          placeholder: (context, url) =>
+                                              Container(
+                                                height: 300,
+                                                color: Colors.grey[100],
+                                                child: const Center(
+                                                  child:
+                                                      CircularProgressIndicator(),
+                                                ),
                                               ),
-                                            ),
-                                        errorWidget: (_, __, ___) =>
-                                            const SizedBox(),
+                                          errorWidget: (_, __, ___) =>
+                                              const SizedBox(),
+                                        ),
                                       ),
-                              ),
+                                    ),
                             ],
 
                             // Poll
@@ -1219,78 +1012,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                           ),
                         ),
 
-                      // Attachment Previews
-                      if (_selectedImage != null ||
-                          _selectedGifUrl != null ||
-                          _latitude != null ||
-                          _pollData != null)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          child: Stack(
-                            children: [
-                              if (_selectedImage != null)
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Image.file(
-                                    File(_selectedImage!.path),
-                                    height: 150,
-                                    width: double.infinity,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                              if (_selectedGifUrl != null)
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: CachedNetworkImage(
-                                    imageUrl: _selectedGifUrl!,
-                                    height: 150,
-                                    width: double.infinity,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                              if (_latitude != null)
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: theme.primaryColor.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.location_on,
-                                        color: Colors.blue,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(_address ?? "Location attached"),
-                                    ],
-                                  ),
-                                ),
-                              Positioned(
-                                top: 4,
-                                right: 4,
-                                child: GestureDetector(
-                                  onTap: _clearAttachments,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(4),
-                                    decoration: const BoxDecoration(
-                                      color: Colors.black54,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: const Icon(
-                                      Icons.close,
-                                      size: 16,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+
 
                       Padding(
                         padding: const EdgeInsets.symmetric(
@@ -1298,36 +1020,44 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                           vertical: 4,
                         ),
                         child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.end,
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 8.0),
-                              child: CircleAvatar(
-                                radius: 16,
-                                backgroundColor: theme.primaryColor.withOpacity(
-                                  0.1,
-                                ),
-                                child: Icon(
-                                  Icons.person,
-                                  color: theme.primaryColor,
-                                  size: 20,
-                                ),
+                            CircleAvatar(
+                              radius: 16,
+                              backgroundColor: theme.primaryColor.withOpacity(0.1),
+                              child: Icon(
+                                Icons.person,
+                                color: theme.primaryColor,
+                                size: 20,
                               ),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: TextField(
-                                controller: _commentController,
-                                decoration: const InputDecoration(
-                                  hintText: 'Post your reply',
-                                  border: InputBorder.none,
-                                  isDense: true,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                decoration: BoxDecoration(
+                                  color: isDark ? const Color(0xFF2A2A2A) : Colors.grey[100],
+                                  borderRadius: BorderRadius.circular(24),
+                                  border: Border.all(
+                                    color: isDark ? Colors.grey[800]! : Colors.grey[300]!,
+                                  ),
                                 ),
-                                maxLines: null,
-                                textCapitalization:
-                                    TextCapitalization.sentences,
+                                child: TextField(
+                                  controller: _commentController,
+                                  decoration: const InputDecoration(
+                                    hintText: 'Post your reply',
+                                    border: InputBorder.none,
+                                    isDense: true,
+                                    contentPadding: EdgeInsets.symmetric(vertical: 10),
+                                  ),
+                                  maxLines: 5,
+                                  minLines: 1,
+                                  textCapitalization: TextCapitalization.sentences,
+                                  style: const TextStyle(fontSize: 14),
+                                ),
                               ),
                             ),
+                            const SizedBox(width: 8),
                             IconButton(
                               onPressed: _isPosting ? null : _postComment,
                               icon: _isPosting
@@ -1338,41 +1068,17 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                         strokeWidth: 2,
                                       ),
                                     )
-                                  : Icon(Icons.send, color: theme.primaryColor),
+                                  : Icon(
+                                      Icons.send_rounded,
+                                      color: theme.primaryColor,
+                                      size: 24,
+                                    ),
                             ),
                           ],
                         ),
                       ),
 
-                      // Action Icons Row
-                      Padding(
-                        padding: const EdgeInsets.only(
-                          left: 44,
-                          right: 16,
-                          bottom: 8,
-                        ),
-                        child: Row(
-                          children: [
-                            _buildActionIcon(
-                              Icons.image_outlined,
-                              () => _pickImage(ImageSource.gallery),
-                            ),
-                            _buildActionIcon(
-                              Icons.camera_alt_outlined,
-                              () => _pickImage(ImageSource.camera),
-                            ),
-                            _buildActionIcon(Icons.gif_box_outlined, _pickGif),
-                            _buildActionIcon(
-                              Icons.poll_outlined,
-                              _showPollDialog,
-                            ),
-                            _buildActionIcon(
-                              Icons.location_on_outlined,
-                              _getCurrentLocation,
-                            ),
-                          ],
-                        ),
-                      ),
+
                     ],
                   ),
                 ),

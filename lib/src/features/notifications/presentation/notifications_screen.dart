@@ -5,6 +5,7 @@ import '../data/notification_repository.dart';
 import '../domain/notification.dart';
 import 'package:intl/intl.dart';
 import '../../../core/presentation/widgets/custom_snackbar.dart';
+import '../../../shared/widgets/user_avatar.dart';
 
 class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
@@ -178,14 +179,13 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
               return ListTile(
                 leading: Stack(
                   children: [
-                    CircleAvatar(
-                      backgroundImage: notification.senderAvatarUrl != null
-                          ? NetworkImage(notification.senderAvatarUrl!)
-                          : null,
-                      child: notification.senderAvatarUrl == null
-                          ? Text(notification.senderName[0].toUpperCase())
-                          : null,
-                    ),
+                  UserAvatar(
+                    userId: notification.senderId,
+                    avatarUrl: notification.senderAvatarUrl,
+                    displayName: notification.senderName,
+                    radius: 20,
+                    showStoryRing: true,
+                  ),
                     if (isSelected)
                       Positioned.fill(
                         child: Container(
@@ -239,27 +239,33 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                           .markAsRead(notification.id);
                     }
                     // Navigate based on type
+                    // Navigate based on type
                     final relatedId = notification.relatedId;
-                    if (relatedId != null) {
-                      switch (notification.type) {
-                        case NotificationType.chat:
-                          context.push('/chat/$relatedId');
-                          break;
-                        case NotificationType.like:
-                        case NotificationType.comment:
-                        case NotificationType.repost:
-                          context.push('/post/$relatedId');
-                          break;
-                        case NotificationType.follow:
-                        case NotificationType.mention:
+                    switch (notification.type) {
+                      case NotificationType.chat:
+                        if (relatedId != null) context.push('/chat/$relatedId');
+                        break;
+                      case NotificationType.like:
+                      case NotificationType.comment:
+                      case NotificationType.repost:
+                        if (relatedId != null) context.push('/post/$relatedId');
+                        break;
+                      case NotificationType.follow:
+                      case NotificationType.mention:
+                      case NotificationType.storyUpdate:
+                        if (relatedId != null) {
                           context.push('/user/$relatedId');
-                          break;
-                        case NotificationType.sos:
-                          context.push('/map');
-                          break;
-                        case NotificationType.system:
-                          break;
-                      }
+                        }
+                        break;
+                      case NotificationType.sos:
+                        context.push('/map');
+                        break;
+                      case NotificationType.streakExpiring:
+                      case NotificationType.streakMissed:
+                        context.push('/profile');
+                        break;
+                      case NotificationType.system:
+                        break;
                     }
                   }
                 },

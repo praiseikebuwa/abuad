@@ -15,6 +15,10 @@ class MarketplaceItem {
   String? get imageUrl => images.isNotEmpty ? images.first : null;
   final String status;
   final DateTime createdAt;
+  final bool isBoosted;
+  final Map<String, String> reactions; // userId -> emoji
+  final String? condition;
+  final String? location;
 
   MarketplaceItem({
     required this.id,
@@ -27,6 +31,10 @@ class MarketplaceItem {
     this.images = const [],
     this.status = 'available',
     required this.createdAt,
+    this.isBoosted = false,
+    this.reactions = const {},
+    this.condition,
+    this.location,
   });
 
   Map<String, dynamic> toMap() {
@@ -42,6 +50,10 @@ class MarketplaceItem {
       'image_url': imageUrl, // Maintain for older clients/queries
       'status': status,
       'created_at': Timestamp.fromDate(createdAt),
+      'is_boosted': isBoosted,
+      'reactions': reactions,
+      'condition': condition,
+      'location': location,
     };
   }
 
@@ -59,6 +71,10 @@ class MarketplaceItem {
       ),
       status: map['status'] ?? 'available',
       createdAt: (map['created_at'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      isBoosted: map['is_boosted'] ?? false,
+      reactions: Map<String, String>.from(map['reactions'] ?? {}),
+      condition: map['condition'],
+      location: map['location'],
     );
   }
 }
@@ -139,6 +155,8 @@ class MarketplaceRepository {
       images: item.images,
       status: item.status,
       createdAt: item.createdAt,
+      isBoosted: item.isBoosted,
+      reactions: item.reactions,
     );
     await _firestore
         .collection('marketplace_items')
@@ -146,9 +164,36 @@ class MarketplaceRepository {
         .set(itemWithId.toMap());
   }
 
+  Future<void> boostItem(String itemId) async {
+    await _firestore.collection('marketplace_items').doc(itemId).update({
+      'is_boosted': true,
+    });
+  }
+
+  Future<void> toggleReaction(String itemId, String userId, String emoji) async {
+    final docRef = _firestore.collection('marketplace_items').doc(itemId);
+    final doc = await docRef.get();
+    if (!doc.exists) return;
+
+    final data = doc.data() as Map<String, dynamic>;
+    final reactions = Map<String, String>.from(data['reactions'] ?? {});
+
+    if (reactions[userId] == emoji) {
+      reactions.remove(userId);
+    } else {
+      reactions[userId] = emoji;
+    }
+
+    await docRef.update({'reactions': reactions});
+  }
+
   Future<void> updateItemStatus(String itemId, String status) async {
     await _firestore.collection('marketplace_items').doc(itemId).update({
       'status': status,
     });
+  }
+
+  Future<void> deleteItem(String itemId) async {
+    await _firestore.collection('marketplace_items').doc(itemId).delete();
   }
 }

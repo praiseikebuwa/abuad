@@ -1,4 +1,6 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../../theme/app_colors.dart';
 
 class CustomSnackbar {
   static void show(
@@ -7,55 +9,99 @@ class CustomSnackbar {
     bool isError = false,
     Duration duration = const Duration(seconds: 4),
   }) {
-    // final isDark = theme.brightness == Brightness.dark; // Unused for now as we use fixed colors
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.only(bottom: 30, left: 20, right: 20),
+        duration: duration,
+        content: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: Container(
               decoration: BoxDecoration(
-                color: isError
-                    ? Colors.redAccent.withOpacity(0.2)
-                    : Colors.greenAccent.withOpacity(0.2),
-                shape: BoxShape.circle,
+                color: isDark
+                    ? const Color(0xFF1E1E24).withOpacity(0.8)
+                    : Colors.white.withOpacity(0.8),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isDark
+                      ? Colors.white.withOpacity(0.1)
+                      : Colors.black.withOpacity(0.05),
+                  width: 0.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
               ),
-              child: Icon(
-                isError ? Icons.error_outline : Icons.check_circle_outline,
-                color: isError ? Colors.redAccent : Colors.greenAccent,
-                size: 24,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                message,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
+              child: IntrinsicHeight(
+                child: Row(
+                  children: [
+                    // Status Accent Bar
+                    Container(
+                      width: 6,
+                      decoration: BoxDecoration(
+                        color: isError ? AppColors.error : AppColors.success,
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(20),
+                          bottomLeft: Radius.circular(20),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    // Icon
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16.0),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: (isError ? AppColors.error : AppColors.success)
+                              .withOpacity(0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          isError
+                              ? Icons.error_rounded
+                              : Icons.check_circle_rounded,
+                          color: isError ? AppColors.error : AppColors.success,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Message
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 16.0),
+                        child: Text(
+                          message,
+                          style: TextStyle(
+                            color: isDark
+                                ? Colors.white
+                                : AppColors.textPrimary,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-          ],
-        ),
-        backgroundColor: isError
-            ? const Color(0xFFC62828)
-            : const Color(0xFF2E7D32),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(
-            color: isError ? Colors.redAccent : Colors.greenAccent,
-            width: 1,
           ),
         ),
-        margin: const EdgeInsets.all(16),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        elevation: 6,
-        duration: duration,
       ),
     );
   }

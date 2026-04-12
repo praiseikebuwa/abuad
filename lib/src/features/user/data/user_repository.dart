@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as auth;
 import 'dart:math';
+import '../../../core/services/notification_service.dart';
+import '../../notifications/domain/notification.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../feed/domain/post.dart';
 
@@ -192,6 +194,8 @@ class UserRepository {
     }
   }
 
+  Future<AppUser?> getUser(String uid) => getUserById(uid);
+
   // Watch user by ID
   Stream<AppUser?> watchUser(String uid) {
     if (uid.isEmpty) return Stream.value(null);
@@ -370,6 +374,25 @@ class UserRepository {
     });
 
     await batch.commit();
+
+    // 4. Send Notification
+    try {
+      final me = await getUserById(uid);
+      if (me != null) {
+        await NotificationService().sendInAppNotification(
+          recipientId: targetUid,
+          title: 'New Follower',
+          body: '${me.displayName} started following you',
+          type: NotificationType.follow,
+          senderId: uid,
+          senderName: me.displayName,
+          senderAvatarUrl: me.avatarUrl,
+          data: {'id': uid, 'type': 'follow'},
+        );
+      }
+    } catch (e) {
+      debugPrint('Error sending follow notification: $e');
+    }
   }
 
   // Unfollow a user
@@ -583,6 +606,28 @@ class UserRepository {
         .collection('blocked_users')
         .doc(targetUid)
         .set({'blocked_at': FieldValue.serverTimestamp()});
+  }
+
+  Future<void> muteUser(String targetUid) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+    await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('muted_users')
+        .doc(targetUid)
+        .set({'muted_at': FieldValue.serverTimestamp()});
+  }
+
+  Future<void> unmuteUser(String targetUid) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+    await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('muted_users')
+        .doc(targetUid)
+        .delete();
   }
 
   Future<void> unblockUser(String targetUid) async {

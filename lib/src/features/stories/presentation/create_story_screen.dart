@@ -1,15 +1,22 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../data/story_repository.dart';
 import '../../user/data/user_repository.dart';
+import '../../camera/presentation/camera_screen.dart';
+import '../domain/story.dart';
+import '../../shared/presentation/unified_image_editor.dart';
+import '../../../core/router/app_router.dart';
 
 /// Screen for creating a new story
 /// Allows user to take a photo or select from gallery
 class CreateStoryScreen extends ConsumerStatefulWidget {
   final String? initialImagePath;
-  const CreateStoryScreen({super.key, this.initialImagePath});
+  final Story? resharedStory;
+  const CreateStoryScreen({super.key, this.initialImagePath, this.resharedStory});
 
   @override
   ConsumerState<CreateStoryScreen> createState() => _CreateStoryScreenState();
@@ -136,9 +143,20 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                     'Take Photo',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
-                  onTap: () {
+                  onTap: () async {
                     Navigator.pop(context);
-                    _pickImage(ImageSource.camera);
+                    context.push(
+                      '/camera',
+                      extra: {
+                        'isForStory': true,
+                        'onMediaCaptured': (XFile file, CameraMode mode) {
+                          context.pop(); // Pop camera
+                          setState(() {
+                            _selectedMedia = file;
+                          });
+                        },
+                      },
+                    );
                   },
                 ),
                 ListTile(
@@ -301,8 +319,8 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
     );
   }
 
-  Future<void> _uploadStory() async {
-    if (_selectedMedia == null && !_isTextMode) {
+  void _uploadStory() async {
+    if (_selectedMedia == null && !_isTextMode && widget.resharedStory == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select an image first')),
       );
@@ -316,81 +334,97 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
       return;
     }
 
-    setState(() {
-      _isUploading = true;
-    });
+    final messenger = ScaffoldMessenger.of(rootNavigatorKey.currentContext!);
+    final authRepo = ref.read(currentUserProvider).value;
+    if (authRepo == null) return;
+    
+    final repo = ref.read(storyRepositoryProvider);
 
-    try {
-      final repo = ref.read(storyRepositoryProvider);
-      final currentUser = ref.read(currentUserProvider).value;
+    // Capture all UI state before popping
+    final selectedMedia = _selectedMedia;
+    final isTextMode = _isTextMode;
+    final resharedStory = widget.resharedStory;
+    final captionText = _captionController.text.trim();
+    final textContent = _textController.text.trim();
+    final bgColor = _backgroundColor.toARGB32();
+    final txtColor = _textColor.toARGB32();
+    final fontFamily = _fontFamily;
+    final textAlignName = _textAlign.name;
+    final linkUrl = _linkUrl;
+    final visibility = _visibility;
 
-      if (currentUser == null) {
-        throw Exception('User profile not found');
-      }
+    // Pop immediately
+    Navigator.pop(context);
 
-      // ... (inside _uploadStory)
-      String content = '';
-      String type = 'image';
-      String? caption = _captionController.text.trim().isEmpty
-          ? null
-          : _captionController.text.trim();
-      int? backgroundColor;
-      int? textColor;
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('📤 Sharing story...'),
+        duration: Duration(seconds: 2),
+      ),
+    );
 
-      if (_isTextMode) {
-        content = _textController.text.trim();
-        type = 'text';
-        caption = null;
-        backgroundColor = _backgroundColor.toARGB32();
-        textColor = _textColor.toARGB32();
-      }
+    // Background process
+    () async {
+      try {
+        String content = '';
+        String type = 'image';
+        String? caption = captionText.isEmpty ? null : captionText;
+        int? backgroundColor;
+        int? textColor;
+        bool isRawContent = false;
 
-      // Extract mentions from caption or text
-      final List<String> mentions = [];
-      final String mentionSource = _isTextMode ? content : (caption ?? '');
-      final RegExp mentionRegex = RegExp(r'@(\w+)');
-      for (final match in mentionRegex.allMatches(mentionSource)) {
-        if (match.group(1) != null) {
-          mentions.add(match.group(1)!);
+        if (resharedStory != null) {
+          content = resharedStory.content;
+          type = resharedStory.type;
+          isRawContent = true;
+        } else if (isTextMode) {
+          content = textContent;
+          type = 'text';
+          caption = null;
+          backgroundColor = bgColor;
+          textColor = txtColor;
         }
-      }
 
-      await repo.createStory(
-        mediaFile: _isTextMode ? null : _selectedMedia!,
-        type: type,
-        caption: caption,
-        content: content,
-        mentions: mentions,
-        linkUrl: _linkUrl,
-        visibility: _visibility,
-        backgroundColor: backgroundColor,
-        textColor: textColor,
-        fontFamily: _isTextMode ? _fontFamily : null,
-        textAlign: _isTextMode ? _textAlign.name : null,
-      );
+        // Extract mentions
+        final List<String> mentions = [];
+        final String mentionSource = isTextMode ? content : (caption ?? '');
+        final RegExp mentionRegex = RegExp(r'@(\w+)');
+        for (final match in mentionRegex.allMatches(mentionSource)) {
+          if (match.group(1) != null) {
+            mentions.add(match.group(1)!);
+          }
+        }
 
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
+        await repo.createStory(
+          mediaFile: isTextMode || resharedStory != null ? null : selectedMedia!,
+          type: type,
+          caption: caption,
+          content: content,
+          isRawContent: isRawContent,
+          mentions: mentions,
+          linkUrl: resharedStory != null ? 'https://abuadapp.web.app/post/${resharedStory.id}' : linkUrl,
+          visibility: visibility,
+          backgroundColor: backgroundColor,
+          textColor: textColor,
+          fontFamily: isTextMode ? fontFamily : null,
+          textAlign: isTextMode ? textAlignName : null,
+        );
+
+        messenger.showSnackBar(
           const SnackBar(
-            content: Text('✅ Story posted!'),
+            content: Text('✅ Story shared!'),
             backgroundColor: Colors.green,
           ),
         );
+      } catch (e) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('❌ Failed to share story: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error uploading story: $e')));
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isUploading = false;
-        });
-      }
-    }
+    }();
   }
 
   @override
@@ -415,7 +449,8 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
             onPressed:
                 ((_selectedMedia != null) ||
                         (_isTextMode &&
-                            _textController.text.trim().isNotEmpty)) &&
+                            _textController.text.trim().isNotEmpty) ||
+                        widget.resharedStory != null) &&
                     !_isUploading
                 ? _uploadStory
                 : null,
@@ -425,7 +460,8 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                 gradient:
                     ((_selectedMedia != null) ||
                             (_isTextMode &&
-                                _textController.text.trim().isNotEmpty)) &&
+                                _textController.text.trim().isNotEmpty) ||
+                            widget.resharedStory != null) &&
                         !_isUploading
                     ? const LinearGradient(
                         colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)],
@@ -434,7 +470,8 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                 color:
                     ((_selectedMedia != null) ||
                             (_isTextMode &&
-                                _textController.text.trim().isNotEmpty)) &&
+                                _textController.text.trim().isNotEmpty) ||
+                            widget.resharedStory != null) &&
                         !_isUploading
                     ? null
                     : (isDark ? Colors.grey[800] : Colors.grey[200]),
@@ -446,7 +483,8 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                   color:
                       ((_selectedMedia != null) ||
                               (_isTextMode &&
-                                  _textController.text.trim().isNotEmpty)) &&
+                                  _textController.text.trim().isNotEmpty) ||
+                              widget.resharedStory != null) &&
                           !_isUploading
                       ? Colors.white
                       : (isDark ? Colors.grey[600] : Colors.grey[400]),
@@ -459,12 +497,144 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: _isTextMode
-          ? _buildTextPreview(isDark)
-          : (_selectedMedia == null
-                ? _buildEmptyState(isDark)
-                : _buildPreview(isDark)),
+      body: widget.resharedStory != null
+          ? _buildResharePreview(isDark)
+          : (_isTextMode
+              ? _buildTextPreview(isDark)
+              : (_selectedMedia == null
+                    ? _buildEmptyState(isDark)
+                    : _buildPreview(isDark))),
       floatingActionButton: null,
+    );
+  }
+
+  Widget _buildResharePreview(bool isDark) {
+    if (widget.resharedStory == null) return const SizedBox();
+    
+    final story = widget.resharedStory!;
+
+    return Stack(
+      children: [
+        // Background blurred or gradient
+        Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Colors.purple.shade900, Colors.black],
+            ),
+          ),
+        ),
+        
+        // Centered story content snapshot
+        Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 40),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white24, width: 2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.5),
+                      blurRadius: 20,
+                      spreadRadius: 5,
+                    )
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: AspectRatio(
+                    aspectRatio: 9 / 16,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        if (story.type == 'text')
+                          Container(
+                            color: Color(story.backgroundColor ?? 0xFF000000),
+                            alignment: Alignment.center,
+                            padding: const EdgeInsets.all(16),
+                            child: Text(
+                              story.content,
+                              textAlign: story.textAlign == 'left' ? TextAlign.left : (story.textAlign == 'right' ? TextAlign.right : TextAlign.center),
+                              style: TextStyle(
+                                color: Color(story.textColor ?? 0xFFFFFFFF),
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: story.fontFamily ?? 'Roboto',
+                              ),
+                            ),
+                          )
+                        else
+                          CachedNetworkImage(
+                            imageUrl: story.content,
+                            fit: BoxFit.cover,
+                          ),
+                          
+                        // Dark overlay and username at bottom
+                        Positioned(
+                          bottom: 0, left: 0, right: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: const BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [Colors.transparent, Colors.black87],
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 12,
+                                  backgroundImage: story.userAvatar.isNotEmpty
+                                      ? CachedNetworkImageProvider(story.userAvatar)
+                                      : null,
+                                  backgroundColor: const Color(0xFF8B5CF6),
+                                  child: story.userAvatar.isEmpty
+                                      ? Text(
+                                          story.userName.isNotEmpty ? story.userName[0].toUpperCase() : '?',
+                                          style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
+                                        )
+                                      : null,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    story.userName,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'Resharing to your story',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -693,6 +863,35 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
               const SizedBox(height: 12),
               Row(
                 children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _selectedMedia != null && !_isUploading
+                          ? () {
+                              UnifiedImageEditor.open(
+                                context,
+                                file: File(_selectedMedia!.path),
+                                onDone: (editedFile) {
+                                  setState(() {
+                                    _selectedMedia = editedFile;
+                                  });
+                                },
+                              );
+                            }
+                          : null,
+                      icon: const Icon(Icons.brush, size: 20),
+                      label: const Text('Edit Photo'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        side: BorderSide(
+                          color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: _selectedMedia != null && !_isUploading

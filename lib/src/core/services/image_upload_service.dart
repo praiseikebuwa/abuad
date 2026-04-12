@@ -50,6 +50,18 @@ class ImageUploadService {
       rethrow;
     }
   }
+
+  /// Upload video to Firebase Storage
+  Future<ImageUploadResult> uploadVideo(XFile videoFile, {String? path}) async {
+    try {
+      final url = await _storageService.uploadVideo(videoFile, path: path);
+      // Video dimensions could be extracted, but for now using defaults
+      return ImageUploadResult(url: url, width: 1280, height: 720);
+    } catch (e) {
+      debugPrint('Video upload error: $e');
+      rethrow;
+    }
+  }
 }
 
 class ImageUploadResult {

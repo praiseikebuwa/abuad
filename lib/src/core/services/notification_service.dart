@@ -6,7 +6,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:go_router/go_router.dart';
+import 'package:timezone/data/latest_all.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
+import 'package:flutter_timezone/flutter_timezone.dart';
 import '../../core/router/app_router.dart';
+import '../../features/notifications/domain/notification.dart';
 
 // Top-level function for background handling
 @pragma('vm:entry-point')
@@ -58,6 +62,20 @@ class NotificationService {
         _handleLocalNotificationTap(response);
       },
     );
+    
+    // 1.5 Initialise Timezone
+    tz.initializeTimeZones();
+    try {
+      final dynamic timeZoneInfo = await FlutterTimezone.getLocalTimezone();
+      // Most timezone plugins return the ID as toString() or have a name/id property.
+      // We'll try toString() as it's the safest bet for a string conversion.
+      final String timeZoneName = timeZoneInfo.toString(); 
+      tz.setLocalLocation(tz.getLocation(timeZoneName));
+    } catch (e) {
+      debugPrint('Could not get local timezone: $e');
+      // Fallback to UTC if timezone lookup fails
+      tz.setLocalLocation(tz.getLocation('UTC'));
+    }
 
     // 2. Create Android Notification Channel
     final AndroidNotificationChannel androidChannel =
@@ -207,12 +225,96 @@ class NotificationService {
     final type = data['type'];
     final id = data['id']; // userId, channelId, postId etc.
 
-    if (type == 'chat' && id != null) {
+    if ((type == 'chat' || type == 'streakExpiring' || type == 'streakMissed') && id != null) {
       GoRouter.of(context).push('/chat/$id');
-    } else if ((type == 'user' || type == 'follower') && id != null) {
+    } else if ((type == 'user' || type == 'follower' || type == 'follow') && id != null) {
       GoRouter.of(context).push('/user/$id');
-    } else if (type == 'post' && id != null) {
-      GoRouter.of(context).push('/post/$id');
+    } else if ((type == 'post' || type == 'storyUpdate') && id != null) {
+      if (type == 'storyUpdate') {
+         GoRouter.of(context).push('/stories/$id');
+      } else {
+         GoRouter.of(context).push('/post/$id');
+      }
+    }
+  }
+
+  // --- New Feature Methods ---
+
+  /// Schedules a local notification to warn about streak expiry
+  Future<void> scheduleStreakWarning({
+    required String channelId,
+    required String otherUserName,
+    required DateTime expiryTime,
+    int warningHoursBefore = 2,
+  }) async {
+    final scheduledDate = expiryTime.subtract(Duration(hours: warningHoursBefore));
+    if (scheduledDate.isBefore(DateTime.now())) return;
+
+    final id = channelId.hashCode; // Unique ID for this channel's streak notification
+    
+    await _localNotifications.zonedSchedule(
+      id,
+      'Streak Expiring! 🔥',
+      'Your streak with $otherUserName is about to expire in $warningHoursBefore hours. Send a snap now! ⏳',
+      tz.TZDateTime.from(scheduledDate, tz.local),
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          _channelId,
+          _channelName,
+          channelDescription: _channelDesc,
+          importance: Importance.max,
+          priority: Priority.high,
+        ),
+        iOS: const DarwinNotificationDetails(),
+      ),
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+      payload: jsonEncode({'type': 'streakExpiring', 'id': channelId}),
+    );
+  }
+
+  /// Cancels a scheduled streak warning (e.g. if snap is sent)
+  Future<void> cancelStreakWarning(String channelId) async {
+    await _localNotifications.cancel(channelId.hashCode);
+  }
+
+  /// General helper to send an in-app notification record to Firestore
+  Future<void> sendInAppNotification({
+    required String recipientId,
+    required String title,
+    required String body,
+    required NotificationType type,
+    Map<String, dynamic>? data,
+    String? senderId,
+    String? senderName,
+    String? senderAvatarUrl,
+  }) async {
+    try {
+      final senderUid = senderId ?? _auth.currentUser?.uid ?? 'system';
+      
+      final docRef = _firestore
+          .collection('users')
+          .doc(recipientId)
+          .collection('notifications')
+          .doc();
+
+      await docRef.set({
+        'id': docRef.id,
+        'recipient_id': recipientId,
+        'sender_id': senderUid,
+        'sender_name': senderName ?? 'ABUAD',
+        'sender_avatar_url': senderAvatarUrl,
+        'type': type.name,
+        'title': title,
+        'body': body,
+        'related_id': data?['id'],
+        'timestamp': FieldValue.serverTimestamp(),
+        'is_read': false,
+        'data': data,
+      });
+    } catch (e) {
+      debugPrint('Error sending in-app notification: $e');
     }
   }
 

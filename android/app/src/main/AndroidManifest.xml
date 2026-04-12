@@ -11,7 +11,8 @@
     <application
         android:label="ABUAD"
         android:name="${applicationName}"
-        android:icon="@mipmap/launcher_icon">
+        android:icon="@mipmap/launcher_icon"
+        android:enableOnBackInvokedCallback="true">
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
