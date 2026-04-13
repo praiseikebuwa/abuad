@@ -61,6 +61,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   DateTime? _recordingStartTime;
   Timer? _recordingTimer;
   double _dragOffset = 0.0;
+  double _horizontalDragOffset = 0.0;
+
 
   // Snap Upload State
   final Map<String, double> _uploadingSnaps = {};
@@ -249,7 +251,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           _isLocked = false;
           _recordingStartTime = DateTime.now();
           _dragOffset = 0.0;
+          _horizontalDragOffset = 0.0;
         });
+
 
         // Start timer for UI updates
         _recordingTimer?.cancel();
@@ -294,7 +298,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _isLocked = false;
         _recordingStartTime = null;
         _dragOffset = 0.0;
+        _horizontalDragOffset = 0.0;
       });
+
     } catch (e) {
       debugPrint('Error stopping recording: $e');
       setState(() {
@@ -314,10 +320,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       HapticFeedback.heavyImpact();
       setState(() {
         _isLocked = true;
-        _dragOffset = 0.0; // Reset offset for locked UI
+        _dragOffset = 0.0;
+        _horizontalDragOffset = 0.0;
       });
+
     }
   }
+
 
   Widget _buildLockedUI() {
     final duration = _recordingStartTime != null
@@ -394,68 +403,108 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ),
               ),
               const SizedBox(width: 16),
-              const Expanded(
-                child: Text(
-                  '< Slide to cancel',
-                  style: TextStyle(color: Colors.grey),
-                  textAlign: TextAlign.center,
+              Expanded(
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: (_dragOffset < -10 || _horizontalDragOffset < -20) ? 0.0 : 1.0,
+                  child: const Text(
+
+                    '< Slide to cancel',
+                    style: TextStyle(color: Colors.grey),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               ),
+
             ],
           ),
         ),
         // Mic Button with Lock Animation
         GestureDetector(
           onLongPressMoveUpdate: (details) {
-            // Drag Up to Lock (dy is negative)
-            if (details.localPosition.dy < -50) {
+            // dy is negative when dragging up
+            final dragY = details.localPosition.dy;
+            final dragX = details.localPosition.dx;
+
+            // Drag Up to Lock
+            if (dragY < -60) {
               _lockRecording();
             } else {
-              setState(() => _dragOffset = details.localPosition.dy);
+              setState(() {
+                _dragOffset = dragY.clamp(-60.0, 20.0);
+                _horizontalDragOffset = dragX;
+              });
             }
 
-            // Drag Left to Cancel (dx is negative)
-            if (details.localPosition.dx < -100) {
+            // Drag Left to Cancel threshold
+            if (dragX < -150) {
+
               _cancelRecording();
             }
           },
           onLongPressEnd: (details) {
             if (_isLocked) return;
-            // If dragging far enough left or up, action handled in update
             _stopRecording(send: true);
           },
           child: Stack(
             clipBehavior: Clip.none,
             alignment: Alignment.center,
             children: [
-              // Bounding Lock Icon
-              if (_dragOffset < -10)
-                Positioned(
-                  top: _dragOffset - 40, // Float above finger
+              // Static Lock Icon that changes as you drag near it
+              Positioned(
+                top: -80,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 100),
+                  opacity: _dragOffset < -20 ? 1.0 : 0.3,
                   child: Column(
                     children: [
-                      const Icon(Icons.lock_open, color: Colors.grey),
-                      const Icon(Icons.keyboard_arrow_up, color: Colors.grey),
+                      Icon(
+                        _dragOffset < -50 ? Icons.lock : Icons.lock_open,
+                        color: _dragOffset < -50
+                            ? AppColors.secondaryTeal
+                            : Colors.grey,
+                        size: 24,
+                      ),
+                      const SizedBox(height: 4),
+                      Icon(
+                        Icons.keyboard_arrow_up,
+                        color: Colors.grey,
+                        size: 16,
+                      ).animate(onPlay: (controller) => controller.repeat())
+                       .moveY(begin: 0, end: -5, duration: 600.ms, curve: Curves.easeInOut),
                     ],
                   ),
                 ),
+              ),
 
-              // Mic Button (Scaled Up)
-              Transform.scale(
-                scale: 1.5,
-                child: Container(
-                  height: 50,
-                  width: 50,
-                  decoration: const BoxDecoration(
-                    color: AppColors.secondaryTeal,
-                    shape: BoxShape.circle,
+              // Mic Button (Moves with finger)
+              Transform.translate(
+                offset: Offset(0, _dragOffset),
+                child: Transform.scale(
+                  scale: 1.3,
+                  child: Container(
+                    height: 50,
+                    width: 50,
+                    decoration: BoxDecoration(
+                      color: AppColors.secondaryTeal,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.secondaryTeal.withOpacity(0.3),
+                          blurRadius: 10,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                    child: const Icon(Icons.mic, color: Colors.white, size: 24),
                   ),
-                  child: const Icon(Icons.mic, color: Colors.white, size: 24),
-                ),
+                ).animate(onPlay: (controller) => controller.repeat())
+                 .shimmer(duration: 2.seconds, color: Colors.white24),
               ),
             ],
           ),
         ),
+
       ],
     );
   }
@@ -1818,6 +1867,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => SafeArea(
+        top: false,
         child: Container(
           margin: const EdgeInsets.all(16),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),

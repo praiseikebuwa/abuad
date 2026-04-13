@@ -570,7 +570,8 @@ class _PostCardState extends ConsumerState<PostCard> {
                                     )
                                   : Hero(
                                       tag: 'post_media_${post.id}',
-                                      child: (displayMediaUrl.isNotEmpty &&
+                                      child:
+                                          (displayMediaUrl.isNotEmpty &&
                                               UrlValidator.isValidUrl(
                                                 displayMediaUrl,
                                               ))
@@ -583,16 +584,20 @@ class _PostCardState extends ConsumerState<PostCard> {
                                                 width: double.infinity,
                                                 fit: BoxFit.cover,
                                                 errorWidget:
-                                                    (context, url, error) =>
-                                                        Container(
-                                                  height: 250,
-                                                  color: Colors.black,
-                                                  child: const Icon(
-                                                    Icons.broken_image_outlined,
-                                                    color: Colors.white,
-                                                    size: 48,
-                                                  ),
-                                                ),
+                                                    (
+                                                      context,
+                                                      url,
+                                                      error,
+                                                    ) => Container(
+                                                      height: 250,
+                                                      color: Colors.black,
+                                                      child: const Icon(
+                                                        Icons
+                                                            .broken_image_outlined,
+                                                        color: Colors.white,
+                                                        size: 48,
+                                                      ),
+                                                    ),
                                               ),
                                             )
                                           : Container(
@@ -761,8 +766,6 @@ class _PostCardState extends ConsumerState<PostCard> {
         .slideY(begin: 0.1, end: 0, duration: 300.ms);
   }
 
-
-
   String _channelLabel(String channelId) {
     if (channelId.isEmpty || channelId == 'general') return 'General';
     final parts = channelId.split(RegExp(r'[_\s]+'));
@@ -771,9 +774,6 @@ class _PostCardState extends ConsumerState<PostCard> {
         .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
         .join(' ');
   }
-
-
-
 
   Widget _buildVideoCaption(String text, bool isDark) {
     return Positioned(
@@ -810,6 +810,7 @@ class _PostCardState extends ConsumerState<PostCard> {
     showModalBottomSheet(
       context: context,
       builder: (context) => SafeArea(
+        top: false,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1080,24 +1081,28 @@ class _PostCardState extends ConsumerState<PostCard> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-          left: 16,
-          right: 16,
-          top: 16,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      backgroundColor: Colors.transparent,
+      builder: (context) => SafeArea(
+        top: false,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+              left: 16,
+              right: 16,
+              top: 16,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
                   child: const Text("Cancel"),
@@ -1194,6 +1199,8 @@ class _PostCardState extends ConsumerState<PostCard> {
             ),
           ],
         ),
+      ),
+      ),
       ),
     );
   }
@@ -1363,10 +1370,7 @@ class _PostCardState extends ConsumerState<PostCard> {
               const SizedBox(width: 8),
               Text(
                 label,
-                style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: TextStyle(color: color, fontWeight: FontWeight.w600),
               ),
             ],
           ),
@@ -1395,41 +1399,41 @@ class _PostCardState extends ConsumerState<PostCard> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (modalContext) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Send a reaction',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 12,
-              runSpacing: 8,
-              alignment: WrapAlignment.center,
-              children: reactions.map((emoji) {
-                return ActionChip(
-                  label: Text(
-                    emoji,
-                    style: const TextStyle(fontSize: 26),
-                  ),
-                  onPressed: () {
-                    Navigator.pop(modalContext);
-                    messenger.showSnackBar(
-                      SnackBar(content: Text('Reacted with $emoji')),
-                    );
-                  },
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 12),
-            TextButton(
-              onPressed: () => Navigator.pop(modalContext),
-              child: const Text('Cancel'),
-            ),
-          ],
+      builder: (modalContext) => SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Send a reaction',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                alignment: WrapAlignment.center,
+                children: reactions.map((emoji) {
+                  return ActionChip(
+                    label: Text(emoji, style: const TextStyle(fontSize: 26)),
+                    onPressed: () {
+                      Navigator.pop(modalContext);
+                      messenger.showSnackBar(
+                        SnackBar(content: Text('Reacted with $emoji')),
+                      );
+                    },
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () => Navigator.pop(modalContext),
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
         ),
       ),
     );

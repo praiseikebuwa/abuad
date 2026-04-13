@@ -442,12 +442,12 @@ class PostRepository {
         'content': content,
         'status': status,
         'created_at': FieldValue.serverTimestamp(),
-        if (parentId != null) 'parent_id': parentId,
-        if (imageUrl != null) 'image_url': imageUrl,
-        if (mediaType != null) 'media_type': mediaType,
-        if (pollData != null) 'poll': pollData,
-        if (latitude != null) 'latitude': latitude,
-        if (longitude != null) 'longitude': longitude,
+        'parent_id': ?parentId,
+        'image_url': ?imageUrl,
+        'media_type': ?mediaType,
+        'poll': ?pollData,
+        'latitude': ?latitude,
+        'longitude': ?longitude,
       });
 
       // Increment total comment count on post

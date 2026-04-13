@@ -57,6 +57,7 @@
                         <li class="active" data-tab="overview"><i class="fas fa-chart-pie"></i> Overview</li>
                         <li data-tab="users"><i class="fas fa-users"></i> User Management</li>
                         <li data-tab="posts"><i class="fas fa-newspaper"></i> Post Moderation</li>
+                        <li data-tab="reels"><i class="fas fa-play-circle"></i> Reels Moderation</li>
                         <li data-tab="stories"><i class="fas fa-history"></i> Story Moderation</li>
                         <li data-tab="chats"><i class="fas fa-comments"></i> Chat Channels</li>
                         <li data-tab="events"><i class="fas fa-calendar-alt"></i> Events</li>
@@ -212,6 +213,7 @@
                         <table id="users-table">
                             <thead>
                                 <tr>
+                                    <th style="width: 40px;"><input type="checkbox" id="users-select-all"></th>
                                     <th>User Profile</th>
                                     <th>Status</th>
                                     <th>Verification</th>
@@ -243,6 +245,7 @@
                         <table id="posts-table">
                             <thead>
                                 <tr>
+                                    <th style="width: 40px;"><input type="checkbox" id="posts-select-all"></th>
                                     <th style="width: 40%">Content Preview</th>
                                     <th>Author</th>
                                     <th>Engagement</th>
@@ -254,6 +257,23 @@
                                 <!-- Populated by JS -->
                             </tbody>
                         </table>
+                    </div>
+                </div>
+
+                <!-- Reels Tab -->
+                <div id="reels-tab" class="tab-content">
+                    <header class="content-header">
+                        <h1>Reels Moderation</h1>
+                    </header>
+                    <div class="card" style="margin-bottom: 20px; background: rgba(129, 140, 248, 0.1); border-color: var(--color-accent-purple);">
+                        <div style="display: flex; gap: 10px; color: var(--color-accent-purple);">
+                            <i class="fas fa-info-circle"></i>
+                            <p style="font-size: 0.9rem;">Modern TikTok-style video moderation. Click a thumbnail to preview.</p>
+                        </div>
+                    </div>
+                    <div class="reels-grid" id="reels-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px;">
+                        <!-- Populated by reels.js -->
+                        <div class="loading-text">Loading reels...</div>
                     </div>
                 </div>
 
@@ -712,6 +732,7 @@
     <script src="js/controllers/auth.js"></script>
     <script src="js/controllers/users.js"></script>
     <script src="js/controllers/posts.js"></script>
+    <script src="js/controllers/reels.js"></script>
     <script src="js/controllers/stories.js"></script>
     <script src="js/controllers/chats.js"></script>
     <script src="js/controllers/events.js"></script>

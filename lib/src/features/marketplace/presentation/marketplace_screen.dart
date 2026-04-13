@@ -1044,54 +1044,57 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        margin: const EdgeInsets.all(16),
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceDark.withValues(alpha: 0.95),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: Colors.white10),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Express your interest',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: reactions.map((emoji) {
-                final isSelected = item.reactions[userId] == emoji;
-                return GestureDetector(
-                  onTap: () async {
-                    Navigator.pop(context);
-                    await ref.read(marketplaceRepositoryProvider).toggleReaction(
-                      item.id,
-                      userId,
-                      emoji,
-                    );
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: isSelected ? AppColors.secondaryTeal.withValues(alpha: 0.2) : Colors.transparent,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: isSelected ? AppColors.secondaryTeal : Colors.transparent,
+      builder: (context) => SafeArea(
+        top: false,
+        child: Container(
+          margin: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceDark.withValues(alpha: 0.95),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Express your interest',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: reactions.map((emoji) {
+                  final isSelected = item.reactions[userId] == emoji;
+                  return GestureDetector(
+                    onTap: () async {
+                      Navigator.pop(context);
+                      await ref.read(marketplaceRepositoryProvider).toggleReaction(
+                        item.id,
+                        userId,
+                        emoji,
+                      );
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isSelected ? AppColors.secondaryTeal.withValues(alpha: 0.2) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: isSelected ? AppColors.secondaryTeal : Colors.transparent,
+                        ),
+                      ),
+                      child: Text(
+                        emoji,
+                        style: const TextStyle(fontSize: 28),
                       ),
                     ),
-                    child: Text(
-                      emoji,
-                      style: const TextStyle(fontSize: 28),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ],
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1101,6 +1104,7 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
     showModalBottomSheet(
       context: context,
       builder: (context) => SafeArea(
+        top: false,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1343,6 +1347,7 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
     showModalBottomSheet(
       context: context,
       builder: (context) => SafeArea(
+        top: false,
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(

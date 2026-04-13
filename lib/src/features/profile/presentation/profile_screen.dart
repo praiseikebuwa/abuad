@@ -436,6 +436,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final result = await showModalBottomSheet<ImageSource>(
       context: context,
       builder: (context) => SafeArea(
+        top: false,
         child: Wrap(
           children: [
             ListTile(

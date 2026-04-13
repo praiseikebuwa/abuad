@@ -1,40 +1,62 @@
 :root {
     /* --- Premium Palette: ABUAD Brand Alignment --- */
-    --color-bg-body: #0B1B3A;
-    /* primaryInk */
-    --color-bg-card: rgba(31, 37, 48, 0.7);
-    /* surfaceDarkElevated with transparency */
-    --color-bg-sidebar: rgba(11, 27, 58, 0.9);
-    /* primaryInk deep */
+    --color-bg-body: #050a18; /* Deeper dark */
+    --color-bg-card: rgba(23, 32, 53, 0.45);
+    --color-bg-sidebar: rgba(8, 15, 30, 0.95);
 
     --color-primary: #1F5F5B;
-    /* secondaryTeal */
     --color-primary-light: #2dd4bf;
     --color-primary-600: #14b8a6;
+    --color-primary-400: #5eead4;
 
-    --color-accent-amber: #FFB84D;
-    --color-accent-purple: #a855f7;
+    --color-accent-amber: #fbbf24;
+    --color-accent-purple: #818cf8;
     --color-accent-rose: #f43f5e;
 
     /* --- Text & Borders --- */
     --text-primary: #f8fafc;
     --text-secondary: #94a3b8;
-    --text-muted: #5B6475;
+    --text-muted: #475569;
 
-    --border-glass: 1px solid rgba(255, 255, 255, 0.1);
-    --border-subtle: rgba(255, 255, 255, 0.05);
+    --border-glass: 1px solid rgba(255, 255, 255, 0.08);
+    --border-subtle: rgba(255, 255, 255, 0.04);
+    --glass-border: 1px solid rgba(255, 255, 255, 0.1);
 
     /* --- Spacing & Layout --- */
-    --sidebar-width: 280px;
+    --sidebar-width: 260px;
     --header-height: 70px;
-    --radius-lg: 16px;
+    --radius-xl: 24px;
+    --radius-lg: 18px;
     --radius-md: 12px;
     --radius-sm: 8px;
 
     /* --- Effects --- */
-    --shadow-glass: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-    --backdrop-blur: blur(20px);
-    --transition-premium: 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+    --shadow-glass: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+    --shadow-premium: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    --backdrop-blur: blur(24px);
+    --transition-premium: cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-fast: 0.2s var(--transition-premium);
+    --transition-slow: 0.5s var(--transition-premium);
+}
+
+/* --- Global Elements --- */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    transition: background 0.3s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
 }
 
 /* --- Theme Overrides --- */
@@ -319,6 +341,11 @@ h3 {
     width: 24px;
     margin-right: 12px;
     font-size: 1.1em;
+    transition: transform 0.3s var(--transition-premium);
+}
+
+.sidebar-nav li:hover i {
+    transform: scale(1.1) translateX(2px);
 }
 
 /* --- Logout Button --- */
@@ -383,9 +410,10 @@ h3 {
 
 .card:hover,
 .stat-card:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-glass);
-    border-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-4px);
+    background: rgba(31, 41, 65, 0.6);
+    box-shadow: var(--shadow-premium);
+    border-color: rgba(255, 255, 255, 0.15);
 }
 
 /* --- Stats Grid --- */
@@ -919,4 +947,24 @@ input:checked+.slider:before {
 #live-users-grid::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.1);
     border-radius: 10px;
+}
+
+/* --- SOS Pulse Animation --- */
+.pulse-marker {
+    background: #f43f5e;
+    border-radius: 50%;
+    box-shadow: 0 0 0 rgba(244, 63, 94, 0.4);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 15px rgba(244, 63, 94, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(244, 63, 94, 0);
+    }
 }

@@ -34,6 +34,7 @@ class NavigationController {
             'overview': window.analyticsController,
             'users': window.usersController,
             'posts': window.postsController,
+            'reels': window.reelsController,
             'stories': window.storiesController,
             'chats': window.chatsController,
             'events': window.eventsController,
@@ -65,6 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.authController = new AuthController();
     window.usersController = new UsersController();
     window.postsController = new PostsController();
+    window.reelsController = new ReelsController();
     window.storiesController = new StoriesController();
     window.chatsController = new ChatsController();
     window.marketplaceController = new MarketplaceController();
@@ -83,12 +85,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // 2. Global Search Logic
     const globalSearch = document.getElementById('global-search');
     if (globalSearch) {
-        globalSearch.addEventListener('keypress', (e) => {
+        globalSearch.addEventListener('keypress', async (e) => {
             if (e.key === 'Enter') {
                 const query = globalSearch.value;
                 if (query.length > 2) {
+                    // Start Unified Search
                     window.navigationController.switchTab('users');
                     window.usersController.filterUsers(query);
+                    
+                    // Show a notification or update UI to show it's a cross-platform search
+                    console.log(`Global search for: ${query}`);
                 }
             }
         });

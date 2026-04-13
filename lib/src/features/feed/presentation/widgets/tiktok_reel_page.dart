@@ -10,10 +10,13 @@ import '../../../user/data/user_repository.dart';
 import '../../domain/post.dart' as domain;
 import '../../../../core/theme/app_colors.dart';
 import '../../../../shared/widgets/share_sheet.dart';
+import '../providers/reel_controller_provider.dart';
 import '../providers/feed_provider.dart';
 import 'reel_comment_sheet.dart';
 import '../../../../shared/widgets/user_avatar.dart';
 import '../../../../core/utils/url_validator.dart';
+import 'package:visibility_detector/visibility_detector.dart';
+
 
 /// TikTok-style reel page used inside the vertical Reels viewer.
 class TikTokReelPage extends ConsumerStatefulWidget {
@@ -33,14 +36,18 @@ class TikTokReelPage extends ConsumerStatefulWidget {
 }
 
 class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
-    with AutomaticKeepAliveClientMixin {
+    with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
+
   VideoPlayerController? _controller;
-  bool _isInitialized = false;
   bool _isBuffering = false;
-  bool _isMuted = false;
+  final bool _isMuted = false;
   bool _showPlayHint = false;
+  bool _manuallyPaused = false;
+  bool _isVisible = true;
+
   // Double-tap heart splash
   final List<Offset> _doubleTapPositions = [];
+
 
   @override
   bool get wantKeepAlive => true;
@@ -48,43 +55,63 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
   @override
   void initState() {
     super.initState();
-    _initializeController();
+    WidgetsBinding.instance.addObserver(this);
+    // We'll manage the controller via the provider in build/didUpdateWidget
   }
 
-  Future<void> _initializeController() async {
-    if (widget.post.mediaUrl.isEmpty) return;
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_controller == null || !widget.isActive || !_isVisible) return;
 
-    final controller = VideoPlayerController.networkUrl(
-      Uri.parse(widget.post.mediaUrl),
-    );
-    controller.addListener(_videoListener);
-    controller.setLooping(true);
-    _controller = controller;
-
-    try {
-      await controller.initialize();
-      await controller.setVolume(_isMuted ? 0 : 0.8);
-      if (widget.isActive) {
-        await controller.play();
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _controller?.pause();
+    } else if (state == AppLifecycleState.resumed) {
+      if (!_manuallyPaused && (widget.isActive && _isVisible)) {
+        _controller?.play();
       }
-      if (mounted) {
-        setState(() => _isInitialized = true);
-      }
-    } catch (e) {
-      debugPrint('TikTokReelPage video error: ');
     }
   }
+
+  void _handleVisibilityChanged(VisibilityInfo info) {
+    if (!mounted) return;
+    
+    final wasVisible = _isVisible;
+    _isVisible = info.visibleFraction > 0.5;
+
+    if (_controller == null) return;
+
+    if (!_isVisible && wasVisible) {
+      // Just became hidden
+      if (_controller!.value.isPlaying) {
+        _controller!.pause();
+      }
+    } else if (_isVisible && !wasVisible) {
+      // Just became visible
+      if (widget.isActive && !_manuallyPaused && !_controller!.value.isPlaying) {
+        _controller!.play();
+      }
+    }
+  }
+
 
   void _videoListener() {
-    if (!mounted) return;
-    final isBuffering = _controller?.value.isBuffering ?? false;
-    if (isBuffering != _isBuffering) {
-      setState(() => _isBuffering = isBuffering);
-    }
-    if (_controller?.value.isPlaying ?? false) {
-      if (_showPlayHint) {
-        setState(() => _showPlayHint = false);
+    if (!mounted || _controller == null) return;
+    
+    final value = _controller!.value;
+    final isBuffering = value.isBuffering;
+    final isInitialized = value.isInitialized;
+    
+    setState(() {
+      _isBuffering = isBuffering;
+      // We also want to clear any play hint if it starts playing
+      if (value.isPlaying && _showPlayHint) {
+        _showPlayHint = false;
       }
+    });
+
+    // If it just finished initializing and we are active, start playing
+    if (widget.isActive && isInitialized && !value.isPlaying && !value.isBuffering) {
+      _controller!.play();
     }
   }
 
@@ -101,10 +128,12 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller?.removeListener(_videoListener);
-    _controller?.dispose();
+    // Note: We DON'T dispose the controller here because it's managed by ReelControllerManager
     super.dispose();
   }
+
 
 
 
@@ -112,12 +141,19 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
     if (_controller == null || !_controller!.value.isInitialized) return;
     if (_controller!.value.isPlaying) {
       _controller!.pause();
-      setState(() => _showPlayHint = true);
+      setState(() {
+        _showPlayHint = true;
+        _manuallyPaused = true;
+      });
     } else {
       _controller!.play();
-      setState(() => _showPlayHint = false);
+      setState(() {
+        _showPlayHint = false;
+        _manuallyPaused = false;
+      });
     }
   }
+
 
 
   void _onDoubleTap(Offset position, WidgetRef ref, domain.Post post) {
@@ -173,49 +209,56 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.black.withValues(alpha: 0.85),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'Post actions',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-            const SizedBox(height: 12),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(
-                Icons.rocket_launch,
-                color: AppColors.secondaryTeal,
+      backgroundColor: Colors.transparent,
+      builder: (context) => SafeArea(
+        top: false,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.85),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Post actions',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
-              title: const Text('Boost this post'),
-              subtitle: const Text('Show it to more students on ABUAD Nest'),
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Boost queued — good luck!')),
-                );
-              },
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(
-                Icons.bookmark_border_rounded,
-                color: Colors.white,
+              const SizedBox(height: 12),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(
+                  Icons.rocket_launch,
+                  color: AppColors.secondaryTeal,
+                ),
+                title: const Text('Boost this post'),
+                subtitle: const Text('Show it to more students on ABUAD Nest'),
+                onTap: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Boost queued — good luck!')),
+                  );
+                },
               ),
-              title: const Text('Save post'),
-              subtitle: const Text('Add to your bookmarks'),
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Post saved!')),
-                );
-              },
-            ),
-          ],
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(
+                  Icons.bookmark_border_rounded,
+                  color: Colors.white,
+                ),
+                title: const Text('Save post'),
+                subtitle: const Text('Add to your bookmarks'),
+                onTap: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Post saved!')),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -224,6 +267,22 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final reelState = ref.watch(reelControllerProvider);
+    final controller = reelState.controllers[widget.post.id];
+    final error = reelState.errors[widget.post.id];
+
+    // Connect local controller reference for listener and didUpdateWidget
+    if (controller != _controller) {
+      _controller?.removeListener(_videoListener);
+      _controller = controller;
+      _controller?.addListener(_videoListener);
+      
+      // Auto-play if it's already initialized and we are active
+      if (widget.isActive && _controller != null && _controller!.value.isInitialized && !_controller!.value.isPlaying) {
+        _controller!.play();
+      }
+    }
+
     final repo = ref.watch(postRepositoryProvider);
 
     return StreamBuilder<domain.Post?>(
@@ -242,22 +301,42 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
             : 0;
         final likeCount = (livePost.likesCount + likeDelta).clamp(0, 9999999);
 
-        return GestureDetector(
-          onTap: _togglePlayback,
-          onDoubleTapDown: (details) =>
-              _onDoubleTap(details.localPosition, ref, livePost),
-          onLongPress: () => _showEngagementMenu(livePost),
-          child: Container(
+        return VisibilityDetector(
+          key: Key('reel_${widget.post.id}'),
+          onVisibilityChanged: _handleVisibilityChanged,
+          child: GestureDetector(
+            onTap: _togglePlayback,
+            onDoubleTapDown: (details) =>
+                _onDoubleTap(details.localPosition, ref, livePost),
+            onLongPress: () => _showEngagementMenu(livePost),
+            child: Container(
+
             color: Colors.black,
             child: Stack(
               children: [
                 // Video Background
-                Positioned.fill(child: _buildVideoLayer()),
+                Positioned.fill(child: _buildVideoLayer(controller, error)),
 
                 // Loading/Buffering indicator
-                if (!_isInitialized || _isBuffering)
-                  const Center(
-                    child: CircularProgressIndicator(color: Colors.white),
+                if (controller == null || !controller.value.isInitialized || _isBuffering)
+                  Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        if (error != null) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            'Failed to load video',
+                            style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12),
+                          ),
+                          TextButton(
+                            onPressed: () => ref.read(reelControllerProvider.notifier).retry(widget.post),
+                            child: const Text('Retry', style: TextStyle(color: AppColors.secondaryTeal)),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
 
                 // Play hint
@@ -315,6 +394,7 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
               ],
             ),
           ),
+          ),
         );
       },
     );
@@ -341,9 +421,9 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
     );
   }
 
-  Widget _buildVideoLayer() {
-    if (_isInitialized && _controller != null) {
-      final size = _controller!.value.size;
+  Widget _buildVideoLayer(VideoPlayerController? controller, String? error) {
+    if (controller != null && controller.value.isInitialized) {
+      final size = controller.value.size;
       final width = (size.width > 0 ? size.width : 1.0).toDouble();
       final height = (size.height > 0 ? size.height : 1.0).toDouble();
       return SizedBox.expand(
@@ -352,12 +432,23 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
           child: SizedBox(
             width: width,
             height: height,
-            child: VideoPlayer(_controller!),
+            child: VideoPlayer(controller),
           ),
         ),
       );
     }
-    return Container(color: Colors.black);
+    
+    // Placeholder while loading
+    return Container(
+      color: Colors.black,
+      child: Center(
+        child: Icon(
+          Icons.play_circle_outline,
+          color: Colors.white.withOpacity(0.1),
+          size: 80,
+        ),
+      ),
+    );
   }
 
   Widget _buildGradientOverlay() {
@@ -414,20 +505,6 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
               shadows: [Shadow(color: Colors.black54, blurRadius: 2)],
             ),
             children: words.map((word) {
-              final isHashtag = word.startsWith('#');
-              if (isHashtag) {
-                return TextSpan(
-                  text: '$word ',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                  recognizer: TapGestureRecognizer()
-                    ..onTap = () {
-                      debugPrint('Hashtag tapped: $word');
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Searching for $word...')),
-                      );
-                    },
-                );
-              }
               return TextSpan(text: '$word ');
             }).toList(),
           ),
@@ -486,11 +563,11 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
                   showStoryRing: true,
                 ),
               ),
-              const Positioned(
+              Positioned(
                 bottom: -9,
                 left: 0,
                 right: 0,
-                child: Center(child: _FollowButton()),
+                child: Center(child: _FollowButton(userId: post.authorId)),
               ),
             ],
           ),
@@ -682,19 +759,88 @@ class _MusicDiscState extends State<_MusicDisc> with SingleTickerProviderStateMi
   }
 }
 
-class _FollowButton extends StatelessWidget {
-  const _FollowButton();
+class _FollowButton extends ConsumerStatefulWidget {
+  final String userId;
+  const _FollowButton({required this.userId});
+
+  @override
+  ConsumerState<_FollowButton> createState() => _FollowButtonState();
+}
+
+class _FollowButtonState extends ConsumerState<_FollowButton> {
+  bool _isFollowingInProgress = false;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 22,
-      height: 22,
-      decoration: const BoxDecoration(
-        color: Color(0xFFFE2C55), // TikTok Red
-        shape: BoxShape.circle,
-      ),
-      child: const Icon(Icons.add, color: Colors.white, size: 16),
+    final followingAsync = ref.watch(isFollowingProvider(widget.userId));
+    final currentUserId = ref.watch(currentUserIdProvider);
+
+    // Don't show if it's my own profile
+    if (currentUserId == widget.userId) return const SizedBox.shrink();
+
+    return followingAsync.when(
+      data: (isFollowing) {
+        // If already following and no animation in progress, hide
+        if (isFollowing && !_isFollowingInProgress) {
+          return const SizedBox.shrink();
+        }
+
+        return GestureDetector(
+          onTap: () async {
+            if (_isFollowingInProgress || isFollowing) return;
+
+            setState(() => _isFollowingInProgress = true);
+
+            try {
+              // Trigger the follow repository call
+              await ref.read(userRepositoryProvider).followUser(widget.userId);
+              
+              // Give the user a moment to see the 'tick' animation
+              await Future.delayed(const Duration(milliseconds: 800));
+            } catch (e) {
+              debugPrint('Error following user: $e');
+            } finally {
+              if (mounted) {
+                setState(() => _isFollowingInProgress = false);
+              }
+            }
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            width: 22,
+            height: 22,
+            decoration: BoxDecoration(
+              color: _isFollowingInProgress ? Colors.green : const Color(0xFFFE2C55),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Center(
+              child: _isFollowingInProgress
+                  ? const Icon(
+                      Icons.check_rounded,
+                      color: Colors.white,
+                      size: 16,
+                    )
+                      .animate()
+                      .scale(duration: 200.ms, curve: Curves.easeOutBack)
+                     .rotate(begin: -0.5, end: 0, duration: 400.ms)
+                  : const Icon(
+                      Icons.add_rounded,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+            ),
+          ),
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
     );
   }
 }

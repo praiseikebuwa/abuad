@@ -83,114 +83,117 @@ class _ReelCommentSheetState extends ConsumerState<ReelCommentSheet> {
               ),
             ),
           ),
-          Column(
-            children: [
-              // Header
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Column(
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[600],
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      '${widget.post.commentsCount} comments',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              // Comments List
-              Expanded(
-                child: StreamBuilder<List<Map<String, dynamic>>>(
-                  stream: commentsStream,
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    final comments = snapshot.data ?? [];
-                    if (comments.isEmpty) {
-                      return Center(
-                        child: Text(
-                          'No comments yet',
-                          style: TextStyle(color: Colors.grey[500]),
-                        ),
-                      );
-                    }
-                    return ListView.builder(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      itemCount: comments.length,
-                      itemBuilder: (context, index) {
-                        final comment = comments[index];
-                        return _CommentTile(comment: comment);
-                      },
-                    );
-                  },
-                ),
-              ),
-              // Input field
-              Padding(
-                padding: EdgeInsets.only(
-                  bottom: math.max(
-                        MediaQuery.of(context).viewInsets.bottom,
-                        MediaQuery.of(context).padding.bottom,
-                      ) +
-                      16,
-                  left: 16,
-                  right: 16,
-                  top: 8,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
+          SafeArea(
+            top: false,
+            child: Column(
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 4,
                         decoration: BoxDecoration(
-                          color: isDark ? Colors.grey[900] : Colors.grey[100],
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                        child: TextField(
-                          controller: _commentController,
-                          decoration: const InputDecoration(
-                            hintText: 'Add comment...',
-                            border: InputBorder.none,
-                            hintStyle: TextStyle(fontSize: 14),
-                          ),
-                          maxLines: null,
+                          color: Colors.grey[600],
+                          borderRadius: BorderRadius.circular(2),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      onPressed: _isPosting ? null : _postComment,
-                      icon: _isPosting
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(
-                              Icons.send,
-                              color: AppColors.secondaryTeal,
-                            ),
-                    ),
-                  ],
+                      const SizedBox(height: 12),
+                      Text(
+                        '${widget.post.commentsCount} comments',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                const Divider(height: 1),
+                // Comments List
+                Expanded(
+                  child: StreamBuilder<List<Map<String, dynamic>>>(
+                    stream: commentsStream,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      final comments = snapshot.data ?? [];
+                      if (comments.isEmpty) {
+                        return Center(
+                          child: Text(
+                            'No comments yet',
+                            style: TextStyle(color: Colors.grey[500]),
+                          ),
+                        );
+                      }
+                      return ListView.builder(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        itemCount: comments.length,
+                        itemBuilder: (context, index) {
+                          final comment = comments[index];
+                          return _CommentTile(comment: comment);
+                        },
+                      );
+                    },
+                  ),
+                ),
+                // Input field
+                Padding(
+                  padding: EdgeInsets.only(
+                    bottom: math.max(
+                          MediaQuery.of(context).viewInsets.bottom,
+                          MediaQuery.of(context).padding.bottom,
+                        ) +
+                        16,
+                    left: 16,
+                    right: 16,
+                    top: 8,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: isDark ? Colors.grey[900] : Colors.grey[100],
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                          child: TextField(
+                            controller: _commentController,
+                            decoration: const InputDecoration(
+                              hintText: 'Add comment...',
+                              border: InputBorder.none,
+                              hintStyle: TextStyle(fontSize: 14),
+                            ),
+                            maxLines: null,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        onPressed: _isPosting ? null : _postComment,
+                        icon: _isPosting
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(
+                                Icons.send,
+                                color: AppColors.secondaryTeal,
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

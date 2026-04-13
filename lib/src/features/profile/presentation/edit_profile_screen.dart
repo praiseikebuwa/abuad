@@ -91,6 +91,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     final ImageSource? source = await showModalBottomSheet<ImageSource>(
       context: context,
       builder: (context) => SafeArea(
+        top: false,
         child: Wrap(
           children: [
             ListTile(

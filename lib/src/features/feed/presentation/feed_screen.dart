@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../domain/post.dart' as domain;
-import '../data/post_repository.dart';
 import 'widgets/post_card.dart';
 import 'widgets/feed_loading_skeleton.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -510,9 +509,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
 
                       return Column(
                         children: [
-                          // F1: Trending Topics Pill — Discovery mode only
-                          if (feedType == FeedType.discovery)
-                            const _TrendingPill(),
+
                           Expanded(
                             child: ListView.separated(
                               controller: _scrollController,
@@ -919,176 +916,6 @@ class _MainTabItem extends StatelessWidget {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-class _TrendingPill extends ConsumerWidget {
-  const _TrendingPill();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final trendingAsync = ref.watch(trendingTagsProvider);
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: isDark ? theme.cardColor.withValues(alpha: 0.6) : Colors.white,
-        borderRadius: BorderRadius.circular(30),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.05)
-              : AppColors.primaryInk.withValues(alpha: 0.06),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: isDark ? Colors.black26 : Colors.black12,
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: trendingAsync.when(
-        data: (tags) {
-          final filtered = tags.where((entry) {
-            final tag = entry['tag'] as String?;
-            return tag != null && tag.trim().isNotEmpty;
-          }).toList();
-
-          if (filtered.isEmpty) {
-            return Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Trending topics will appear here soon',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: isDark ? Colors.white70 : Colors.black54,
-                ),
-              ),
-            );
-          }
-
-          return SizedBox(
-            height: 54,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              itemCount: filtered.length,
-              separatorBuilder: (context, _) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
-                final entry = filtered[index];
-                final rawTag = (entry['tag'] as String).trim();
-                final cleanedTag = rawTag.startsWith('#') ? rawTag : '#$rawTag';
-                final tagSlug = cleanedTag.replaceAll('#', '');
-                final count = entry['count'] as int? ?? 0;
-
-                if (tagSlug.isEmpty) return const SizedBox.shrink();
-
-                return _TrendingTopicChip(
-                  tag: cleanedTag,
-                  count: count,
-                  isDark: isDark,
-                  onTap: () {
-                    final encoded = Uri.encodeComponent(tagSlug);
-                    context.push('/hashtag/$encoded');
-                  },
-                );
-              },
-            ),
-          );
-        },
-        loading: () => SizedBox(
-          height: 54,
-          child: Center(
-            child: SizedBox(
-              width: 120,
-              child: LinearProgressIndicator(
-                color: theme.colorScheme.primary,
-                backgroundColor: theme.colorScheme.primary.withValues(
-                  alpha: 0.3,
-                ),
-                minHeight: 3,
-              ),
-            ),
-          ),
-        ),
-        error: (error, stackTrace) => Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            'Unable to load trending topics',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: isDark ? Colors.white70 : Colors.black54,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TrendingTopicChip extends StatelessWidget {
-  final String tag;
-  final int count;
-  final bool isDark;
-  final VoidCallback onTap;
-
-  const _TrendingTopicChip({
-    required this.tag,
-    required this.count,
-    required this.isDark,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final gradient = isDark
-        ? AppColors.inkTealGradient
-        : AppColors.goldGradient;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(24),
-        child: Ink(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            gradient: gradient,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.15),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                tag,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                ),
-              ),
-              if (count > 0)
-                Text(
-                  '$count posts',
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 // Feature 4: Injected System/Event Banner Card
 // Renders a native, non-tap-to-detail card for  Feed platform announcements.

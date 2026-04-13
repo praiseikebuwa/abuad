@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:go_router/go_router.dart';
 import 'dart:ui';
 
 import '../../../feed/data/post_repository.dart';
+import '../../../feed/domain/post.dart';
 import '../../../../shared/widgets/user_avatar.dart';
+import '../../../../core/utils/url_validator.dart';
 
 class SharedPostPreview extends ConsumerWidget {
   final String postId;
@@ -28,117 +31,148 @@ class SharedPostPreview extends ConsumerWidget {
           );
         }
 
-        return Container(
-          width: 250,
-          margin: const EdgeInsets.symmetric(vertical: 4),
-          decoration: BoxDecoration(
-            color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.1),
-              width: 1,
+        return GestureDetector(
+          onTap: () => context.push('/post/${post.id}', extra: post),
+          child: Container(
+            width: 250,
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.1),
+                width: 1,
+              ),
             ),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Header: Author Info
-                    Row(
-                      children: [
-                        UserAvatar(
-                          userId: post.authorId,
-                          avatarUrl: post.authorAvatarUrl,
-                          displayName: post.authorName,
-                          radius: 12,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Header: Author Info
+                      Row(
+                        children: [
+                          UserAvatar(
+                            userId: post.authorId,
+                            avatarUrl: post.authorAvatarUrl,
+                            displayName: post.authorName,
+                            radius: 12,
+                            enableDefaultTap: false, // Handle tap on the whole card instead
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  post.authorName,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  post.authorHandle,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: isDark ? Colors.white60 : Colors.black54,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Content Snippet
+                      if (post.content.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            post.content,
+                            style: const TextStyle(fontSize: 13),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+
+                      // Media Thumbnail
+                      if (post.mediaUrl.isNotEmpty && UrlValidator.isValidUrl(post.mediaUrl))
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Stack(
+                            alignment: Alignment.center,
                             children: [
-                              Text(
-                                post.authorName,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
+                              CachedNetworkImage(
+                                imageUrl: post.mediaUrl,
+                                height: 120,
+                                width: double.infinity,
+                                fit: BoxFit.cover,
+                                placeholder: (context, url) => Container(
+                                  height: 120,
+                                  color: isDark ? Colors.black26 : Colors.grey[200],
+                                  child: const Center(
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  ),
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              Text(
-                                post.authorHandle,
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: isDark ? Colors.white60 : Colors.black54,
+                                errorWidget: (context, url, error) => Container(
+                                  height: 120,
+                                  width: double.infinity,
+                                  color: isDark ? Colors.black26 : Colors.grey[200],
+                                  child: const Icon(Icons.broken_image_rounded, size: 30, color: Colors.grey),
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
+                              if (post.mediaType == MediaType.video)
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.4),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.play_arrow_rounded,
+                                    color: Colors.white,
+                                    size: 30,
+                                  ),
+                                ),
                             ],
                           ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-
-                    // Content Snippet
-                    if (post.content.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Text(
-                          post.content,
-                          style: const TextStyle(fontSize: 13),
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-
-                    // Media Thumbnail
-                    if (post.mediaUrl.isNotEmpty)
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: CachedNetworkImage(
-                          imageUrl: post.mediaUrl,
-                          height: 120,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) => Container(
-                            height: 120,
-                            color: isDark ? Colors.black26 : Colors.grey[200],
-                          ),
-                        ),
-                      ),
-                    
-                    const SizedBox(height: 8),
-                    
-                    // Footer: Context
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Icon(
-                          Icons.link_rounded,
-                          size: 14,
-                          color: isDark ? Colors.white38 : Colors.black38,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'View Post',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
+                      
+                      const SizedBox(height: 8),
+                      
+                      // Footer: Context
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Icon(
+                            Icons.link_rounded,
+                            size: 14,
                             color: isDark ? Colors.white38 : Colors.black38,
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                          const SizedBox(width: 4),
+                          Text(
+                            'View Post',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).primaryColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

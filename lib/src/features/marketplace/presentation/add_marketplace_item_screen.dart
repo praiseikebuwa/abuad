@@ -154,55 +154,69 @@ class _AddMarketplaceItemScreenState
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.7,
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceDark.withOpacity(0.98),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 20, spreadRadius: 5)
-          ],
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white24,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Glimpse Preview',
-              style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'This is how other students will see your listing',
-              style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13),
-            ),
-            const SizedBox(height: 32),
-            Expanded(
-              child: Center(
-                child: SizedBox(
-                  width: 200,
-                  child: _buildPreviewItemCard(tempItem),
+      builder: (context) => SafeArea(
+        top: false,
+        child: Container(
+          height: MediaQuery.of(context).size.height * 0.7,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceDark.withValues(alpha: 0.98),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.5),
+                blurRadius: 20,
+                spreadRadius: 5,
+              )
+            ],
+          ),
+          child: Column(
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-            ),
-            const SizedBox(height: 32),
-            FilledButton(
-              onPressed: () => Navigator.pop(context),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.secondaryTeal,
-                minimumSize: const Size(double.infinity, 50),
+              const SizedBox(height: 24),
+              const Text(
+                'Glimpse Preview',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-              child: const Text('Back to Editing'),
-            ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                'This is how other students will see your listing',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.5),
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 32),
+              Expanded(
+                child: Center(
+                  child: SizedBox(
+                    width: 200,
+                    child: _buildPreviewItemCard(tempItem),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 32),
+              FilledButton(
+                onPressed: () => Navigator.pop(context),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.secondaryTeal,
+                  minimumSize: const Size(double.infinity, 50),
+                ),
+                child: const Text('Back to Editing'),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -347,7 +361,7 @@ class _AddMarketplaceItemScreenState
                     letterSpacing: 1.2,
                   ),
                 ),
-                if (action != null) action,
+                ?action,
               ],
             ),
             const SizedBox(height: 16),
@@ -444,7 +458,7 @@ class _AddMarketplaceItemScreenState
                         child: Column(
                           children: [
                             DropdownButtonFormField<String>(
-                              value: _selectedCategory,
+                              initialValue: _selectedCategory,
                               dropdownColor: AppColors.surfaceDark,
                               style: const TextStyle(color: Colors.white),
                               decoration: _glassInputDecoration('Category', Icons.category_outlined),
@@ -497,7 +511,7 @@ class _AddMarketplaceItemScreenState
                       _buildGlassCard(
                         title: 'PICKUP LOCATION',
                         child: DropdownButtonFormField<String>(
-                          value: _selectedLocation,
+                          initialValue: _selectedLocation,
                           dropdownColor: AppColors.surfaceDark,
                           style: const TextStyle(color: Colors.white),
                           decoration: _glassInputDecoration('Safe Meeting Point', Icons.place_outlined),

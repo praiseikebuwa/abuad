@@ -66,8 +66,9 @@ const analyticsController = {
         const now = new Date();
         const promises = [];
         const labels = [];
+        const daysToFetch = 14; // Increased to 2 weeks for better trend visibility
 
-        for (let i = 6; i >= 0; i--) {
+        for (let i = daysToFetch - 1; i >= 0; i--) {
             const d = new Date();
             d.setDate(now.getDate() - i);
             d.setHours(0, 0, 0, 0);
@@ -75,7 +76,7 @@ const analyticsController = {
             const start = firebase.firestore.Timestamp.fromDate(d);
             const end = firebase.firestore.Timestamp.fromDate(new Date(d.getTime() + 24 * 60 * 60 * 1000));
 
-            labels.push(d.toLocaleDateString(undefined, { weekday: 'short' }));
+            labels.push(d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
             promises.push(
                 db.collection('users')
                     .where('createdAt', '>=', start)
@@ -92,46 +93,77 @@ const analyticsController = {
     },
 
     initCharts: function (realData, growth) {
-        // Growth Chart
+        const commonOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    ticks: { color: '#64748b', font: { size: 10 } }
+                },
+                x: {
+                    grid: { display: false },
+                    ticks: { color: '#64748b', font: { size: 10 } }
+                }
+            }
+        };
+
+        // Growth Chart (Line)
         const ctxGrowth = document.getElementById('growthChart');
         if (ctxGrowth) {
-            const chartData = growth || {
-                labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-                data: [0, 0, 0, 0, 0, 0, 0]
-            };
-            new Chart(ctxGrowth, {
+            if (this.growthChartInstance) this.growthChartInstance.destroy();
+            this.growthChartInstance = new Chart(ctxGrowth, {
                 type: 'line',
                 data: {
-                    labels: chartData.labels,
+                    labels: growth.labels,
                     datasets: [{
                         label: 'New Users',
-                        data: chartData.data,
-                        borderColor: '#00897b',
-                        backgroundColor: 'rgba(0, 137, 123, 0.1)',
+                        data: growth.data,
+                        borderColor: '#2dd4bf',
+                        backgroundColor: 'rgba(45, 212, 191, 0.1)',
+                        borderWidth: 3,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#2dd4bf',
                         fill: true,
                         tension: 0.4
                     }]
                 },
-                options: { responsive: true, plugins: { legend: { display: false } } }
+                options: commonOptions
             });
         }
 
-        // Feature Chart
+        // Feature Chart (Doughnut for diversity)
         const ctxFeature = document.getElementById('featureChart');
         if (ctxFeature) {
+            if (this.featureChartInstance) this.featureChartInstance.destroy();
             const counts = realData || { posts: 0, groups: 0, events: 0, market: 0 };
-            new Chart(ctxFeature, {
-                type: 'bar',
+            this.featureChartInstance = new Chart(ctxFeature, {
+                type: 'doughnut',
                 data: {
                     labels: ['Posts', 'Groups', 'Events', 'Market'],
                     datasets: [{
-                        label: 'Total Items',
                         data: [counts.posts, counts.groups, counts.events, counts.market],
-                        backgroundColor: ['#42a5f5', '#66bb6a', '#ffa726', '#ab47bc'],
-                        borderRadius: 6
+                        backgroundColor: [
+                            'rgba(45, 212, 191, 0.8)',
+                            'rgba(129, 140, 248, 0.8)',
+                            'rgba(251, 191, 36, 0.8)',
+                            'rgba(244, 63, 94, 0.8)'
+                        ],
+                        borderWidth: 0,
+                        hoverOffset: 10
                     }]
                 },
-                options: { responsive: true, plugins: { legend: { display: false } } }
+                options: {
+                    ...commonOptions,
+                    cutout: '70%',
+                    plugins: { legend: { display: true, position: 'bottom', labels: { color: '#94a3b8', padding: 20 } } }
+                }
             });
         }
     },
@@ -152,7 +184,7 @@ const analyticsController = {
     },
 
     updateTrafficChart: function (currentOnline) {
-        // Placeholder for future live chart
+        // Dynamic traffic update logic could go here
     },
 };
 

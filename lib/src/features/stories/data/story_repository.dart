@@ -20,26 +20,17 @@ final activeStoriesProvider = StreamProvider<List<Story>>((ref) {
   return ref.watch(storyRepositoryProvider).watchActiveStories();
 });
 
-final allStoriesGroupedProvider = StreamProvider<Map<String, List<Story>>>((
-  ref,
-) {
+final allStoriesGroupedProvider = Provider<AsyncValue<Map<String, List<Story>>>>((ref) {
   final storiesAsync = ref.watch(activeStoriesProvider);
-
-  return storiesAsync.when(
-    data: (stories) {
-      final groups = <String, List<Story>>{};
-      for (final story in stories) {
-        if (!groups.containsKey(story.authorId)) {
-          groups[story.authorId] = [];
-        }
-        groups[story.authorId]!.add(story);
-      }
-      return Stream.value(groups);
-    },
-    loading: () => const Stream.empty(),
-    error: (_, _) => const Stream.empty(),
-  );
+  return storiesAsync.whenData((stories) {
+    final groups = <String, List<Story>>{};
+    for (final story in stories) {
+      groups.putIfAbsent(story.authorId, () => []).add(story);
+    }
+    return groups;
+  });
 });
+
 
 class StoryRepository {
   final FirebaseFirestore _firestore;
@@ -57,7 +48,6 @@ class StoryRepository {
         .collection('stories')
         .where('expires_at', isGreaterThan: Timestamp.now())
         .where('status', isEqualTo: 'active')
-        .orderBy('expires_at', descending: false)
         .snapshots()
         .map(
           (snapshot) =>

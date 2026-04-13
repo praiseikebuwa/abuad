@@ -343,34 +343,37 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
         color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      child: DefaultTabController(
-        length: 2,
-        child: Column(
-          children: [
-            const SizedBox(height: 12),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[400],
-                borderRadius: BorderRadius.circular(2),
+      child: SafeArea(
+        top: false,
+        child: DefaultTabController(
+          length: 2,
+          child: Column(
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[400],
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
-            const TabBar(
-              tabs: [
-                Tab(text: 'Viewers'),
-                Tab(text: 'Likes'),
-              ],
-            ),
-            Expanded(
-              child: TabBarView(
-                children: [
-                  _buildUserList(story.viewers),
-                  _buildUserList(story.likes, isLikeList: true),
+              const TabBar(
+                tabs: [
+                  Tab(text: 'Viewers'),
+                  Tab(text: 'Likes'),
                 ],
               ),
-            ),
-          ],
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    _buildUserList(story.viewers),
+                    _buildUserList(story.likes, isLikeList: true),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

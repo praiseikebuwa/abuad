@@ -69,7 +69,7 @@ class AuthController {
         const btn = this.loginForm.querySelector('button');
         if (btn) {
             btn.disabled = false;
-            btn.innerText = 'Ans In';
+            btn.innerText = 'Sign In';
         }
     }
 

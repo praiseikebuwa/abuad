@@ -27,7 +27,7 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
   XFile? _selectedMedia;
   final TextEditingController _captionController = TextEditingController();
   final TextEditingController _textController = TextEditingController();
-  bool _isUploading = false;
+  final bool _isUploading = false;
   bool _isTextMode = false;
   Color _backgroundColor = const Color(0xFFEF5350); // Default Red
   Color _textColor = Colors.white;

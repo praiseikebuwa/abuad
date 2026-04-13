@@ -95,6 +95,7 @@ dependencies:
   pro_image_editor: ^12.0.0
   qr_flutter: ^4.1.0
   mobile_scanner: ^7.2.0
+  visibility_detector: ^0.4.0+2
 
 dev_dependencies:
   flutter_test:

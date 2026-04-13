@@ -247,16 +247,20 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
           if (_currentIndex == 0) {
             context.push('/chat/user-search');
           } else {
-            _pickStoryImage(context);
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const CreateStoryScreen()),
+            );
           }
         },
         backgroundColor: AppColors.secondaryTeal,
         elevation: 4,
         child: Icon(
-          _currentIndex == 0 ? Icons.chat_bubble_outline : Icons.camera_alt,
+          _currentIndex == 0 ? Icons.chat_bubble_outline : Icons.edit_rounded,
           color: Colors.white,
         ),
       ),
+
     );
   }
 
@@ -265,6 +269,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
       builder: (context) => SafeArea(
+        top: false,
         child: Wrap(
           children: [
             ListTile(
@@ -539,7 +544,6 @@ class _StatusListView extends ConsumerStatefulWidget {
   final bool isDark;
 
   const _StatusListView({
-    super.key,
     required this.isDark,
   });
 

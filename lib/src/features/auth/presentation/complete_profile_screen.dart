@@ -172,7 +172,7 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
             'college': _college,
             'department': _department,
             'bio': _bioController.text.trim(),
-            if (photoUrl != null) 'avatar_url': photoUrl,
+            'avatar_url': ?photoUrl,
           })
           .timeout(const Duration(seconds: 8));
       debugPrint('✅ Firestore update successful!');

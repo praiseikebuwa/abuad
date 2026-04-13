@@ -45,7 +45,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   XFile? _selectedVideo;
   GiphyGif? _selectedGif;
 
-  bool _isPosting = false;
+  final bool _isPosting = false;
   bool _isAnonymous = false;
   String _channelId = 'general';
   String _visibility = 'everyone';

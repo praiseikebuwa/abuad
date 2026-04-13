@@ -99,8 +99,10 @@ class UserAvatar extends ConsumerWidget {
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
           padding: const EdgeInsets.symmetric(vertical: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
             children: [
               Container(
                 width: 40,
@@ -152,6 +154,7 @@ class UserAvatar extends ConsumerWidget {
               const SizedBox(height: 12),
             ],
           ),
+          )
         );
       },
     );

@@ -69,8 +69,10 @@ class _ShareSheetState extends ConsumerState<ShareSheet> {
                   width: 0.5,
                 ),
               ),
-              child: Column(
-                children: [
+              child: SafeArea(
+                top: false,
+                child: Column(
+                  children: [
                   // Handle
                   Center(
                     child: Container(
@@ -322,6 +324,7 @@ class _ShareSheetState extends ConsumerState<ShareSheet> {
               ),
             ),
           ),
+          )
         );
       },
     );

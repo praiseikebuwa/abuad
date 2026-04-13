@@ -96,14 +96,29 @@ class SOSController {
 
     addMarker(id, alert) {
         if (!this.map) return;
+        
+        // Remove existing marker if status is resolved
+        if (alert.status === 'resolved') {
+            if (this.markers[id]) {
+                this.map.removeLayer(this.markers[id]);
+                delete this.markers[id];
+            }
+            return;
+        }
+
+        const icon = L.divIcon({
+            className: 'pulse-marker',
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
+        });
+
         if (this.markers[id]) {
             this.markers[id].setLatLng([alert.latitude, alert.longitude]);
         } else {
-            const marker = L.circleMarker([alert.latitude, alert.longitude], {
-                radius: 10,
-                color: '#f43f5e',
-                fillOpacity: 0.8
-            }).addTo(this.map).bindPopup(`<b>${alert.userName}</b><br>SOS ALERT`);
+            const marker = L.marker([alert.latitude, alert.longitude], { icon: icon })
+                .addTo(this.map)
+                .bindPopup(`<b>${alert.userName}</b><br>SOS ALERT: ${alert.content || 'Immediate Assistance Needed'}`);
+            
             this.markers[id] = marker;
             this.map.panTo([alert.latitude, alert.longitude]);
         }

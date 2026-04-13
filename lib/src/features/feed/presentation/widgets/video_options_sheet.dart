@@ -97,7 +97,7 @@ class _VideoOptionsSheetState extends ConsumerState<VideoOptionsSheet> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Container(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF16181C) : Colors.white,
@@ -105,6 +105,7 @@ class _VideoOptionsSheetState extends ConsumerState<VideoOptionsSheet> {
       ),
       padding: const EdgeInsets.only(top: 12, bottom: 20),
       child: SafeArea(
+        top: false,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -144,7 +145,9 @@ class _VideoOptionsSheetState extends ConsumerState<VideoOptionsSheet> {
             _buildTwitterOption(
               icon: Icons.file_download_outlined,
               title: _isDownloading ? 'Downloading...' : 'Download video',
-              trailingText: _isDownloading ? '${(_downloadProgress * 100).toInt()}%' : null,
+              trailingText: _isDownloading
+                  ? '${(_downloadProgress * 100).toInt()}%'
+                  : null,
               onTap: _isDownloading ? null : _downloadVideo,
               isLoading: _isDownloading,
             ),
@@ -202,79 +205,94 @@ class _VideoOptionsSheetState extends ConsumerState<VideoOptionsSheet> {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF16181C),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: const EdgeInsets.only(top: 12, bottom: 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white24,
-                  borderRadius: BorderRadius.circular(2),
+      builder: (context) => SafeArea(
+        top: false,
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFF16181C),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          padding: const EdgeInsets.only(top: 12, bottom: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
-            ),
-            const Padding(
-              padding: EdgeInsets.all(20),
-              child: Text(
-                'Playback speed',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 24,
+              const Padding(
+                padding: EdgeInsets.all(20),
+                child: Text(
+                  'Playback speed',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 24,
+                  ),
                 ),
               ),
-            ),
-            Flexible(
-              child: ListView(
-                shrinkWrap: true,
-                children: [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0]
-                    .map((speed) => ListTile(
-                          title: Text(
-                            '${speed}x',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w500,
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    0.25,
+                    0.5,
+                    0.75,
+                    1.0,
+                    1.25,
+                    1.5,
+                    1.75,
+                    2.0,
+                    2.5,
+                    3.0
+                  ]
+                      .map((speed) => ListTile(
+                            title: Text(
+                              '${speed}x',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
-                          ),
-                          trailing: Container(
-                            width: 24,
-                            height: 24,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
+                            trailing: Container(
+                              width: 24,
+                              height: 24,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: speed == widget.currentPlaybackSpeed
+                                      ? Colors.green
+                                      : Colors.white38,
+                                  width: 2,
+                                ),
                                 color: speed == widget.currentPlaybackSpeed
                                     ? Colors.green
-                                    : Colors.white38,
-                                width: 2,
+                                    : Colors.transparent,
                               ),
-                              color: speed == widget.currentPlaybackSpeed
-                                  ? Colors.green
-                                  : Colors.transparent,
+                              child: speed == widget.currentPlaybackSpeed
+                                  ? const Icon(Icons.check,
+                                      size: 16, color: Colors.white)
+                                  : null,
                             ),
-                            child: speed == widget.currentPlaybackSpeed
-                                ? const Icon(Icons.check, size: 16, color: Colors.white)
-                                : null,
-                          ),
-                          onTap: () {
-                            widget.onSpeedChanged(speed);
-                            Navigator.pop(context); // Pop speed selector
-                            Navigator.pop(context); // Pop options sheet
-                          },
-                        ))
-                    .toList(),
+                            onTap: () {
+                              widget.onSpeedChanged(speed);
+                              Navigator.pop(context); // Pop speed selector
+                              Navigator.pop(context); // Pop options sheet
+                            },
+                          ))
+                      .toList(),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

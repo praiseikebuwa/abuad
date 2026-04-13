@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/post_repository.dart';
 import '../domain/post.dart';
 import 'widgets/tiktok_reel_page.dart';
+import 'providers/reel_controller_provider.dart';
+import '../../../core/theme/app_colors.dart';
 
 class ReelsScreen extends ConsumerStatefulWidget {
   final List<Post> videos;
@@ -50,10 +52,16 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
         PageView.builder(
           controller: _pageController,
           scrollDirection: Axis.vertical,
-          physics: const BouncingScrollPhysics(),
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
+          allowImplicitScrolling: true,
           itemCount: posts.length,
           onPageChanged: (index) {
+
             setState(() => _currentIndex = index);
+            // Trigger preloading for the active and upcoming videos
+            ref.read(reelControllerProvider.notifier).updateConfig(index, posts);
           },
           itemBuilder: (context, index) {
             final post = posts[index];
@@ -124,6 +132,16 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
                 }
 
                 final posts = snapshot.data ?? [];
+                
+                // Initial preloading if this is the first data load
+                if (posts.isNotEmpty) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) {
+                      ref.read(reelControllerProvider.notifier).updateConfig(_currentIndex, posts);
+                    }
+                  });
+                }
+
                 return _buildViewer(posts);
               },
             ),

@@ -125,9 +125,11 @@ class _ReportBottomSheetState extends ConsumerState<ReportBottomSheet> {
         color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -231,6 +233,7 @@ class _ReportBottomSheetState extends ConsumerState<ReportBottomSheet> {
           ),
         ],
       ),
+      )
     );
   }
 }

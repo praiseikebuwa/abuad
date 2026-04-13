@@ -15,14 +15,17 @@ class StoryViewersSheet extends ConsumerWidget {
     final isDark = theme.brightness == Brightness.dark;
 
     return Container(
-      padding: const EdgeInsets.all(24),
       height: MediaQuery.of(context).size.height * 0.6,
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -105,6 +108,8 @@ class StoryViewersSheet extends ConsumerWidget {
                   ),
           ),
         ],
+      ),
+        ),
       ),
     );
   }
