@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
-import 'package:flutter/gestures.dart';
 import '../../data/post_repository.dart';
 import '../../../user/data/user_repository.dart';
 import '../../domain/post.dart' as domain;

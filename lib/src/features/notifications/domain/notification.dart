@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum NotificationType {
   follow,
+  unfollow,
+  followingPost,
   like,
   comment,
   mention,

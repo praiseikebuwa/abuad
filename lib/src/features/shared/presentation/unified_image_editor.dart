@@ -50,7 +50,9 @@ class UnifiedImageEditor extends StatelessWidget {
           
           onImageEditingComplete(XFile(editedPath));
           
-          if (context.mounted) Navigator.pop(context);
+          if (context.mounted) {
+            Navigator.pop(context);
+          }
         },
         onCloseEditor: (editorMode) {
           if (context.mounted) Navigator.pop(context);
@@ -60,17 +62,23 @@ class UnifiedImageEditor extends StatelessWidget {
         designMode: ImageEditorDesignMode.material,
         theme: ThemeData(
           useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: AppColors.secondaryTeal,
-            brightness: Brightness.dark,
-            surface: AppColors.surfaceDark,
+          brightness: Brightness.dark,
+          colorScheme: const ColorScheme.dark(
+            primary: AppColors.secondaryTeal,
+            secondary: AppColors.accentAmber,
+            surface: Color(0xFF04060E),
           ),
-          scaffoldBackgroundColor: AppColors.surfaceDark,
+          scaffoldBackgroundColor: const Color(0xFF04060E),
           appBarTheme: const AppBarTheme(
-            backgroundColor: AppColors.surfaceDark,
+            backgroundColor: Color(0xFF04060E),
             foregroundColor: Colors.white,
             elevation: 0,
+            centerTitle: true,
           ),
+        ),
+        i18n: const I18n(
+          done: 'SAVE',
+          cancel: 'BACK',
         ),
       ),
     );

@@ -94,6 +94,17 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
   final _activeFilters = <MarketplaceSmartFilter>{};
   bool _largeFonts = false;
   bool _blindMode = false;
+  bool _isDarkTheme = true; // Default to dark as requested
+
+  /// Derived color for text/icons — accessible from all helper methods.
+  Color get _themeColor => _isDarkTheme ? Colors.white : AppColors.primaryInk;
+
+  /// Convenience alias for use in helper methods.
+  bool get _isDark => _isDarkTheme;
+
+  /// Subtle border color matching the current theme.
+  Color get _borderSubtle =>
+      _isDarkTheme ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
 
   @override
   void initState() {
@@ -129,21 +140,32 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
         ? 1.15
         : MediaQuery.of(context).textScaleFactor;
 
+    final _isDark = _isDarkTheme;
+    final backgroundColor = _isDark ? Colors.black : Colors.white;
+    final surfaceColor = _isDark ? AppColors.surfaceDark : Colors.white;
+    final _borderSubtle = _isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
+
     return MediaQuery(
       data: MediaQuery.of(
         context,
       ).copyWith(textScaler: TextScaler.linear(textScaleFactor)),
       child: Scaffold(
         extendBodyBehindAppBar: true,
-        backgroundColor: Colors.transparent,
+        backgroundColor: backgroundColor,
         body: Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [
-                Color(0xFF04060E),
-                AppColors.surfaceDarkSecondary,
-                AppColors.surfaceDark,
-              ],
+              colors: _isDark 
+                ? [
+                    const Color(0xFF04060E),
+                    AppColors.surfaceDarkSecondary,
+                    AppColors.surfaceDark,
+                  ]
+                : [
+                    const Color(0xFFF8FAFC),
+                    const Color(0xFFF1F5F9),
+                    Colors.white,
+                  ],
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
             ),
@@ -162,35 +184,35 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
                   centerTitle: false,
                   titlePadding: const EdgeInsets.only(left: 16, bottom: 8),
                   title: _isSearching
-                      ? null
-                      : Text(
-                          'Marketplace',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w900,
-                            fontSize: innerBoxIsScrolled ? 18 : 24,
-                            letterSpacing: -0.5,
-                          ),
-                        ),
-                  background: Container(
-                    decoration: const BoxDecoration(
-                      gradient: AppColors.inkTealGradient,
-                    ),
-                    child: Opacity(
-                      opacity: 0.3,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.2),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+                       ? null
+                       : Text(
+                           'Marketplace',
+                           style: TextStyle(
+                             color: _themeColor,
+                             fontWeight: FontWeight.w900,
+                             fontSize: innerBoxIsScrolled ? 18 : 24,
+                             letterSpacing: -0.5,
+                           ),
+                         ),
+                   background: Container(
+                     decoration: BoxDecoration(
+                       gradient: _isDark ? AppColors.inkTealGradient : AppColors.goldGradient,
+                     ),
+                     child: Opacity(
+                       opacity: 0.3,
+                       child: Container(
+                         decoration: BoxDecoration(
+                           color: (_isDark ? Colors.black : Colors.white).withValues(alpha: 0.2),
+                         ),
+                       ),
+                     ),
+                   ),
+                 ),
                 actions: [
                   IconButton(
                     icon: Icon(
                       _isSearching ? Icons.close : Icons.search,
-                      color: Colors.white,
+                      color: _themeColor,
                     ),
                     onPressed: () {
                       setState(() {
@@ -202,7 +224,15 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
                     },
                   ),
                   IconButton(
-                    icon: const Icon(Icons.accessibility_new, color: Colors.white),
+                    icon: Icon(
+                      _isDark ? Icons.diamond : Icons.diamond_outlined,
+                      color: _isDark ? AppColors.accentAmber : AppColors.secondaryTeal,
+                    ),
+                    onPressed: () => setState(() => _isDarkTheme = !_isDarkTheme),
+                    tooltip: 'Change Theme',
+                  ).animate(onPlay: (c) => c.repeat()).shimmer(duration: 3000.ms),
+                  IconButton(
+                    icon: Icon(Icons.accessibility_new, color: _themeColor),
                     onPressed: _showAccessibilitySheet,
                   ),
                   const SizedBox(width: 8),
@@ -212,17 +242,17 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
-                    child: TextField(
+                     child: TextField(
                       controller: _searchController,
                       autofocus: true,
-                      style: const TextStyle(color: Colors.white),
+                      style: TextStyle(color: _themeColor),
                       cursorColor: AppColors.accentAmber,
                       decoration: InputDecoration(
                         hintText: 'Search for books, tech, or dorm items...',
-                        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
-                        prefixIcon: const Icon(Icons.search, color: Colors.white70),
+                        hintStyle: TextStyle(color: _themeColor.withValues(alpha: 0.5)),
+                        prefixIcon: Icon(Icons.search, color: _themeColor.withValues(alpha: 0.7)),
                         filled: true,
-                        fillColor: Colors.white10,
+                        fillColor: _isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(30),
                           borderSide: BorderSide.none,
@@ -367,7 +397,7 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
                         Text(
                           category['label'] as String,
                           style: TextStyle(
-                            color: isSelected ? Colors.white : Colors.white,
+                            color: isSelected ? Colors.white : _themeColor,
                             fontSize: 13,
                             fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
                           ),
@@ -422,7 +452,7 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
                         _maxPrice == null ? 'All Prices' : 'Under ₦${_maxPrice!.toInt()}',
                         style: TextStyle(
                           fontSize: 12,
-                          color: _maxPrice != null ? AppColors.accentAmber : Colors.white,
+                          color: _maxPrice != null ? AppColors.accentAmber : _themeColor,
                           fontWeight: _maxPrice != null ? FontWeight.bold : FontWeight.normal,
                         ),
                       ),
@@ -470,7 +500,7 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
               label,
               style: TextStyle(
                 fontSize: 12,
-                color: isSelected ? AppColors.secondaryTeal : Colors.white,
+                color: isSelected ? AppColors.secondaryTeal : _themeColor,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               ),
             ),
@@ -501,7 +531,7 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
             const SizedBox(width: 6),
             Text(
               _sortBy == 'newest' ? 'Newest' : 'Price',
-              style: const TextStyle(fontSize: 12, color: Colors.white),
+              style: TextStyle(fontSize: 12, color: _themeColor),
             ),
           ],
         ),
@@ -531,13 +561,13 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
                      ),
                    ),
                   const SizedBox(width: 10),
-                  const Text(
+                  Text(
                     'Featured Drops',
                     style: TextStyle(
                       fontSize: 20, 
                       fontWeight: FontWeight.w900,
                       letterSpacing: -0.5,
-                      color: Colors.white,
+                      color: _themeColor,
                     ),
                   ),
                   const Spacer(),
@@ -736,12 +766,12 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
       onTap: () => context.push('/marketplace/detail', extra: item),
       child: Container(
         decoration: BoxDecoration(
-          color: AppColors.surfaceDarkElevated,
+          color: _isDark ? AppColors.surfaceDarkElevated : Colors.white,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: Colors.white10),
+          border: Border.all(color: _borderSubtle),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.2),
+              color: _isDark ? Colors.black.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.05),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -822,10 +852,10 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
                     item.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.w800,
                       fontSize: 14,
-                      color: Colors.white,
+                      color: _themeColor,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -1057,9 +1087,9 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
+              Text(
                 'Express your interest',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                style: TextStyle(color: _themeColor, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
               Row(
@@ -1537,10 +1567,10 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Blind-mode summary',
               style: TextStyle(
-                color: Colors.white,
+                color: _themeColor,
                 fontWeight: FontWeight.bold,
               ),
             ),

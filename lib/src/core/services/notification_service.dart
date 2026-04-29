@@ -62,14 +62,14 @@ class NotificationService {
         _handleLocalNotificationTap(response);
       },
     );
-    
+
     // 1.5 Initialise Timezone
     tz.initializeTimeZones();
     try {
       final dynamic timeZoneInfo = await FlutterTimezone.getLocalTimezone();
       // Most timezone plugins return the ID as toString() or have a name/id property.
       // We'll try toString() as it's the safest bet for a string conversion.
-      final String timeZoneName = timeZoneInfo.toString(); 
+      final String timeZoneName = timeZoneInfo.toString();
       tz.setLocalLocation(tz.getLocation(timeZoneName));
     } catch (e) {
       debugPrint('Could not get local timezone: $e');
@@ -225,15 +225,25 @@ class NotificationService {
     final type = data['type'];
     final id = data['id']; // userId, channelId, postId etc.
 
-    if ((type == 'chat' || type == 'streakExpiring' || type == 'streakMissed') && id != null) {
+    if ((type == 'chat' ||
+            type == 'streakExpiring' ||
+            type == 'streakMissed') &&
+        id != null) {
       GoRouter.of(context).push('/chat/$id');
-    } else if ((type == 'user' || type == 'follower' || type == 'follow') && id != null) {
+    } else if ((type == 'user' ||
+            type == 'follower' ||
+            type == 'follow' ||
+            type == 'unfollow') &&
+        id != null) {
       GoRouter.of(context).push('/user/$id');
-    } else if ((type == 'post' || type == 'storyUpdate') && id != null) {
+    } else if ((type == 'post' ||
+            type == 'storyUpdate' ||
+            type == 'followingPost') &&
+        id != null) {
       if (type == 'storyUpdate') {
-         GoRouter.of(context).push('/stories/$id');
+        GoRouter.of(context).push('/stories/$id');
       } else {
-         GoRouter.of(context).push('/post/$id');
+        GoRouter.of(context).push('/post/$id');
       }
     }
   }
@@ -247,11 +257,14 @@ class NotificationService {
     required DateTime expiryTime,
     int warningHoursBefore = 2,
   }) async {
-    final scheduledDate = expiryTime.subtract(Duration(hours: warningHoursBefore));
+    final scheduledDate = expiryTime.subtract(
+      Duration(hours: warningHoursBefore),
+    );
     if (scheduledDate.isBefore(DateTime.now())) return;
 
-    final id = channelId.hashCode; // Unique ID for this channel's streak notification
-    
+    final id =
+        channelId.hashCode; // Unique ID for this channel's streak notification
+
     await _localNotifications.zonedSchedule(
       id,
       'Streak Expiring! 🔥',
@@ -292,7 +305,7 @@ class NotificationService {
   }) async {
     try {
       final senderUid = senderId ?? _auth.currentUser?.uid ?? 'system';
-      
+
       final docRef = _firestore
           .collection('users')
           .doc(recipientId)

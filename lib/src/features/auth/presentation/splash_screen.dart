@@ -104,7 +104,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(100),
-                    child: ref.watch(currentUserProvider).when(
+                    child: ref
+                        .watch(currentUserProvider)
+                        .when(
                           data: (user) {
                             if (user?.avatarUrl != null &&
                                 user!.avatarUrl!.isNotEmpty) {
@@ -118,9 +120,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                                 ),
                                 errorWidget: (context, url, error) =>
                                     Image.asset(
-                                  'assets/logo.png',
-                                  fit: BoxFit.contain,
-                                ),
+                                      'assets/logo.png',
+                                      fit: BoxFit.contain,
+                                    ),
                               );
                             }
                             return Padding(
@@ -147,7 +149,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                   ),
                 ),
                 const SizedBox(height: 24),
-                ref.watch(currentUserProvider).when(
+                ref
+                    .watch(currentUserProvider)
+                    .when(
                       data: (user) => Text(
                         user?.displayName != null
                             ? 'Welcome, ${user!.displayName}'

@@ -20,6 +20,17 @@ class _QRScannerScreenState extends ConsumerState<QRScannerScreen> {
   );
   bool _isProcessing = false;
 
+  String _extractUserId(String raw) {
+    final value = raw.trim();
+    final uri = Uri.tryParse(value);
+    if (uri != null && uri.pathSegments.length >= 2) {
+      if (uri.pathSegments.first == 'user') {
+        return uri.pathSegments[1];
+      }
+    }
+    return value;
+  }
+
   @override
   void dispose() {
     controller.dispose();
@@ -32,7 +43,8 @@ class _QRScannerScreenState extends ConsumerState<QRScannerScreen> {
     if (barcodes.isEmpty) return;
 
     final String? code = barcodes.first.rawValue;
-    if (code == null) return;
+    if (code == null || code.trim().isEmpty) return;
+    final parsedUserId = _extractUserId(code);
 
     // Expected format: BU-XXXX-XXXX... (UserId)
     setState(() => _isProcessing = true);
@@ -40,9 +52,9 @@ class _QRScannerScreenState extends ConsumerState<QRScannerScreen> {
     try {
       final userRepo = ref.read(userRepositoryProvider);
       final chatRepo = ref.read(chatRepositoryProvider);
-      
+
       // Try to fetch the user to verify it's a valid ID
-      final user = await userRepo.getUser(code);
+      final user = await userRepo.getUser(parsedUserId);
       if (user != null && mounted) {
         final currentUser = ref.read(currentUserProvider).value;
         if (currentUser == null) throw Exception('Profile not found');
@@ -80,7 +92,10 @@ class _QRScannerScreenState extends ConsumerState<QRScannerScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text('Scan Profile QR', style: TextStyle(color: Colors.white)),
+        title: const Text(
+          'Scan Profile QR',
+          style: TextStyle(color: Colors.white),
+        ),
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
@@ -106,12 +121,21 @@ class _QRScannerScreenState extends ConsumerState<QRScannerScreen> {
           MobileScanner(
             controller: controller,
             onDetect: _handleScan,
+            errorBuilder: (context, error) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    'Camera error: ${error.errorCode.name}. Please allow camera permission and try again.',
+                    style: const TextStyle(color: Colors.white),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              );
+            },
           ),
           // Scanner Overlay
-          CustomPaint(
-            painter: ScannerOverlayPainter(),
-            child: Container(),
-          ),
+          CustomPaint(painter: ScannerOverlayPainter(), child: Container()),
           // Processing Indicator
           if (_isProcessing)
             Container(
@@ -127,7 +151,10 @@ class _QRScannerScreenState extends ConsumerState<QRScannerScreen> {
             right: 0,
             child: Center(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.black54,
                   borderRadius: BorderRadius.circular(20),
@@ -158,10 +185,18 @@ class ScannerOverlayPainter extends CustomPainter {
       height: size.width * 0.7,
     );
 
-    final backgroundPath = Path()..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
-    final cutOutPath = Path()..addRRect(RRect.fromRectAndRadius(cutOutRect, const Radius.circular(20)));
+    final backgroundPath = Path()
+      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
+    final cutOutPath = Path()
+      ..addRRect(
+        RRect.fromRectAndRadius(cutOutRect, const Radius.circular(20)),
+      );
 
-    final finalPath = Path.combine(PathOperation.difference, backgroundPath, cutOutPath);
+    final finalPath = Path.combine(
+      PathOperation.difference,
+      backgroundPath,
+      cutOutPath,
+    );
     canvas.drawPath(finalPath, paint);
 
     // Draw corners
@@ -177,25 +212,45 @@ class ScannerOverlayPainter extends CustomPainter {
     // Top Left
     path.moveTo(cutOutRect.left, cutOutRect.top + len);
     path.lineTo(cutOutRect.left, cutOutRect.top + r);
-    path.quadraticBezierTo(cutOutRect.left, cutOutRect.top, cutOutRect.left + r, cutOutRect.top);
+    path.quadraticBezierTo(
+      cutOutRect.left,
+      cutOutRect.top,
+      cutOutRect.left + r,
+      cutOutRect.top,
+    );
     path.lineTo(cutOutRect.left + len, cutOutRect.top);
 
     // Top Right
     path.moveTo(cutOutRect.right - len, cutOutRect.top);
     path.lineTo(cutOutRect.right - r, cutOutRect.top);
-    path.quadraticBezierTo(cutOutRect.right, cutOutRect.top, cutOutRect.right, cutOutRect.top + r);
+    path.quadraticBezierTo(
+      cutOutRect.right,
+      cutOutRect.top,
+      cutOutRect.right,
+      cutOutRect.top + r,
+    );
     path.lineTo(cutOutRect.right, cutOutRect.top + len);
 
     // Bottom Right
     path.moveTo(cutOutRect.right, cutOutRect.bottom - len);
     path.lineTo(cutOutRect.right, cutOutRect.bottom - r);
-    path.quadraticBezierTo(cutOutRect.right, cutOutRect.bottom, cutOutRect.right - r, cutOutRect.bottom);
+    path.quadraticBezierTo(
+      cutOutRect.right,
+      cutOutRect.bottom,
+      cutOutRect.right - r,
+      cutOutRect.bottom,
+    );
     path.lineTo(cutOutRect.right - len, cutOutRect.bottom);
 
     // Bottom Left
     path.moveTo(cutOutRect.left + len, cutOutRect.bottom);
     path.lineTo(cutOutRect.left + r, cutOutRect.bottom);
-    path.quadraticBezierTo(cutOutRect.left, cutOutRect.bottom, cutOutRect.left, cutOutRect.bottom - r);
+    path.quadraticBezierTo(
+      cutOutRect.left,
+      cutOutRect.bottom,
+      cutOutRect.left,
+      cutOutRect.bottom - r,
+    );
     path.lineTo(cutOutRect.left, cutOutRect.bottom - len);
 
     canvas.drawPath(path, cornerPaint);

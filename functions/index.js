@@ -1,312 +1,391 @@
-const functions = require("firebase-functions/v1");
+﻿const functions = require('firebase-functions/v1');
 const admin = require('firebase-admin');
+
 admin.initializeApp();
+const db = admin.firestore();
 
-/**
- * Helper to fetch FCM tokens and send a multicast notification.
- */
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getDisplayName(userData) {
+  return userData?.display_name || userData?.displayName || 'ABUAD User';
+}
+
+function getAvatarUrl(userData) {
+  return userData?.avatar_url || userData?.avatarUrl || null;
+}
+
 async function sendToUsers(userIds, payload) {
-    if (!userIds || userIds.length === 0) return;
+  if (!userIds || userIds.length === 0) return;
 
-    const tokens = [];
-    // Firestore 'in' query supports up to 30 items. 
-    // For large groups, this would need batching.
-    const userSnaps = await admin.firestore()
-        .collection('users')
-        .where(admin.firestore.FieldPath.documentId(), 'in', userIds)
-        .get();
+  const tokens = [];
+  const userSnaps = await db
+    .collection('users')
+    .where(admin.firestore.FieldPath.documentId(), 'in', userIds)
+    .get();
 
-    userSnaps.forEach(doc => {
-        const userData = doc.data();
-        if (userData.fcmToken) {
-            tokens.push(userData.fcmToken);
-        }
+  userSnaps.forEach((doc) => {
+    const userData = doc.data();
+    if (userData.fcmToken) tokens.push(userData.fcmToken);
+  });
+
+  if (tokens.length === 0) return;
+
+  try {
+    const response = await admin.messaging().sendEachForMulticast({
+      tokens,
+      notification: {
+        title: payload.notification.title,
+        body: payload.notification.body,
+      },
+      data: payload.data,
+      android: {
+        priority: 'high',
+        notification: { clickAction: 'FLUTTER_NOTIFICATION_CLICK' },
+      },
+      apns: {
+        payload: {
+          aps: {
+            badge: 1,
+            sound: 'default',
+          },
+        },
+      },
     });
-
-    if (tokens.length === 0) return;
-
-    try {
-        // Modern multicast sending
-        const response = await admin.messaging().sendEachForMulticast({
-            tokens: tokens,
-            notification: {
-                title: payload.notification.title,
-                body: payload.notification.body,
-            },
-            data: payload.data,
-            android: {
-                priority: 'high',
-                notification: {
-                    clickAction: 'FLUTTER_NOTIFICATION_CLICK',
-                }
-            },
-            apns: {
-                payload: {
-                    aps: {
-                        badge: 1,
-                        sound: 'default'
-                    }
-                }
-            }
-        });
-        console.log(`${response.successCount} messages were sent successfully.`);
-    } catch (error) {
-        console.error('Error sending multicast message:', error);
-    }
+    console.log(`${response.successCount} notifications sent`);
+  } catch (error) {
+    console.error('Error sending notifications:', error);
+  }
 }
 
-/**
- * Helper to create a notification record in user's subcollection.
- */
 async function createNotification(recipientId, notification) {
-    const docRef = admin.firestore()
-        .collection('users')
-        .doc(recipientId)
-        .collection('notifications')
-        .doc();
+  const docRef = db
+    .collection('users')
+    .doc(recipientId)
+    .collection('notifications')
+    .doc();
 
-    await docRef.set({
-        id: docRef.id,
-        recipient_id: recipientId,
-        sender_id: notification.senderId,
-        sender_name: notification.senderName,
-        sender_avatar_url: notification.senderAvatarUrl || null,
-        type: notification.type,
-        title: notification.title,
-        body: notification.body,
-        related_id: notification.relatedId || null,
-        timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        is_read: false,
-    });
+  await docRef.set({
+    id: docRef.id,
+    recipient_id: recipientId,
+    sender_id: notification.senderId,
+    sender_name: notification.senderName,
+    sender_avatar_url: notification.senderAvatarUrl || null,
+    type: notification.type,
+    title: notification.title,
+    body: notification.body,
+    related_id: notification.relatedId || null,
+    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    is_read: false,
+  });
 }
 
-// 1. Welcome Notification on Sign Up
 exports.onUserCreated = functions.auth.user().onCreate(async (user) => {
-    const userRef = admin.firestore().collection('users').doc(user.uid);
-    const snapshot = await userRef.get();
+  const userRef = db.collection('users').doc(user.uid);
+  const snapshot = await userRef.get();
 
-    if (!snapshot.exists) {
-        await userRef.set({
-            email: user.email,
-            displayName: user.displayName || 'New User',
-            photoURL: user.photoURL || null,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            isVerified: false,
-            role: 'student',
-            fcmToken: null
-        });
-    }
+  if (!snapshot.exists) {
+    await userRef.set({
+      email: user.email,
+      display_name: user.displayName || 'New User',
+      avatar_url: user.photoURL || null,
+      created_at: admin.firestore.FieldValue.serverTimestamp(),
+      is_verified: false,
+      role: 'student',
+      fcmToken: null,
+    });
+  }
 });
 
-// 2. New Chat Message Notification
 exports.sendMessageNotification = functions.firestore
-    .document('channels/{channelId}/messages/{messageId}')
-    .onCreate(async (snapshot, context) => {
-        const message = snapshot.data();
-        const channelId = context.params.channelId;
+  .document('channels/{channelId}/messages/{messageId}')
+  .onCreate(async (snapshot, context) => {
+    const message = snapshot.data() || {};
+    const channelId = context.params.channelId;
 
-        const channelRef = admin.firestore().collection('channels').doc(channelId);
-        const channelSnap = await channelRef.get();
-        const channelData = channelSnap.data();
+    const channelRef = db.collection('channels').doc(channelId);
+    const channelSnap = await channelRef.get();
+    const channelData = channelSnap.data();
+    if (!channelData || !channelData.member_ids) return;
 
-        if (!channelData || !channelData.member_ids) return;
+    const senderId = message.sender_id;
+    const recipientIds = channelData.member_ids.filter((uid) => uid !== senderId);
+    if (recipientIds.length === 0) return;
 
-        const senderId = message.sender_id; // Using correct field name from Flutter repo
-        const recipientIds = channelData.member_ids.filter(uid => uid !== senderId);
+    const senderName =
+      (channelData.member_names && channelData.member_names[senderId]) || 'New Message';
 
-        if (recipientIds.length === 0) return;
+    const payload = {
+      notification: {
+        title: channelData.type === 'group' ? channelData.display_name : senderName,
+        body: message.type === 'text' ? (message.content || 'New message') : 'Sent a media file',
+      },
+      data: {
+        type: 'chat',
+        id: channelId,
+      },
+    };
 
-        const payload = {
-            notification: {
-                title: channelData.type === 'group' ? channelData.display_name : (message.sender_name || 'New Message'),
-                body: message.type === 'text' ? message.content : 'Sent a media file',
-            },
-            data: {
-                type: 'chat',
-                id: channelId, // Flutter router expects 'id' for /chat/:id
-            }
-        };
+    await sendToUsers(recipientIds, payload);
 
-        await sendToUsers(recipientIds, payload);
+    for (const recipientId of recipientIds) {
+      await createNotification(recipientId, {
+        senderId,
+        senderName,
+        senderAvatarUrl: null,
+        type: 'chat',
+        title: payload.notification.title,
+        body: payload.notification.body,
+        relatedId: channelId,
+      });
+    }
+  });
 
-        // Create individual notification records
-        for (const recipientId of recipientIds) {
-            await createNotification(recipientId, {
-                senderId: message.sender_id,
-                senderName: message.sender_name || 'Someone',
-                senderAvatarUrl: null, // Could fetch if needed
-                type: 'chat',
-                title: payload.notification.title,
-                body: payload.notification.body,
-                relatedId: channelId,
-            });
-        }
-    });
-
-// 3. New Like Notification
 exports.onLikeCreated = functions.firestore
-    .document('posts/{postId}/likes/{userId}')
-    .onCreate(async (snapshot, context) => {
-        const postId = context.params.postId;
-        const likerId = context.params.userId;
+  .document('posts/{postId}/likes/{userId}')
+  .onCreate(async (snapshot, context) => {
+    const postId = context.params.postId;
+    const likerId = context.params.userId;
 
-        const postRef = admin.firestore().collection('posts').doc(postId);
-        const postSnap = await postRef.get();
-        const postData = postSnap.data();
+    const postSnap = await db.collection('posts').doc(postId).get();
+    const postData = postSnap.data();
+    if (!postData || postData.author_id === likerId) return;
 
-        if (!postData || postData.author_id === likerId) return;
+    const likerSnap = await db.collection('users').doc(likerId).get();
+    const likerData = likerSnap.data() || {};
+    const likerName = getDisplayName(likerData);
 
-        const likerSnap = await admin.firestore().collection('users').doc(likerId).get();
-        const likerName = likerSnap.data()?.displayName || 'Someone';
+    const payload = {
+      notification: {
+        title: 'New Like',
+        body: `${likerName} liked your post`,
+      },
+      data: {
+        type: 'post',
+        id: postId,
+      },
+    };
 
-        const payload = {
-            notification: {
-                title: 'New Like',
-                body: `${likerName} liked your post`,
-            },
-            data: {
-                type: 'post',
-                id: postId,
-            }
-        };
-
-        await sendToUsers([postData.author_id], payload);
-
-        await createNotification(postData.author_id, {
-            senderId: likerId,
-            senderName: likerName,
-            senderAvatarUrl: likerSnap.data()?.avatarUrl || null,
-            type: 'post',
-            title: payload.notification.title,
-            body: payload.notification.body,
-            relatedId: postId,
-        });
+    await sendToUsers([postData.author_id], payload);
+    await createNotification(postData.author_id, {
+      senderId: likerId,
+      senderName: likerName,
+      senderAvatarUrl: getAvatarUrl(likerData),
+      type: 'like',
+      title: payload.notification.title,
+      body: payload.notification.body,
+      relatedId: postId,
     });
+  });
 
-// 4. New Comment Notification
 exports.onCommentCreated = functions.firestore
-    .document('posts/{postId}/comments/{commentId}')
-    .onCreate(async (snapshot, context) => {
-        const comment = snapshot.data();
-        const postId = context.params.postId;
+  .document('posts/{postId}/comments/{commentId}')
+  .onCreate(async (snapshot, context) => {
+    const comment = snapshot.data() || {};
+    const postId = context.params.postId;
 
-        const postRef = admin.firestore().collection('posts').doc(postId);
-        const postSnap = await postRef.get();
-        const postData = postSnap.data();
+    const postSnap = await db.collection('posts').doc(postId).get();
+    const postData = postSnap.data();
+    if (!postData || postData.author_id === comment.user_id) return;
 
-        if (!postData || postData.author_id === comment.user_id) return;
+    const payload = {
+      notification: {
+        title: 'New Comment',
+        body: `${comment.user_name || 'Someone'} commented on your post`,
+      },
+      data: {
+        type: 'post',
+        id: postId,
+      },
+    };
 
-        const payload = {
-            notification: {
-                title: 'New Comment',
-                body: `${comment.user_name} commented on your post`,
-            },
-            data: {
-                type: 'post',
-                id: postId,
-            }
-        };
-
-        await sendToUsers([postData.author_id], payload);
-
-        await createNotification(postData.author_id, {
-            senderId: comment.user_id,
-            senderName: comment.user_name,
-            senderAvatarUrl: comment.user_avatar_url || null,
-            type: 'post',
-            title: payload.notification.title,
-            body: payload.notification.body,
-            relatedId: postId,
-        });
+    await sendToUsers([postData.author_id], payload);
+    await createNotification(postData.author_id, {
+      senderId: comment.user_id,
+      senderName: comment.user_name || 'Someone',
+      senderAvatarUrl: comment.user_avatar || null,
+      type: 'comment',
+      title: payload.notification.title,
+      body: payload.notification.body,
+      relatedId: postId,
     });
+  });
 
-// 5. New Follower Notification
 exports.onFollowCreated = functions.firestore
-    .document('users/{userId}/followers/{followerId}')
-    .onCreate(async (snapshot, context) => {
-        const targetUserId = context.params.userId;
-        const followerId = context.params.followerId;
+  .document('users/{userId}/followers/{followerId}')
+  .onCreate(async (snapshot, context) => {
+    const targetUserId = context.params.userId;
+    const followerId = context.params.followerId;
 
-        const followerSnap = await admin.firestore().collection('users').doc(followerId).get();
-        const followerName = followerSnap.data()?.displayName || 'Someone';
+    const followerSnap = await db.collection('users').doc(followerId).get();
+    const followerData = followerSnap.data() || {};
+    const followerName = getDisplayName(followerData);
 
-        const payload = {
-            notification: {
-                title: 'New Follower',
-                body: `${followerName} started following you`,
-            },
-            data: {
-                type: 'user',
-                id: followerId,
-            }
-        };
+    const payload = {
+      notification: {
+        title: 'New Follower',
+        body: `${followerName} started following you`,
+      },
+      data: {
+        type: 'follow',
+        id: followerId,
+      },
+    };
 
-        await sendToUsers([targetUserId], payload);
-
-        await createNotification(targetUserId, {
-            senderId: followerId,
-            senderName: followerName,
-            senderAvatarUrl: followerSnap.data()?.avatarUrl || null,
-            type: 'user',
-            title: payload.notification.title,
-            body: payload.notification.body,
-            relatedId: followerId,
-        });
+    await sendToUsers([targetUserId], payload);
+    await createNotification(targetUserId, {
+      senderId: followerId,
+      senderName: followerName,
+      senderAvatarUrl: getAvatarUrl(followerData),
+      type: 'follow',
+      title: payload.notification.title,
+      body: payload.notification.body,
+      relatedId: followerId,
     });
+  });
 
-// 6. Security Alert (SOS) Notification
-exports.onSOSCreated = functions.firestore
-    .document('sos_alerts/{alertId}')
-    .onCreate(async (snapshot, context) => {
-        const alert = snapshot.data();
-        
-        // Broadcast to nearby users or all active campus users
-        // Fetch users with FCM tokens
-        const userSnaps = await admin.firestore().collection('users')
-            .where('fcmToken', '!=', null)
-            .get();
+exports.onFollowDeleted = functions.firestore
+  .document('users/{userId}/followers/{followerId}')
+  .onDelete(async (snapshot, context) => {
+    const targetUserId = context.params.userId;
+    const followerId = context.params.followerId;
 
-        const tokens = [];
-        userSnaps.forEach(doc => {
-            const data = doc.data();
-            // Don't notify the person who triggered it
-            if (data.fcmToken && doc.id !== alert.userId) {
-                tokens.push(data.fcmToken);
-            }
-        });
+    const followerSnap = await db.collection('users').doc(followerId).get();
+    const followerData = followerSnap.data() || {};
+    const followerName = getDisplayName(followerData);
 
-        if (tokens.length === 0) return;
+    const payload = {
+      notification: {
+        title: 'Follower Update',
+        body: `${followerName} unfollowed you`,
+      },
+      data: {
+        type: 'unfollow',
+        id: followerId,
+      },
+    };
 
-        const payload = {
-            notification: {
-                title: '🚨 SECURITY ALERT',
-                body: `${alert.userName} triggered an SOS alert!`,
-            },
-            data: {
-                type: 'sos',
-                id: context.params.alertId,
-                click_action: 'FLUTTER_NOTIFICATION_CLICK',
-            }
-        };
-
-        try {
-            const response = await admin.messaging().sendEachForMulticast({
-                tokens: tokens,
-                notification: payload.notification,
-                data: payload.data,
-                android: {
-                    priority: 'high',
-                },
-                apns: {
-                    payload: {
-                        aps: {
-                            sound: 'default'
-                        }
-                    }
-                }
-            });
-            console.log(`SOS Alert sent to ${response.successCount} users.`);
-        } catch (error) {
-            console.error('Error broadcasting SOS alert:', error);
-        }
+    await sendToUsers([targetUserId], payload);
+    await createNotification(targetUserId, {
+      senderId: followerId,
+      senderName: followerName,
+      senderAvatarUrl: getAvatarUrl(followerData),
+      type: 'unfollow',
+      title: payload.notification.title,
+      body: payload.notification.body,
+      relatedId: followerId,
     });
+  });
+
+exports.onPostCreatedNotifyFollowers = functions.firestore
+  .document('posts/{postId}')
+  .onCreate(async (snapshot, context) => {
+    const post = snapshot.data() || {};
+    const authorId = post.author_id;
+    if (!authorId) return;
+
+    const followersSnap = await db
+      .collection('users')
+      .doc(authorId)
+      .collection('followers')
+      .limit(200)
+      .get();
+    if (followersSnap.empty) return;
+
+    const followerIds = followersSnap.docs.map((d) => d.id).filter((id) => id !== authorId);
+    if (followerIds.length === 0) return;
+
+    const authorSnap = await db.collection('users').doc(authorId).get();
+    const authorData = authorSnap.data() || {};
+    const authorName = getDisplayName(authorData);
+    const content = String(post.content || '').trim();
+    const preview = content.length > 0
+      ? content.substring(0, 90) + (content.length > 90 ? '...' : '')
+      : 'added a new post';
+
+    const payload = {
+      notification: {
+        title: 'New Post',
+        body: `${authorName} ${content.length > 0 ? `posted: ${preview}` : preview}`,
+      },
+      data: {
+        type: 'post',
+        id: context.params.postId,
+      },
+    };
+
+    await sendToUsers(followerIds, payload);
+
+    for (const followerId of followerIds) {
+      await createNotification(followerId, {
+        senderId: authorId,
+        senderName: authorName,
+        senderAvatarUrl: getAvatarUrl(authorData),
+        type: 'followingPost',
+        title: 'New Post',
+        body: payload.notification.body,
+        relatedId: context.params.postId,
+      });
+    }
+  });
+
+exports.postPreview = functions.https.onRequest(async (req, res) => {
+  try {
+    const path = req.path || '';
+    const parts = path.split('/').filter(Boolean);
+    const postId = parts.length >= 2 ? parts[1] : req.query.postId;
+
+    if (!postId) {
+      res.redirect(302, 'https://abuadapp.web.app/');
+      return;
+    }
+
+    const postSnap = await db.collection('posts').doc(postId).get();
+    if (!postSnap.exists) {
+      res.status(404).send('Post not found');
+      return;
+    }
+
+    const post = postSnap.data() || {};
+    const authorName = escapeHtml(post.author_name || 'ABUAD User');
+    const raw = String(post.content || '').trim();
+    const desc = escapeHtml(raw.length > 180 ? `${raw.substring(0, 180)}...` : (raw || 'Check out this post on ABUAD App'));
+    const image = escapeHtml(post.media_url || 'https://abuadapp.web.app/icons/Icon-512.png');
+    const canonical = `https://abuadapp.web.app/post/${encodeURIComponent(postId)}`;
+
+    res.set('Cache-Control', 'public, max-age=120');
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.status(200).send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>${authorName} on ABUAD App</title>
+  <meta name="description" content="${desc}"/>
+  <meta property="og:type" content="article"/>
+  <meta property="og:site_name" content="ABUAD App"/>
+  <meta property="og:title" content="${authorName} on ABUAD App"/>
+  <meta property="og:description" content="${desc}"/>
+  <meta property="og:image" content="${image}"/>
+  <meta property="og:url" content="${canonical}"/>
+  <meta name="twitter:card" content="summary_large_image"/>
+  <meta name="twitter:title" content="${authorName} on ABUAD App"/>
+  <meta name="twitter:description" content="${desc}"/>
+  <meta name="twitter:image" content="${image}"/>
+  <meta http-equiv="refresh" content="0;url=${canonical}"/>
+</head>
+<body>
+  <p>Opening post... <a href="${canonical}">Continue</a></p>
+</body>
+</html>`);
+  } catch (error) {
+    console.error('postPreview error:', error);
+    res.status(500).send('Server error');
+  }
+});

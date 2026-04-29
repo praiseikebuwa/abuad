@@ -24,6 +24,7 @@ import 'report_bottom_sheet.dart';
 import 'full_screen_image_view.dart';
 import 'full_screen_video_view.dart';
 import '../../../../shared/widgets/share_sheet.dart';
+import 'link_preview_card.dart';
 
 class PostCard extends ConsumerStatefulWidget {
   final domain.Post post;
@@ -96,6 +97,9 @@ class _PostCardState extends ConsumerState<PostCard> {
     final displayContent = isPureRepost
         ? (post.repostData!['content'] ?? '')
         : post.content;
+    final displayLinkUrl = isPureRepost
+        ? (post.repostData!['link_url'] as String?)
+        : post.linkUrl;
     final displayMediaUrl = isPureRepost
         ? (post.repostData!['media_url'] ?? '')
         : post.mediaUrl;
@@ -377,6 +381,12 @@ class _PostCardState extends ConsumerState<PostCard> {
                                 ref,
                               ),
                             ),
+                          LinkPreviewCard(
+                            url:
+                                displayLinkUrl ??
+                                UrlValidator.extractFirstUrl(displayContent),
+                            margin: const EdgeInsets.only(bottom: 10),
+                          ),
 
                           // Repost (Quote) Rendering
                           if (!isPureRepost && post.repostData != null) ...[
@@ -1103,104 +1113,108 @@ class _PostCardState extends ConsumerState<PostCard> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text("Cancel"),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    ref
-                        .read(postRepositoryProvider)
-                        .repost(originalPost, commentController.text);
-                    Navigator.pop(context);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text("Cancel"),
                     ),
-                  ),
-                  child: const Text("Repost"),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // User Avatar
-                const CircleAvatar(
-                  radius: 18,
-                  backgroundColor: Colors.grey,
-                  child: Icon(Icons.person, color: Colors.white, size: 20),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: commentController,
-                    autofocus: true,
-                    decoration: const InputDecoration(
-                      hintText: "Add a comment...",
-                      border: InputBorder.none,
-                    ),
-                    maxLines: 4,
-                    minLines: 1,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            // Quoted Post Preview
-            Container(
-              margin: const EdgeInsets.only(bottom: 20),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: isDark ? Colors.grey[800]! : Colors.grey[300]!,
-                ),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  if (originalPost.mediaUrl.isNotEmpty) ...[
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: CachedNetworkImage(
-                        imageUrl: originalPost.mediaUrl,
-                        height: 60,
-                        width: 60,
-                        fit: BoxFit.cover,
+                    ElevatedButton(
+                      onPressed: () {
+                        ref
+                            .read(postRepositoryProvider)
+                            .repost(originalPost, commentController.text);
+                        Navigator.pop(context);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
                       ),
+                      child: const Text("Repost"),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // User Avatar
+                    const CircleAvatar(
+                      radius: 18,
+                      backgroundColor: Colors.grey,
+                      child: Icon(Icons.person, color: Colors.white, size: 20),
                     ),
                     const SizedBox(width: 12),
-                  ],
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          originalPost.authorName,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
+                    Expanded(
+                      child: TextField(
+                        controller: commentController,
+                        autofocus: true,
+                        decoration: const InputDecoration(
+                          hintText: "Add a comment...",
+                          border: InputBorder.none,
                         ),
-                        Text(
-                          originalPost.content,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: isDark ? Colors.grey[400] : Colors.grey[800],
+                        maxLines: 4,
+                        minLines: 1,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // Quoted Post Preview
+                Container(
+                  margin: const EdgeInsets.only(bottom: 20),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: isDark ? Colors.grey[800]! : Colors.grey[300]!,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      if (originalPost.mediaUrl.isNotEmpty) ...[
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: CachedNetworkImage(
+                            imageUrl: originalPost.mediaUrl,
+                            height: 60,
+                            width: 60,
+                            fit: BoxFit.cover,
                           ),
                         ),
+                        const SizedBox(width: 12),
                       ],
-                    ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              originalPost.authorName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              originalPost.content,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: isDark
+                                    ? Colors.grey[400]
+                                    : Colors.grey[800],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
-      ),
-      ),
       ),
     );
   }

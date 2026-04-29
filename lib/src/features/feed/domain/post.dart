@@ -34,6 +34,7 @@ class Post {
   final String replyPermission; // everyone, following, mentioned
   final DateTime? scheduledAt;
   final String? mediaAltText;
+  final String? linkUrl;
 
   Post({
     required this.id,
@@ -67,6 +68,7 @@ class Post {
     this.replyPermission = 'everyone',
     this.scheduledAt,
     this.mediaAltText,
+    this.linkUrl,
   });
 
   Map<String, dynamic> toMap() {
@@ -103,6 +105,7 @@ class Post {
           ? Timestamp.fromDate(scheduledAt!)
           : null,
       'media_alt_text': mediaAltText,
+      'link_url': linkUrl,
     };
   }
 
@@ -179,6 +182,7 @@ class Post {
       replyPermission: map['reply_permission'] ?? 'everyone',
       scheduledAt: (map['scheduled_at'] as Timestamp?)?.toDate(),
       mediaAltText: map['media_alt_text'],
+      linkUrl: map['link_url'],
     );
   }
 
@@ -214,6 +218,7 @@ class Post {
     String? replyPermission,
     DateTime? scheduledAt,
     String? mediaAltText,
+    String? linkUrl,
   }) {
     return Post(
       id: id ?? this.id,
@@ -247,6 +252,7 @@ class Post {
       replyPermission: replyPermission ?? this.replyPermission,
       scheduledAt: scheduledAt ?? this.scheduledAt,
       mediaAltText: mediaAltText ?? this.mediaAltText,
+      linkUrl: linkUrl ?? this.linkUrl,
     );
   }
 }

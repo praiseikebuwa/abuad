@@ -53,6 +53,10 @@
             "rewrites": [
                 {
                     "source": "/post/**",
+                    "function": "postPreview"
+                },
+                {
+                    "source": "**",
                     "destination": "/index.html"
                 }
             ],

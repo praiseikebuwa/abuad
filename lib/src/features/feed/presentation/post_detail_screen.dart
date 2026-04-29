@@ -19,6 +19,7 @@ import '../../../core/widgets/verification_badge.dart';
 import '../domain/report.dart';
 import 'widgets/report_bottom_sheet.dart';
 import '../../../core/theme/app_colors.dart';
+import 'widgets/link_preview_card.dart';
 // import '../../chat/presentation/widgets/attachment_preview.dart';
 
 class PostDetailScreen extends ConsumerStatefulWidget {
@@ -36,8 +37,6 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
   final ScrollController _scrollController = ScrollController();
   bool _isPosting = false;
 
-
-
   // Reply State
   String? _replyToCommentId;
   String? _replyToUserName;
@@ -48,8 +47,6 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     _scrollController.dispose();
     super.dispose();
   }
-
-
 
   void _onReply(String commentId, String userName) {
     setState(() {
@@ -78,8 +75,6 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     }
   }
 
-
-
   Future<void> _postComment() async {
     final content = _commentController.text.trim();
     if (content.isEmpty) {
@@ -92,11 +87,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
       final repo = ref.read(postRepositoryProvider);
       final postId = widget.post?.id ?? widget.postId!;
 
-      await repo.addComment(
-        postId,
-        content,
-        parentId: _replyToCommentId,
-      );
+      await repo.addComment(postId, content, parentId: _replyToCommentId);
 
       _commentController.clear();
       _cancelReply();
@@ -125,10 +116,6 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
       }
     }
   }
-
-
-
-
 
   Future<void> _deleteComment(String commentId) async {
     final confirmed = await showDialog<bool>(
@@ -432,14 +419,18 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                           children: [
                             Text(
                               originalPost.authorName,
-                              style: const TextStyle(fontWeight: FontWeight.bold),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                             Text(
                               originalPost.content,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                color: isDark ? Colors.grey[400] : Colors.grey[800],
+                                color: isDark
+                                    ? Colors.grey[400]
+                                    : Colors.grey[800],
                               ),
                             ),
                           ],
@@ -496,620 +487,647 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
             },
           ),
           title: const Text('Post'),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.share_outlined),
-            onPressed: () {
-              Share.share(
-                'Check out this post on ABUAD Nest: https://abuadapp.web.app/post/$postId',
-                subject: 'Check out this post on ABUAD',
-              );
-            },
-          ),
-        ],
-      ),
-      body: StreamBuilder<domain.Post?>(
-        stream: repo.watchPost(postId),
-        builder: (context, snapshot) {
-          final post = snapshot.data ?? widget.post;
+          centerTitle: true,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.share_outlined),
+              onPressed: () {
+                Share.share(
+                  'Check out this post on ABUAD Nest: https://abuadapp.web.app/post/$postId',
+                  subject: 'Check out this post on ABUAD',
+                );
+              },
+            ),
+          ],
+        ),
+        body: StreamBuilder<domain.Post?>(
+          stream: repo.watchPost(postId),
+          builder: (context, snapshot) {
+            final post = snapshot.data ?? widget.post;
 
-          if (post == null) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final isPureRepost =
-              post.repostData != null && post.content.trim().isEmpty;
-
-          // Data to Display (Swap if Pure Repost)
-          final displayAuthorName = isPureRepost
-              ? (post.repostData!['author_name'] ?? 'Unknown')
-              : post.authorName;
-          final displayAuthorHandle = isPureRepost
-              ? (post.repostData!['author_handle'] ?? '')
-              : post.authorHandle;
-          final displayAvatarUrl = isPureRepost
-              ? post.repostData!['author_avatar_url']
-              : post.authorAvatarUrl;
-          final displayContent = isPureRepost
-              ? (post.repostData!['content'] ?? '')
-              : post.content;
-          final displayMediaUrl = isPureRepost
-              ? (post.repostData!['media_url'] ?? '')
-              : post.mediaUrl;
-          final displayMediaTypeStr = isPureRepost
-              ? (post.repostData!['media_type'] as String?)
-              : null;
-          final displayTimestamp = isPureRepost
-              ? (DateTime.tryParse(post.repostData!['timestamp'] ?? '') ??
-                    post.timestamp)
-              : post.timestamp;
-          final displayIsVerified = isPureRepost
-              ? (post.repostData!['is_verified'] == true)
-              : post.isVerified;
-          final displayVerificationType = isPureRepost
-              ? (post.repostData!['verification_type'] ?? 'none')
-              : post.verificationType;
-          final displayIsAnonymous = isPureRepost
-              ? (post.repostData!['is_anonymous'] == true)
-              : post.isAnonymous;
-
-          // Media Type Enum Conversion
-          domain.MediaType displayMediaType = post.mediaType;
-          if (isPureRepost && displayMediaTypeStr != null) {
-            displayMediaType = domain.MediaType.values.firstWhere(
-              (e) => e.name == displayMediaTypeStr,
-              orElse: () => domain.MediaType.none,
-            );
-          } else if (isPureRepost && displayMediaUrl.isNotEmpty) {
-            if (displayMediaUrl.endsWith('.mp4')) {
-              displayMediaType = domain.MediaType.video;
-            } else if (displayMediaUrl.contains('giphy') ||
-                displayMediaUrl.endsWith('.gif')) {
-              displayMediaType = domain.MediaType.gif;
-            } else {
-              displayMediaType = domain.MediaType.image;
+            if (post == null) {
+              return const Center(child: CircularProgressIndicator());
             }
-          }
 
-          // Determine author ID to watch
-          final authorIdToWatch = isPureRepost
-              ? post.repostData!['author_id']
-              : post.authorId;
-          final shouldWatch = !displayIsAnonymous && authorIdToWatch != null;
+            final isPureRepost =
+                post.repostData != null && post.content.trim().isEmpty;
 
-          return Column(
-            children: [
-              Expanded(
-                child: SingleChildScrollView(
-                  controller: _scrollController,
-                  child: Column(
-                    children: [
-                      // Main Post Content
-                      Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (isPureRepost)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 12.0),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.repeat,
-                                      size: 16,
-                                      color: isDark
-                                          ? Colors.grey[500]
-                                          : Colors.grey[600],
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      '${post.authorName} reposted',
-                                      style: TextStyle(
+            // Data to Display (Swap if Pure Repost)
+            final displayAuthorName = isPureRepost
+                ? (post.repostData!['author_name'] ?? 'Unknown')
+                : post.authorName;
+            final displayAuthorHandle = isPureRepost
+                ? (post.repostData!['author_handle'] ?? '')
+                : post.authorHandle;
+            final displayAvatarUrl = isPureRepost
+                ? post.repostData!['author_avatar_url']
+                : post.authorAvatarUrl;
+            final displayContent = isPureRepost
+                ? (post.repostData!['content'] ?? '')
+                : post.content;
+            final displayLinkUrl = isPureRepost
+                ? (post.repostData!['link_url'] as String?)
+                : post.linkUrl;
+            final displayMediaUrl = isPureRepost
+                ? (post.repostData!['media_url'] ?? '')
+                : post.mediaUrl;
+            final displayMediaTypeStr = isPureRepost
+                ? (post.repostData!['media_type'] as String?)
+                : null;
+            final displayTimestamp = isPureRepost
+                ? (DateTime.tryParse(post.repostData!['timestamp'] ?? '') ??
+                      post.timestamp)
+                : post.timestamp;
+            final displayIsVerified = isPureRepost
+                ? (post.repostData!['is_verified'] == true)
+                : post.isVerified;
+            final displayVerificationType = isPureRepost
+                ? (post.repostData!['verification_type'] ?? 'none')
+                : post.verificationType;
+            final displayIsAnonymous = isPureRepost
+                ? (post.repostData!['is_anonymous'] == true)
+                : post.isAnonymous;
+
+            // Media Type Enum Conversion
+            domain.MediaType displayMediaType = post.mediaType;
+            if (isPureRepost && displayMediaTypeStr != null) {
+              displayMediaType = domain.MediaType.values.firstWhere(
+                (e) => e.name == displayMediaTypeStr,
+                orElse: () => domain.MediaType.none,
+              );
+            } else if (isPureRepost && displayMediaUrl.isNotEmpty) {
+              if (displayMediaUrl.endsWith('.mp4')) {
+                displayMediaType = domain.MediaType.video;
+              } else if (displayMediaUrl.contains('giphy') ||
+                  displayMediaUrl.endsWith('.gif')) {
+                displayMediaType = domain.MediaType.gif;
+              } else {
+                displayMediaType = domain.MediaType.image;
+              }
+            }
+
+            // Determine author ID to watch
+            final authorIdToWatch = isPureRepost
+                ? post.repostData!['author_id']
+                : post.authorId;
+            final shouldWatch = !displayIsAnonymous && authorIdToWatch != null;
+
+            return Column(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    controller: _scrollController,
+                    child: Column(
+                      children: [
+                        // Main Post Content
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (isPureRepost)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 12.0),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.repeat,
+                                        size: 16,
                                         color: isDark
                                             ? Colors.grey[500]
                                             : Colors.grey[600],
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
                                       ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            // Header: Avatar, Names, More
-                            StreamBuilder<AppUser?>(
-                              stream: shouldWatch
-                                  ? ref
-                                        .read(userRepositoryProvider)
-                                        .watchUser(authorIdToWatch)
-                                  : const Stream.empty(),
-                              builder: (context, userSnapshot) {
-                                final user = userSnapshot.data;
-                                final effectiveAuthorName =
-                                    user?.displayName ?? displayAuthorName;
-                                final effectiveAuthorHandle =
-                                    user?.handle ?? displayAuthorHandle;
-                                final effectiveAvatarUrl =
-                                    user?.avatarUrl ?? displayAvatarUrl;
-                                final effectiveIsVerified =
-                                    user?.isVerified ?? displayIsVerified;
-                                final effectiveVerificationType =
-                                    user?.verificationType ??
-                                    displayVerificationType;
-
-                                return Row(
-                                  children: [
-                                    UserAvatar(
-                                      userId: post.authorId,
-                                      avatarUrl: displayIsAnonymous ? null : effectiveAvatarUrl,
-                                      displayName: displayIsAnonymous ? '?' : effectiveAuthorName,
-                                      radius: 24,
-                                      showStoryRing: !displayIsAnonymous,
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              Text(
-                                                displayIsAnonymous
-                                                    ? 'Anonymous Student'
-                                                    : effectiveAuthorName,
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 16,
-                                                ),
-                                              ),
-                                              if (effectiveIsVerified &&
-                                                  !displayIsAnonymous) ...[
-                                                const SizedBox(width: 4),
-                                                VerificationBadge(
-                                                  type:
-                                                      effectiveVerificationType,
-                                                  size: 18,
-                                                ),
-                                              ],
-                                            ],
-                                          ),
-                                          if (!displayIsAnonymous)
-                                            Text(
-                                              '@$effectiveAuthorHandle',
-                                              style: TextStyle(
-                                                color: Colors.grey[600],
-                                                fontSize: 14,
-                                              ),
-                                            ),
-                                        ],
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        '${post.authorName} reposted',
+                                        style: TextStyle(
+                                          color: isDark
+                                              ? Colors.grey[500]
+                                              : Colors.grey[600],
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                       ),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.more_horiz),
-                                      onPressed: () {
-                                        _showPostMenu(context, post, repo);
-                                      },
-                                      color: Colors.grey,
-                                    ),
-                                  ],
-                                );
-                              },
-                            ),
-
-                            const SizedBox(height: 16),
-
-                            // Post Text
-                            _buildHighlightedContent(
-                              context,
-                              displayContent,
-                              theme,
-                              ref,
-                            ),
-
-                            // Repost (Quote) Rendering
-                            if (!isPureRepost && post.repostData != null) ...[
-                              const SizedBox(height: 12),
-                              _buildQuotedPost(
-                                context,
-                                post.repostData!,
-                                isDark,
-                              ),
-                            ],
-
-                            // Post Media
-                            if (displayMediaUrl.isNotEmpty) ...[
-                              const SizedBox(height: 16),
-                              displayMediaType == domain.MediaType.video
-                                  ? VideoPostWidget(
-                                      videoUrl: displayMediaUrl,
-                                      onTap: () {
-                                        context.push(
-                                          '/reels',
-                                          extra: {
-                                            'videos': [post],
-                                            'initialIndex': 0,
-                                          },
-                                        );
-                                      },
-                                    )
-                                  : Hero(
-                                      tag: 'post_media_${post.id}',
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(16),
-                                        child: (displayMediaUrl.isNotEmpty &&
-                                                UrlValidator.isValidUrl(
-                                                  displayMediaUrl,
-                                                ))
-                                            ? CachedNetworkImage(
-                                                imageUrl: displayMediaUrl,
-                                                width: double.infinity,
-                                                fit: BoxFit.cover,
-                                                placeholder: (context, url) =>
-                                                    Container(
-                                                  height: 300,
-                                                  color: Colors.grey[100],
-                                                  child: const Center(
-                                                    child:
-                                                        CircularProgressIndicator(),
-                                                  ),
-                                                ),
-                                                errorWidget: (_, __, ___) =>
-                                                    const SizedBox(),
-                                              )
-                                            : const SizedBox(),
-                                      ),
-                                    ),
-                            ],
-
-                            // Poll
-                            if (post.pollData != null) ...[
-                              const SizedBox(height: 16),
-                              PollWidget(post: post, repo: repo),
-                            ],
-
-                            const SizedBox(height: 16),
-
-                            // Timestamp and Platform
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  DateFormat(
-                                    'h:mm a · MMM d, yyyy',
-                                  ).format(displayTimestamp),
-                                  style: TextStyle(
-                                    color: Colors.grey[600],
-                                    fontSize: 15,
+                                    ],
                                   ),
                                 ),
-                              ],
-                            ),
+                              // Header: Avatar, Names, More
+                              StreamBuilder<AppUser?>(
+                                stream: shouldWatch
+                                    ? ref
+                                          .read(userRepositoryProvider)
+                                          .watchUser(authorIdToWatch)
+                                    : const Stream.empty(),
+                                builder: (context, userSnapshot) {
+                                  final user = userSnapshot.data;
+                                  final effectiveAuthorName =
+                                      user?.displayName ?? displayAuthorName;
+                                  final effectiveAuthorHandle =
+                                      user?.handle ?? displayAuthorHandle;
+                                  final effectiveAvatarUrl =
+                                      user?.avatarUrl ?? displayAvatarUrl;
+                                  final effectiveIsVerified =
+                                      user?.isVerified ?? displayIsVerified;
+                                  final effectiveVerificationType =
+                                      user?.verificationType ??
+                                      displayVerificationType;
 
-                            const SizedBox(height: 16),
-                            const Divider(),
-
-                            // Stats Row
-                            if (post.repostCount > 0 ||
-                                post.likesCount > 0) ...[
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 4.0,
-                                ),
-                                child: Row(
-                                  children: [
-                                    if (post.repostCount > 0) ...[
-                                      _StatText(
-                                        count: post.repostCount,
-                                        label: 'Reposts',
+                                  return Row(
+                                    children: [
+                                      UserAvatar(
+                                        userId: post.authorId,
+                                        avatarUrl: displayIsAnonymous
+                                            ? null
+                                            : effectiveAvatarUrl,
+                                        displayName: displayIsAnonymous
+                                            ? '?'
+                                            : effectiveAuthorName,
+                                        radius: 24,
+                                        showStoryRing: !displayIsAnonymous,
                                       ),
-                                      const SizedBox(width: 20),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Text(
+                                                  displayIsAnonymous
+                                                      ? 'Anonymous Student'
+                                                      : effectiveAuthorName,
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 16,
+                                                  ),
+                                                ),
+                                                if (effectiveIsVerified &&
+                                                    !displayIsAnonymous) ...[
+                                                  const SizedBox(width: 4),
+                                                  VerificationBadge(
+                                                    type:
+                                                        effectiveVerificationType,
+                                                    size: 18,
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                            if (!displayIsAnonymous)
+                                              Text(
+                                                '@$effectiveAuthorHandle',
+                                                style: TextStyle(
+                                                  color: Colors.grey[600],
+                                                  fontSize: 14,
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.more_horiz),
+                                        onPressed: () {
+                                          _showPostMenu(context, post, repo);
+                                        },
+                                        color: Colors.grey,
+                                      ),
                                     ],
-                                    if (post.likesCount > 0)
-                                      _StatText(
-                                        count: post.likesCount,
-                                        label: 'Likes',
-                                      ),
-                                  ],
+                                  );
+                                },
+                              ),
+
+                              const SizedBox(height: 16),
+
+                              // Post Text
+                              _buildHighlightedContent(
+                                context,
+                                displayContent,
+                                theme,
+                                ref,
+                              ),
+                              LinkPreviewCard(
+                                url:
+                                    displayLinkUrl ??
+                                    UrlValidator.extractFirstUrl(
+                                      displayContent,
+                                    ),
+                              ),
+
+                              // Repost (Quote) Rendering
+                              if (!isPureRepost && post.repostData != null) ...[
+                                const SizedBox(height: 12),
+                                _buildQuotedPost(
+                                  context,
+                                  post.repostData!,
+                                  isDark,
                                 ),
+                              ],
+
+                              // Post Media
+                              if (displayMediaUrl.isNotEmpty) ...[
+                                const SizedBox(height: 16),
+                                displayMediaType == domain.MediaType.video
+                                    ? VideoPostWidget(
+                                        videoUrl: displayMediaUrl,
+                                        onTap: () {
+                                          context.push(
+                                            '/reels',
+                                            extra: {
+                                              'videos': [post],
+                                              'initialIndex': 0,
+                                            },
+                                          );
+                                        },
+                                      )
+                                    : Hero(
+                                        tag: 'post_media_${post.id}',
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
+                                          child:
+                                              (displayMediaUrl.isNotEmpty &&
+                                                  UrlValidator.isValidUrl(
+                                                    displayMediaUrl,
+                                                  ))
+                                              ? CachedNetworkImage(
+                                                  imageUrl: displayMediaUrl,
+                                                  width: double.infinity,
+                                                  fit: BoxFit.cover,
+                                                  placeholder: (context, url) =>
+                                                      Container(
+                                                        height: 300,
+                                                        color: Colors.grey[100],
+                                                        child: const Center(
+                                                          child:
+                                                              CircularProgressIndicator(),
+                                                        ),
+                                                      ),
+                                                  errorWidget: (_, __, ___) =>
+                                                      const SizedBox(),
+                                                )
+                                              : const SizedBox(),
+                                        ),
+                                      ),
+                              ],
+
+                              // Poll
+                              if (post.pollData != null) ...[
+                                const SizedBox(height: 16),
+                                PollWidget(post: post, repo: repo),
+                              ],
+
+                              const SizedBox(height: 16),
+
+                              // Timestamp and Platform
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    DateFormat(
+                                      'h:mm a · MMM d, yyyy',
+                                    ).format(displayTimestamp),
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 16),
+                              const Divider(),
+
+                              // Stats Row
+                              if (post.repostCount > 0 ||
+                                  post.likesCount > 0) ...[
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 4.0,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      if (post.repostCount > 0) ...[
+                                        _StatText(
+                                          count: post.repostCount,
+                                          label: 'Reposts',
+                                        ),
+                                        const SizedBox(width: 20),
+                                      ],
+                                      if (post.likesCount > 0)
+                                        _StatText(
+                                          count: post.likesCount,
+                                          label: 'Likes',
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                const Divider(),
+                              ],
+
+                              // Action Bar
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceAround,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.chat_bubble_outline),
+                                    onPressed: () {
+                                      // Focus logic handled by placing focus node or just tapping the bottom field
+                                      // For now, we can rely on the user tapping the bottom field
+                                    },
+                                    color: Colors.grey[600],
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.repeat),
+                                    onPressed: () =>
+                                        _showRepostBottomSheet(post),
+                                    color: Colors.grey[600],
+                                  ),
+                                  StreamBuilder<bool>(
+                                    stream: isLikedStream,
+                                    builder: (context, snapshot) {
+                                      final isLiked = snapshot.data ?? false;
+                                      return AnimatedLikeButton(
+                                        isLiked: isLiked,
+                                        count:
+                                            0, // We hide count in the button for this view
+                                        showCount: false,
+                                        iconSize: 24,
+                                        onTap: () => repo.toggleLike(post.id),
+                                      );
+                                    },
+                                  ),
+                                  Consumer(
+                                    builder: (context, ref, child) {
+                                      final isSavedAsync = ref.watch(
+                                        isPostSavedProvider(post.id),
+                                      );
+                                      final isSaved =
+                                          isSavedAsync.value ?? false;
+
+                                      return IconButton(
+                                        icon: Icon(
+                                          isSaved
+                                              ? Icons.bookmark
+                                              : Icons.bookmark_border,
+                                          color: isSaved
+                                              ? AppColors.secondaryTeal
+                                              : Colors.grey[600],
+                                        ),
+                                        onPressed: () {
+                                          ref
+                                              .read(userRepositoryProvider)
+                                              .togglePostSave(post.id);
+                                        },
+                                      );
+                                    },
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.share_outlined),
+                                    onPressed: () {
+                                      Share.share(
+                                        '${post.authorName} (@${post.authorHandle}): ${post.content}\n\nSent from ABUAD Nest',
+                                      );
+                                    },
+                                    color: Colors.grey[600],
+                                  ),
+                                ],
                               ),
                               const Divider(),
                             ],
+                          ),
+                        ),
 
-                            // Action Bar
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        // Comments List
+                        StreamBuilder<List<Map<String, dynamic>>>(
+                          stream: commentsStream,
+                          builder: (context, snapshot) {
+                            if (snapshot.hasError) {
+                              return Center(
+                                child: Text('Error: ${snapshot.error}'),
+                              );
+                            }
+
+                            final rawComments = snapshot.data ?? [];
+
+                            // Sort: Gold > Blue > None, then Timestamp (Asc)
+                            final comments =
+                                List<Map<String, dynamic>>.from(rawComments)
+                                  ..sort((a, b) {
+                                    final weightA = _getVerificationWeight(
+                                      a['authorVerificationType'],
+                                    );
+                                    final weightB = _getVerificationWeight(
+                                      b['authorVerificationType'],
+                                    );
+                                    if (weightA != weightB) {
+                                      return weightA.compareTo(weightB);
+                                    }
+                                    return (a['timestamp'] ?? 0).compareTo(
+                                      b['timestamp'] ?? 0,
+                                    );
+                                  });
+
+                            if (comments.isEmpty) {
+                              return Padding(
+                                padding: const EdgeInsets.all(32.0),
+                                child: Center(
+                                  child: Text(
+                                    'No comments yet. Be the first to reply!',
+                                    style: TextStyle(
+                                      color: Colors.grey[500],
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+
+                            return ListView.separated(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: comments.length,
+                              separatorBuilder: (context, index) =>
+                                  const Divider(height: 1),
+                              itemBuilder: (context, index) {
+                                final comment = comments[index];
+                                return _CommentItem(
+                                  comment: comment,
+                                  currentUserId: currentUserId,
+                                  postId: postId,
+                                  onReply: _onReply,
+                                  onMenu: _showCommentMenu,
+                                );
+                              },
+                            );
+                          },
+                        ),
+                        // Add some bottom padding so content isn't hidden by input
+                        const SizedBox(height: 80),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Sticky Comment Input
+                SafeArea(
+                  top: false,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                      border: Border(
+                        top: BorderSide(
+                          color: isDark ? Colors.grey[900]! : Colors.grey[200]!,
+                        ),
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Reply Indicator
+                        if (_replyToCommentId != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
+                            color: theme.primaryColor.withOpacity(0.05),
+                            child: Row(
                               children: [
-                                IconButton(
-                                  icon: const Icon(Icons.chat_bubble_outline),
-                                  onPressed: () {
-                                    // Focus logic handled by placing focus node or just tapping the bottom field
-                                    // For now, we can rely on the user tapping the bottom field
-                                  },
-                                  color: Colors.grey[600],
+                                Text(
+                                  "Replying to ",
+                                  style: TextStyle(
+                                    color: Colors.grey[600],
+                                    fontSize: 13,
+                                  ),
                                 ),
-                                IconButton(
-                                  icon: const Icon(Icons.repeat),
-                                  onPressed: () => _showRepostBottomSheet(post),
-                                  color: Colors.grey[600],
+                                Text(
+                                  "@$_replyToUserName",
+                                  style: TextStyle(
+                                    color: theme.primaryColor,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
-                                StreamBuilder<bool>(
-                                  stream: isLikedStream,
-                                  builder: (context, snapshot) {
-                                    final isLiked = snapshot.data ?? false;
-                                    return AnimatedLikeButton(
-                                      isLiked: isLiked,
-                                      count:
-                                          0, // We hide count in the button for this view
-                                      showCount: false,
-                                      iconSize: 24,
-                                      onTap: () => repo.toggleLike(post.id),
-                                    );
-                                  },
-                                ),
-                                Consumer(
-                                  builder: (context, ref, child) {
-                                    final isSavedAsync = ref.watch(
-                                      isPostSavedProvider(post.id),
-                                    );
-                                    final isSaved = isSavedAsync.value ?? false;
-
-                                    return IconButton(
-                                      icon: Icon(
-                                        isSaved
-                                            ? Icons.bookmark
-                                            : Icons.bookmark_border,
-                                        color: isSaved
-                                            ? AppColors.secondaryTeal
-                                            : Colors.grey[600],
-                                      ),
-                                      onPressed: () {
-                                        ref
-                                            .read(userRepositoryProvider)
-                                            .togglePostSave(post.id);
-                                      },
-                                    );
-                                  },
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.share_outlined),
-                                  onPressed: () {
-                                    Share.share(
-                                      '${post.authorName} (@${post.authorHandle}): ${post.content}\n\nSent from ABUAD Nest',
-                                    );
-                                  },
-                                  color: Colors.grey[600],
+                                const Spacer(),
+                                GestureDetector(
+                                  onTap: _cancelReply,
+                                  child: Icon(
+                                    Icons.close,
+                                    size: 16,
+                                    color: Colors.grey[600],
+                                  ),
                                 ),
                               ],
                             ),
-                            const Divider(),
-                          ],
-                        ),
-                      ),
-
-                      // Comments List
-                      StreamBuilder<List<Map<String, dynamic>>>(
-                        stream: commentsStream,
-                        builder: (context, snapshot) {
-                          if (snapshot.hasError) {
-                            return Center(
-                              child: Text('Error: ${snapshot.error}'),
-                            );
-                          }
-
-                          final rawComments = snapshot.data ?? [];
-
-                          // Sort: Gold > Blue > None, then Timestamp (Asc)
-                          final comments =
-                              List<Map<String, dynamic>>.from(rawComments)
-                                ..sort((a, b) {
-                                  final weightA = _getVerificationWeight(
-                                    a['authorVerificationType'],
-                                  );
-                                  final weightB = _getVerificationWeight(
-                                    b['authorVerificationType'],
-                                  );
-                                  if (weightA != weightB) {
-                                    return weightA.compareTo(weightB);
-                                  }
-                                  return (a['timestamp'] ?? 0).compareTo(
-                                    b['timestamp'] ?? 0,
-                                  );
-                                });
-
-                          if (comments.isEmpty) {
-                            return Padding(
-                              padding: const EdgeInsets.all(32.0),
-                              child: Center(
-                                child: Text(
-                                  'No comments yet. Be the first to reply!',
+                          ),
+                        // Visibility Indicator
+                        if (_replyToCommentId == null)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.public,
+                                  size: 14,
+                                  color: theme.primaryColor.withOpacity(0.8),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  "Everyone can reply",
                                   style: TextStyle(
-                                    color: Colors.grey[500],
-                                    fontSize: 14,
+                                    color: theme.primaryColor.withOpacity(0.8),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
                                   ),
                                 ),
-                              ),
-                            );
-                          }
+                              ],
+                            ),
+                          ),
 
-                          return ListView.separated(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: comments.length,
-                            separatorBuilder: (context, index) =>
-                                const Divider(height: 1),
-                            itemBuilder: (context, index) {
-                              final comment = comments[index];
-                              return _CommentItem(
-                                comment: comment,
-                                currentUserId: currentUserId,
-                                postId: postId,
-                                onReply: _onReply,
-                                onMenu: _showCommentMenu,
-                              );
-                            },
-                          );
-                        },
-                      ),
-                      // Add some bottom padding so content isn't hidden by input
-                      const SizedBox(height: 80),
-                    ],
-                  ),
-                ),
-              ),
-
-              // Sticky Comment Input
-              SafeArea(
-                top: false,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                    border: Border(
-                      top: BorderSide(
-                        color: isDark ? Colors.grey[900]! : Colors.grey[200]!,
-                      ),
-                    ),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Reply Indicator
-                      if (_replyToCommentId != null)
-                        Container(
+                        Padding(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 16,
-                            vertical: 8,
+                            vertical: 4,
                           ),
-                          color: theme.primaryColor.withOpacity(0.05),
                           child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              Text(
-                                "Replying to ",
-                                style: TextStyle(
-                                  color: Colors.grey[600],
-                                  fontSize: 13,
+                              CircleAvatar(
+                                radius: 16,
+                                backgroundColor: theme.primaryColor.withOpacity(
+                                  0.1,
                                 ),
-                              ),
-                              Text(
-                                "@$_replyToUserName",
-                                style: TextStyle(
-                                  color: theme.primaryColor,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const Spacer(),
-                              GestureDetector(
-                                onTap: _cancelReply,
                                 child: Icon(
-                                  Icons.close,
-                                  size: 16,
-                                  color: Colors.grey[600],
+                                  Icons.person,
+                                  color: theme.primaryColor,
+                                  size: 20,
                                 ),
                               ),
-                            ],
-                          ),
-                        ),
-                      // Visibility Indicator
-                      if (_replyToCommentId == null)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.public,
-                                size: 14,
-                                color: theme.primaryColor.withOpacity(0.8),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                "Everyone can reply",
-                                style: TextStyle(
-                                  color: theme.primaryColor.withOpacity(0.8),
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-
-
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 4,
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            CircleAvatar(
-                              radius: 16,
-                              backgroundColor: theme.primaryColor.withOpacity(0.1),
-                              child: Icon(
-                                Icons.person,
-                                color: theme.primaryColor,
-                                size: 20,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 16),
-                                decoration: BoxDecoration(
-                                  color: isDark ? const Color(0xFF2A2A2A) : Colors.grey[100],
-                                  borderRadius: BorderRadius.circular(24),
-                                  border: Border.all(
-                                    color: isDark ? Colors.grey[800]! : Colors.grey[300]!,
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
                                   ),
-                                ),
-                                child: TextField(
-                                  controller: _commentController,
-                                  decoration: const InputDecoration(
-                                    hintText: 'Post your reply',
-                                    border: InputBorder.none,
-                                    isDense: true,
-                                    contentPadding: EdgeInsets.symmetric(vertical: 10),
-                                  ),
-                                  maxLines: 5,
-                                  minLines: 1,
-                                  textCapitalization: TextCapitalization.sentences,
-                                  style: const TextStyle(fontSize: 14),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            IconButton(
-                              onPressed: _isPosting ? null : _postComment,
-                              icon: _isPosting
-                                  ? const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : Icon(
-                                      Icons.send_rounded,
-                                      color: theme.primaryColor,
-                                      size: 24,
+                                  decoration: BoxDecoration(
+                                    color: isDark
+                                        ? const Color(0xFF2A2A2A)
+                                        : Colors.grey[100],
+                                    borderRadius: BorderRadius.circular(24),
+                                    border: Border.all(
+                                      color: isDark
+                                          ? Colors.grey[800]!
+                                          : Colors.grey[300]!,
                                     ),
-                            ),
-                          ],
+                                  ),
+                                  child: TextField(
+                                    controller: _commentController,
+                                    decoration: const InputDecoration(
+                                      hintText: 'Post your reply',
+                                      border: InputBorder.none,
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.symmetric(
+                                        vertical: 10,
+                                      ),
+                                    ),
+                                    maxLines: 5,
+                                    minLines: 1,
+                                    textCapitalization:
+                                        TextCapitalization.sentences,
+                                    style: const TextStyle(fontSize: 14),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                onPressed: _isPosting ? null : _postComment,
+                                icon: _isPosting
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : Icon(
+                                        Icons.send_rounded,
+                                        color: theme.primaryColor,
+                                        size: 24,
+                                      ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-
-
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
-          );
-        },
-      ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -1262,20 +1280,20 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
             ),
-              if (mediaUrl != null && mediaUrl.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: (UrlValidator.isValidUrl(mediaUrl))
-                      ? CachedNetworkImage(
-                          imageUrl: mediaUrl,
-                          height: 150,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                        )
-                      : const SizedBox(),
-                ),
-              ],
+            if (mediaUrl != null && mediaUrl.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: (UrlValidator.isValidUrl(mediaUrl))
+                    ? CachedNetworkImage(
+                        imageUrl: mediaUrl,
+                        height: 150,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                      )
+                    : const SizedBox(),
+              ),
+            ],
           ],
         ),
       ),

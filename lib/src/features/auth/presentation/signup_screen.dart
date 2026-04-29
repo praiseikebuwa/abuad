@@ -204,7 +204,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                           TextFormField(
                             controller: _emailController,
                             keyboardType: TextInputType.emailAddress,
-                            style: const TextStyle(color: Colors.white),
+                            style: const TextStyle(color: Color.fromARGB(255, 0, 0, 0)),
                             decoration: InputDecoration(
                               labelText: 'Email',
                               labelStyle: const TextStyle(
@@ -247,7 +247,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                           TextFormField(
                             controller: _passwordController,
                             obscureText: _obscurePassword,
-                            style: const TextStyle(color: Colors.white),
+                            style: const TextStyle(color: Color.fromARGB(255, 0, 0, 0)),
                             decoration: InputDecoration(
                               labelText: 'Password',
                               labelStyle: const TextStyle(

@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-
 import '../../auth/data/auth_repository.dart';
-
 import '../../../core/utils/auth_error_handler.dart';
 import '../../../core/presentation/widgets/custom_snackbar.dart';
 
@@ -25,7 +23,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       await ref.read(authRepositoryProvider).signInWithGoogle();
       if (!mounted) return;
-      // Navigation is usually handled by listening to auth state changes in the router
     } catch (e) {
       if (!mounted) return;
       CustomSnackbar.show(
@@ -154,7 +151,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           // Email Field
                           TextFormField(
                             controller: _emailController,
-                            style: const TextStyle(color: Colors.white),
+                            style: const TextStyle(color: Color.fromARGB(255, 0, 0, 0)),
                             decoration: InputDecoration(
                               labelText: 'University Email',
                               labelStyle: const TextStyle(
@@ -197,7 +194,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             controller: _passwordController,
                             obscureText: true,
                             style: const TextStyle(
-                              color: Color.fromARGB(255, 255, 255, 255),
+                              color: Color.fromARGB(255, 0, 0, 0),
                             ),
                             decoration: InputDecoration(
                               labelText: 'Password',
@@ -379,7 +376,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   if (mounted) {
                     CustomSnackbar.show(
                       context,
-                      message: 'Password reset link sent! Check your email.',
+                      message: 'Password reset link sent! Check your email spam folder.',
                       isError: false,
                     );
                   }

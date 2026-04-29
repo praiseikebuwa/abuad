@@ -4,7 +4,6 @@ import '../data/post_repository.dart';
 import '../domain/post.dart';
 import 'widgets/tiktok_reel_page.dart';
 import 'providers/reel_controller_provider.dart';
-import '../../../core/theme/app_colors.dart';
 
 class ReelsScreen extends ConsumerStatefulWidget {
   final List<Post> videos;

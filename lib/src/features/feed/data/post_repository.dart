@@ -130,38 +130,44 @@ class PostRepository {
             .orderBy('timestamp', descending: true)
             .limit(30)
             .snapshots()
-            .listen((snapshot) {
-          final followingUids = snapshot.docs
-              .map((doc) => doc.id)
-              .take(30)
-              .toList();
+            .listen(
+              (snapshot) {
+                final followingUids = snapshot.docs
+                    .map((doc) => doc.id)
+                    .take(30)
+                    .toList();
 
-          postsSub?.cancel();
+                postsSub?.cancel();
 
-          if (followingUids.isEmpty) {
-            controller.add([]);
-            return;
-          }
+                if (followingUids.isEmpty) {
+                  controller.add([]);
+                  return;
+                }
 
-          postsSub = _firestore
-              .collection('posts')
-              .where('author_id', whereIn: followingUids)
-              .where('status', isEqualTo: 'active')
-              .orderBy('created_at', descending: true)
-              .limit(limit)
-              .snapshots()
-              .listen((postSnapshot) {
-            final posts = postSnapshot.docs
-                .map((doc) => Post.fromMap(doc.data()))
-                .where((p) => !blockedUserIds.contains(p.authorId))
-                .toList();
-            controller.add(posts);
-          }, onError: (e) {
-            if (!controller.isClosed) controller.addError(e);
-          });
-        }, onError: (e) {
-          if (!controller.isClosed) controller.addError(e);
-        });
+                postsSub = _firestore
+                    .collection('posts')
+                    .where('author_id', whereIn: followingUids)
+                    .where('status', isEqualTo: 'active')
+                    .orderBy('created_at', descending: true)
+                    .limit(limit)
+                    .snapshots()
+                    .listen(
+                      (postSnapshot) {
+                        final posts = postSnapshot.docs
+                            .map((doc) => Post.fromMap(doc.data()))
+                            .where((p) => !blockedUserIds.contains(p.authorId))
+                            .toList();
+                        controller.add(posts);
+                      },
+                      onError: (e) {
+                        if (!controller.isClosed) controller.addError(e);
+                      },
+                    );
+              },
+              onError: (e) {
+                if (!controller.isClosed) controller.addError(e);
+              },
+            );
       },
       onCancel: () {
         followingSub?.cancel();
@@ -172,6 +178,7 @@ class PostRepository {
 
     return controller.stream;
   }
+
   // New: Watch user specific posts (for Profile)
   Stream<List<Post>> watchUserPosts(String userId, {int limit = 20}) {
     return _firestore
@@ -271,45 +278,52 @@ class PostRepository {
             .orderBy('timestamp', descending: true)
             .limit(20)
             .snapshots()
-            .listen((snapshot) {
-          final postIds = snapshot.docs
-              .map((doc) => doc.reference.parent.parent!.id)
-              .toList();
-          
-          if (postIds.isEmpty) {
-            controller.add([]);
-            return;
-          }
+            .listen(
+              (snapshot) {
+                final postIds = snapshot.docs
+                    .map((doc) => doc.reference.parent.parent!.id)
+                    .toList();
 
-          final idsToRemove = postSubs.keys.where((id) => !postIds.contains(id)).toList();
-          for (final id in idsToRemove) {
-            postSubs[id]?.cancel();
-            postSubs.remove(id);
-            cachedPosts.remove(id);
-          }
+                if (postIds.isEmpty) {
+                  controller.add([]);
+                  return;
+                }
 
-          for (final id in postIds) {
-            if (!postSubs.containsKey(id)) {
-              postSubs[id] = _firestore
-                  .collection('posts')
-                  .doc(id)
-                  .snapshots()
-                  .listen((doc) {
-                if (doc.exists) {
-                  cachedPosts[id] = Post.fromMap(doc.data()!);
-                } else {
+                final idsToRemove = postSubs.keys
+                    .where((id) => !postIds.contains(id))
+                    .toList();
+                for (final id in idsToRemove) {
+                  postSubs[id]?.cancel();
+                  postSubs.remove(id);
                   cachedPosts.remove(id);
                 }
-                
-                final results = postIds.map((pid) => cachedPosts[pid]).whereType<Post>().toList();
-                controller.add(results);
-              }, onError: (e) {
-              });
-            }
-          }
-        }, onError: (e) {
-          if (!controller.isClosed) controller.addError(e);
-        });
+
+                for (final id in postIds) {
+                  if (!postSubs.containsKey(id)) {
+                    postSubs[id] = _firestore
+                        .collection('posts')
+                        .doc(id)
+                        .snapshots()
+                        .listen((doc) {
+                          if (doc.exists) {
+                            cachedPosts[id] = Post.fromMap(doc.data()!);
+                          } else {
+                            cachedPosts.remove(id);
+                          }
+
+                          final results = postIds
+                              .map((pid) => cachedPosts[pid])
+                              .whereType<Post>()
+                              .toList();
+                          controller.add(results);
+                        }, onError: (e) {});
+                  }
+                }
+              },
+              onError: (e) {
+                if (!controller.isClosed) controller.addError(e);
+              },
+            );
       },
       onCancel: () {
         likesSub?.cancel();
@@ -322,6 +336,7 @@ class PostRepository {
 
     return controller.stream;
   }
+
   Stream<Post?> watchPost(String postId) {
     return _firestore
         .collection('posts')
@@ -432,7 +447,7 @@ class PostRepository {
       final postRef = _firestore.collection('posts').doc(postId);
       final commentRef = _firestore.collection(parentPath).doc(commentId);
 
-      transaction.set(commentRef, {
+      final commentData = <String, dynamic>{
         'id': commentId,
         'user_id': userId,
         'user_name': userName,
@@ -442,13 +457,14 @@ class PostRepository {
         'content': content,
         'status': status,
         'created_at': FieldValue.serverTimestamp(),
-        'parent_id': ?parentId,
-        'image_url': ?imageUrl,
-        'media_type': ?mediaType,
-        'poll': ?pollData,
-        'latitude': ?latitude,
-        'longitude': ?longitude,
-      });
+      };
+      if (parentId != null) commentData['parent_id'] = parentId;
+      if (imageUrl != null) commentData['image_url'] = imageUrl;
+      if (mediaType != null) commentData['media_type'] = mediaType;
+      if (pollData != null) commentData['poll'] = pollData;
+      if (latitude != null) commentData['latitude'] = latitude;
+      if (longitude != null) commentData['longitude'] = longitude;
+      transaction.set(commentRef, commentData);
 
       // Increment total comment count on post
       transaction.update(postRef, {'comments_count': FieldValue.increment(1)});
@@ -643,6 +659,7 @@ class PostRepository {
         'author_handle': targetPost.authorHandle,
         'author_avatar_url': targetPost.authorAvatarUrl,
         'content': targetPost.content,
+        'link_url': targetPost.linkUrl,
         'media_url': targetPost.mediaUrl,
         'media_type': targetPost.mediaType.name,
         'created_at': Timestamp.fromDate(targetPost.timestamp),
@@ -883,7 +900,6 @@ class PostRepository {
         );
   }
 
-
   Future<PaginatedPostsResult> fetchFollowingPostsPage(
     String userId, {
     List<String> blockedUserIds = const [],
@@ -927,54 +943,80 @@ class PostRepository {
 
     return PaginatedPostsResult(
       posts: posts,
-      lastDocument: postSnapshot.docs.isNotEmpty ? postSnapshot.docs.last : null,
+      lastDocument: postSnapshot.docs.isNotEmpty
+          ? postSnapshot.docs.last
+          : null,
       hasMore: postSnapshot.docs.length == limit,
     );
   }
 
   Future<PaginatedPostsResult> fetchChannelPostsPage(
-      String channelId, {
-      List<String> blockedUserIds = const [],
-      DocumentSnapshot<Map<String, dynamic>>? startAfter,
-      int limit = 15}) async {
-    var query = _firestore.collection('posts')
+    String channelId, {
+    List<String> blockedUserIds = const [],
+    DocumentSnapshot<Map<String, dynamic>>? startAfter,
+    int limit = 15,
+  }) async {
+    var query = _firestore
+        .collection('posts')
         .where('channel_id', isEqualTo: channelId)
         .where('status', isEqualTo: 'active')
         .orderBy('created_at', descending: true);
-    final res = await fetchPostsPage(query, startAfter: startAfter, limit: limit);
+    final res = await fetchPostsPage(
+      query,
+      startAfter: startAfter,
+      limit: limit,
+    );
     return PaginatedPostsResult(
-      posts: res.posts.where((p) => !blockedUserIds.contains(p.authorId)).toList(),
+      posts: res.posts
+          .where((p) => !blockedUserIds.contains(p.authorId))
+          .toList(),
       lastDocument: res.lastDocument,
       hasMore: res.hasMore,
     );
   }
 
   Future<PaginatedPostsResult> fetchDiscoveryPostsPage({
-      List<String> blockedUserIds = const [],
-      DocumentSnapshot<Map<String, dynamic>>? startAfter,
-      int limit = 15}) async {
-    var query = _firestore.collection('posts')
+    List<String> blockedUserIds = const [],
+    DocumentSnapshot<Map<String, dynamic>>? startAfter,
+    int limit = 15,
+  }) async {
+    var query = _firestore
+        .collection('posts')
         .where('status', isEqualTo: 'active')
         .orderBy('created_at', descending: true);
-    final res = await fetchPostsPage(query, startAfter: startAfter, limit: limit);
+    final res = await fetchPostsPage(
+      query,
+      startAfter: startAfter,
+      limit: limit,
+    );
     return PaginatedPostsResult(
-      posts: res.posts.where((p) => !blockedUserIds.contains(p.authorId)).toList(),
+      posts: res.posts
+          .where((p) => !blockedUserIds.contains(p.authorId))
+          .toList(),
       lastDocument: res.lastDocument,
       hasMore: res.hasMore,
     );
   }
 
   Future<PaginatedPostsResult> fetchVideoPostsPage({
-      List<String> blockedUserIds = const [],
-      DocumentSnapshot<Map<String, dynamic>>? startAfter,
-      int limit = 15}) async {
-    var query = _firestore.collection('posts')
+    List<String> blockedUserIds = const [],
+    DocumentSnapshot<Map<String, dynamic>>? startAfter,
+    int limit = 15,
+  }) async {
+    var query = _firestore
+        .collection('posts')
         .where('media_type', isEqualTo: 'video')
         .where('status', isEqualTo: 'active')
         .orderBy('created_at', descending: true);
-    final res = await fetchPostsPage(query, startAfter: startAfter, limit: limit);
+    final res = await fetchPostsPage(
+      query,
+      startAfter: startAfter,
+      limit: limit,
+    );
     return PaginatedPostsResult(
-      posts: res.posts.where((p) => !blockedUserIds.contains(p.authorId)).toList(),
+      posts: res.posts
+          .where((p) => !blockedUserIds.contains(p.authorId))
+          .toList(),
       lastDocument: res.lastDocument,
       hasMore: res.hasMore,
     );
@@ -984,10 +1026,7 @@ class PostRepository {
     Query<Map<String, dynamic>> query, {
     int limit = 15,
   }) {
-    return fetchPostsPage(
-      query,
-      limit: limit,
-    );
+    return fetchPostsPage(query, limit: limit);
   }
 
   Future<PaginatedPostsResult> loadMoreForQuery(
@@ -995,11 +1034,7 @@ class PostRepository {
     DocumentSnapshot<Map<String, dynamic>>? cursor, {
     int limit = 15,
   }) {
-    return fetchPostsPage(
-      query,
-      startAfter: cursor,
-      limit: limit,
-    );
+    return fetchPostsPage(query, startAfter: cursor, limit: limit);
   }
 
   Future<PaginatedPostsResult> fetchPostsPage(
@@ -1017,8 +1052,7 @@ class PostRepository {
 
     return PaginatedPostsResult(
       posts: posts,
-      lastDocument:
-          snapshot.docs.isNotEmpty ? snapshot.docs.last : null,
+      lastDocument: snapshot.docs.isNotEmpty ? snapshot.docs.last : null,
       hasMore: snapshot.docs.length == limit,
     );
   }

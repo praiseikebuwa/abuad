@@ -19,7 +19,9 @@ import '../domain/post.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../../core/providers/shared_preferences_provider.dart';
 import '../../../core/router/app_router.dart';
+import '../../../core/utils/url_validator.dart';
 import '../../../shared/widgets/user_avatar.dart';
+import 'widgets/link_preview_card.dart';
 
 class CreatePostScreen extends ConsumerStatefulWidget {
   final String? initialChannelId;
@@ -215,6 +217,9 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
         _showPollCreator && _pollOptions.every((c) => c.text.trim().isNotEmpty);
     return (hasContent || hasMedia || hasPoll) && !_isPosting;
   }
+
+  String? get _detectedLinkUrl =>
+      UrlValidator.extractFirstUrl(_contentController.text);
 
   Future<void> _pickImage() async {
     final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
@@ -412,7 +417,6 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     }
   }
 
-
   void _submitPost() async {
     if (!_canPost) return;
 
@@ -427,6 +431,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
 
     // Capture all UI state before popping
     final content = _contentController.text.trim();
+    final linkUrl = _detectedLinkUrl;
     final channelId = _channelId;
     final isAnonymous = _isAnonymous;
     final visibility = _visibility;
@@ -461,19 +466,30 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
         MediaType mediaType = MediaType.none;
 
         if (selectedImage != null) {
-          mediaUrl = await storage.uploadImage(selectedImage, path: 'post_images/${user.uid}/');
+          mediaUrl = await storage.uploadImage(
+            selectedImage,
+            path: 'post_images/${user.uid}/',
+          );
           mediaType = MediaType.image;
         } else if (selectedVideo != null) {
-          mediaUrl = await storage.uploadVideo(selectedVideo, path: 'post_videos/${user.uid}/');
+          mediaUrl = await storage.uploadVideo(
+            selectedVideo,
+            path: 'post_videos/${user.uid}/',
+          );
           mediaType = MediaType.video;
         } else if (selectedGif != null) {
-          mediaUrl = selectedGif.images?.fixedWidth.url ?? selectedGif.images?.original?.url ?? '';
+          mediaUrl =
+              selectedGif.images?.fixedWidth.url ??
+              selectedGif.images?.original?.url ??
+              '';
           mediaType = MediaType.gif;
         }
 
         Map<String, dynamic>? pollData;
         if (showPollCreator) {
-          final optionsStrings = pollOptionsText.where((t) => t.isNotEmpty).toList();
+          final optionsStrings = pollOptionsText
+              .where((t) => t.isNotEmpty)
+              .toList();
           if (optionsStrings.length >= 2) {
             int days = 1;
             if (pollDuration.contains('3')) days = 3;
@@ -483,7 +499,9 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
               'options': optionsStrings,
               'votes': List<int>.filled(optionsStrings.length, 0),
               'voters': <String, int>{},
-              'ends_at': DateTime.now().add(Duration(days: days)).toIso8601String(),
+              'ends_at': DateTime.now()
+                  .add(Duration(days: days))
+                  .toIso8601String(),
             };
           }
         }
@@ -491,7 +509,9 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
         final post = Post(
           id: const Uuid().v4(),
           authorId: user.uid,
-          authorName: isAnonymous ? 'Anonymous' : (appUser?.displayName ?? 'Anonymous'),
+          authorName: isAnonymous
+              ? 'Anonymous'
+              : (appUser?.displayName ?? 'Anonymous'),
           authorHandle: isAnonymous ? '@hidden' : (appUser?.handle ?? '@anon'),
           authorAvatarUrl: isAnonymous ? null : appUser?.avatarUrl,
           content: content,
@@ -500,17 +520,24 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
           timestamp: DateTime.now(),
           channelId: channelId,
           isVerified: isAnonymous ? false : (appUser?.isVerified ?? false),
-          verificationType: isAnonymous ? 'none' : (appUser?.verificationType ?? 'none'),
+          verificationType: isAnonymous
+              ? 'none'
+              : (appUser?.verificationType ?? 'none'),
           isAnonymous: isAnonymous,
           pollData: pollData,
-          hashtags: RegExp(r"#(\w+)").allMatches(content).map((m) => m.group(1)!.toLowerCase()).toList(),
-          mentions: RegExp(r"@(\w+)").allMatches(content).map((m) => m.group(1)!).toList(),
+          hashtags: RegExp(
+            r"#(\w+)",
+          ).allMatches(content).map((m) => m.group(1)!.toLowerCase()).toList(),
+          mentions: RegExp(
+            r"@(\w+)",
+          ).allMatches(content).map((m) => m.group(1)!).toList(),
           visibility: visibility,
           latitude: latitude,
           longitude: longitude,
           replyPermission: replyPermission,
           scheduledAt: scheduledAt,
           mediaAltText: mediaAltText,
+          linkUrl: linkUrl,
         );
 
         await postRepo.addPost(post);
@@ -852,6 +879,8 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                             ),
                           ),
                         ),
+                        if (_detectedLinkUrl != null)
+                          LinkPreviewCard(url: _detectedLinkUrl),
 
                         if (_mentionQuery != null &&
                             _userSuggestions.isNotEmpty)

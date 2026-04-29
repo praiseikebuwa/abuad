@@ -114,6 +114,13 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
           ),
+          _SettingsTile(
+            icon: Icons.grid_view_outlined,
+            title: "App Icon",
+            subtitle: "Change the app's home screen icon",
+            showArrow: true,
+            onTap: () => context.push('/settings/app-icon'),
+          ),
 
           const SizedBox(height: 24),
           _SectionHeader(title: "NOTIFICATIONS"),
@@ -157,29 +164,13 @@ class SettingsScreen extends ConsumerWidget {
             icon: Icons.privacy_tip_outlined,
             title: "Privacy Policy",
             showArrow: true,
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const LegalScreen(
-                  title: 'Privacy Policy',
-                  markdownPath: 'assets/privacy.md',
-                ),
-              ),
-            ),
+            onTap: () => context.push('/settings/privacy'),
           ),
           _SettingsTile(
             icon: Icons.description_outlined,
             title: "Terms of Service",
             showArrow: true,
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const LegalScreen(
-                  title: 'Terms of Service',
-                  markdownPath: 'assets/terms.md',
-                ),
-              ),
-            ),
+            onTap: () => context.push('/settings/terms'),
           ),
           if (user != null)
             _SettingsTile(
@@ -211,29 +202,14 @@ class SettingsScreen extends ConsumerWidget {
             title: "Help Center",
             showArrow: true,
             onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const HelpCenterScreen(),
-                ),
-              );
+              context.push('/settings/help');
             },
           ),
           _SettingsTile(
             icon: Icons.feedback_outlined,
             title: "Send Feedback",
             showArrow: true,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const SupportFormScreen(
-                    title: 'Send Feedback',
-                    type: 'feedback',
-                  ),
-                ),
-              );
-            },
+            onTap: () => context.push('/settings/support', extra: {'title': 'Send Feedback', 'type': 'feedback'}),
           ),
           _SettingsTile(
             icon: Icons.star_outline,
@@ -249,17 +225,7 @@ class SettingsScreen extends ConsumerWidget {
             icon: Icons.bug_report_outlined,
             title: "Report a Bug",
             showArrow: true,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const SupportFormScreen(
-                    title: 'Report a Bug',
-                    type: 'bug',
-                  ),
-                ),
-              );
-            },
+            onTap: () => context.push('/settings/support', extra: {'title': 'Report a Bug', 'type': 'bug'}),
           ),
 
           const SizedBox(height: 24),

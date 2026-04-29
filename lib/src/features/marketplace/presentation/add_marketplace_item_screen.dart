@@ -91,6 +91,11 @@ class _AddMarketplaceItemScreenState
         setState(() {
           _imageFiles[index] = File(editedFile.path);
         });
+        
+        // "Carry" the result and show how it looks in a preview
+        if (mounted) {
+          _showGlimpsePreview();
+        }
       },
     );
   }

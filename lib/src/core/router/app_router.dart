@@ -45,6 +45,9 @@ import '../../features/stories/presentation/story_viewer_screen.dart';
 import '../../features/chat/presentation/qr_scanner_screen.dart';
 import '../../features/chat/presentation/broadcast_search_screen.dart';
 import '../../features/chat/presentation/broadcast_message_screen.dart';
+import '../../features/settings/presentation/app_icon_screen.dart';
+import '../../features/settings/presentation/support_screens.dart';
+import '../../features/settings/presentation/legal_screen.dart';
 
 final rootNavigatorKey = GlobalKey<NavigatorState>();
 final _feedNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'feed');
@@ -242,6 +245,45 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/settings',
         parentNavigatorKey: rootNavigatorKey,
         builder: (context, state) => const SettingsScreen(),
+        routes: [
+          GoRoute(
+            path: 'app-icon',
+            parentNavigatorKey: rootNavigatorKey,
+            builder: (context, state) => const AppIconScreen(),
+          ),
+          GoRoute(
+            path: 'help',
+            parentNavigatorKey: rootNavigatorKey,
+            builder: (context, state) => const HelpCenterScreen(),
+          ),
+          GoRoute(
+            path: 'support',
+            parentNavigatorKey: rootNavigatorKey,
+            builder: (context, state) {
+              final extra = state.extra as Map<String, dynamic>?;
+              return SupportFormScreen(
+                title: extra?['title'] ?? 'Support',
+                type: extra?['type'] ?? 'feedback',
+              );
+            },
+          ),
+          GoRoute(
+            path: 'privacy',
+            parentNavigatorKey: rootNavigatorKey,
+            builder: (context, state) => const LegalScreen(
+              title: 'Privacy Policy',
+              markdownPath: 'assets/legal/privacy.md',
+            ),
+          ),
+          GoRoute(
+            path: 'terms',
+            parentNavigatorKey: rootNavigatorKey,
+            builder: (context, state) => const LegalScreen(
+              title: 'Terms of Service',
+              markdownPath: 'assets/legal/terms.md',
+            ),
+          ),
+        ],
       ),
       GoRoute(
         path: '/notifications',

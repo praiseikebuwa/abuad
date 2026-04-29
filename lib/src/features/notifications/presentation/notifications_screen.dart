@@ -266,6 +266,12 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                         break;
                       case NotificationType.system:
                         break;
+                      case NotificationType.unfollow:
+                        // TODO: Handle this case.
+                        throw UnimplementedError();
+                      case NotificationType.followingPost:
+                        // TODO: Handle this case.
+                        throw UnimplementedError();
                     }
                   }
                 },
