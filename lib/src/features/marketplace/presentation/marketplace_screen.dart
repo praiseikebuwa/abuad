@@ -140,10 +140,10 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
         ? 1.15
         : MediaQuery.of(context).textScaleFactor;
 
-    final _isDark = _isDarkTheme;
-    final backgroundColor = _isDark ? Colors.black : Colors.white;
-    final surfaceColor = _isDark ? AppColors.surfaceDark : Colors.white;
-    final _borderSubtle = _isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
+    final isDark = _isDarkTheme;
+    final backgroundColor = isDark ? Colors.black : Colors.white;
+    final surfaceColor = isDark ? AppColors.surfaceDark : Colors.white;
+    final borderSubtle = isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
 
     return MediaQuery(
       data: MediaQuery.of(
@@ -155,7 +155,7 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
         body: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: _isDark 
+              colors: isDark 
                 ? [
                     const Color(0xFF04060E),
                     AppColors.surfaceDarkSecondary,
@@ -196,13 +196,13 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
                          ),
                    background: Container(
                      decoration: BoxDecoration(
-                       gradient: _isDark ? AppColors.inkTealGradient : AppColors.goldGradient,
+                       gradient: isDark ? AppColors.inkTealGradient : AppColors.goldGradient,
                      ),
                      child: Opacity(
                        opacity: 0.3,
                        child: Container(
                          decoration: BoxDecoration(
-                           color: (_isDark ? Colors.black : Colors.white).withValues(alpha: 0.2),
+                           color: (isDark ? Colors.black : Colors.white).withValues(alpha: 0.2),
                          ),
                        ),
                      ),
@@ -225,8 +225,8 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
                   ),
                   IconButton(
                     icon: Icon(
-                      _isDark ? Icons.diamond : Icons.diamond_outlined,
-                      color: _isDark ? AppColors.accentAmber : AppColors.secondaryTeal,
+                      isDark ? Icons.diamond : Icons.diamond_outlined,
+                      color: isDark ? AppColors.accentAmber : AppColors.secondaryTeal,
                     ),
                     onPressed: () => setState(() => _isDarkTheme = !_isDarkTheme),
                     tooltip: 'Change Theme',
@@ -252,7 +252,7 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
                         hintStyle: TextStyle(color: _themeColor.withValues(alpha: 0.5)),
                         prefixIcon: Icon(Icons.search, color: _themeColor.withValues(alpha: 0.7)),
                         filled: true,
-                        fillColor: _isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
+                        fillColor: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(30),
                           borderSide: BorderSide.none,
