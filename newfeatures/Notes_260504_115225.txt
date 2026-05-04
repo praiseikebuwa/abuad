@@ -1,0 +1,117 @@
+🔴 Critical Issues
+1. Broken error message
+You’re not showing the actual error:
+Text('Error loading reels: ', ...) 
+That’s useless for debugging.
+✅ Fix:
+Text( 'Error loading reels: ${snapshot.error}', style: const TextStyle(color: Colors.white), ) 
+2. Repeated preload trigger (performance problem)
+This block runs every rebuild:
+WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) { ref.read(reelControllerProvider.notifier) .updateConfig(_currentIndex, posts); } }); 
+That means:
+• It can fire multiple times unnecessarily
+• You may trigger duplicate video preloading
+• Waste memory + network
+✅ Fix (run only once):
+bool _hasInitialized = false; 
+Then:
+if (posts.isNotEmpty && !_hasInitialized) { _hasInitialized = true; WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) { ref.read(reelControllerProvider.notifier) .updateConfig(_currentIndex, posts); } }); } 
+3. UI bug: / videos is incomplete
+This:
+const Text('/ videos') 
+Looks like a placeholder, not a real UI.
+✅ Better:
+Text( '${_currentIndex + 1}/${posts.length}', style: const TextStyle( color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600, ), ) 
+4. Potential crash when videos list changes
+You initialize _pageController once:
+_pageController = PageController(initialPage: _currentIndex); 
+But if posts changes (e.g., stream updates), your controller:
+• keeps old state
+• may point to invalid index
+✅ Safer approach: Override didUpdateWidget:
+@override void didUpdateWidget(covariant ReelsScreen oldWidget) { super.didUpdateWidget(oldWidget); if (widget.videos.length != oldWidget.videos.length) { final maxIndex = widget.videos.isEmpty ? 0 : widget.videos.length - 1; _currentIndex = _currentIndex.clamp(0, maxIndex); _pageController.jumpToPage(_currentIndex); } } 
+5. Missing SafeArea handling
+You manually offset top:
+MediaQuery.of(context).padding.top + 16 
+That’s fragile.
+✅ Better: Wrap overlay UI:
+SafeArea( child: Padding( padding: const EdgeInsets.only(top: 16, left: 12), child: Row(...) ), ) 
+🟡 Design / Architecture Improvements
+6. Separation of concerns
+This screen is doing too much:
+• UI
+• streaming
+• preload logic
+You should push stream handling into a provider.
+Instead of:
+StreamBuilder<List<Post>> 
+Use Riverpod:
+final reelsProvider = StreamProvider((ref) { return ref.watch(postRepositoryProvider).watchVideoPosts(limit: 30); }); 
+Then:
+final reelsAsync = ref.watch(reelsProvider); 
+Cleaner, testable, scalable.
+7. Scroll physics overkill
+AlwaysScrollableScrollPhysics( parent: BouncingScrollPhysics(), ) 
+Unnecessary nesting.
+✅ Just use:
+const BouncingScrollPhysics(), 
+8. Unused import
+import '../../../core/theme/app_colors.dart'; 
+Not used. Remove it.
+
+More features to add[
+
+Horizontal swipe from the right to the left → open the person profile page.
+
+📝 Caption + Metadata
+Expandable caption (“more…”)
+Hashtags (clickable → search)
+Mentions (@user).
+
+🧠 2. Smart Behavior (This is where apps win)
+🔁 Auto Play Logic
+Only active reel plays
+Others are paused + disposed
+Resume from last position (optional)
+⚡ Preloading System (CRITICAL)
+Right now you trigger preload — but you need a strategy:
+Preload:
+Current video
+Next 2 videos
+Previous 1 video
+Dispose far-away videos
+👉 This prevents lag when swiping fast
+🧠 Watch Tracking
+Track:
+Watch duration
+Completion rate
+Replays
+Skip speed
+Use this later for:
+Recommendation algorithm
+Content ranking.
+
+🌙 Immersive Mode
+Hide everything except video:
+Auto-hide UI after 2–3 seconds
+Tap to bring back controls
+
+📊 Video Progress Bar
+Thin progress indicator at bottom
+Optional scrubbing
+🧭 Top Navigation
+“Following | For You”
+Sticky segmented control.
+
+Cache:
+First few seconds instantly
+Full video progressively
+🧹 Memory Control
+Dispose controllers for offscreen videos
+Limit active controllers to ~3–5
+
+📶 Network Awareness
+Detect slow network
+Reduce preload count
+Lower resolution stream
+]
