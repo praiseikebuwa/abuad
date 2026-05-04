@@ -239,6 +239,18 @@ service cloud.firestore {
         request.resource.data.content.size() <= 2000;
     }
 
+    function canUpdateCommentReplyCount() {
+      let affected = request.resource.data.diff(resource.data).affectedKeys();
+      return isSignedInAndActive() &&
+        affected.hasOnly(["reply_count"]) &&
+        request.resource.data.reply_count is int &&
+        resource.data.get("reply_count", 0) is int &&
+        (
+          request.resource.data.reply_count == resource.data.get("reply_count", 0) + 1 ||
+          request.resource.data.reply_count == resource.data.get("reply_count", 0) - 1
+        );
+    }
+
     function canCreateChannel() {
       let memberIds = request.resource.data.get('member_ids', []);
       let isDirect = request.resource.data.get('type', 'direct') == 'direct' || memberIds.size() == 2;
@@ -434,7 +446,7 @@ service cloud.firestore {
       match /comments/{commentId} {
         allow read: if isSignedIn();
         allow create: if canCreateComment();
-        allow update: if isSignedIn() && resource.data.user_id == request.auth.uid;
+        allow update: if (isSignedIn() && resource.data.user_id == request.auth.uid) || canUpdateCommentReplyCount();
         allow delete: if isSignedIn() && (
           resource.data.user_id == request.auth.uid ||
           get(/databases/$(database)/documents/posts/$(postId)).data.author_id == request.auth.uid
