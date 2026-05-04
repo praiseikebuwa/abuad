@@ -876,7 +876,7 @@ class _MasonryPostItem extends StatelessWidget {
                             ),
                             const SizedBox(width: 8),
                             const Text(
-                              "1%",
+                              "popular",
                               style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,

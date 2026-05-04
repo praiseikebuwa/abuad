@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:video_player/video_player.dart';
 import '../../domain/post.dart';
 
@@ -25,12 +28,29 @@ class ReelControllerState {
 }
 
 class ReelControllerManager extends Notifier<ReelControllerState> {
+  static const int _preloadAhead = 2;
+  static const int _preloadBehind = 1;
+  static final CacheManager _cacheManager = CacheManager(
+    Config(
+      'reelsVideoCache',
+      stalePeriod: const Duration(days: 7),
+      maxNrOfCacheObjects: 120,
+    ),
+  );
+  final Set<String> _initializingIds = <String>{};
+  final Map<String, StreamSubscription<FileResponse>> _cacheSubscriptions = {};
+  Set<String> _activeWindowIds = <String>{};
+
   @override
   ReelControllerState build() {
     ref.onDispose(() {
       for (final controller in state.controllers.values) {
         controller.dispose();
       }
+      for (final subscription in _cacheSubscriptions.values) {
+        subscription.cancel();
+      }
+      _cacheSubscriptions.clear();
     });
     return ReelControllerState(controllers: {});
   }
@@ -40,15 +60,14 @@ class ReelControllerManager extends Notifier<ReelControllerState> {
     if (posts.isEmpty) return;
 
     final activeIds = <String>{};
-    const windowSize = 2; // Preload 2 ahead, 1 behind
-
-    final start = (currentIndex - 1).clamp(0, posts.length - 1);
-    final end = (currentIndex + windowSize).clamp(0, posts.length - 1);
+    final start = (currentIndex - _preloadBehind).clamp(0, posts.length - 1);
+    final end = (currentIndex + _preloadAhead).clamp(0, posts.length - 1);
 
     // 1. Identify which posts should have controllers
     for (int i = start; i <= end; i++) {
       activeIds.add(posts[i].id);
     }
+    _activeWindowIds = activeIds;
 
     // 2. Dispose and remove controllers for posts outside the window
     final updatedControllers = Map<String, VideoPlayerController>.from(state.controllers);
@@ -56,28 +75,82 @@ class ReelControllerManager extends Notifier<ReelControllerState> {
 
     final toRemove = updatedControllers.keys.where((id) => !activeIds.contains(id)).toList();
     for (final id in toRemove) {
-      updatedControllers[id]?.dispose();
+      final controller = updatedControllers[id];
+      if (controller != null) {
+        if (controller.value.isPlaying) {
+          controller.pause();
+        }
+        controller.dispose();
+      }
       updatedControllers.remove(id);
       updatedErrors.remove(id);
+      _initializingIds.remove(id);
+      _cacheSubscriptions.remove(id)?.cancel();
     }
+
+    state = state.copyWith(controllers: updatedControllers, errors: updatedErrors);
 
     // 3. Initialize missing controllers for posts in the window
     for (int i = start; i <= end; i++) {
       final post = posts[i];
-      if (!updatedControllers.containsKey(post.id) && post.mediaUrl.isNotEmpty) {
-        final controller = VideoPlayerController.networkUrl(
-          Uri.parse(post.mediaUrl),
-          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-        );
-        
-        updatedControllers[post.id] = controller;
-        
-        // Background initialization
-        _initController(post.id, controller);
-      }
+      _ensureControllerForPost(post);
+    }
+  }
+
+  Future<void> _ensureControllerForPost(Post post) async {
+    if (post.mediaUrl.isEmpty) return;
+    if (state.controllers.containsKey(post.id) || _initializingIds.contains(post.id)) return;
+
+    _initializingIds.add(post.id);
+    final controller = await _buildControllerForUrl(post.id, post.mediaUrl);
+
+    if (!ref.mounted || !_activeWindowIds.contains(post.id)) {
+      await controller.dispose();
+      _initializingIds.remove(post.id);
+      return;
+    }
+    if (state.controllers.containsKey(post.id)) {
+      await controller.dispose();
+      _initializingIds.remove(post.id);
+      return;
     }
 
-    state = state.copyWith(controllers: updatedControllers, errors: updatedErrors);
+    state = state.copyWith(
+      controllers: Map<String, VideoPlayerController>.from(state.controllers)..[post.id] = controller,
+    );
+    _initController(post.id, controller);
+  }
+
+  Future<VideoPlayerController> _buildControllerForUrl(String postId, String mediaUrl) async {
+    final cached = await _cacheManager.getFileFromCache(mediaUrl);
+    if (cached != null) {
+      return VideoPlayerController.file(
+        cached.file,
+        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+      );
+    }
+
+    _primeDiskCache(postId, mediaUrl);
+    return VideoPlayerController.networkUrl(
+      Uri.parse(mediaUrl),
+      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+    );
+  }
+
+  void _primeDiskCache(String postId, String mediaUrl) {
+    if (_cacheSubscriptions.containsKey(postId)) return;
+    _cacheSubscriptions[postId] = _cacheManager
+        .getFileStream(mediaUrl, withProgress: true)
+        .listen(
+      (_) {},
+      onError: (e) {
+        debugPrint('Cache prime failed for $postId: $e');
+      },
+      onDone: () {
+        _cacheSubscriptions.remove(postId);
+      },
+      cancelOnError: false,
+    );
   }
 
   Future<void> _initController(String postId, VideoPlayerController controller) async {
@@ -92,25 +165,30 @@ class ReelControllerManager extends Notifier<ReelControllerState> {
           errors: Map<String, String>.from(state.errors)..[postId] = e.toString(),
         );
       }
+    } finally {
+      _initializingIds.remove(postId);
     }
   }
 
   /// Manually retry a failed initialization
-  void retry(Post post) {
-    if (state.controllers.containsKey(post.id)) {
-      state.controllers[post.id]?.dispose();
+  Future<void> retry(Post post) async {
+    final updatedControllers = Map<String, VideoPlayerController>.from(state.controllers);
+    updatedControllers.remove(post.id)?.dispose();
+    _cacheSubscriptions.remove(post.id)?.cancel();
+    _initializingIds.remove(post.id);
+
+    final controller = await _buildControllerForUrl(post.id, post.mediaUrl);
+    if (!ref.mounted) {
+      await controller.dispose();
+      return;
     }
-    
-    final controller = VideoPlayerController.networkUrl(
-      Uri.parse(post.mediaUrl),
-      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-    );
-    
+
     state = state.copyWith(
-      controllers: Map<String, VideoPlayerController>.from(state.controllers)..[post.id] = controller,
+      controllers: updatedControllers..[post.id] = controller,
       errors: Map<String, String>.from(state.errors)..remove(post.id),
     );
-    
+
+    _initializingIds.add(post.id);
     _initController(post.id, controller);
   }
 }

@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../data/post_repository.dart';
 import '../../../user/data/user_repository.dart';
@@ -39,10 +43,19 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
 
   VideoPlayerController? _controller;
   bool _isBuffering = false;
-  final bool _isMuted = false;
   bool _showPlayHint = false;
   bool _manuallyPaused = false;
   bool _isVisible = true;
+  bool _isCaptionExpanded = false;
+  bool _showOverlayUi = true;
+  Duration _position = Duration.zero;
+  Duration _duration = Duration.zero;
+  Timer? _overlayTimer;
+  DateTime? _watchStartAt;
+  int _watchedMsAccumulated = 0;
+  int _replayCount = 0;
+  bool _completed = false;
+  bool _hasTrackedWatchSession = false;
 
   // Double-tap heart splash
   final List<Offset> _doubleTapPositions = [];
@@ -55,6 +68,7 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _startOverlayTimer();
     // We'll manage the controller via the provider in build/didUpdateWidget
   }
 
@@ -63,10 +77,12 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
     if (_controller == null || !widget.isActive || !_isVisible) return;
 
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _flushWatchMetrics('app_paused');
       _controller?.pause();
     } else if (state == AppLifecycleState.resumed) {
       if (!_manuallyPaused && (widget.isActive && _isVisible)) {
         _controller?.play();
+        _startWatchSessionIfNeeded();
       }
     }
   }
@@ -81,6 +97,7 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
 
     if (!_isVisible && wasVisible) {
       // Just became hidden
+      _stopWatchSession();
       if (_controller!.value.isPlaying) {
         _controller!.pause();
       }
@@ -88,6 +105,7 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
       // Just became visible
       if (widget.isActive && !_manuallyPaused && !_controller!.value.isPlaying) {
         _controller!.play();
+        _startWatchSessionIfNeeded();
       }
     }
   }
@@ -102,6 +120,8 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
     
     setState(() {
       _isBuffering = isBuffering;
+      _position = value.position;
+      _duration = value.duration;
       // We also want to clear any play hint if it starts playing
       if (value.isPlaying && _showPlayHint) {
         _showPlayHint = false;
@@ -111,16 +131,40 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
     // If it just finished initializing and we are active, start playing
     if (widget.isActive && isInitialized && !value.isPlaying && !value.isBuffering) {
       _controller!.play();
+      _startWatchSessionIfNeeded();
+    }
+
+    if (value.isPlaying) {
+      _startWatchSessionIfNeeded();
+    } else {
+      _stopWatchSession();
+    }
+
+    final totalMs = value.duration.inMilliseconds;
+    if (totalMs > 0) {
+      final progress = value.position.inMilliseconds / totalMs;
+      if (progress >= 0.95 && !_completed) {
+        _completed = true;
+      }
+      if (value.position.inMilliseconds <= 400 && _position.inMilliseconds > 2000) {
+        _replayCount++;
+      }
     }
   }
 
   @override
   void didUpdateWidget(covariant TikTokReelPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.post.id != widget.post.id) {
+      _flushWatchMetrics('post_changed');
+      _resetWatchState();
+    }
     if (_controller == null || !_controller!.value.isInitialized) return;
     if (widget.isActive && !oldWidget.isActive) {
       _controller!.play();
+      _startWatchSessionIfNeeded();
     } else if (!widget.isActive && oldWidget.isActive) {
+      _flushWatchMetrics('inactive');
       _controller!.pause();
     }
   }
@@ -129,6 +173,8 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _controller?.removeListener(_videoListener);
+    _overlayTimer?.cancel();
+    _flushWatchMetrics('dispose');
     // Note: We DON'T dispose the controller here because it's managed by ReelControllerManager
     super.dispose();
   }
@@ -140,17 +186,90 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
     if (_controller == null || !_controller!.value.isInitialized) return;
     if (_controller!.value.isPlaying) {
       _controller!.pause();
+      _stopWatchSession();
       setState(() {
         _showPlayHint = true;
         _manuallyPaused = true;
       });
     } else {
       _controller!.play();
+      _startWatchSessionIfNeeded();
       setState(() {
         _showPlayHint = false;
         _manuallyPaused = false;
       });
     }
+  }
+
+  void _startWatchSessionIfNeeded() {
+    if (_watchStartAt != null || !widget.isActive || !_isVisible) return;
+    _watchStartAt = DateTime.now();
+  }
+
+  void _stopWatchSession() {
+    if (_watchStartAt == null) return;
+    final elapsed = DateTime.now().difference(_watchStartAt!).inMilliseconds;
+    if (elapsed > 0) {
+      _watchedMsAccumulated += elapsed;
+    }
+    _watchStartAt = null;
+  }
+
+  void _resetWatchState() {
+    _watchStartAt = null;
+    _watchedMsAccumulated = 0;
+    _replayCount = 0;
+    _completed = false;
+    _hasTrackedWatchSession = false;
+  }
+
+  Future<void> _flushWatchMetrics(String reason) async {
+    _stopWatchSession();
+    if (_hasTrackedWatchSession || _watchedMsAccumulated <= 0) return;
+    _hasTrackedWatchSession = true;
+
+    final totalMs = _duration.inMilliseconds;
+    final completionRate = totalMs <= 0
+        ? 0.0
+        : (_watchedMsAccumulated / totalMs).clamp(0.0, 1.0);
+    final skippedQuickly = _watchedMsAccumulated < 3000;
+
+    try {
+      await ref.read(postRepositoryProvider).trackReelWatchMetrics(
+        postId: widget.post.id,
+        watchedMs: _watchedMsAccumulated,
+        completionRate: completionRate,
+        replayCount: _replayCount,
+        skippedQuickly: skippedQuickly,
+        completed: _completed,
+        source: 'reels_$reason',
+      );
+    } catch (e) {
+      debugPrint('Failed to track reel watch metrics: $e');
+    }
+  }
+
+  void _startOverlayTimer() {
+    _overlayTimer?.cancel();
+    _overlayTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      setState(() => _showOverlayUi = false);
+    });
+  }
+
+  void _revealOverlayUi() {
+    if (!mounted) return;
+    setState(() => _showOverlayUi = true);
+    _startOverlayTimer();
+  }
+
+  void _onSurfaceTap() {
+    if (!_showOverlayUi) {
+      _revealOverlayUi();
+      return;
+    }
+    _togglePlayback();
+    _startOverlayTimer();
   }
 
 
@@ -198,6 +317,50 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
       backgroundColor: Colors.transparent,
       builder: (context) => ReelCommentSheet(post: post),
     );
+  }
+
+  void _openProfileByUserId(String userId) {
+    if (!mounted) return;
+    context.push('/profile/$userId');
+  }
+
+  Future<void> _openProfileByHandle(String handle) async {
+    final cleanHandle = handle.startsWith('@') ? handle.substring(1) : handle;
+    if (cleanHandle.isEmpty) return;
+    try {
+      final user = await ref.read(userRepositoryProvider).getUserByHandle(cleanHandle);
+      if (!mounted) return;
+      if (user != null) {
+        context.push('/profile/${user.uid}');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('User @$cleanHandle not found')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open @$cleanHandle: $e')),
+      );
+    }
+  }
+
+  void _openHashtag(String hashtag) {
+    if (!mounted) return;
+    final cleanTag = hashtag.startsWith('#') ? hashtag.substring(1) : hashtag;
+    if (cleanTag.isEmpty) return;
+    context.push('/hashtag/$cleanTag');
+  }
+
+  String _normalizeToken(String token) {
+    return token.replaceAll(RegExp(r'^[^\w#@]+|[^\w]+$'), '');
+  }
+
+  void _handleHorizontalDragEnd(DragEndDetails details, domain.Post post) {
+    final velocity = details.primaryVelocity ?? 0;
+    if (velocity < -450) {
+      _openProfileByUserId(post.authorId);
+    }
   }
 
   void _showEngagementMenu(domain.Post post) {
@@ -304,10 +467,12 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
           key: Key('reel_${widget.post.id}'),
           onVisibilityChanged: _handleVisibilityChanged,
           child: GestureDetector(
-            onTap: _togglePlayback,
             onDoubleTapDown: (details) =>
                 _onDoubleTap(details.localPosition, ref, livePost),
+            onHorizontalDragEnd: (details) =>
+                _handleHorizontalDragEnd(details, livePost),
             onLongPress: () => _showEngagementMenu(livePost),
+            onTap: _onSurfaceTap,
             child: Container(
 
             color: Colors.black,
@@ -353,16 +518,26 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
                   ),
                 ),
 
-                Positioned.fill(child: _buildGradientOverlay()),
+                Positioned.fill(
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 220),
+                    opacity: _showOverlayUi ? 1 : 0,
+                    child: _buildGradientOverlay(),
+                  ),
+                ),
 
                 // Bottom Content (Username, Caption, Hashtags)
                 Positioned(
                   left: 16,
                   right: 80,
                   bottom: MediaQuery.of(context).padding.bottom + 16,
-                  child: SafeArea(
-                    top: false,
-                    child: _buildCaptionSection(livePost),
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 220),
+                    opacity: _showOverlayUi ? 1 : 0,
+                    child: SafeArea(
+                      top: false,
+                      child: _buildCaptionSection(livePost),
+                    ),
                   ),
                 ),
 
@@ -370,13 +545,17 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
                 Positioned(
                   right: 12,
                   bottom: MediaQuery.of(context).padding.bottom + 80,
-                  child: SafeArea(
-                    top: false,
-                    child: _buildActionColumn(
-                      context,
-                      livePost,
-                      isLiked,
-                      likeCount,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 220),
+                    opacity: _showOverlayUi ? 1 : 0,
+                    child: SafeArea(
+                      top: false,
+                      child: _buildActionColumn(
+                        context,
+                        livePost,
+                        isLiked,
+                        likeCount,
+                      ),
                     ),
                   ),
                 ),
@@ -385,11 +564,22 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
                 Positioned(
                   right: 12,
                   bottom: MediaQuery.of(context).padding.bottom + 16,
-                  child: SafeArea(top: false, child: _MusicDisc(post: livePost)),
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 220),
+                    opacity: _showOverlayUi ? 1 : 0,
+                    child: SafeArea(top: false, child: _MusicDisc(post: livePost)),
+                  ),
                 ),
 
                 // Double Tap Hearts
                 ..._doubleTapPositions.map((pos) => _buildHeartSplash(pos)),
+
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: _buildProgressBar(),
+                ),
               ],
             ),
           ),
@@ -467,23 +657,33 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
     );
   }
 
+  Widget _buildProgressBar() {
+    final totalMs = _duration.inMilliseconds;
+    final progress = totalMs <= 0
+        ? 0.0
+        : (_position.inMilliseconds / totalMs).clamp(0.0, 1.0);
+    return IgnorePointer(
+      child: LinearProgressIndicator(
+        minHeight: 2.5,
+        value: progress,
+        backgroundColor: Colors.white24,
+        valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFE2C55)),
+      ),
+    );
+  }
+
   Widget _buildCaptionSection(domain.Post post) {
     final authorHandle = post.authorHandle.isNotEmpty ? post.authorHandle : post.authorName;
-    
-    // Split content to handle hashtags
-    final List<String> words = post.content.split(' ');
+    final List<String> words = post.content.split(RegExp(r'\s+'));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         GestureDetector(
-          onTap: () {
-            // Navigate to profile or print
-            debugPrint('Username tapped: ${post.authorName}');
-          },
+          onTap: () => _openProfileByUserId(post.authorId),
           child: Text(
-            authorHandle,
+            '@$authorHandle',
             style: const TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.bold,
@@ -493,21 +693,105 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
           ),
         ),
         const SizedBox(height: 8),
-        RichText(
-          maxLines: 4,
-          overflow: TextOverflow.ellipsis,
-          text: TextSpan(
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 15,
-              height: 1.3,
-              shadows: [Shadow(color: Colors.black54, blurRadius: 2)],
+        AnimatedCrossFade(
+          duration: const Duration(milliseconds: 180),
+          crossFadeState: _isCaptionExpanded
+              ? CrossFadeState.showSecond
+              : CrossFadeState.showFirst,
+          firstChild: RichText(
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            text: TextSpan(
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                height: 1.3,
+                shadows: [Shadow(color: Colors.black54, blurRadius: 2)],
+              ),
+              children: words.map((word) {
+                final normalized = _normalizeToken(word);
+                final isTag = normalized.startsWith('#') && normalized.length > 1;
+                final isMention = normalized.startsWith('@') && normalized.length > 1;
+                return TextSpan(
+                  text: '$word ',
+                  style: TextStyle(
+                    color: (isTag || isMention)
+                        ? AppColors.secondaryTeal
+                        : Colors.white,
+                    fontWeight: (isTag || isMention)
+                        ? FontWeight.w600
+                        : FontWeight.normal,
+                  ),
+                  recognizer: (isTag || isMention)
+                      ? (TapGestureRecognizer()
+                        ..onTap = () {
+                          if (isTag) {
+                            _openHashtag(normalized);
+                          } else {
+                            _openProfileByHandle(normalized);
+                          }
+                        })
+                      : null,
+                );
+              }).toList(),
             ),
-            children: words.map((word) {
-              return TextSpan(text: '$word ');
-            }).toList(),
+          ),
+          secondChild: RichText(
+            text: TextSpan(
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                height: 1.3,
+                shadows: [Shadow(color: Colors.black54, blurRadius: 2)],
+              ),
+              children: words.map((word) {
+                final normalized = _normalizeToken(word);
+                final isTag = normalized.startsWith('#') && normalized.length > 1;
+                final isMention = normalized.startsWith('@') && normalized.length > 1;
+                return TextSpan(
+                  text: '$word ',
+                  style: TextStyle(
+                    color: (isTag || isMention)
+                        ? AppColors.secondaryTeal
+                        : Colors.white,
+                    fontWeight: (isTag || isMention)
+                        ? FontWeight.w600
+                        : FontWeight.normal,
+                  ),
+                  recognizer: (isTag || isMention)
+                      ? (TapGestureRecognizer()
+                        ..onTap = () {
+                          if (isTag) {
+                            _openHashtag(normalized);
+                          } else {
+                            _openProfileByHandle(normalized);
+                          }
+                        })
+                      : null,
+                );
+              }).toList(),
+            ),
           ),
         ),
+        if (post.content.trim().length > 80)
+          TextButton(
+            onPressed: () {
+              setState(() => _isCaptionExpanded = !_isCaptionExpanded);
+            },
+            style: TextButton.styleFrom(
+              padding: EdgeInsets.zero,
+              minimumSize: const Size(0, 28),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(
+              _isCaptionExpanded ? 'less' : 'more...',
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
         const SizedBox(height: 12),
         Row(
           children: [

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_app_icon_changer/flutter_app_icon_changer.dart';
+import 'package:flutter/foundation.dart';
 import '../../../core/theme/app_colors.dart';
 
 // ---------------------------------------------------------------------------
@@ -32,11 +33,12 @@ class AppIconScreen extends ConsumerStatefulWidget {
 
 class _AppIconScreenState extends ConsumerState<AppIconScreen> {
   String? _currentIcon;
+  bool _isSupported = true;
+  bool _isChanging = false;
 
   // Icon catalogue – each 'name' must match the alias in AndroidManifest / Info.plist
   final List<NestIcon> _icons = const [
-    NestIcon(name: 'f1', assetPath: 'assets/logo.png', label: 'Original', isDefault: true),
-    NestIcon(name: 'f1', assetPath: 'assets/app_icons/f1.png', label: 'Classic Blue'),
+    NestIcon(name: 'f1', assetPath: 'assets/app_icons/f1.png', label: 'Classic Blue', isDefault: true),
     NestIcon(name: 'f2', assetPath: 'assets/app_icons/f2.png', label: 'Emerald Green'),
     NestIcon(name: 'f3', assetPath: 'assets/app_icons/f3.png', label: 'Sunset Gold'),
     NestIcon(name: 'f4', assetPath: 'assets/app_icons/f4.png', label: 'Deep Purple'),
@@ -65,17 +67,22 @@ class _AppIconScreenState extends ConsumerState<AppIconScreen> {
 
   Future<void> _loadCurrentIcon() async {
     try {
-      final iconName = await _plugin.getCurrentIcon();
+      final iconName = _normalizeIconName(await _plugin.getCurrentIcon());
       if (mounted) {
         setState(() => _currentIcon = iconName);
       }
     } catch (e) {
       debugPrint('Error loading current icon: $e');
+      if (mounted) {
+        setState(() => _isSupported = false);
+      }
     }
   }
 
   Future<void> _changeIcon(NestIcon icon) async {
+    if (_isChanging) return;
     try {
+      setState(() => _isChanging = true);
       await _plugin.changeIcon(icon.name);
       if (mounted) {
         setState(() => _currentIcon = icon.name);
@@ -96,7 +103,20 @@ class _AppIconScreenState extends ConsumerState<AppIconScreen> {
           ),
         );
       }
+    } finally {
+      if (mounted) {
+        setState(() => _isChanging = false);
+      }
     }
+  }
+
+  String? _normalizeIconName(String? rawName) {
+    if (rawName == null || rawName.isEmpty) return null;
+    final trimmed = rawName.startsWith('.') ? rawName.substring(1) : rawName;
+    if (_icons.any((icon) => icon.name == trimmed)) {
+      return trimmed;
+    }
+    return null;
   }
 
   @override
@@ -117,6 +137,7 @@ class _AppIconScreenState extends ConsumerState<AppIconScreen> {
         foregroundColor: isDark ? Colors.white : AppColors.primaryInk,
       ),
       body: GridView.builder(
+        physics: const BouncingScrollPhysics(),
         padding: const EdgeInsets.all(24),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
@@ -132,7 +153,7 @@ class _AppIconScreenState extends ConsumerState<AppIconScreen> {
               (_currentIcon == null && icon.isDefault);
 
           return GestureDetector(
-            onTap: () => _changeIcon(icon),
+            onTap: (!_isSupported || _isChanging) ? null : () => _changeIcon(icon),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               decoration: BoxDecoration(
@@ -199,6 +220,17 @@ class _AppIconScreenState extends ConsumerState<AppIconScreen> {
           );
         },
       ),
+      bottomNavigationBar: !_isSupported || kIsWeb
+          ? Container(
+              padding: const EdgeInsets.all(12),
+              color: AppColors.error.withValues(alpha: 0.1),
+              child: const Text(
+                'App icon switching is only supported on configured Android/iOS builds.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12),
+              ),
+            )
+          : null,
     );
   }
 }

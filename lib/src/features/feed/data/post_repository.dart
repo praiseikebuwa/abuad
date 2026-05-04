@@ -851,6 +851,36 @@ class PostRepository {
     });
   }
 
+  Future<void> trackReelWatchMetrics({
+    required String postId,
+    required int watchedMs,
+    required double completionRate,
+    required int replayCount,
+    required bool skippedQuickly,
+    required bool completed,
+    String source = 'reels',
+  }) async {
+    final userId = currentUserId;
+    if (userId == null) return;
+
+    final eventRef = _firestore
+        .collection('posts')
+        .doc(postId)
+        .collection('watch_metrics')
+        .doc();
+
+    await eventRef.set({
+      'uid': userId,
+      'watched_ms': watchedMs,
+      'completion_rate': completionRate.clamp(0.0, 1.0),
+      'replay_count': replayCount,
+      'skipped_quickly': skippedQuickly,
+      'completed': completed,
+      'source': source,
+      'created_at': FieldValue.serverTimestamp(),
+    });
+  }
+
   // New: Watch trending tags (aggregates from recent posts)
   Stream<List<Map<String, dynamic>>> watchTrendingTags() {
     return _firestore

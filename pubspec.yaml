@@ -98,6 +98,7 @@ dependencies:
   qr_flutter: ^4.1.0
   mobile_scanner: ^7.2.0
   visibility_detector: ^0.4.0+2
+  flutter_cache_manager: ^3.4.1
 
 dev_dependencies:
   flutter_test:
