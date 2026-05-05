@@ -568,31 +568,43 @@ class PostRepository {
         .collection('comments')
         .doc(commentId)
         .collection('replies')
-        .where('status', isEqualTo: 'active')
-        .orderBy('created_at', descending: false)
         .snapshots()
         .map((snapshot) {
-          return snapshot.docs.map((doc) {
-            final data = doc.data();
-            return {
-              'id': data['id'] ?? doc.id,
-              'userId': data['user_id'],
-              'userName': data['user_name'] ?? 'Student',
-              'userAvatar': data['user_avatar'],
-              'content': data['content'],
-              'timestamp':
-                  (data['created_at'] as Timestamp?)?.millisecondsSinceEpoch,
-              'imageUrl': data['image_url'],
-              'mediaType': data['media_type'],
-              'poll': data['poll'],
-              'latitude': data['latitude'],
-              'longitude': data['longitude'],
-              'parent_id': commentId,
-              'authorIsVerified': data['author_is_verified'] ?? false,
-              'authorVerificationType':
-                  data['author_verification_type'] ?? 'none',
-            };
-          }).toList();
+          final replies = snapshot.docs
+              .where((doc) {
+                final status = doc.data()['status'];
+                // Backward compatibility: older replies may not have status set.
+                return status == null || status == 'active';
+              })
+              .map((doc) {
+                final data = doc.data();
+                return {
+                  'id': data['id'] ?? doc.id,
+                  'userId': data['user_id'],
+                  'userName': data['user_name'] ?? 'Student',
+                  'userAvatar': data['user_avatar'],
+                  'content': data['content'],
+                  'timestamp':
+                      (data['created_at'] as Timestamp?)?.millisecondsSinceEpoch,
+                  'imageUrl': data['image_url'],
+                  'mediaType': data['media_type'],
+                  'poll': data['poll'],
+                  'latitude': data['latitude'],
+                  'longitude': data['longitude'],
+                  'parent_id': commentId,
+                  'authorIsVerified': data['author_is_verified'] ?? false,
+                  'authorVerificationType':
+                      data['author_verification_type'] ?? 'none',
+                };
+              })
+              .toList();
+          replies.sort(
+            (a, b) =>
+                ((a['timestamp'] as int?) ?? 0).compareTo(
+                  (b['timestamp'] as int?) ?? 0,
+                ),
+          );
+          return replies;
         });
   }
 

@@ -72,6 +72,15 @@
 			</dict>
 			<key>CFBundleAlternateIcons</key>
 			<dict>
+				<key>f0</key>
+				<dict>
+					<key>CFBundleIconFiles</key>
+					<array>
+						<string>f0</string>
+					</array>
+					<key>UIPrerenderedIcon</key>
+					<false/>
+				</dict>
 				<key>f1</key>
 				<dict>
 					<key>CFBundleIconFiles</key>
@@ -131,6 +140,15 @@
 					<key>CFBundleIconFiles</key>
 					<array>
 						<string>f7</string>
+					</array>
+					<key>UIPrerenderedIcon</key>
+					<false/>
+				</dict>
+				<key>f8</key>
+				<dict>
+					<key>CFBundleIconFiles</key>
+					<array>
+						<string>f8</string>
 					</array>
 					<key>UIPrerenderedIcon</key>
 					<false/>

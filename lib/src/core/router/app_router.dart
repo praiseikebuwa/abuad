@@ -104,6 +104,15 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           return null; // Don't redirect while loading data
         }
 
+        // Do not force profile completion if there's an error (e.g., offline or permission denied).
+        // Let the normal navigation handle it, which will display the error correctly.
+        if (userAsync.hasError) {
+          if (isLoggingIn || isSigningUp || isOnboarding) {
+            return '/';
+          }
+          return null;
+        }
+
         final user = userAsync.value;
 
         // If profile is incomplete, force redirect to /complete-profile

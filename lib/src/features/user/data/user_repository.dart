@@ -123,48 +123,84 @@ class AppUser {
   }
 
   factory AppUser.fromMap(Map<String, dynamic> map) {
+    String toStr(dynamic value, [String fallback = '']) {
+      if (value == null) return fallback;
+      if (value is String) return value;
+      return value.toString();
+    }
+
+    int toInt(dynamic value, [int fallback = 0]) {
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      if (value is String) return int.tryParse(value) ?? fallback;
+      return fallback;
+    }
+
+    bool toBool(dynamic value, [bool fallback = false]) {
+      if (value is bool) return value;
+      if (value is num) return value != 0;
+      if (value is String) {
+        final v = value.toLowerCase();
+        if (v == 'true' || v == '1') return true;
+        if (v == 'false' || v == '0') return false;
+      }
+      return fallback;
+    }
+
+    DateTime? toDate(dynamic value) {
+      if (value is Timestamp) return value.toDate();
+      if (value is DateTime) return value;
+      if (value is int) {
+        try {
+          return DateTime.fromMillisecondsSinceEpoch(value);
+        } catch (_) {
+          return null;
+        }
+      }
+      if (value is String) return DateTime.tryParse(value);
+      return null;
+    }
+
+    final verified = toBool(map['is_verified'] ?? map['isVerified']);
     return AppUser(
-      uid: map['uid'] ?? '',
-      displayName: map['display_name'] ?? '',
-      email: map['email'] ?? '',
-      handle: map['handle'] ?? '',
-      avatarUrl: map['avatar_url'],
-      bannerUrl: map['banner_url'],
-      bio: map['bio'],
-      isVerified: map['is_verified'] ?? map['isVerified'] ?? false,
+      uid: toStr(map['uid']),
+      displayName: toStr(map['display_name']),
+      email: toStr(map['email']),
+      handle: toStr(map['handle']),
+      avatarUrl: map['avatar_url']?.toString(),
+      bannerUrl: map['banner_url']?.toString(),
+      bio: map['bio']?.toString(),
+      isVerified: verified,
       verificationType:
-          map['verification_type'] ??
-          map['verificationType'] ??
-          ((map['is_verified'] == true || map['isVerified'] == true)
-              ? 'blue'
-              : 'none'),
-      followersCount: map['followers_count'] ?? 0,
-      followingCount: map['following_count'] ?? 0,
-      status: map['status'] ?? 'offline',
-      lastSeen: (map['last_seen'] as Timestamp?)?.toDate(),
-      college: map['college'],
-      department: map['department'],
-      phoneNumber: map['phone_number'],
-      streakCount: map['streak_count'] ?? 0,
-      lastSnapAt: (map['last_snap_at'] as Timestamp?)?.toDate(),
+          toStr(map['verification_type'] ?? map['verificationType']) ==
+              ''
+          ? (verified ? 'blue' : 'none')
+          : toStr(map['verification_type'] ?? map['verificationType']),
+      followersCount: toInt(map['followers_count']),
+      followingCount: toInt(map['following_count']),
+      status: toStr(map['status'], 'offline'),
+      lastSeen: toDate(map['last_seen']),
+      college: map['college']?.toString(),
+      department: map['department']?.toString(),
+      phoneNumber: map['phone_number']?.toString(),
+      streakCount: toInt(map['streak_count']),
+      lastSnapAt: toDate(map['last_snap_at']),
       latitude: (map['latitude'] as num?)?.toDouble(),
       longitude: (map['longitude'] as num?)?.toDouble(),
-      websiteUrl: map['website_url'],
-      facebookUrl: map['facebook_url'],
-      twitterUrl: map['twitter_url'],
-      instagramUrl: map['instagram_url'],
-      linkedinUrl: map['linkedin_url'],
-      tiktokUrl: map['tiktok_url'],
-      youtubeUrl: map['youtube_url'],
-      snapchatUrl: map['snapchat_url'],
-      githubUrl: map['github_url'],
-      twitchUrl: map['twitch_url'],
-      isFollowingVisible: map['is_following_visible'] ?? true,
-      isAdmin: map['is_admin'] ?? false,
-      isBanned: map['is_banned'] ?? false,
-      createdAt:
-          (map['created_at'] as Timestamp? ?? map['createdAt'] as Timestamp?)
-              ?.toDate(),
+      websiteUrl: map['website_url']?.toString(),
+      facebookUrl: map['facebook_url']?.toString(),
+      twitterUrl: map['twitter_url']?.toString(),
+      instagramUrl: map['instagram_url']?.toString(),
+      linkedinUrl: map['linkedin_url']?.toString(),
+      tiktokUrl: map['tiktok_url']?.toString(),
+      youtubeUrl: map['youtube_url']?.toString(),
+      snapchatUrl: map['snapchat_url']?.toString(),
+      githubUrl: map['github_url']?.toString(),
+      twitchUrl: map['twitch_url']?.toString(),
+      isFollowingVisible: toBool(map['is_following_visible'], true),
+      isAdmin: toBool(map['is_admin']),
+      isBanned: toBool(map['is_banned']),
+      createdAt: toDate(map['created_at'] ?? map['createdAt']),
     );
   }
 }
@@ -200,10 +236,15 @@ class UserRepository {
   Stream<AppUser?> watchUser(String uid) {
     if (uid.isEmpty) return Stream.value(null);
     return _firestore.collection('users').doc(uid).snapshots().map((doc) {
-      if (!doc.exists) return null;
-      final data = doc.data()!;
-      data['uid'] = doc.id;
-      return AppUser.fromMap(data);
+      try {
+        if (!doc.exists) return null;
+        final data = doc.data()!;
+        data['uid'] = doc.id;
+        return AppUser.fromMap(data);
+      } catch (e) {
+        debugPrint('Error parsing user stream doc ($uid): $e');
+        return null;
+      }
     });
   }
 
@@ -682,10 +723,15 @@ final currentUserProvider = StreamProvider<AppUser?>((ref) {
       .doc(user.uid)
       .snapshots()
       .map((doc) {
-        if (!doc.exists) return null;
-        final data = doc.data()!;
-        data['uid'] = doc.id;
-        return AppUser.fromMap(data);
+        try {
+          if (!doc.exists) return null;
+          final data = doc.data()!;
+          data['uid'] = doc.id;
+          return AppUser.fromMap(data);
+        } catch (e) {
+          debugPrint('Error parsing current user doc (${user.uid}): $e');
+          return null;
+        }
       });
 });
 

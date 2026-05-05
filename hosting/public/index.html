@@ -46,24 +46,6 @@
             width: 100%;
         }
 
-        .logo {
-            width: 80px;
-            height: 80px;
-            background-color: var(--primary);
-            border-radius: 20px;
-            margin: 0 auto 24px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 10px 25px -5px rgba(139, 92, 246, 0.3);
-        }
-
-        .logo-text {
-            color: white;
-            font-size: 32px;
-            font-weight: 800;
-        }
-
         h1 {
             font-size: 28px;
             font-weight: 700;
@@ -82,6 +64,23 @@
             display: flex;
             flex-direction: column;
             gap: 16px;
+        }
+        .logo {
+            display: block;
+            margin: 0 auto;
+            max-width: 150px;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            margin-bottom: 24px;
+            border-radius: 50%;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            transition: transform 0.2s ease-in-out;
+        }
+
+        .logo:hover {
+            transform: scale(1.1);
+            cursor: pointer;
         }
 
         .btn {
@@ -145,13 +144,16 @@
 
 <body>
     <div class="container">
-        <div class="logo">
-            <span class="logo-text">AN</span>
-        </div>
+            <img class="logo" src="logo.png" alt="ABUAD Logo">
+        
         <h1>Open in ABUAD Nest</h1>
         <p id="description">Join the community, stay updated, and connect with your fellow students.</p>
 
         <div class="actions">
+            <a href="#" id="open-web-btn" class="btn btn-secondary">
+  <span>🌐</span> Open in Web
+</a>
+
             <a href="#" id="open-app-btn" class="btn btn-primary">
                 <span>🚀</span> Open in App
             </a>
@@ -178,6 +180,7 @@
         const androidIntent = `intent://abuadapp.web.app${path}#Intent;scheme=https;package=com.pronown.abuad;S.browser_fallback_url=${encodeURIComponent(universalLink)};end`;
 
         const openAppBtn = document.getElementById('open-app-btn');
+        const openWebBtn = document.getElementById('open-web-btn');
         
         // Detect OS
         const isAndroid = /Android/i.test(navigator.userAgent);
@@ -193,6 +196,10 @@
         } else {
             openAppBtn.href = customScheme;
         }
+        // Fallback for users without the app installed.
+        const webPath = path.startsWith('/') ? path : '/' + path;
+        openWebBtn.href = 'https://abuadapp.web.app/web/#' + webPath + window.location.search;
+
 
         // Auto-redirect logic (only if not already redirected)
         if (postId && postId !== 'post' && postId !== '' && !noRedirect) {

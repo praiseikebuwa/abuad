@@ -33,10 +33,6 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
-            </intent-filter>
             <!-- Deep Linking -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
@@ -53,13 +49,31 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="abuad" />
             </intent-filter>
+
+            <!-- Launch Intent for Flutter Tools -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
         </activity>
 
         <activity-alias
-            android:name=".f1"
+            android:name=".f0"
             android:enabled="false"
             android:exported="true"
-            android:icon="@mipmap/launcher_icon"
+            android:icon="@mipmap/f0"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".f1"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/f1"
             android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -71,7 +85,7 @@
             android:name=".f2"
             android:enabled="false"
             android:exported="true"
-            android:icon="@mipmap/launcher_icon"
+            android:icon="@mipmap/f2"
             android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -83,7 +97,7 @@
             android:name=".f3"
             android:enabled="false"
             android:exported="true"
-            android:icon="@mipmap/launcher_icon"
+            android:icon="@mipmap/f3"
             android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -95,7 +109,7 @@
             android:name=".f4"
             android:enabled="false"
             android:exported="true"
-            android:icon="@mipmap/launcher_icon"
+            android:icon="@mipmap/f4"
             android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -107,7 +121,7 @@
             android:name=".f5"
             android:enabled="false"
             android:exported="true"
-            android:icon="@mipmap/launcher_icon"
+            android:icon="@mipmap/f5"
             android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -119,7 +133,7 @@
             android:name=".f6"
             android:enabled="false"
             android:exported="true"
-            android:icon="@mipmap/launcher_icon"
+            android:icon="@mipmap/f6"
             android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -131,7 +145,19 @@
             android:name=".f7"
             android:enabled="false"
             android:exported="true"
-            android:icon="@mipmap/launcher_icon"
+            android:icon="@mipmap/f7"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".f8"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/f8"
             android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

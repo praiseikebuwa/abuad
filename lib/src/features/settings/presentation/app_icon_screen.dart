@@ -38,21 +38,27 @@ class _AppIconScreenState extends ConsumerState<AppIconScreen> {
 
   // Icon catalogue – each 'name' must match the alias in AndroidManifest / Info.plist
   final List<NestIcon> _icons = const [
-    NestIcon(name: 'f1', assetPath: 'assets/app_icons/f1.png', label: 'Classic Blue', isDefault: true),
+    NestIcon(name: 'f0', assetPath: 'assets/app_icons/f0.png', label: 'Default Icon', isDefault: true),
+    NestIcon(name: 'f1', assetPath: 'assets/app_icons/f1.png', label: 'Classic Blue'),
     NestIcon(name: 'f2', assetPath: 'assets/app_icons/f2.png', label: 'Emerald Green'),
     NestIcon(name: 'f3', assetPath: 'assets/app_icons/f3.png', label: 'Sunset Gold'),
     NestIcon(name: 'f4', assetPath: 'assets/app_icons/f4.png', label: 'Deep Purple'),
     NestIcon(name: 'f5', assetPath: 'assets/app_icons/f5.png', label: 'Midnight Dark'),
     NestIcon(name: 'f6', assetPath: 'assets/app_icons/f6.png', label: 'Vibrant Pink'),
     NestIcon(name: 'f7', assetPath: 'assets/app_icons/f7.png', label: 'Ocean Teal'),
+    NestIcon(name: 'f8', assetPath: 'assets/app_icons/f8.png', label: 'Bonus Icon'),
   ];
 
   // Plugin instance – must receive the full icon set so it can register aliases
-  late final FlutterAppIconChangerPlugin _plugin;
+  FlutterAppIconChangerPlugin? _plugin;
 
   @override
   void initState() {
     super.initState();
+    _isSupported = _supportsAppIconSwitching();
+    if (!_isSupported) {
+      return;
+    }
     _plugin = FlutterAppIconChangerPlugin(
       iconsSet: _icons
           .map((e) => _NestAppIconAdapter(
@@ -65,9 +71,17 @@ class _AppIconScreenState extends ConsumerState<AppIconScreen> {
     _loadCurrentIcon();
   }
 
+  bool _supportsAppIconSwitching() {
+    if (kIsWeb) return false;
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+  }
+
   Future<void> _loadCurrentIcon() async {
+    final plugin = _plugin;
+    if (plugin == null) return;
     try {
-      final iconName = _normalizeIconName(await _plugin.getCurrentIcon());
+      final iconName = _normalizeIconName(await plugin.getCurrentIcon());
       if (mounted) {
         setState(() => _currentIcon = iconName);
       }
@@ -80,10 +94,11 @@ class _AppIconScreenState extends ConsumerState<AppIconScreen> {
   }
 
   Future<void> _changeIcon(NestIcon icon) async {
-    if (_isChanging) return;
+    final plugin = _plugin;
+    if (_isChanging || plugin == null) return;
     try {
       setState(() => _isChanging = true);
-      await _plugin.changeIcon(icon.name);
+      await plugin.changeIcon(icon.name);
       if (mounted) {
         setState(() => _currentIcon = icon.name);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -136,89 +151,107 @@ class _AppIconScreenState extends ConsumerState<AppIconScreen> {
         ),
         foregroundColor: isDark ? Colors.white : AppColors.primaryInk,
       ),
-      body: GridView.builder(
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.all(24),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 20,
-          mainAxisSpacing: 20,
-          childAspectRatio: 0.85,
-        ),
-        itemCount: _icons.length,
-        itemBuilder: (context, index) {
-          final icon = _icons[index];
-          final isSelected =
-              _currentIcon == icon.name ||
-              (_currentIcon == null && icon.isDefault);
+      body: Stack(
+        children: [
+          GridView.builder(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.all(24),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 20,
+              mainAxisSpacing: 20,
+              childAspectRatio: 0.85,
+            ),
+            itemCount: _icons.length,
+            itemBuilder: (context, index) {
+              final icon = _icons[index];
+              final isSelected =
+                  _currentIcon == icon.name ||
+                  (_currentIcon == null && icon.isDefault);
 
-          return GestureDetector(
-            onTap: (!_isSupported || _isChanging) ? null : () => _changeIcon(icon),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              decoration: BoxDecoration(
-                color: theme.cardTheme.color,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                  color: isSelected
-                      ? AppColors.secondaryTeal
-                      : (isDark ? AppColors.borderDark : AppColors.borderLight),
-                  width: isSelected ? 3 : 1,
-                ),
-                boxShadow: isSelected
-                    ? [
-                        BoxShadow(
-                          color: AppColors.secondaryTeal.withValues(alpha: 0.2),
-                          blurRadius: 15,
-                          spreadRadius: 2,
-                        ),
-                      ]
-                    : AppColors.softShadow,
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Image.asset(icon.assetPath, width: 80, height: 80),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    icon.label,
-                    style: TextStyle(
-                      fontWeight:
-                          isSelected ? FontWeight.bold : FontWeight.normal,
+              return GestureDetector(
+                onTap:
+                    (!_isSupported || _isChanging) ? null : () => _changeIcon(icon),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  decoration: BoxDecoration(
+                    color: theme.cardTheme.color,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
                       color: isSelected
                           ? AppColors.secondaryTeal
-                          : theme.textTheme.bodyLarge?.color,
-                      fontSize: 14,
+                          : (isDark ? AppColors.borderDark : AppColors.borderLight),
+                      width: isSelected ? 3 : 1,
                     ),
+                    boxShadow: isSelected
+                        ? [
+                            BoxShadow(
+                              color: AppColors.secondaryTeal.withValues(alpha: 0.2),
+                              blurRadius: 15,
+                              spreadRadius: 2,
+                            ),
+                          ]
+                        : AppColors.softShadow,
                   ),
-                  if (isSelected)
-                    Container(
-                      margin: const EdgeInsets.only(top: 4),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.secondaryTeal.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Text(
-                        'Active',
-                        style: TextStyle(
-                          color: AppColors.secondaryTeal,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: Image.asset(
+                          icon.assetPath,
+                          width: 80,
+                          height: 80,
+                          errorBuilder: (_, _, _) =>
+                              const Icon(Icons.image_not_supported),
                         ),
                       ),
-                    ),
-                ],
+                      const SizedBox(height: 12),
+                      Text(
+                        icon.label,
+                        style: TextStyle(
+                          fontWeight:
+                              isSelected ? FontWeight.bold : FontWeight.normal,
+                          color: isSelected
+                              ? AppColors.secondaryTeal
+                              : theme.textTheme.bodyLarge?.color,
+                          fontSize: 14,
+                        ),
+                      ),
+                      if (isSelected)
+                        Container(
+                          margin: const EdgeInsets.only(top: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.secondaryTeal.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            'Active',
+                            style: TextStyle(
+                              color: AppColors.secondaryTeal,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+          if (_isChanging)
+            Positioned.fill(
+              child: ColoredBox(
+                color: Colors.black.withValues(alpha: 0.12),
+                child: const Center(child: CircularProgressIndicator()),
               ),
             ),
-          );
-        },
+        ],
       ),
       bottomNavigationBar: !_isSupported || kIsWeb
           ? Container(
@@ -249,3 +282,5 @@ final class _NestAppIconAdapter extends AppIcon {
           isDefaultIcon: isDefault,
         );
 }
+
+
