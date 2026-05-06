@@ -1080,10 +1080,10 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                                       IconButton(
                                         onPressed: _likeCurrentStory,
                                         icon: Icon(
-                                          (viewerId != null && story.hasLiked(viewerId))
+                                          (viewerId != null && story.hasLiked(viewerId!))
                                               ? Icons.favorite
                                               : Icons.favorite_border,
-                                          color: (viewerId != null && story.hasLiked(viewerId))
+                                          color: (viewerId != null && story.hasLiked(viewerId!))
                                               ? Colors.red
                                               : Colors.white,
                                         ),

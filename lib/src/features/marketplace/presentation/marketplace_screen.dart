@@ -263,7 +263,27 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
                     _buildRecommendedSection(recommendedAsync),
                     const SizedBox(height: 12),
                     _buildUnifiedFilterBar(),
+                    const SizedBox(height: 8),
                   ],
+                ),
+              ),
+              // Trending + Seller sections belong in the header so they
+              // sit above the full-width grid, not awkwardly inside it.
+              SliverToBoxAdapter(
+                child: StreamBuilder<List<MarketplaceItem>>(
+                  stream: itemsStream,
+                  builder: (context, snapshot) {
+                    final items = snapshot.data ?? [];
+                    if (items.isEmpty) return const SizedBox.shrink();
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildTrendingCategories(items),
+                        _buildSellerHighlights(items),
+                        _buildTrendingHashtagRow(items),
+                      ],
+                    );
+                  },
                 ),
               ),
             ],
@@ -283,19 +303,8 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
 
                 return CustomScrollView(
                   slivers: [
-                    SliverToBoxAdapter(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          if (items.isNotEmpty) ...[
-                            _buildTrendingCategories(items),
-                            _buildSellerHighlights(items),
-                            _buildTrendingHashtagRow(items),
-                          ],
-                          if (_blindMode) _buildBlindSummary(items),
-                        ],
-                      ),
-                    ),
+                    if (_blindMode)
+                      SliverToBoxAdapter(child: _buildBlindSummary(items)),
                     if (items.isEmpty)
                       SliverFillRemaining(
                         child: _buildEmptyState(_searchController.text),

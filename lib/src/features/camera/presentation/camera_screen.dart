@@ -44,7 +44,7 @@ class _CameraScreenState extends State<CameraScreen>
   Duration _recordingDuration = Duration.zero;
   Timer? _countdownTimer;
   bool _timerModeActive = false;
-  final int _timerDelaySeconds = 3; // 3 or 10
+  int _timerDelaySeconds = 3; // 3 or 10
   int _timerCountdownValue = 0;
   bool _isMirrored = true;
   double _exposureOffset = 0.0;
@@ -167,12 +167,10 @@ class _CameraScreenState extends State<CameraScreen>
       if (assets.isEmpty) return;
       final asset = assets[0];
       final Uint8List? thumb = await asset.thumbnailData;
-      if (mounted) {
-        setState(() {
+      if (mounted) setState(() {
         _latestGallerImage = thumb;
         _latestAsset = asset;
       });
-      }
     } catch (e) {
       debugPrint('Error fetching latest gallery image: $e');
     }
@@ -366,9 +364,8 @@ class _CameraScreenState extends State<CameraScreen>
               onTap: () {
                 Navigator.pop(context);
                 setState(() => _resolutionPreset = preset);
-                if (_cameras.isNotEmpty) {
+                if (_cameras.isNotEmpty)
                   _onNewCameraSelected(_cameras[_selectedCameraIndex]);
-                }
               },
             );
           }).toList(),

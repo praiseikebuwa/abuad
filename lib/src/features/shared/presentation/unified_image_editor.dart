@@ -8,7 +8,7 @@ import '../../../core/theme/app_colors.dart';
 
 /// A unified screen for editing images across the ABUAD app.
 /// This screen wraps [ProImageEditor] with consistent branding and configuration.
-class UnifiedImageEditor extends StatelessWidget {
+class UnifiedImageEditor extends StatefulWidget {
   final File file;
   final Function(XFile editedFile) onImageEditingComplete;
 
@@ -36,26 +36,48 @@ class UnifiedImageEditor extends StatelessWidget {
   }
 
   @override
+  State<UnifiedImageEditor> createState() => _UnifiedImageEditorState();
+}
+
+class _UnifiedImageEditorState extends State<UnifiedImageEditor> {
+  bool _isProcessing = false;
+
+  @override
   Widget build(BuildContext context) {
     return ProImageEditor.file(
-      file,
+      widget.file,
       callbacks: ProImageEditorCallbacks(
         onImageEditingComplete: (Uint8List bytes) async {
-          // Save edited image to a temporary file
-          final tempDir = await getTemporaryDirectory();
-          final timestamp = DateTime.now().millisecondsSinceEpoch;
-          final editedPath = '${tempDir.path}/edited_$timestamp.jpg';
-          final editedFile = File(editedPath);
-          await editedFile.writeAsBytes(bytes);
+          if (_isProcessing) return;
           
-          onImageEditingComplete(XFile(editedPath));
-          
-          if (context.mounted) {
-            Navigator.pop(context);
+          setState(() {
+            _isProcessing = true;
+          });
+
+          try {
+            // Save edited image to a temporary file
+            final tempDir = await getTemporaryDirectory();
+            final timestamp = DateTime.now().millisecondsSinceEpoch;
+            final editedPath = '${tempDir.path}/edited_$timestamp.jpg';
+            final editedFile = File(editedPath);
+            await editedFile.writeAsBytes(bytes);
+            
+            widget.onImageEditingComplete(XFile(editedPath));
+            
+            if (mounted) {
+              Navigator.pop(context);
+            }
+          } catch (e) {
+            debugPrint('Error saving edited image: $e');
+            if (mounted) {
+              setState(() {
+                _isProcessing = false;
+              });
+            }
           }
         },
         onCloseEditor: (editorMode) {
-          if (context.mounted) Navigator.pop(context);
+          if (mounted) Navigator.pop(context);
         },
       ),
       configs: ProImageEditorConfigs(

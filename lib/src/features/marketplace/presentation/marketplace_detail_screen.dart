@@ -197,7 +197,7 @@ class MarketplaceDetailScreen extends ConsumerWidget {
                         return const Text('Seller info unavailable');
                       }
                       return GestureDetector(
-                        onTap: () => context.push('/profile/${item.sellerId}'),
+                        onTap: () => context.push('/user/${item.sellerId}'),
                         child: Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
