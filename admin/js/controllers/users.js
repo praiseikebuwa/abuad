@@ -19,12 +19,16 @@ class UsersController {
         if (this.unsubscribe) this.unsubscribe();
 
         this.unsubscribe = db.collection('users')
-            .orderBy('createdAt', 'desc')
-            .limit(100)
+            .limit(500)
             .onSnapshot(snap => {
                 this.users = [];
                 snap.forEach(doc => {
                     this.users.push({ id: doc.id, ...doc.data() });
+                });
+                this.users.sort((a, b) => {
+                    const timeA = a.createdAt?.seconds || a.created_at?.seconds || 0;
+                    const timeB = b.createdAt?.seconds || b.created_at?.seconds || 0;
+                    return timeB - timeA;
                 });
                 this.renderTable(this.users);
             }, err => {
@@ -57,9 +61,10 @@ class UsersController {
 
         userList.forEach(user => {
             const tr = document.createElement('tr');
-
-            const initial = user.displayName ? user.displayName[0].toUpperCase() : '?';
-            const vType = user.verificationType || (user.isVerified ? 'blue' : 'none');
+            const displayName = user.display_name || user.displayName || 'No Name';
+            const initial = displayName[0].toUpperCase();
+            const avatarUrl = user.avatar_url || user.profile_image_url || user.avatarUrl;
+            const vType = user.verification_type || user.verificationType || (user.is_verified || user.isVerified ? 'blue' : 'none');
 
             let badgeHtml = '';
             let iconHtml = '';
@@ -77,13 +82,15 @@ class UsersController {
             tr.innerHTML = `
                 <td>
                     <div class="user-cell">
-                        <div class="avatar-initial" style="background-color: ${seededColor(user.displayName)}">${initial}</div>
+                        <div class="avatar-initial" style="background-color: ${seededColor(displayName)}; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; overflow: hidden; font-size: 1.2rem; color: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+                            ${avatarUrl ? `<img src="${avatarUrl}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';" /><span style="display:none;">${initial}</span>` : initial}
+                        </div>
                         <div>
                             <div class="user-name">
-                                ${user.displayName || 'No Name'} 
+                                ${displayName} 
                                 ${iconHtml}
                             </div>
-                            <small class="user-email">${user.email}</small>
+                            <small class="user-email">${user.email || 'No email'}</small>
                         </div>
                     </div>
                 </td>
@@ -95,40 +102,40 @@ class UsersController {
                 <td>
                     ${badgeHtml}
                 </td>
-                <td>${formatDate(user.createdAt || user.created_at)}</td>
+                <td>${formatDate(user.created_at || user.createdAt)}</td>
                 <td>
-                    <div class="action-buttons">
+                    <div class="action-buttons" style="display: flex; gap: 8px; align-items: center;">
                         <button class="btn-icon btn-view" 
                                 onclick="window.usersController.openUserModal('${user.id}')"
-                                title="View Profile" style="color: var(--color-primary-light)">
+                                title="View Profile" style="color: #4facfe; background: rgba(79, 172, 254, 0.1); border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer;">
                             <i class="fas fa-id-badge"></i>
                         </button>
-                        <div class="verification-tier-buttons">
+                        <div class="verification-tier-buttons" style="display: flex; gap: 2px; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 2px;">
                             <button class="btn-icon btn-tier-none ${vType === 'none' ? 'active' : ''}" 
                                     onclick="window.usersController.setVerification('${user.id}', 'none')"
-                                    title="Unverify">
+                                    title="Unverify" style="background: ${vType === 'none' ? 'rgba(255,255,255,0.1)' : 'transparent'}; border: none; color: #fff; padding: 4px 6px; cursor: pointer; border-radius: 2px;">
                                 <i class="fas fa-times"></i>
                             </button>
                             <button class="btn-icon btn-tier-blue ${vType === 'blue' ? 'active' : ''}" 
                                     onclick="window.usersController.setVerification('${user.id}', 'blue')"
-                                    title="Blue Badge">
+                                    title="Blue Badge" style="background: ${vType === 'blue' ? 'rgba(29, 161, 242, 0.2)' : 'transparent'}; border: none; color: #1DA1F2; padding: 4px 6px; cursor: pointer; border-radius: 2px;">
                                 <i class="fas fa-check"></i>
                             </button>
                             <button class="btn-icon btn-tier-gold ${vType === 'gold' ? 'active' : ''}" 
                                     onclick="window.usersController.setVerification('${user.id}', 'gold')"
-                                    title="Gold Badge">
+                                    title="Gold Badge" style="background: ${vType === 'gold' ? 'rgba(255, 215, 0, 0.2)' : 'transparent'}; border: none; color: #FFD700; padding: 4px 6px; cursor: pointer; border-radius: 2px;">
                                 <i class="fas fa-award"></i>
                             </button>
                         </div>
                         <button class="btn-icon ${user.status === 'banned' ? 'btn-unban' : 'btn-ban'}" 
                                 onclick="window.usersController.toggleBan('${user.id}', ${user.status === 'banned'})"
                                 title="${user.status === 'banned' ? 'Unban User' : 'Ban User'}"
-                                style="color: ${user.status === 'banned' ? '#4caf50' : '#f44336'}">
+                                style="color: ${user.status === 'banned' ? '#4caf50' : '#f44336'}; background: rgba(0,0,0,0.2); border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer;">
                             <i class="fas ${user.status === 'banned' ? 'fa-unlock' : 'fa-ban'}"></i>
                         </button>
                         <button class="btn-icon btn-delete" 
                                 onclick="window.usersController.deleteUser('${user.id}')"
-                                title="Delete User">
+                                title="Delete User" style="color: #ff4d4d; background: rgba(255, 77, 77, 0.1); border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer;">
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>
@@ -154,7 +161,11 @@ class UsersController {
             document.body.appendChild(modal);
         }
 
-        const vBadge = user.verificationType === 'gold' ? '🥇 Gold' : (user.verificationType === 'blue' ? 'Verified' : 'None');
+        const displayName = user.display_name || user.displayName || 'No Name';
+        const avatarUrl = user.avatar_url || user.profile_image_url || user.avatarUrl;
+        const initial = displayName[0].toUpperCase();
+        const vType = user.verification_type || user.verificationType || (user.is_verified || user.isVerified ? 'blue' : 'none');
+        const vBadge = vType === 'gold' ? '🥇 Gold' : (vType === 'blue' ? 'Verified' : 'None');
 
         modal.innerHTML = `
             <div class="modal-content" style="width: 500px;">
@@ -164,11 +175,11 @@ class UsersController {
                 </div>
                 <div class="modal-body">
                     <div style="display:flex; gap:20px; align-items:center; margin-bottom:25px;">
-                        <div class="avatar-initial" style="width:80px; height:80px; font-size:2rem; background-color: ${seededColor(user.displayName)}">
-                            ${user.displayName ? user.displayName[0].toUpperCase() : '?'}
+                        <div class="avatar-initial" style="width:80px; height:80px; font-size:2rem; background-color: ${seededColor(displayName)}; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
+                            ${avatarUrl ? `<img src="${avatarUrl}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';" /><span style="display:none;">${initial}</span>` : initial}
                         </div>
                         <div>
-                            <h2 style="margin:0">${user.displayName || 'No Name'}</h2>
+                            <h2 style="margin:0">${displayName}</h2>
                             <p style="color:var(--text-secondary); margin:4px 0;">@${user.handle || 'no_handle'}</p>
                             <span class="status-badge ${user.status || 'offline'}">${user.status || 'Offline'}</span>
                         </div>
@@ -177,7 +188,7 @@ class UsersController {
                     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
                         <div class="card" style="padding:15px; background:rgba(255,255,255,0.02)">
                             <small style="color:var(--text-muted)">Email</small>
-                            <div style="font-weight:500; word-break:break-all;">${user.email}</div>
+                            <div style="font-weight:500; word-break:break-all;">${user.email || 'N/A'}</div>
                         </div>
                         <div class="card" style="padding:15px; background:rgba(255,255,255,0.02)">
                             <small style="color:var(--text-muted)">College/Department</small>
@@ -201,8 +212,8 @@ class UsersController {
                     <div style="margin-top:20px;">
                         <small style="color:var(--text-muted)">Streak/Activity</small>
                         <div style="display:flex; gap:10px; margin-top:5px;">
-                             <span>🔥 ${user.streak || 0} Day Streak</span>
-                             <span>📅 Joined ${formatDate(user.createdAt)}</span>
+                             <span>🔥 ${user.streak_count || user.streak || 0} Day Streak</span>
+                             <span>📅 Joined ${formatDate(user.created_at || user.createdAt)}</span>
                         </div>
                     </div>
                 </div>

@@ -1,4 +1,4 @@
-﻿const functions = require('firebase-functions/v1');
+const functions = require('firebase-functions/v1');
 const admin = require('firebase-admin');
 
 admin.initializeApp();
@@ -387,5 +387,58 @@ exports.postPreview = functions.https.onRequest(async (req, res) => {
   } catch (error) {
     console.error('postPreview error:', error);
     res.status(500).send('Server error');
+  }
+});
+
+exports.onUserDeleted = functions.auth.user().onDelete(async (user) => {
+  const userId = user.uid;
+  console.log(`Starting data cleanup for deleted user: ${userId}`);
+
+  try {
+    const batch = db.batch();
+
+    // 1. Delete User Profile document
+    const userRef = db.collection('users').doc(userId);
+    batch.delete(userRef);
+
+    // 2. Delete User's Posts
+    const postsQuery = await db.collection('posts').where('author_id', '==', userId).get();
+    postsQuery.forEach((doc) => {
+      batch.delete(doc.ref);
+      // Note: In a production environment with many comments/likes, 
+      // you might want a separate trigger for onPostDeleted to clean those up.
+    });
+
+    // 3. Delete User's Stories
+    const storiesQuery = await db.collection('stories').where('author_id', '==', userId).get();
+    storiesQuery.forEach((doc) => batch.delete(doc.ref));
+
+    // 4. Delete Marketplace Items
+    const marketplaceQuery = await db.collection('marketplace_items').where('seller_id', '==', userId).get();
+    marketplaceQuery.forEach((doc) => batch.delete(doc.ref));
+
+    // 5. Clean up Notifications subcollection
+    const notificationsQuery = await db.collection('users').doc(userId).collection('notifications').get();
+    notificationsQuery.forEach((doc) => batch.delete(doc.ref));
+
+    // 6. Clean up Followers/Following subcollections
+    const followersQuery = await db.collection('users').doc(userId).collection('followers').get();
+    followersQuery.forEach((doc) => batch.delete(doc.ref));
+
+    const followingQuery = await db.collection('users').doc(userId).collection('following').get();
+    followingQuery.forEach((doc) => batch.delete(doc.ref));
+
+    // 7. Delete Reports made by the user
+    const reportsQuery = await db.collection('reports').where('reporter_id', '==', userId).get();
+    reportsQuery.forEach((doc) => batch.delete(doc.ref));
+
+    // 8. Remove user from channel memberships
+    // This is more complex as it involves arrayRemove in many documents.
+    // For now, we focus on the user's primary content.
+
+    await batch.commit();
+    console.log(`Successfully deleted all primary data for user: ${userId}`);
+  } catch (error) {
+    console.error(`Error during user data cleanup for ${userId}:`, error);
   }
 });

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -113,6 +114,13 @@ class AuthRepository {
   // Google Sign In
   Future<UserCredential?> signInWithGoogle() async {
     try {
+      if (kIsWeb) {
+        // Use signInWithPopup for Web - more reliable and doesn't require GoogleSignIn package config
+        final googleProvider = GoogleAuthProvider();
+        return await _auth.signInWithPopup(googleProvider);
+      }
+
+      // Mobile/Desktop flow
       final GoogleSignIn googleSignIn = GoogleSignIn();
       final googleUser = await googleSignIn.signIn();
 
@@ -127,6 +135,7 @@ class AuthRepository {
 
       return await _auth.signInWithCredential(credential);
     } catch (e) {
+      debugPrint('Google Sign-In Error: $e');
       throw Exception('Google Sign-In failed: $e');
     }
   }

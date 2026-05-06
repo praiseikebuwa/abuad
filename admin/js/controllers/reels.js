@@ -48,12 +48,12 @@ class ReelsController {
             card.style.aspectRatio = '9 / 16';
             card.style.cursor = 'pointer';
 
-            const thumbnailUrl = reel.thumbnail_url || (reel.mediaUrl ? reel.mediaUrl : '');
+            const thumbnailUrl = reel.thumbnail_url || (reel.media_url || reel.mediaUrl || '');
             
             card.innerHTML = `
                 <div class="reel-thumbnail" style="width:100%; height:100%; background: #000 url('${thumbnailUrl}') center/cover no-repeat;">
                     <div class="reel-overlay" style="position:absolute; bottom:0; left:0; right:0; padding:15px; background:linear-gradient(transparent, rgba(0,0,0,0.8));">
-                        <div style="font-weight:600; font-size:0.9rem; margin-bottom:4px;">@${reel.authorHandle || 'user'}</div>
+                        <div style="font-weight:600; font-size:0.9rem; margin-bottom:4px;">@${reel.author_handle || reel.authorHandle || 'user'}</div>
                         <div style="font-size:0.8rem; color:rgba(255,255,255,0.7); display:flex; gap:10px;">
                             <span><i class="fas fa-heart"></i> ${reel.likes_count || 0}</span>
                             <span><i class="fas fa-play"></i> ${reel.views_count || 0}</span>
@@ -105,10 +105,10 @@ class ReelsController {
                 <button onclick="document.getElementById('reel-preview-modal').style.display='none'" 
                         class="btn-close" style="position:absolute; top:20px; right:20px; z-index:100; color:white; text-shadow:0 2px 4px rgba(0,0,0,0.5)">&times;</button>
                 
-                <video src="${reel.mediaUrl}" controls autoplay loop style="width:100%; height:100%; object-fit: cover; border-radius:20px;"></video>
+                <video src="${reel.media_url || reel.mediaUrl}" controls autoplay loop style="width:100%; height:100%; object-fit: cover; border-radius:20px;"></video>
                 
                 <div class="reel-info" style="position:absolute; bottom:20px; left:20px; right:20px; pointer-events:none;">
-                    <div style="font-weight:700; font-size:1.1rem; color:white;">${reel.authorName || 'User'}</div>
+                    <div style="font-weight:700; font-size:1.1rem; color:white;">${reel.author_name || reel.authorName || 'User'}</div>
                     <div style="font-size:0.9rem; color:rgba(255,255,255,0.9); margin-top:8px;">${reel.content || ''}</div>
                 </div>
             </div>
@@ -129,9 +129,9 @@ class ReelsController {
 
     async toggleTrending(id) {
         const reel = this.reels.find(r => r.id === id);
-        const newState = !reel.isTrending;
+        const newState = !(reel.is_trending || reel.isTrending);
         try {
-            await db.collection('posts').doc(id).update({ isTrending: newState });
+            await db.collection('posts').doc(id).update({ is_trending: newState });
             window.logAdminAction('TOGGLE_TRENDING', `Admin set reel ${id} trending to ${newState}`, 'reel', id);
             alert(`Reel is now ${newState ? 'Trending' : 'Not Trending'}`);
         } catch (err) {

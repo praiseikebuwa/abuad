@@ -56,11 +56,28 @@
                     "function": "postPreview"
                 },
                 {
+                    "source": "/web/**",
+                    "destination": "/web/index.html"
+                },
+                {
+                    "source": "/admin/**",
+                    "destination": "/admin/index.html"
+                },
+                {
                     "source": "**",
                     "destination": "/index.html"
                 }
             ],
             "headers": [
+                {
+                    "source": "/**",
+                    "headers": [
+                        {
+                            "key": "Cross-Origin-Opener-Policy",
+                            "value": "same-origin-allow-popups"
+                        }
+                    ]
+                },
                 {
                     "source": "/.well-known/apple-app-site-association",
                     "headers": [

@@ -813,269 +813,250 @@ class _PostCardState extends ConsumerState<PostCard> {
     WidgetRef ref,
     domain.Post post,
   ) {
-    final repo = ref.read(postRepositoryProvider);
-    final currentUserId = repo.currentUserId;
-    final isOwnPost = post.authorId == currentUserId;
-
     showModalBottomSheet(
       context: context,
-      builder: (context) => SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (isOwnPost)
-              ListTile(
-                leading: const Icon(Icons.delete, color: Colors.red),
-                title: const Text(
-                  'Delete Post',
-                  style: TextStyle(color: Colors.red),
-                ),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final confirmed = await showDialog<bool>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('Delete Post'),
-                      content: const Text(
-                        'Are you sure you want to delete this post? This action cannot be undone.',
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, false),
-                          child: const Text('Cancel'),
-                        ),
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, true),
-                          style: TextButton.styleFrom(
-                            backgroundColor: const Color.fromARGB(
-                              255,
-                              30,
-                              30,
-                              30,
-                            ).withValues(alpha: 0.1),
-                          ),
-                          child: const Text('Delete'),
-                        ),
-                      ],
-                    ),
-                  );
+      builder: (context) => Consumer(
+        builder: (context, ref, _) {
+          final repo = ref.read(postRepositoryProvider);
+          final currentUserId = repo.currentUserId;
+          final isOwnPost = post.authorId == currentUserId;
 
-                  if (confirmed == true) {
-                    try {
-                      await repo.deletePost(post.id);
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Post deleted')),
-                        );
-                      }
-                    } catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(
-                          context,
-                        ).showSnackBar(SnackBar(content: Text('Error: $e')));
-                      }
-                    }
-                  }
-                },
-              ),
-            Consumer(
-              builder: (context, ref, child) {
-                final isSavedAsync = ref.watch(isPostSavedProvider(post.id));
-                final isSaved = isSavedAsync.value ?? false;
-                return ListTile(
-                  leading: Icon(
-                    isSaved ? Icons.bookmark : Icons.bookmark_border,
-                    color: isSaved ? AppColors.secondaryTeal : null,
-                  ),
-                  title: Text(isSaved ? 'Unsave Post' : 'Save Post'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    ref.read(userRepositoryProvider).togglePostSave(post.id);
-                  },
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.share_outlined),
-              title: const Text('Share Post'),
-              onTap: () {
-                Navigator.pop(context);
-                ShareSheet.show(context, post);
-              },
-            ),
-            if (post.mediaUrl.isNotEmpty &&
-                (post.mediaType == domain.MediaType.image ||
-                    post.mediaType == domain.MediaType.gif))
-              ListTile(
-                leading: const Icon(Icons.download),
-                title: Text(
-                  post.mediaType == domain.MediaType.video
-                      ? 'Save Video'
-                      : 'Save Image',
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  if (post.mediaType == domain.MediaType.video) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => FullScreenVideoView(
-                          videoUrl: post.mediaUrl,
-                          heroTag: 'post_media_${post.id}',
-                        ),
-                      ),
-                    );
-                  } else {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => FullScreenImageView(
-                          imageUrl: post.mediaUrl,
-                          heroTag: 'post_media_${post.id}',
-                        ),
-                      ),
-                    );
-                  }
-                },
-              ),
-            // Feature 2: "Not Interested" option
-            if (!isOwnPost)
-              ListTile(
-                leading: const Icon(
-                  Icons.thumb_down_alt_outlined,
-                  color: Colors.blueGrey,
-                ),
-                title: const Text('Not Interested'),
-                subtitle: const Text('See fewer posts like this'),
-                onTap: () {
-                  Navigator.pop(context);
-                  // Hide this specific post
-                  ref.read(hiddenPostsProvider.notifier).hide(post.id);
-                  // Optionally mute its hashtags
-                  if (post.hashtags.isNotEmpty) {
-                    showDialog(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('Tune your feed'),
-                        content: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('Also mute these topics?'),
-                            const SizedBox(height: 12),
-                            Wrap(
-                              spacing: 8,
-                              children: post.hashtags
-                                  .take(5)
-                                  .map(
-                                    (tag) => ActionChip(
-                                      label: Text('#$tag'),
-                                      onPressed: () {
-                                        ref
-                                            .read(
-                                              mutedHashtagsProvider.notifier,
-                                            )
-                                            .mute(tag);
-                                        Navigator.pop(ctx);
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          SnackBar(
-                                            content: Text('Muted #$tag'),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  )
-                                  .toList(),
+          return SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (isOwnPost)
+                  ListTile(
+                    leading: const Icon(Icons.delete, color: Colors.red),
+                    title: const Text(
+                      'Delete Post',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                    onTap: () async {
+                      final navigator = Navigator.of(context);
+                      final scaffoldMessenger = ScaffoldMessenger.of(context);
+                      
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Delete Post'),
+                          content: const Text(
+                            'Are you sure you want to delete this post? This action cannot be undone.',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('Cancel'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text('Delete'),
                             ),
                           ],
                         ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx),
-                            child: const Text('Skip'),
-                          ),
-                        ],
-                      ),
-                    );
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Post hidden from your feed'),
-                      ),
-                    );
-                  }
-                },
-              ),
-            if (!isOwnPost)
-              ListTile(
-                leading: const Icon(Icons.block, color: Colors.orange),
-                title: const Text(
-                  'Block User',
-                  style: TextStyle(color: Colors.orange),
-                ),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final confirmed = await showDialog<bool>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('Block User?'),
-                      content: Text(
-                        'Are you sure you want to block ${post.authorName}? You will no longer see their posts and they won\'t be able to message you.',
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, false),
-                          child: const Text('Cancel'),
-                        ),
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, true),
-                          style: TextButton.styleFrom(
-                            foregroundColor: Colors.orange,
-                          ),
-                          child: const Text('Block'),
-                        ),
-                      ],
-                    ),
-                  );
-
-                  if (confirmed == true) {
-                    await ref
-                        .read(userRepositoryProvider)
-                        .blockUser(post.authorId);
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('${post.authorName} blocked')),
                       );
-                    }
-                  }
-                },
-              ),
-            ListTile(
-              leading: const Icon(Icons.report_outlined),
-              title: const Text('Report Post'),
-              onTap: () {
-                Navigator.pop(context);
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (context) => ReportBottomSheet(
-                    targetId: post.id,
-                    type: ReportType.post,
+
+                      if (confirmed == true) {
+                        navigator.pop(); // Close bottom sheet
+                        try {
+                          await repo.deletePost(post.id);
+                          scaffoldMessenger.showSnackBar(
+                            const SnackBar(content: Text('Post deleted')),
+                          );
+                        } catch (e) {
+                          scaffoldMessenger.showSnackBar(
+                            SnackBar(content: Text('Error: $e')),
+                          );
+                        }
+                      }
+                    },
                   ),
-                );
-              },
+                Builder(
+                  builder: (context) {
+                    final isSavedAsync = ref.watch(isPostSavedProvider(post.id));
+                    final isSaved = isSavedAsync.value ?? false;
+                    return ListTile(
+                      leading: Icon(
+                        isSaved ? Icons.bookmark : Icons.bookmark_border,
+                        color: isSaved ? AppColors.secondaryTeal : null,
+                      ),
+                      title: Text(isSaved ? 'Unsave Post' : 'Save Post'),
+                      onTap: () {
+                        Navigator.pop(context);
+                        ref.read(userRepositoryProvider).togglePostSave(post.id);
+                      },
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.share_outlined),
+                  title: const Text('Share Post'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    ShareSheet.show(context, post);
+                  },
+                ),
+                if (post.mediaUrl.isNotEmpty &&
+                    (post.mediaType == domain.MediaType.image ||
+                        post.mediaType == domain.MediaType.gif))
+                  ListTile(
+                    leading: const Icon(Icons.download),
+                    title: Text(
+                      post.mediaType == domain.MediaType.video
+                          ? 'Save Video'
+                          : 'Save Image',
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      if (post.mediaType == domain.MediaType.video) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => FullScreenVideoView(
+                              videoUrl: post.mediaUrl,
+                              heroTag: 'post_media_${post.id}',
+                            ),
+                          ),
+                        );
+                      } else {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => FullScreenImageView(
+                              imageUrl: post.mediaUrl,
+                              heroTag: 'post_media_${post.id}',
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                if (!isOwnPost)
+                  ListTile(
+                    leading: const Icon(
+                      Icons.thumb_down_alt_outlined,
+                      color: Colors.blueGrey,
+                    ),
+                    title: const Text('Not Interested'),
+                    subtitle: const Text('See fewer posts like this'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      ref.read(hiddenPostsProvider.notifier).hide(post.id);
+                      if (post.hashtags.isNotEmpty) {
+                        showDialog(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('Tune your feed'),
+                            content: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Also mute these topics?'),
+                                const SizedBox(height: 12),
+                                Wrap(
+                                  spacing: 8,
+                                  children: post.hashtags
+                                      .take(5)
+                                      .map(
+                                        (tag) => ActionChip(
+                                          label: Text('#$tag'),
+                                          onPressed: () {
+                                            ref
+                                                .read(mutedHashtagsProvider.notifier)
+                                                .mute(tag);
+                                            Navigator.pop(ctx);
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(content: Text('Muted #$tag')),
+                                            );
+                                          },
+                                        ),
+                                      )
+                                      .toList(),
+                                ),
+                              ],
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx),
+                                child: const Text('Skip'),
+                              ),
+                            ],
+                          ),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Post hidden from your feed')),
+                        );
+                      }
+                    },
+                  ),
+                if (!isOwnPost)
+                  ListTile(
+                    leading: const Icon(Icons.block, color: Colors.orange),
+                    title: const Text(
+                      'Block User',
+                      style: TextStyle(color: Colors.orange),
+                    ),
+                    onTap: () async {
+                      final navigator = Navigator.of(context);
+                      final scaffoldMessenger = ScaffoldMessenger.of(context);
+                      
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Block User?'),
+                          content: Text(
+                            'Are you sure you want to block ${post.authorName}? You will no longer see their posts and they won\'t be able to message you.',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('Cancel'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              style: TextButton.styleFrom(foregroundColor: Colors.orange),
+                              child: const Text('Block'),
+                            ),
+                          ],
+                        ),
+                      );
+
+                      if (confirmed == true) {
+                        navigator.pop(); // Close bottom sheet
+                        await ref.read(userRepositoryProvider).blockUser(post.authorId);
+                        scaffoldMessenger.showSnackBar(
+                          SnackBar(content: Text('${post.authorName} blocked')),
+                        );
+                      }
+                    },
+                  ),
+                ListTile(
+                  leading: const Icon(Icons.report_outlined),
+                  title: const Text('Report Post'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (context) => ReportBottomSheet(
+                        targetId: post.id,
+                        type: ReportType.post,
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.cancel),
+                  title: const Text('Cancel'),
+                  onTap: () => Navigator.pop(context),
+                ),
+              ],
             ),
-            ListTile(
-              leading: const Icon(Icons.cancel),
-              title: const Text('Cancel'),
-              onTap: () => Navigator.pop(context),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

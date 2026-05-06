@@ -10,7 +10,7 @@ class PostsController {
         if (this.unsubscribe) this.unsubscribe();
 
         this.unsubscribe = db.collection('posts')
-            .orderBy('timestamp', 'desc')
+            .orderBy('created_at', 'desc')
             .limit(50)
             .onSnapshot(snap => {
                 this.posts = [];
@@ -48,14 +48,14 @@ class PostsController {
                 <td>
                     ${isAnon ?
                     '<span class="badge badge-gray"><i class="fas fa-mask"></i> Anonymous</span>' :
-                    `@${post.authorHandle || 'user'}`
+                    `@${post.author_handle || post.authorHandle || 'user'}`
                 }
                 </td>
                 <td>
                     <small><i class="fas fa-heart" style="color: #e91e63"></i> ${post.likesCount || 0}</small>
                     <small style="margin-left:8px"><i class="fas fa-comment" style="color: #2196f3"></i> ${post.commentsCount || 0}</small>
                 </td>
-                <td>${this.timeAgo(post.timestamp)}</td>
+                <td>${this.timeAgo(post.created_at || post.timestamp)}</td>
                 <td>
                     <button class="btn-icon btn-view" 
                             onclick="window.postsController.openPostModal('${post.id}')"
@@ -99,10 +99,10 @@ class PostsController {
                 <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
                     <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
                         <div>
-                            <span style="font-weight:700; font-size:1.1rem;">${post.authorName || 'User'}</span>
-                            <span style="color:var(--text-secondary)"> @${post.authorHandle || 'handle'}</span>
+                            <span style="font-weight:700; font-size:1.1rem;">${post.author_name || post.authorName || 'User'}</span>
+                            <span style="color:var(--text-secondary)"> @${post.author_handle || post.authorHandle || 'handle'}</span>
                         </div>
-                        <small style="color:var(--text-muted)">${this.timeAgo(post.timestamp)}</small>
+                        <small style="color:var(--text-muted)">${this.timeAgo(post.created_at || post.timestamp)}</small>
                     </div>
 
                     <div style="font-size:1.1rem; line-height:1.6; margin-bottom:20px; white-space:pre-wrap;">${post.content || ''}</div>

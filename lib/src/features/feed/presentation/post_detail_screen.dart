@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:glassmorphism/glassmorphism.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -1067,36 +1068,45 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                               ),
                               const SizedBox(width: 12),
                               Expanded(
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
+                                child: GlassmorphicContainer(
+                                  width: double.infinity,
+                                  height: 50,
+                                  borderRadius: 25,
+                                  blur: 20,
+                                  alignment: Alignment.center,
+                                  border: 1,
+                                  linearGradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
+                                      isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.02),
+                                    ],
+                                    stops: const [0.1, 1],
                                   ),
-                                  decoration: BoxDecoration(
-                                    color: isDark
-                                        ? const Color(0xFF2A2A2A)
-                                        : Colors.grey[100],
-                                    borderRadius: BorderRadius.circular(24),
-                                    border: Border.all(
-                                      color: isDark
-                                          ? Colors.grey[800]!
-                                          : Colors.grey[300]!,
-                                    ),
+                                  borderGradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      isDark ? Colors.white.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.1),
+                                      isDark ? Colors.white.withValues(alpha: 0.0) : Colors.black.withValues(alpha: 0.0),
+                                    ],
                                   ),
-                                  child: TextField(
-                                    controller: _commentController,
-                                    decoration: const InputDecoration(
-                                      hintText: 'Post your reply',
-                                      border: InputBorder.none,
-                                      isDense: true,
-                                      contentPadding: EdgeInsets.symmetric(
-                                        vertical: 10,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                                    child: TextField(
+                                      controller: _commentController,
+                                      decoration: const InputDecoration(
+                                        hintText: 'Post your reply',
+                                        border: InputBorder.none,
+                                        isDense: true,
+                                        contentPadding: EdgeInsets.only(bottom: 2),
                                       ),
+                                      maxLines: 1,
+                                      textCapitalization:
+                                          TextCapitalization.sentences,
+                                      style: const TextStyle(fontSize: 14),
                                     ),
-                                    maxLines: 5,
-                                    minLines: 1,
-                                    textCapitalization:
-                                        TextCapitalization.sentences,
-                                    style: const TextStyle(fontSize: 14),
                                   ),
                                 ),
                               ),

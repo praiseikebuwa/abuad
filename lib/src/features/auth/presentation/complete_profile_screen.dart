@@ -101,6 +101,29 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
       'Radiography',
       'Optometry',
     ],
+    'Arts & Humanities': [
+      'History',
+      'English',
+      'Philosophy',
+      'Linguistics',
+      'Religious Studies',
+    ],
+    'Agriculture': [
+      'Animal Science',
+      'Crop Science',
+      'Agricultural Economics',
+    ],
+    'Education': [
+      'Guidance & Counseling',
+      'Educational Management',
+      'Physical & Health Education',
+    ],
+    'Environmental Sciences': [
+      'Architecture',
+      'Estate Management',
+      'Quantity Surveying',
+      'Urban & Regional Planning',
+    ],
   };
 
   List<String> get _availableDepartments {
@@ -172,7 +195,7 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
             'college': _college,
             'department': _department,
             'bio': _bioController.text.trim(),
-            'avatar_url': ?photoUrl,
+            'avatar_url': photoUrl,
           })
           .timeout(const Duration(seconds: 8));
       debugPrint('✅ Firestore update successful!');

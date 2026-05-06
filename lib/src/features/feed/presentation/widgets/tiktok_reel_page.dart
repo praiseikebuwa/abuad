@@ -658,16 +658,20 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
   }
 
   Widget _buildProgressBar() {
-    final totalMs = _duration.inMilliseconds;
-    final progress = totalMs <= 0
-        ? 0.0
-        : (_position.inMilliseconds / totalMs).clamp(0.0, 1.0);
-    return IgnorePointer(
-      child: LinearProgressIndicator(
-        minHeight: 2.5,
-        value: progress,
-        backgroundColor: Colors.white24,
-        valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFE2C55)),
+    if (_controller == null || !_controller!.value.isInitialized) {
+      return const SizedBox(height: 2.5);
+    }
+    return SizedBox(
+      height: 12,
+      child: VideoProgressIndicator(
+        _controller!,
+        allowScrubbing: true,
+        padding: const EdgeInsets.only(top: 9.5),
+        colors: const VideoProgressColors(
+          playedColor: Color(0xFFFE2C55),
+          backgroundColor: Colors.white24,
+          bufferedColor: Colors.white38,
+        ),
       ),
     );
   }

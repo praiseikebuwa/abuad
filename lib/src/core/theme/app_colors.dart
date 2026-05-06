@@ -48,14 +48,41 @@ class AppColors {
     end: Alignment.bottomRight,
   );
 
+  static const LinearGradient premiumGradient = LinearGradient(
+    colors: [
+      Color(0xFF0B1B3A), // primaryInk
+      Color(0xFF1F5F5B), // secondaryTeal
+      Color(0xFF2D3E5E), // A lighter navy
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient glassGradient = LinearGradient(
+    colors: [
+      Colors.white12,
+      Colors.white10,
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
   static Gradient? primaryGradient;
 
   // Shadows
   static List<BoxShadow> get softShadow => [
     BoxShadow(
-      color: Colors.black.withOpacity(0.08),
-      blurRadius: 16,
-      offset: const Offset(0, 6),
+      color: Colors.black.withOpacity(0.05),
+      blurRadius: 20,
+      offset: const Offset(0, 10),
+    ),
+  ];
+
+  static List<BoxShadow> get glassShadow => [
+    BoxShadow(
+      color: Colors.black.withOpacity(0.1),
+      blurRadius: 30,
+      offset: const Offset(0, 10),
     ),
   ];
 }

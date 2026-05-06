@@ -137,4 +137,3 @@ class MarketplaceController {
         }
     }
 }
-window.marketplaceController = new MarketplaceController();

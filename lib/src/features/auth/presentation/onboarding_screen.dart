@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:video_player/video_player.dart';
 import '../../../core/providers/shared_preferences_provider.dart';
 
 class OnboardingScreen extends ConsumerStatefulWidget {
@@ -23,6 +24,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           'The heartbeat of Afe Babalola University. Connect, explore, and thrive in our digital campus.',
       icon: Icons.school_rounded,
       color: const Color(0xFF1A237E), // Deep Indigo
+      videoPath: 'assets/onboarding video.mp4',
     ),
     OnboardingPageData(
       title: 'Vibrant Social Feed',
@@ -151,19 +153,53 @@ class OnboardingPageData {
   final String description;
   final IconData icon;
   final Color color;
+  final String? videoPath;
 
   OnboardingPageData({
     required this.title,
     required this.description,
     required this.icon,
     required this.color,
+    this.videoPath,
   });
 }
 
-class OnboardingPageContent extends StatelessWidget {
+class OnboardingPageContent extends StatefulWidget {
   final OnboardingPageData data;
 
   const OnboardingPageContent({super.key, required this.data});
+
+  @override
+  State<OnboardingPageContent> createState() => _OnboardingPageContentState();
+}
+
+class _OnboardingPageContentState extends State<OnboardingPageContent> {
+  VideoPlayerController? _controller;
+  bool _isInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.data.videoPath != null) {
+      _controller = VideoPlayerController.asset(widget.data.videoPath!)
+        ..initialize().then((_) {
+          if (mounted) {
+            setState(() {
+              _isInitialized = true;
+            });
+            _controller?.setLooping(true);
+            _controller?.play();
+            _controller?.setVolume(0); // Mute for onboarding
+          }
+        });
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -172,31 +208,54 @@ class OnboardingPageContent extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Icon Container with Animation
-          Container(
-                padding: const EdgeInsets.all(40),
-                decoration: BoxDecoration(
-                  color: data.color.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(data.icon, size: 100, color: data.color),
-              )
-              .animate()
-              .fade(duration: 800.ms)
-              .scale(delay: 200.ms, curve: Curves.elasticOut),
+          // Media Container (Video or Icon)
+          SizedBox(
+            height: 300,
+            child: widget.data.videoPath != null
+                ? Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(30),
+                      boxShadow: [
+                        BoxShadow(
+                          color: widget.data.color.withOpacity(0.2),
+                          blurRadius: 20,
+                          spreadRadius: 5,
+                        ),
+                      ],
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: _isInitialized
+                        ? AspectRatio(
+                            aspectRatio: _controller!.value.aspectRatio,
+                            child: VideoPlayer(_controller!),
+                          )
+                        : const Center(child: CircularProgressIndicator()),
+                  )
+                : Container(
+                    padding: const EdgeInsets.all(40),
+                    decoration: BoxDecoration(
+                      color: widget.data.color.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(widget.data.icon, size: 100, color: widget.data.color),
+                  )
+                    .animate()
+                    .fade(duration: 800.ms)
+                    .scale(delay: 200.ms, curve: Curves.elasticOut),
+          ),
 
           const SizedBox(height: 60),
 
           // Title
           Text(
-                data.title,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.outfit(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              )
+            widget.data.title,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.outfit(
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          )
               .animate()
               .fade(delay: 400.ms)
               .slideY(begin: 0.2, end: 0, duration: 600.ms),
@@ -205,14 +264,14 @@ class OnboardingPageContent extends StatelessWidget {
 
           // Description
           Text(
-                data.description,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.outfit(
-                  fontSize: 16,
-                  color: Colors.grey[600],
-                  height: 1.5,
-                ),
-              )
+            widget.data.description,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.outfit(
+              fontSize: 16,
+              color: Colors.grey[600],
+              height: 1.5,
+            ),
+          )
               .animate()
               .fade(delay: 600.ms)
               .slideY(begin: 0.2, end: 0, duration: 600.ms),

@@ -1,10 +1,15 @@
-const analyticsController = {
-    init: function () {
+class AnalyticsController {
+    constructor() {
+        this.growthChartInstance = null;
+        this.featureChartInstance = null;
+    }
+
+    async load() {
         console.log("Analytics Controller Connecting to Firestore...");
         this.fetchRealStats();
-    },
+    }
 
-    fetchRealStats: async function () {
+    async fetchRealStats() {
         const updateStat = (id, val) => this.animateValue(id, 0, val, 1000);
 
         try {
@@ -60,13 +65,13 @@ const analyticsController = {
             console.error("Aggregation Error:", err);
             this.initCharts();
         }
-    },
+    }
 
-    fetchGrowthData: async function () {
+    async fetchGrowthData() {
         const now = new Date();
         const promises = [];
         const labels = [];
-        const daysToFetch = 14; // Increased to 2 weeks for better trend visibility
+        const daysToFetch = 14; 
 
         for (let i = daysToFetch - 1; i >= 0; i--) {
             const d = new Date();
@@ -90,9 +95,9 @@ const analyticsController = {
             labels, 
             data: results.map(s => s.size) 
         };
-    },
+    }
 
-    initCharts: function (realData, growth) {
+    initCharts(realData, growth) {
         const commonOptions = {
             responsive: true,
             maintainAspectRatio: false,
@@ -116,9 +121,11 @@ const analyticsController = {
 
         // Growth Chart (Line)
         const ctxGrowth = document.getElementById('growthChart');
-        if (ctxGrowth) {
-            if (this.growthChartInstance) this.growthChartInstance.destroy();
-            this.growthChartInstance = new Chart(ctxGrowth, {
+        const ctxGrowthOverview = document.getElementById('growthChartOverview');
+        
+        const renderGrowth = (ctx) => {
+            if (!ctx) return;
+            return new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: growth.labels,
@@ -136,10 +143,22 @@ const analyticsController = {
                 },
                 options: commonOptions
             });
+        };
+
+        if (ctxGrowth) {
+            if (this.growthChartInstance) this.growthChartInstance.destroy();
+            this.growthChartInstance = renderGrowth(ctxGrowth);
+        }
+        
+        if (ctxGrowthOverview) {
+            if (this.growthChartOverviewInstance) this.growthChartOverviewInstance.destroy();
+            this.growthChartOverviewInstance = renderGrowth(ctxGrowthOverview);
         }
 
         // Feature Chart (Doughnut for diversity)
         const ctxFeature = document.getElementById('featureChart');
+        const ctxUserOverview = document.getElementById('userChart');
+
         if (ctxFeature) {
             if (this.featureChartInstance) this.featureChartInstance.destroy();
             const counts = realData || { posts: 0, groups: 0, events: 0, market: 0 };
@@ -166,9 +185,24 @@ const analyticsController = {
                 }
             });
         }
-    },
 
-    animateValue: function (id, start, end, duration) {
+        if (ctxUserOverview) {
+            if (this.userChartInstance) this.userChartInstance.destroy();
+            this.userChartInstance = new Chart(ctxUserOverview, {
+                type: 'bar',
+                data: {
+                    labels: ['Users', 'Verified', 'Staff'],
+                    datasets: [{
+                        data: [realData.users || 0, realData.verified || 0, realData.staff || 0],
+                        backgroundColor: ['#2dd4bf', '#818cf8', '#fbbf24']
+                    }]
+                },
+                options: commonOptions
+            });
+        }
+    }
+
+    animateValue(id, start, end, duration) {
         const obj = document.getElementById(id);
         if (!obj) return;
         let startTimestamp = null;
@@ -181,11 +215,12 @@ const analyticsController = {
             }
         };
         window.requestAnimationFrame(step);
-    },
+    }
 
-    updateTrafficChart: function (currentOnline) {
+    updateTrafficChart(currentOnline) {
         // Dynamic traffic update logic could go here
-    },
-};
+    }
+}
+
 
 // Auto-init removed. Will be called by NavigationController after Auth.

@@ -94,7 +94,7 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
   final _activeFilters = <MarketplaceSmartFilter>{};
   bool _largeFonts = false;
   bool _blindMode = false;
-  bool _isDarkTheme = true; // Default to dark as requested
+  bool get _isDarkTheme => Theme.of(context).brightness == Brightness.dark;
 
   /// Derived color for text/icons — accessible from all helper methods.
   Color get _themeColor => _isDarkTheme ? Colors.white : AppColors.primaryInk;
@@ -223,14 +223,6 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
                       });
                     },
                   ),
-                  IconButton(
-                    icon: Icon(
-                      isDark ? Icons.diamond : Icons.diamond_outlined,
-                      color: isDark ? AppColors.accentAmber : AppColors.secondaryTeal,
-                    ),
-                    onPressed: () => setState(() => _isDarkTheme = !_isDarkTheme),
-                    tooltip: 'Change Theme',
-                  ).animate(onPlay: (c) => c.repeat()).shimmer(duration: 3000.ms),
                   IconButton(
                     icon: Icon(Icons.accessibility_new, color: _themeColor),
                     onPressed: _showAccessibilitySheet,

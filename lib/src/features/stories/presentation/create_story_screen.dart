@@ -1,12 +1,12 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:glassmorphism/glassmorphism.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../data/story_repository.dart';
 import '../../user/data/user_repository.dart';
-import '../../camera/presentation/camera_screen.dart';
 import '../domain/story.dart';
 import '../../shared/presentation/unified_image_editor.dart';
 import '../../../core/router/app_router.dart';
@@ -146,18 +146,20 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                   ),
                   onTap: () async {
                     Navigator.pop(context);
-                    context.push(
+                    final result = await context.push(
                       '/camera',
                       extra: {
                         'isForStory': true,
-                        'onMediaCaptured': (XFile file, CameraMode mode) {
-                          context.pop(); // Pop camera
-                          setState(() {
-                            _selectedMedia = file;
-                          });
-                        },
                       },
                     );
+                    if (result != null && result is Map) {
+                      final file = result['file'] as XFile?;
+                      if (file != null) {
+                        setState(() {
+                          _selectedMedia = file;
+                        });
+                      }
+                    }
                   },
                 ),
                 ListTile(
@@ -767,7 +769,33 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
             width: double.infinity,
             color: Colors.black,
             child: _selectedMedia != null
-                ? Image.file(File(_selectedMedia!.path), fit: BoxFit.contain)
+                ? Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Image.file(File(_selectedMedia!.path), fit: BoxFit.contain),
+                      Positioned(
+                        top: 16,
+                        right: 16,
+                        child: CircleAvatar(
+                          backgroundColor: Colors.black54,
+                          child: IconButton(
+                            icon: const Icon(Icons.edit, color: Colors.white),
+                            onPressed: () {
+                              UnifiedImageEditor.open(
+                                context,
+                                file: File(_selectedMedia!.path),
+                                onDone: (editedFile) {
+                                  setState(() {
+                                    _selectedMedia = editedFile;
+                                  });
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
                 : const SizedBox(),
           ),
         ),
@@ -785,29 +813,50 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
           ),
           child: Column(
             children: [
-              TextField(
-                controller: _captionController,
-                maxLength: 200,
-                maxLines: 3,
-                minLines: 1,
-                decoration: InputDecoration(
-                  hintText: 'Add a caption...',
-                  hintStyle: TextStyle(
-                    color: isDark ? Colors.grey[600] : Colors.grey[400],
-                  ),
-                  filled: true,
-                  fillColor: isDark
-                      ? const Color(0xFF2C2C2E)
-                      : const Color(0xFFF5F5F5),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  counterText: '',
+              GlassmorphicContainer(
+                width: double.infinity,
+                height: 50,
+                borderRadius: 25,
+                blur: 20,
+                alignment: Alignment.center,
+                border: 1,
+                linearGradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
+                    isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.02),
+                  ],
+                  stops: const [0.1, 1],
                 ),
-                style: TextStyle(
-                  fontSize: 15,
-                  color: isDark ? Colors.white : Colors.black,
+                borderGradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    isDark ? Colors.white.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.1),
+                    isDark ? Colors.white.withValues(alpha: 0.0) : Colors.black.withValues(alpha: 0.0),
+                  ],
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: TextField(
+                    controller: _captionController,
+                    maxLength: 200,
+                    maxLines: 1,
+                    decoration: InputDecoration(
+                      hintText: 'Add a caption...',
+                      hintStyle: TextStyle(
+                        color: isDark ? Colors.grey[600] : Colors.grey[400],
+                      ),
+                      border: InputBorder.none,
+                      counterText: '',
+                      contentPadding: const EdgeInsets.only(bottom: 2),
+                    ),
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: isDark ? Colors.white : Colors.black,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 12),

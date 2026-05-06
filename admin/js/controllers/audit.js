@@ -91,5 +91,4 @@ class AuditController {
     }
 }
 
-window.auditController = new AuditController();
 window.logAdminAction = AuditController.logAction.bind(AuditController);

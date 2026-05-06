@@ -25,10 +25,16 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   if (!kIsWeb) {
-    await FirebaseAppCheck.instance.activate(
-      androidProvider: AndroidProvider.playIntegrity,
-      appleProvider: AppleProvider.deviceCheck,
-    );
+    try {
+      await FirebaseAppCheck.instance.activate(
+        androidProvider: AndroidProvider.playIntegrity,
+        appleProvider: AppleProvider.deviceCheck,
+      );
+    } catch (e) {
+      debugPrint("Firebase App Check activation failed: $e");
+      // Optional: record to crashlytics as non-fatal
+      FirebaseCrashlytics.instance.recordError(e, StackTrace.current, reason: 'AppCheck Activation');
+    }
   }
 
   if (!kIsWeb) {

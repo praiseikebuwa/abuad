@@ -48,6 +48,7 @@ class NavigationController {
             'verification': window.verificationController,
             'config': window.configController,
             'staff': window.staffController,
+            'marketplace': window.marketplaceController,
             'audit': window.auditController
         };
 
@@ -56,6 +57,11 @@ class NavigationController {
             controller.load();
         } else if (controller && typeof controller.init === 'function') {
             controller.init();
+        }
+
+        // Special case for Overview: also init MonitorController
+        if (tabId === 'overview' && window.monitorController) {
+            window.monitorController.init();
         }
     }
 }
@@ -77,12 +83,18 @@ document.addEventListener('DOMContentLoaded', () => {
     window.configController = new ConfigController();
     window.sosController = new SOSController();
     window.monitorController = new MonitorController();
+    window.eventsController = new EventsController();
+    window.groupsController = new GroupsController();
+    window.analyticsController = new AnalyticsController();
+    window.resourcesController = new ResourcesController();
+    window.staffController = new StaffController();
+    window.auditController = new AuditController();
 
     // 2. Monitoring will be started by NavigationController when tab is active
     // window.monitorController.init();
     // window.sosController.load(); 
 
-    // 2. Global Search Logic
+    // 3. Global Search Logic
     const globalSearch = document.getElementById('global-search');
     if (globalSearch) {
         globalSearch.addEventListener('keypress', async (e) => {
@@ -100,13 +112,21 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 3. Update Header Admin Info
+    // 4. Update Header Admin Info
     firebase.auth().onAuthStateChanged(user => {
         if (user) {
             document.getElementById('admin-name').innerText = user.displayName || 'Administrator';
         }
     });
 
-    // 4. Initialize Navigation
+    // 5. Hook up special buttons
+    // Delegate events to parent or re-attach on tab switch?
+    // For simplicity, we attach once if element exists
+    const createEventBtn = document.querySelector('#events-tab .btn-primary');
+    if (createEventBtn) {
+        createEventBtn.onclick = () => window.eventsController.showCreateModal();
+    }
+
+    // 6. Initialize Navigation
     window.navigationController = new NavigationController();
 });

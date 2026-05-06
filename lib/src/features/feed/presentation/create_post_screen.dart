@@ -10,7 +10,6 @@ import 'package:giphy_get/giphy_get.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
-
 import '../data/post_repository.dart';
 import '../../shared/presentation/unified_image_editor.dart';
 import '../../user/data/user_repository.dart';
@@ -1319,6 +1318,23 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                   const SizedBox(height: 12),
                   Row(
                     children: [
+                      _ToolbarIcon(
+                        icon: Icons.camera_alt_outlined,
+                        onTap: () async {
+                          final result = await context.push('/camera');
+                          if (result != null && result is Map) {
+                            final file = result['file'] as XFile?;
+                            if (file != null) {
+                              setState(() {
+                                _selectedImage = file;
+                                _selectedVideo = null;
+                                _selectedGif = null;
+                                _showPollCreator = false;
+                              });
+                            }
+                          }
+                        },
+                      ),
                       _ToolbarIcon(
                         icon: Icons.image_outlined,
                         onTap: _pickImage,

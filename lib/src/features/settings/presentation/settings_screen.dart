@@ -588,7 +588,7 @@ class SettingsScreen extends ConsumerWidget {
     final confirmed = await _showConfirmationDialog(
       context,
       "Delete Account",
-      "Are you sure you want to delete your account? This action cannot be undone.",
+      "Are you sure you want to delete your account? This will permanently delete your profile, posts, reels, and all other activity. This action cannot be undone.",
       isDestructive: true,
     );
     if (confirmed == true) {

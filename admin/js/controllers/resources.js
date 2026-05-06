@@ -1,20 +1,26 @@
-const resourcesController = {
-    init: function () {
+class ResourcesController {
+    constructor() {
+        this.tableBody = document.querySelector('#resources-table tbody');
+    }
+
+    load() {
         console.log("Resources Controller Connecting to Firestore...");
         this.subscribeToResources();
 
         // Add form listener
         const form = document.getElementById('resource-form');
-        if (form) {
+        if (form && !this.formListenerAttached) {
             form.addEventListener('submit', (e) => this.uploadResource(e));
+            this.formListenerAttached = true;
         }
-    },
+    }
 
-    subscribeToResources: function () {
-        const tableBody = document.querySelector('#resources-table tbody');
-        if (!tableBody) return;
+    subscribeToResources() {
+        if (!this.tableBody) return;
 
-        db.collection('resources').orderBy('uploadedAt', 'desc').onSnapshot((snapshot) => {
+        if (this.unsubscribe) this.unsubscribe();
+
+        this.unsubscribe = db.collection('resources').orderBy('uploadedAt', 'desc').onSnapshot((snapshot) => {
             const resources = [];
             snapshot.forEach((doc) => {
                 const data = doc.data();
@@ -30,16 +36,16 @@ const resourcesController = {
             this.renderResources(resources);
         }, (error) => {
             console.error("Error fetching resources:", error);
-            tableBody.innerHTML = `<tr><td colspan="5" class="error-text">Error loading resources: ${error.message}</td></tr>`;
+            this.tableBody.innerHTML = `<tr><td colspan="5" class="error-text">Error loading resources: ${error.message}</td></tr>`;
         });
-    },
+    }
 
-    renderResources: function (resources) {
-        const tableBody = document.querySelector('#resources-table tbody');
-        tableBody.innerHTML = '';
+    renderResources(resources) {
+        if (!this.tableBody) return;
+        this.tableBody.innerHTML = '';
 
         if (resources.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="5" class="loading-text">No resources uploaded yet.</td></tr>`;
+            this.tableBody.innerHTML = `<tr><td colspan="5" class="loading-text">No resources uploaded yet.</td></tr>`;
             return;
         }
 
@@ -60,26 +66,26 @@ const resourcesController = {
 
             row.querySelector('.btn-delete').addEventListener('click', () => {
                 if (confirm(`Delete "${res.title}"?`)) {
-                    this.deleteResource(res.id);
+                    this.deleteResource(res.id, res.title);
                 }
             });
 
-            tableBody.appendChild(row);
+            this.tableBody.appendChild(row);
         });
-    },
+    }
 
-    uploadResource: async function (e) {
+    async uploadResource(e) {
         e.preventDefault();
         const btn = e.target.querySelector('button');
         const titleInput = document.getElementById('res-title');
         const categoryInput = document.getElementById('res-category');
-        const urlInput = document.getElementById('res-url'); // For now just a link, normally file upload
+        const urlInput = document.getElementById('res-url'); 
 
         btn.disabled = true;
-        btn.innerText = "Uploading...";
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
 
         try {
-            await db.collection('resources').add({
+            const docRef = await db.collection('resources').add({
                 title: titleInput.value,
                 category: categoryInput.value,
                 url: urlInput.value,
@@ -87,6 +93,8 @@ const resourcesController = {
                 uploadedAt: firebase.firestore.FieldValue.serverTimestamp()
             });
 
+            window.logAdminAction('UPLOAD_RESOURCE', `Uploaded resource: ${titleInput.value}`, 'resource', docRef.id);
+            
             e.target.reset();
             alert("Resource added successfully!");
         } catch (err) {
@@ -95,11 +103,17 @@ const resourcesController = {
             btn.disabled = false;
             btn.innerText = "Upload Resource";
         }
-    },
-
-    deleteResource: function (id) {
-        db.collection('resources').doc(id).delete().catch(err => alert(err.message));
     }
-};
+
+    async deleteResource(id, title) {
+        try {
+            await db.collection('resources').doc(id).delete();
+            window.logAdminAction('DELETE_RESOURCE', `Deleted resource: ${title}`, 'resource', id);
+        } catch (err) {
+            alert("Delete failed: " + err.message);
+        }
+    }
+}
+
 
 // Auto-init removed.

@@ -79,24 +79,34 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: AppColors.surfaceLightAlt,
+        hintStyle: const TextStyle(color: AppColors.textMuted, fontSize: 14),
+        labelStyle: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w500),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: AppColors.borderLight),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: AppColors.borderLight),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
           borderSide: const BorderSide(
-            color: AppColors.secondaryTeal,
-            width: 1.5,
+            color: AppColors.primaryInk,
+            width: 2,
           ),
         ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: AppColors.error),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: AppColors.error, width: 2),
+        ),
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
+          horizontal: 20,
+          vertical: 18,
         ),
       ),
       chipTheme: ChipThemeData(
@@ -194,24 +204,34 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: AppColors.surfaceDarkElevated,
+        hintStyle: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 14),
+        labelStyle: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w500),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.borderLight),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: AppColors.borderDark),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.borderLight),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: AppColors.borderDark),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
           borderSide: const BorderSide(
             color: AppColors.accentAmber,
-            width: 1.5,
+            width: 2,
           ),
         ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: AppColors.error),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: AppColors.error, width: 2),
+        ),
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
+          horizontal: 20,
+          vertical: 18,
         ),
       ),
       chipTheme: ChipThemeData(

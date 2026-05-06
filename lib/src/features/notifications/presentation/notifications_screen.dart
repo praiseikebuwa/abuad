@@ -267,11 +267,15 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                       case NotificationType.system:
                         break;
                       case NotificationType.unfollow:
-                        // TODO: Handle this case.
-                        throw UnimplementedError();
+                        if (relatedId != null) {
+                          context.push('/user/$relatedId');
+                        }
+                        break;
                       case NotificationType.followingPost:
-                        // TODO: Handle this case.
-                        throw UnimplementedError();
+                        if (relatedId != null) {
+                          context.push('/post/$relatedId');
+                        }
+                        break;
                     }
                   }
                 },

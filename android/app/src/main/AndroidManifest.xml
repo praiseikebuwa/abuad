@@ -71,7 +71,7 @@
 
         <activity-alias
             android:name=".f1"
-            android:enabled="true"
+            android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/f1"
             android:targetActivity=".MainActivity">

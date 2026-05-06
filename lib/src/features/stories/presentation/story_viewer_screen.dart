@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:glassmorphism/glassmorphism.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../domain/story.dart';
@@ -107,8 +108,8 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
 
   void _markCurrentStoryViewed() {
     final currentUserId = _userIds[_currentUserIndex];
-    final stories = widget.storiesGrouped[currentUserId]!;
-    if (_currentStoryIndex < stories.length) {
+    final stories = widget.storiesGrouped[currentUserId];
+    if (stories != null && _currentStoryIndex < stories.length) {
       final story = stories[_currentStoryIndex];
       ref.read(storyRepositoryProvider).markAsViewed(story.id);
     }
@@ -129,7 +130,8 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
     if (_isNavigating) return;
     
     final currentUserId = _userIds[_currentUserIndex];
-    final stories = widget.storiesGrouped[currentUserId]!;
+    final stories = widget.storiesGrouped[currentUserId];
+    if (stories == null) return;
 
     if (_currentStoryIndex < stories.length - 1) {
       // Next story of current user
@@ -172,7 +174,8 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
         setState(() {
           _currentUserIndex--;
           final prevUserId = _userIds[_currentUserIndex];
-          _currentStoryIndex = widget.storiesGrouped[prevUserId]!.length - 1;
+          final prevStories = widget.storiesGrouped[prevUserId];
+          _currentStoryIndex = (prevStories?.length ?? 1) - 1;
         });
         _userPageController.animateToPage(
           _currentUserIndex,
@@ -1021,20 +1024,32 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                           child: Row(
                             children: [
                               Expanded(
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(30),
-                                  child: BackdropFilter(
-                                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                                    child: AnimatedContainer(
-                                      duration: const Duration(milliseconds: 300),
-                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withValues(alpha: 0.15),
-                                        borderRadius: BorderRadius.circular(30),
-                                        border: Border.all(
-                                          color: Colors.white.withValues(alpha: 0.2),
-                                        ),
-                                      ),
+                                child: GlassmorphicContainer(
+                                  width: double.infinity,
+                                  height: 48,
+                                  borderRadius: 24,
+                                  blur: 15,
+                                  alignment: Alignment.center,
+                                  border: 1.5,
+                                  linearGradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      Colors.white.withValues(alpha: 0.15),
+                                      Colors.white.withValues(alpha: 0.05),
+                                    ],
+                                  ),
+                                  borderGradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      Colors.white.withValues(alpha: 0.5),
+                                      Colors.white.withValues(alpha: 0.1),
+                                    ],
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                                    child: Center(
                                       child: TextField(
                                         controller: _messageController,
                                         focusNode: _focusNode,
@@ -1047,7 +1062,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                                           ),
                                           border: InputBorder.none,
                                           isDense: true,
-                                          contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                                          contentPadding: EdgeInsets.zero,
                                         ),
                                         onSubmitted: (_) => _sendMessage(story),
                                       ),
@@ -1065,10 +1080,10 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                                       IconButton(
                                         onPressed: _likeCurrentStory,
                                         icon: Icon(
-                                          story.hasLiked(viewerId!)
+                                          (viewerId != null && story.hasLiked(viewerId))
                                               ? Icons.favorite
                                               : Icons.favorite_border,
-                                          color: story.hasLiked(viewerId)
+                                          color: (viewerId != null && story.hasLiked(viewerId))
                                               ? Colors.red
                                               : Colors.white,
                                         ),

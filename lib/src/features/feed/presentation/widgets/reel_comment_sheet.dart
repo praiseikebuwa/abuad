@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import 'package:glassmorphism/glassmorphism.dart';
+
 import '../../domain/post.dart';
 import '../../data/post_repository.dart';
 import '../../../../core/widgets/verification_badge.dart';
@@ -229,27 +231,45 @@ class _ReelCommentSheetState extends ConsumerState<ReelCommentSheet> {
                                   ],
                                 ),
                               ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
+                            GlassmorphicContainer(
+                              width: double.infinity,
+                              height: 50,
+                              borderRadius: 25,
+                              blur: 20,
+                              alignment: Alignment.center,
+                              border: 1,
+                              linearGradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
+                                  isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.02),
+                                ],
+                                stops: const [0.1, 1],
                               ),
-                              decoration: BoxDecoration(
-                                color: isDark
-                                    ? Colors.grey[900]
-                                    : Colors.grey[100],
-                                borderRadius: BorderRadius.circular(24),
+                              borderGradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  isDark ? Colors.white.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.1),
+                                  isDark ? Colors.white.withValues(alpha: 0.0) : Colors.black.withValues(alpha: 0.0),
+                                ],
                               ),
-                              child: TextField(
-                                controller: _commentController,
-                                focusNode: _inputFocusNode,
-                                decoration: InputDecoration(
-                                  hintText: _replyingToCommentId != null
-                                      ? 'Add reply...'
-                                      : 'Add comment...',
-                                  border: InputBorder.none,
-                                  hintStyle: const TextStyle(fontSize: 14),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                child: TextField(
+                                  controller: _commentController,
+                                  focusNode: _inputFocusNode,
+                                  decoration: InputDecoration(
+                                    hintText: _replyingToCommentId != null
+                                        ? 'Add reply...'
+                                        : 'Add comment...',
+                                    border: InputBorder.none,
+                                    hintStyle: const TextStyle(fontSize: 14),
+                                    contentPadding: const EdgeInsets.only(bottom: 2),
+                                  ),
+                                  maxLines: 1,
                                 ),
-                                maxLines: null,
                               ),
                             ),
                           ],
