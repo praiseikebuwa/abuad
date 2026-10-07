@@ -1,12 +1,10 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart' as auth;
-import 'dart:math';
-import '../../../core/services/notification_service.dart';
-import '../../notifications/domain/notification.dart';
-import '../../auth/data/auth_repository.dart';
+import '../../../core/services/api_client.dart';
 import '../../feed/domain/post.dart';
+export '../../auth/data/auth_repository.dart' show currentUserProvider, currentUserIdProvider;
 
 class AppUser {
   final String uid;
@@ -14,35 +12,34 @@ class AppUser {
   final String email;
   final String handle;
   final String? avatarUrl;
-  final bool isVerified;
-  final String verificationType; // none, blue, gold
   final String? bannerUrl;
+  final bool isVerified;
+  final String verificationType;
   final String? bio;
   final int followersCount;
   final int followingCount;
-  final String status;
-  final DateTime? lastSeen;
-  final String? college;
   final String? department;
+  final String? college;
   final String? phoneNumber;
-  final int streakCount;
-  final DateTime? lastSnapAt;
-  final double? latitude;
-  final double? longitude;
   final String? websiteUrl;
-  final String? facebookUrl;
   final String? twitterUrl;
   final String? instagramUrl;
+  final String? facebookUrl;
   final String? linkedinUrl;
+  final String? whatsappUrl;
   final String? tiktokUrl;
   final String? youtubeUrl;
   final String? snapchatUrl;
   final String? githubUrl;
   final String? twitchUrl;
   final bool isFollowingVisible;
+  final int streakCount;
+  final DateTime? createdAt;
   final bool isAdmin;
   final bool isBanned;
-  final DateTime? createdAt;
+  final String? status;
+  final double? latitude;
+  final double? longitude;
 
   AppUser({
     required this.uid,
@@ -56,740 +53,456 @@ class AppUser {
     this.verificationType = 'none',
     this.followersCount = 0,
     this.followingCount = 0,
-    this.status = 'offline',
-    this.lastSeen,
-    this.college,
     this.department,
+    this.college,
     this.phoneNumber,
-    this.streakCount = 0,
-    this.lastSnapAt,
-    this.latitude,
-    this.longitude,
     this.websiteUrl,
-    this.facebookUrl,
     this.twitterUrl,
     this.instagramUrl,
+    this.facebookUrl,
     this.linkedinUrl,
+    this.whatsappUrl,
     this.tiktokUrl,
     this.youtubeUrl,
     this.snapchatUrl,
     this.githubUrl,
     this.twitchUrl,
     this.isFollowingVisible = true,
+    this.streakCount = 0,
+    this.createdAt,
     this.isAdmin = false,
     this.isBanned = false,
-    this.createdAt,
+    this.status = 'online',
+    this.latitude,
+    this.longitude,
   });
 
-  Map<String, dynamic> toMap() {
-    return {
-      'uid': uid,
-      'display_name': displayName,
-      'email': email,
-      'handle': handle,
-      'avatar_url': avatarUrl,
-      'banner_url': bannerUrl,
-      'bio': bio,
-      'is_verified': isVerified,
-      'verification_type': verificationType,
-      'followers_count': followersCount,
-      'following_count': followingCount,
-      'status': status,
-      'last_seen': lastSeen != null ? Timestamp.fromDate(lastSeen!) : null,
-      'college': college,
-      'department': department,
-      'phone_number': phoneNumber,
-      'streak_count': streakCount,
-      'last_snap_at': lastSnapAt != null
-          ? Timestamp.fromDate(lastSnapAt!)
-          : null,
-      'latitude': latitude,
-      'longitude': longitude,
-      'website_url': websiteUrl,
-      'facebook_url': facebookUrl,
-      'twitter_url': twitterUrl,
-      'instagram_url': instagramUrl,
-      'linkedin_url': linkedinUrl,
-      'tiktok_url': tiktokUrl,
-      'youtube_url': youtubeUrl,
-      'snapchat_url': snapchatUrl,
-      'github_url': githubUrl,
-      'twitch_url': twitchUrl,
-      'is_following_visible': isFollowingVisible,
-      'is_admin': isAdmin,
-      'is_banned': isBanned,
-      'created_at': createdAt != null ? Timestamp.fromDate(createdAt!) : null,
-    };
-  }
-
   factory AppUser.fromMap(Map<String, dynamic> map) {
-    String toStr(dynamic value, [String fallback = '']) {
-      if (value == null) return fallback;
-      if (value is String) return value;
-      return value.toString();
-    }
-
-    int toInt(dynamic value, [int fallback = 0]) {
-      if (value is int) return value;
-      if (value is num) return value.toInt();
-      if (value is String) return int.tryParse(value) ?? fallback;
-      return fallback;
-    }
-
-    bool toBool(dynamic value, [bool fallback = false]) {
-      if (value is bool) return value;
-      if (value is num) return value != 0;
-      if (value is String) {
-        final v = value.toLowerCase();
-        if (v == 'true' || v == '1') return true;
-        if (v == 'false' || v == '0') return false;
-      }
-      return fallback;
-    }
-
-    DateTime? toDate(dynamic value) {
-      if (value is Timestamp) return value.toDate();
-      if (value is DateTime) return value;
-      if (value is int) {
-        try {
-          return DateTime.fromMillisecondsSinceEpoch(value);
-        } catch (_) {
-          return null;
-        }
-      }
-      if (value is String) return DateTime.tryParse(value);
+    DateTime? parseDate(dynamic d) {
+      if (d is String) return DateTime.tryParse(d);
       return null;
     }
 
-    final verified = toBool(map['is_verified'] ?? map['isVerified']);
     return AppUser(
-      uid: toStr(map['uid']),
-      displayName: toStr(map['display_name']),
-      email: toStr(map['email']),
-      handle: toStr(map['handle']),
-      avatarUrl: map['avatar_url']?.toString(),
-      bannerUrl: map['banner_url']?.toString(),
-      bio: map['bio']?.toString(),
-      isVerified: verified,
-      verificationType:
-          toStr(map['verification_type'] ?? map['verificationType']) ==
-              ''
-          ? (verified ? 'blue' : 'none')
-          : toStr(map['verification_type'] ?? map['verificationType']),
-      followersCount: toInt(map['followers_count']),
-      followingCount: toInt(map['following_count']),
-      status: toStr(map['status'], 'offline'),
-      lastSeen: toDate(map['last_seen']),
-      college: map['college']?.toString(),
-      department: map['department']?.toString(),
-      phoneNumber: map['phone_number']?.toString(),
-      streakCount: toInt(map['streak_count']),
-      lastSnapAt: toDate(map['last_snap_at']),
+      uid: map['id'] ?? map['uid'] ?? '',
+      displayName: map['fullName'] ?? map['displayName'] ?? 'User',
+      email: map['email'] ?? '',
+      handle: map['username'] ?? map['handle'] ?? 'user',
+      avatarUrl: map['avatarUrl'] ?? map['avatar_url'] ?? map['photoUrl'] ?? map['photo_url'] ?? map['profilePicture'],
+      bannerUrl: map['bannerUrl'] ?? map['banner_url'] ?? map['coverUrl'] ?? map['cover_url'],
+      bio: map['bio'],
+      isVerified: map['isVerified'] ?? map['is_verified'] ?? false,
+      verificationType: map['verificationType'] ?? map['verification_type'] ?? 'none',
+      followersCount: map['followersCount'] ?? map['followers_count'] ?? map['_count']?['followers'] ?? 0,
+      followingCount: map['followingCount'] ?? map['following_count'] ?? map['_count']?['following'] ?? 0,
+      department: map['department'],
+      college: map['college'],
+      phoneNumber: map['phoneNumber'] ?? map['phone_number'],
+      websiteUrl: map['websiteUrl'] ?? map['website_url'],
+      twitterUrl: map['twitterUrl'] ?? map['twitter_url'],
+      instagramUrl: map['instagramUrl'] ?? map['instagram_url'],
+      facebookUrl: map['facebookUrl'] ?? map['facebook_url'],
+      linkedinUrl: map['linkedinUrl'] ?? map['linkedin_url'],
+      whatsappUrl: map['whatsappUrl'] ?? map['whatsapp_url'],
+      tiktokUrl: map['tiktokUrl'] ?? map['tiktok_url'],
+      youtubeUrl: map['youtubeUrl'] ?? map['youtube_url'],
+      snapchatUrl: map['snapchatUrl'] ?? map['snapchat_url'],
+      githubUrl: map['githubUrl'] ?? map['github_url'],
+      twitchUrl: map['twitchUrl'] ?? map['twitch_url'],
+      isFollowingVisible: map['isFollowingVisible'] ?? true,
+      streakCount: map['streakCount'] ?? map['streak_count'] ?? 0,
+      createdAt: parseDate(map['createdAt'] ?? map['created_at']),
+      isAdmin: map['role'] == 'ADMIN',
+      isBanned: map['isBlocked'] ?? false,
+      status: map['status'] ?? 'online',
       latitude: (map['latitude'] as num?)?.toDouble(),
       longitude: (map['longitude'] as num?)?.toDouble(),
-      websiteUrl: map['website_url']?.toString(),
-      facebookUrl: map['facebook_url']?.toString(),
-      twitterUrl: map['twitter_url']?.toString(),
-      instagramUrl: map['instagram_url']?.toString(),
-      linkedinUrl: map['linkedin_url']?.toString(),
-      tiktokUrl: map['tiktok_url']?.toString(),
-      youtubeUrl: map['youtube_url']?.toString(),
-      snapchatUrl: map['snapchat_url']?.toString(),
-      githubUrl: map['github_url']?.toString(),
-      twitchUrl: map['twitch_url']?.toString(),
-      isFollowingVisible: toBool(map['is_following_visible'], true),
-      isAdmin: toBool(map['is_admin']),
-      isBanned: toBool(map['is_banned']),
-      createdAt: toDate(map['created_at'] ?? map['createdAt']),
+    );
+  }
+
+  AppUser copyWith({
+    String? uid,
+    String? displayName,
+    String? email,
+    String? handle,
+    String? avatarUrl,
+    String? bannerUrl,
+    String? bio,
+    bool? isVerified,
+    String? verificationType,
+    int? followersCount,
+    int? followingCount,
+    String? department,
+    String? college,
+    String? phoneNumber,
+    String? websiteUrl,
+    String? twitterUrl,
+    String? instagramUrl,
+    String? facebookUrl,
+    String? linkedinUrl,
+    String? tiktokUrl,
+    String? youtubeUrl,
+    String? snapchatUrl,
+    String? githubUrl,
+    String? twitchUrl,
+    bool? isFollowingVisible,
+    int? streakCount,
+    DateTime? createdAt,
+    bool? isAdmin,
+    bool? isBanned,
+    String? status,
+    double? latitude,
+    double? longitude,
+  }) {
+    return AppUser(
+      uid: uid ?? this.uid,
+      displayName: displayName ?? this.displayName,
+      email: email ?? this.email,
+      handle: handle ?? this.handle,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      bannerUrl: bannerUrl ?? this.bannerUrl,
+      bio: bio ?? this.bio,
+      isVerified: isVerified ?? this.isVerified,
+      verificationType: verificationType ?? this.verificationType,
+      followersCount: followersCount ?? this.followersCount,
+      followingCount: followingCount ?? this.followingCount,
+      department: department ?? this.department,
+      college: college ?? this.college,
+      phoneNumber: phoneNumber ?? this.phoneNumber,
+      websiteUrl: websiteUrl ?? this.websiteUrl,
+      twitterUrl: twitterUrl ?? this.twitterUrl,
+      instagramUrl: instagramUrl ?? this.instagramUrl,
+      facebookUrl: facebookUrl ?? this.facebookUrl,
+      linkedinUrl: linkedinUrl ?? this.linkedinUrl,
+      tiktokUrl: tiktokUrl ?? this.tiktokUrl,
+      youtubeUrl: youtubeUrl ?? this.youtubeUrl,
+      snapchatUrl: snapchatUrl ?? this.snapchatUrl,
+      githubUrl: githubUrl ?? this.githubUrl,
+      twitchUrl: twitchUrl ?? this.twitchUrl,
+      isFollowingVisible: isFollowingVisible ?? this.isFollowingVisible,
+      streakCount: streakCount ?? this.streakCount,
+      createdAt: createdAt ?? this.createdAt,
+      isAdmin: isAdmin ?? this.isAdmin,
+      isBanned: isBanned ?? this.isBanned,
+      status: status ?? this.status,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
     );
   }
 }
 
 final userRepositoryProvider = Provider<UserRepository>((ref) {
-  return UserRepository(FirebaseFirestore.instance);
+  return UserRepository();
+});
+
+final userProvider = StreamProvider.family<AppUser?, String>((ref, userId) {
+  return ref.watch(userRepositoryProvider).watchUser(userId);
+});
+
+final isFollowingProvider = StreamProvider.family<bool, String>((ref, userId) {
+  return UserRepository.watchIsFollowing(userId);
+});
+
+final isBlockedProvider = FutureProvider.family<bool, String>((ref, userId) async {
+  return false;
+});
+
+final followingProvider = FutureProvider.family<List<AppUser>, String>((ref, userId) async {
+  final repo = ref.watch(userRepositoryProvider);
+  return repo.getFollowing(userId);
+});
+
+final followersProvider = FutureProvider.family<List<AppUser>, String>((ref, userId) async {
+  final repo = ref.watch(userRepositoryProvider);
+  return repo.getFollowers(userId);
+});
+
+final blockedUsersProvider = FutureProvider.family<List<AppUser>, String>((ref, userId) async {
+  return [];
+});
+
+final usersLocationsProvider = StreamProvider<List<AppUser>>((ref) async* {
+  yield [];
 });
 
 class UserRepository {
-  final FirebaseFirestore _firestore;
+  UserRepository();
 
-  UserRepository(this._firestore);
+  static final Map<String, bool> _followingMap = {};
+  static final StreamController<Map<String, bool>> _followingController =
+      StreamController<Map<String, bool>>.broadcast();
 
-  String? get currentUserId => auth.FirebaseAuth.instance.currentUser?.uid;
+  static final Map<String, AppUser> _userCache = {};
+  static final StreamController<Map<String, AppUser>> _userController =
+      StreamController<Map<String, AppUser>>.broadcast();
 
-  // Get user by ID (from 'users' collection)
-  Future<AppUser?> getUserById(String uid) async {
-    try {
-      final doc = await _firestore.collection('users').doc(uid).get();
-      if (!doc.exists) return null;
-      final data = doc.data()!;
-      data['uid'] = doc.id;
-      return AppUser.fromMap(data);
-    } catch (e) {
-      debugPrint('❌ Error getting user $uid: $e');
-      return null;
+  static Stream<bool> watchIsFollowing(String userId) async* {
+    if (userId.isEmpty) {
+      yield false;
+      return;
     }
+    if (!_followingMap.containsKey(userId)) {
+      try {
+        final response = await ApiClient.get('/users/$userId/is-following');
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          if (data['success'] == true && data['isFollowing'] != null) {
+            _followingMap[userId] = data['isFollowing'] == true;
+          }
+        }
+      } catch (e) {
+        debugPrint('Error checking isFollowing status: $e');
+      }
+    }
+    yield _followingMap[userId] ?? false;
+    await for (final map in _followingController.stream) {
+      yield map[userId] ?? false;
+    }
+  }
+
+  Future<AppUser?> getCurrentUser() async {
+    try {
+      final response = await ApiClient.get('/users/me');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] != null) {
+          final user = AppUser.fromMap(data['data']);
+          _userCache[user.uid] = user;
+          return user;
+        }
+      }
+      final response2 = await ApiClient.get('/auth/me');
+      if (response2.statusCode == 200) {
+        final data = jsonDecode(response2.body);
+        if (data['success'] == true && data['data'] != null) {
+          final user = AppUser.fromMap(data['data']);
+          _userCache[user.uid] = user;
+          return user;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching current user profile: $e');
+    }
+    return null;
+  }
+
+  Future<AppUser?> getUserById(String uid) async {
+    if (uid == 'me' || uid.isEmpty) {
+      return getCurrentUser();
+    }
+    try {
+      final response = await ApiClient.get('/users/profile/$uid');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] != null) {
+          final user = AppUser.fromMap(data['data']);
+          _userCache[uid] = user;
+          if (data['data']['isFollowing'] != null) {
+            _followingMap[uid] = data['data']['isFollowing'] == true;
+            _followingController.add(Map<String, bool>.from(_followingMap));
+          }
+          _userController.add(Map<String, AppUser>.from(_userCache));
+          return user;
+        }
+      }
+      final response2 = await ApiClient.get('/users/$uid');
+      if (response2.statusCode == 200) {
+        final data = jsonDecode(response2.body);
+        if (data['success'] == true && data['data'] != null) {
+          final user = AppUser.fromMap(data['data']);
+          _userCache[uid] = user;
+          _userController.add(Map<String, AppUser>.from(_userCache));
+          return user;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching user by id: $e');
+    }
+    return _userCache[uid];
   }
 
   Future<AppUser?> getUser(String uid) => getUserById(uid);
 
-  // Watch user by ID
-  Stream<AppUser?> watchUser(String uid) {
-    if (uid.isEmpty) return Stream.value(null);
-    return _firestore.collection('users').doc(uid).snapshots().map((doc) {
-      try {
-        if (!doc.exists) return null;
-        final data = doc.data()!;
-        data['uid'] = doc.id;
-        return AppUser.fromMap(data);
-      } catch (e) {
-        debugPrint('Error parsing user stream doc ($uid): $e');
-        return null;
-      }
-    });
-  }
-
-  // Get user by Handle
   Future<AppUser?> getUserByHandle(String handle) async {
-    try {
-      // Remove @ if present
-      final cleanHandle = handle.startsWith('@') ? handle.substring(1) : handle;
-
-      final query = await _firestore
-          .collection('users')
-          .where('handle', isEqualTo: cleanHandle)
-          .limit(1)
-          .get();
-
-      if (query.docs.isEmpty) return null;
-      final doc = query.docs.first;
-      final data = doc.data();
-      data['uid'] = doc.id;
-      return AppUser.fromMap(data);
-    } catch (e) {
-      return null;
-    }
+    final users = await searchUsers(handle);
+    if (users.isNotEmpty) return users.first;
+    return null;
   }
 
-  // Generate unique handle
-  Future<String> generateHandle(String displayName) async {
-    // Basic sanitization
-    String baseHandle = displayName
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9]'), '')
-        .replaceAll(' ', '_');
-
-    if (baseHandle.isEmpty) baseHandle = 'user';
-
-    // Use HandleService to ensure uniqueness with randomuffix if needed
-    // We import HandleService lazily or use a static/mixin approach,
-    // but here we can just implement the logic directly or call the service if we inject it.
-    // Since I created the service file, let's use the logic directly here
-    // to avoid injection complexity if we don't want to change the constructor too much.
-    // Use the logic from HandleService:
-
-    // 1. Check if base handle is available
-    if (await _isHandleAvailable(baseHandle)) {
-      return baseHandle;
+  Stream<AppUser?> watchUser(String uid) async* {
+    if (_userCache.containsKey(uid)) {
+      yield _userCache[uid];
     }
+    final user = await getUserById(uid);
+    yield _userCache[uid] ?? user;
 
-    // 2. If taken, append random suffixes
-    final random = Random();
-    while (true) {
-      final suffix = (1000 + random.nextInt(9000)).toString();
-      final candidateHandle = '$baseHandle$suffix';
-      if (await _isHandleAvailable(candidateHandle)) {
-        return candidateHandle;
+    await for (final map in _userController.stream) {
+      if (map.containsKey(uid)) {
+        yield map[uid];
       }
     }
-  }
-
-  Future<bool> _isHandleAvailable(String handle) async {
-    final snapshot = await _firestore
-        .collection('users')
-        .where('handle', isEqualTo: handle)
-        .limit(1)
-        .get();
-    return snapshot.docs.isEmpty;
-  }
-
-  // New: Watch popular/suggested users
-  Stream<List<AppUser>> watchPopularUsers() {
-    return _firestore
-        .collection('users')
-        .orderBy('followers_count', descending: true)
-        .limit(10)
-        .snapshots()
-        .map((snapshot) {
-          return snapshot.docs.map((doc) {
-            final data = doc.data();
-            data['uid'] = doc.id;
-            return AppUser.fromMap(data);
-          }).toList();
-        });
-  }
-
-  // Search users by name
-  Stream<List<AppUser>> searchUsers(String query) {
-    if (query.isEmpty) {
-      return _firestore
-          .collection('users')
-          .limit(20)
-          .snapshots()
-          .map(
-            (snapshot) => snapshot.docs.map((doc) {
-              final data = doc.data();
-              data['uid'] = doc.id;
-              return AppUser.fromMap(data);
-            }).toList(),
-          );
-    }
-
-    return _firestore
-        .collection('users')
-        .where('display_name', isGreaterThanOrEqualTo: query)
-        .where('display_name', isLessThanOrEqualTo: '$query\uf8ff')
-        .limit(20)
-        .snapshots()
-        .map(
-          (snapshot) => snapshot.docs.map((doc) {
-            final data = doc.data();
-            data['uid'] = doc.id;
-            return AppUser.fromMap(data);
-          }).toList(),
-        );
-  }
-
-  // Create or update user profile
-  Future<void> createOrUpdateUser(AppUser user) async {
-    await _firestore
-        .collection('users')
-        .doc(user.uid)
-        .set(user.toMap(), SetOptions(merge: true));
   }
 
   Future<void> updateUser(String uid, Map<String, dynamic> data) async {
-    try {
-      await _firestore
-          .collection('users')
-          .doc(uid)
-          .set(data, SetOptions(merge: true));
-    } catch (e) {
-      debugPrint('❌ Error updating user $uid: $e');
-      rethrow;
+    final res = await ApiClient.post('/users/profile', data);
+    Map<String, dynamic>? updatedUserMap;
+    if (res.statusCode == 200) {
+      final json = jsonDecode(res.body);
+      if (json['success'] == true && json['data'] != null) {
+        updatedUserMap = json['data'];
+      }
+    } else {
+      final res2 = await ApiClient.put('/users/me', data);
+      if (res2.statusCode == 200) {
+        final json2 = jsonDecode(res2.body);
+        if (json2['success'] == true && json2['data'] != null) {
+          updatedUserMap = json2['data'];
+        }
+      }
+    }
+
+    if (updatedUserMap != null) {
+      final updatedUser = AppUser.fromMap(updatedUserMap);
+      _userCache[uid] = updatedUser;
+      _userController.add(Map<String, AppUser>.from(_userCache));
+    } else {
+      await getUserById(uid);
     }
   }
 
-  // Follow a user
-  Future<void> followUser(String targetUid) async {
-    final uid = currentUserId;
-    if (uid == null || uid == targetUid) return;
+  Future<void> createOrUpdateUser(String uid, Map<String, dynamic> data) async {
+    final res = await ApiClient.post('/users/profile', data);
+    if (res.statusCode != 200) {
+      await ApiClient.put('/users/me', data);
+    }
+  }
 
-    final batch = _firestore.batch();
+  Future<String> generateHandle(String name) async {
+    final base = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+    return '${base.isEmpty ? 'user' : base}${DateTime.now().millisecondsSinceEpoch % 10000}';
+  }
 
-    // 1. Add to followers sub-collection
-    batch.set(
-      _firestore
-          .collection('users')
-          .doc(targetUid)
-          .collection('followers')
-          .doc(uid),
-      {'uid': uid, 'timestamp': FieldValue.serverTimestamp()},
-    );
-
-    // 2. Add to following sub-collection
-    batch.set(
-      _firestore
-          .collection('users')
-          .doc(uid)
-          .collection('following')
-          .doc(targetUid),
-      {'uid': targetUid, 'timestamp': FieldValue.serverTimestamp()},
-    );
-
-    // 3. Increment counts
-    batch.update(_firestore.collection('users').doc(targetUid), {
-      'followers_count': FieldValue.increment(1),
-    });
-    batch.update(_firestore.collection('users').doc(uid), {
-      'following_count': FieldValue.increment(1),
-    });
-
-    await batch.commit();
-
-    // 4. Send Notification
+  Future<List<AppUser>> searchUsers(String query) async {
     try {
-      final me = await getUserById(uid);
-      if (me != null) {
-        await NotificationService().sendInAppNotification(
-          recipientId: targetUid,
-          title: 'New Follower',
-          body: '${me.displayName} started following you',
-          type: NotificationType.follow,
-          senderId: uid,
-          senderName: me.displayName,
-          senderAvatarUrl: me.avatarUrl,
-          data: {'id': uid, 'type': 'follow'},
-        );
+      final response = await ApiClient.get('/users/search?q=$query');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] is List) {
+          return (data['data'] as List).map((x) => AppUser.fromMap(x)).toList();
+        }
       }
     } catch (e) {
-      debugPrint('Error sending follow notification: $e');
+      debugPrint('Error searching users: $e');
+    }
+    return [];
+  }
+
+  Future<List<AppUser>> getFollowers(String userId) async {
+    if (userId.isEmpty) return [];
+    final targetId = userId == 'me' ? 'me' : userId;
+    try {
+      final response = await ApiClient.get('/users/$targetId/followers');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] is List) {
+          return (data['data'] as List).map((x) => AppUser.fromMap(x)).toList();
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching followers: $e');
+    }
+    return [];
+  }
+
+  Future<List<AppUser>> getFollowing(String userId) async {
+    if (userId.isEmpty) return [];
+    final targetId = userId == 'me' ? 'me' : userId;
+    try {
+      final response = await ApiClient.get('/users/$targetId/following');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] is List) {
+          return (data['data'] as List).map((x) => AppUser.fromMap(x)).toList();
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching following: $e');
+    }
+    return [];
+  }
+
+  Future<void> followUser(String targetUserId) async {
+    if (targetUserId.isEmpty) return;
+
+    _followingMap[targetUserId] = true;
+    _followingController.add(Map<String, bool>.from(_followingMap));
+
+    if (_userCache.containsKey(targetUserId)) {
+      final u = _userCache[targetUserId]!;
+      _userCache[targetUserId] = u.copyWith(
+        followersCount: u.followersCount + 1,
+      );
+      _userController.add(Map<String, AppUser>.from(_userCache));
+    }
+
+    try {
+      final res = await ApiClient.post('/users/$targetUserId/follow', {});
+      if (res.statusCode != 200) {
+        debugPrint('Follow endpoint status: ${res.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('Error following user: $e');
     }
   }
 
-  // Unfollow a user
-  Future<void> unfollowUser(String targetUid) async {
-    final uid = currentUserId;
-    if (uid == null || uid == targetUid) return;
+  Future<void> unfollowUser(String targetUserId) async {
+    if (targetUserId.isEmpty) return;
 
-    final batch = _firestore.batch();
+    _followingMap[targetUserId] = false;
+    _followingController.add(Map<String, bool>.from(_followingMap));
 
-    batch.delete(
-      _firestore
-          .collection('users')
-          .doc(targetUid)
-          .collection('followers')
-          .doc(uid),
-    );
-    batch.delete(
-      _firestore
-          .collection('users')
-          .doc(uid)
-          .collection('following')
-          .doc(targetUid),
-    );
+    if (_userCache.containsKey(targetUserId)) {
+      final u = _userCache[targetUserId]!;
+      _userCache[targetUserId] = u.copyWith(
+        followersCount: (u.followersCount - 1).clamp(0, 999999),
+      );
+      _userController.add(Map<String, AppUser>.from(_userCache));
+    }
 
-    batch.update(_firestore.collection('users').doc(targetUid), {
-      'followers_count': FieldValue.increment(-1),
-    });
-    batch.update(_firestore.collection('users').doc(uid), {
-      'following_count': FieldValue.increment(-1),
-    });
-
-    await batch.commit();
+    try {
+      final res = await ApiClient.delete('/users/$targetUserId/follow');
+      if (res.statusCode != 200) {
+        debugPrint('Unfollow endpoint status: ${res.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('Error unfollowing user: $e');
+    }
   }
 
-  // Check if following
-  Stream<bool> isFollowing(String targetUid) {
-    final uid = currentUserId;
-    if (uid == null) return Stream.value(false);
-
-    return _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('following')
-        .doc(targetUid)
-        .snapshots()
-        .map((doc) => doc.exists);
-  }
-
-  // Check if target user follows current user
-  Stream<bool> isFollowedBy(String targetUid) {
-    final uid = currentUserId;
-    if (uid == null) return Stream.value(false);
-
-    return _firestore
-        .collection('users')
-        .doc(targetUid)
-        .collection('following')
-        .doc(uid)
-        .snapshots()
-        .map((doc) => doc.exists);
-  }
-
-  // Update real-time location
-  Future<void> updateUserLocation(double lat, double lng) async {
-    final uid = currentUserId;
-    if (uid == null) return;
-    await _firestore.collection('users').doc(uid).update({
-      'latitude': lat,
-      'longitude': lng,
-      'last_seen': FieldValue.serverTimestamp(),
-    });
-  }
-
-  // Stream a single user's data
-  Stream<AppUser?> watchUsers(String uid) {
-    return _firestore.collection('users').doc(uid).snapshots().map((doc) {
-      if (!doc.exists) return null;
-      final data = doc.data();
-      if (data == null) return null;
-      data['uid'] = doc.id;
-      return AppUser.fromMap(data);
-    });
-  }
-
-  // Watch all active users' locations (limited to last hour for performance/privacy)
-  Stream<List<AppUser>> watchUsersLocations() {
-    final hourAgo = DateTime.now().subtract(const Duration(hours: 1));
-    return _firestore
-        .collection('users')
-        .where('last_seen', isGreaterThan: Timestamp.fromDate(hourAgo))
-        .snapshots()
-        .map((snapshot) {
-          return snapshot.docs.map((doc) {
-            final data = doc.data();
-            data['uid'] = doc.id;
-            return AppUser.fromMap(data);
-          }).toList();
-        });
-  }
-
-  // --- Social Features ---
-
-  // Bookmark/Save Post
+  Future<void> blockUser(String targetUserId) async {}
+  Future<void> unblockUser(String targetUserId) async {}
   Future<void> togglePostSave(String postId) async {
-    final uid = currentUserId;
-    if (uid == null) return;
+    await ApiClient.post('/posts/$postId/save', {});
+  }
+  Future<void> muteUser(String targetUserId) async {}
+  Future<void> updateUserLocation(double lat, double lng) async {}
+  Stream<List<AppUser>> watchPopularUsers() async* { yield []; }
+  Stream<List<AppUser>> watchSearchUsers(String query) async* { yield await searchUsers(query); }
 
-    final postRef = _firestore.collection('posts').doc(postId);
-    final savedRef = _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('saved_posts')
-        .doc(postId);
-
-    await _firestore.runTransaction((transaction) async {
-      final savedSnapshot = await transaction.get(savedRef);
-
-      if (savedSnapshot.exists) {
-        transaction.delete(savedRef);
-        transaction.update(postRef, {'saves_count': FieldValue.increment(-1)});
-      } else {
-        transaction.set(savedRef, {
-          'post_id': postId,
-          'timestamp': FieldValue.serverTimestamp(),
-        });
-        transaction.update(postRef, {'saves_count': FieldValue.increment(1)});
+  Stream<List<Post>> watchUserPosts(String userId) async* {
+    try {
+      final response = await ApiClient.get('/posts/user/$userId');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] is List) {
+          final posts = (data['data'] as List).map((x) => Post.fromMap(x)).toList();
+          yield posts;
+          return;
+        }
       }
-    });
-  }
-
-  // Check if post is saved
-  Stream<bool> isPostSaved(String postId) {
-    final uid = currentUserId;
-    if (uid == null) return Stream.value(false);
-
-    return _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('saved_posts')
-        .doc(postId)
-        .snapshots()
-        .map((doc) => doc.exists);
-  }
-
-  // Watch Saved Posts
-  Stream<List<Post>> watchSavedPosts(String uid) {
-    return _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('saved_posts')
-        .orderBy('timestamp', descending: true)
-        .snapshots()
-        .asyncMap((snapshot) async {
-          final posts = <Post>[];
-          for (final doc in snapshot.docs) {
-            final postId = doc.id;
-            final postDoc = await _firestore
-                .collection('posts')
-                .doc(postId)
-                .get();
-            if (postDoc.exists) {
-              posts.add(Post.fromMap(postDoc.data()!));
-            }
-          }
-          return posts;
-        });
-  }
-
-  // Watch Followers
-  Stream<List<AppUser>> watchFollowers(String uid) {
-    return _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('followers')
-        .orderBy('timestamp', descending: true)
-        .snapshots()
-        .asyncMap((snapshot) async {
-          final users = <AppUser>[];
-          for (final doc in snapshot.docs) {
-            final followerUid = doc.id;
-            final user = await getUserById(followerUid);
-            if (user != null) {
-              users.add(user);
-            }
-          }
-          return users;
-        });
-  }
-
-  // Watch Following
-  Stream<List<AppUser>> watchFollowing(String uid) {
-    return _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('following')
-        .orderBy('timestamp', descending: true)
-        .snapshots()
-        .asyncMap((snapshot) async {
-          final users = <AppUser>[];
-          for (final doc in snapshot.docs) {
-            final followingUid = doc.id;
-            final user = await getUserById(followingUid);
-            if (user != null) {
-              users.add(user);
-            }
-          }
-          return users;
-        });
-  }
-
-  Future<void> blockUser(String targetUid) async {
-    final uid = currentUserId;
-    if (uid == null) return;
-    await _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('blocked_users')
-        .doc(targetUid)
-        .set({'blocked_at': FieldValue.serverTimestamp()});
-  }
-
-  Future<void> muteUser(String targetUid) async {
-    final uid = currentUserId;
-    if (uid == null) return;
-    await _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('muted_users')
-        .doc(targetUid)
-        .set({'muted_at': FieldValue.serverTimestamp()});
-  }
-
-  Future<void> unmuteUser(String targetUid) async {
-    final uid = currentUserId;
-    if (uid == null) return;
-    await _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('muted_users')
-        .doc(targetUid)
-        .delete();
-  }
-
-  Future<void> unblockUser(String targetUid) async {
-    final uid = currentUserId;
-    if (uid == null) return;
-    await _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('blocked_users')
-        .doc(targetUid)
-        .delete();
-  }
-
-  Stream<bool> isBlocked(String targetUid) {
-    final uid = currentUserId;
-    if (uid == null) return Stream.value(false);
-    return _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('blocked_users')
-        .doc(targetUid)
-        .snapshots()
-        .map((doc) => doc.exists);
-  }
-
-  Stream<List<String>> watchBlockedUsers() {
-    final uid = currentUserId;
-    if (uid == null) return Stream.value([]);
-    return _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('blocked_users')
-        .snapshots()
-        .map((snapshot) => snapshot.docs.map((doc) => doc.id).toList());
+    } catch (e) {
+      debugPrint('Error fetching user posts: $e');
+    }
+    yield [];
   }
 }
-
-final currentUserProvider = StreamProvider<AppUser?>((ref) {
-  final authState = ref.watch(authStateChangesProvider);
-  final user = authState.value;
-
-  if (user == null) return Stream.value(null);
-
-  return FirebaseFirestore.instance
-      .collection('users')
-      .doc(user.uid)
-      .snapshots()
-      .map((doc) {
-        try {
-          if (!doc.exists) return null;
-          final data = doc.data()!;
-          data['uid'] = doc.id;
-          return AppUser.fromMap(data);
-        } catch (e) {
-          debugPrint('Error parsing current user doc (${user.uid}): $e');
-          return null;
-        }
-      });
-});
-
-final userProvider = StreamProvider.family<AppUser?, String>((ref, uid) {
-  return ref.watch(userRepositoryProvider).watchUser(uid);
-});
-
-final isFollowingProvider = StreamProvider.family<bool, String>((
-  ref,
-  targetUid,
-) {
-  return ref.watch(userRepositoryProvider).isFollowing(targetUid);
-});
-
-final isFollowedByProvider = StreamProvider.family<bool, String>((
-  ref,
-  targetUid,
-) {
-  return ref.watch(userRepositoryProvider).isFollowedBy(targetUid);
-});
-
-final currentUserIdProvider = Provider<String?>((ref) {
-  return ref.watch(authStateChangesProvider).value?.uid;
-});
-
-final usersLocationsProvider = StreamProvider<List<AppUser>>((ref) {
-  return ref.watch(userRepositoryProvider).watchUsersLocations();
-});
-
-final isPostSavedProvider = StreamProvider.family<bool, String>((ref, postId) {
-  return ref.watch(userRepositoryProvider).isPostSaved(postId);
-});
-
-final savedPostsProvider = StreamProvider.family<List<Post>, String>((
-  ref,
-  uid,
-) {
-  return ref.watch(userRepositoryProvider).watchSavedPosts(uid);
-});
-
-final followersProvider = StreamProvider.family<List<AppUser>, String>((
-  ref,
-  uid,
-) {
-  return ref.watch(userRepositoryProvider).watchFollowers(uid);
-});
-
-final followingProvider = StreamProvider.family<List<AppUser>, String>((
-  ref,
-  uid,
-) {
-  return ref.watch(userRepositoryProvider).watchFollowing(uid);
-});
-
-final isBlockedProvider = StreamProvider.family<bool, String>((ref, targetUid) {
-  return ref.watch(userRepositoryProvider).isBlocked(targetUid);
-});
-
-final blockedUsersProvider = StreamProvider<List<String>>((ref) {
-  return ref.watch(userRepositoryProvider).watchBlockedUsers();
-});

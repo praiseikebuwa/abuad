@@ -1,8 +1,10 @@
 import 'dart:async';
-import 'dart:math';
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
 
 import 'package:camera/camera.dart';
+import 'package:camerakit_flutter/camerakit_flutter.dart';
+import 'package:camerakit_flutter/lens_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -23,7 +25,8 @@ class CameraScreen extends StatefulWidget {
 }
 
 class _CameraScreenState extends State<CameraScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver
+    implements CameraKitFlutterEvents {
   List<CameraDescription> _cameras = [];
   CameraController? _controller;
   int _selectedCameraIndex = 0;
@@ -39,12 +42,16 @@ class _CameraScreenState extends State<CameraScreen>
   Uint8List? _latestGallerImage;
   AssetEntity? _latestAsset;
 
+  late final _cameraKitFlutterImpl = CameraKitFlutterImpl(cameraKitFlutterEvents: this);
+  static const String _snapLensGroupId = '4b594445-eaf3-46cd-8626-fae099b74079';
+  List<Lens> _snapLenses = [];
+
   late PageController _modePageController;
   Timer? _recordingTimer;
   Duration _recordingDuration = Duration.zero;
   Timer? _countdownTimer;
   bool _timerModeActive = false;
-  int _timerDelaySeconds = 3; // 3 or 10
+  final int _timerDelaySeconds = 3; // 3 or 10
   int _timerCountdownValue = 0;
   bool _isMirrored = true;
   double _exposureOffset = 0.0;
@@ -55,6 +62,59 @@ class _CameraScreenState extends State<CameraScreen>
   Offset? _focusPoint;
   final _picker = ImagePicker();
   bool _isPickingImage = false;
+
+  void _openSnapchatLenses() async {
+    if (kIsWeb) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Snapchat Lenses are supported on mobile devices (Android/iOS).'),
+        ),
+      );
+      return;
+    }
+    try {
+      HapticFeedback.mediumImpact();
+      await _cameraKitFlutterImpl.openCameraKit(
+        groupIds: [_snapLensGroupId],
+        isHideCloseButton: false,
+      );
+    } catch (e) {
+      debugPrint('Error launching Snapchat Camera Kit: $e');
+      if (mounted) {
+        final isMissingPlugin = e.toString().contains('MissingPluginException');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isMissingPlugin
+                  ? 'Please do a full app rebuild (stop & re-run flutter run) to compile native Snapchat SDK.'
+                  : 'Could not launch Snapchat Lenses: $e',
+            ),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  void receivedLenses(List<Lens> lensList) {
+    if (mounted) {
+      setState(() {
+        _snapLenses = lensList;
+      });
+      debugPrint('Snapchat Lenses loaded: ${_snapLenses.length}');
+    }
+  }
+
+  @override
+  void onCameraKitResult(Map<dynamic, dynamic> result) {
+    final String? path = result['path']?.toString();
+    final String? type = result['type']?.toString();
+    if (path != null && path.isNotEmpty) {
+      final mode = (type != null && type.contains('video')) ? CameraMode.video : CameraMode.photo;
+      _handleMediaCapture(XFile(path), mode);
+    }
+  }
 
   @override
   void initState() {
@@ -133,11 +193,23 @@ class _CameraScreenState extends State<CameraScreen>
 
     try {
       await cameraController.initialize();
-      await cameraController.setFlashMode(_flashMode);
-      _minZoom = await cameraController.getMinZoomLevel();
-      _maxZoom = await cameraController.getMaxZoomLevel();
-      _minExposureOffset = await cameraController.getMinExposureOffset();
-      _maxExposureOffset = await cameraController.getMaxExposureOffset();
+      try {
+        await cameraController.setFlashMode(_flashMode);
+      } catch (_) {}
+      try {
+        _minZoom = await cameraController.getMinZoomLevel();
+        _maxZoom = await cameraController.getMaxZoomLevel();
+      } catch (_) {
+        _minZoom = 1.0;
+        _maxZoom = 1.0;
+      }
+      try {
+        _minExposureOffset = await cameraController.getMinExposureOffset();
+        _maxExposureOffset = await cameraController.getMaxExposureOffset();
+      } catch (_) {
+        _minExposureOffset = -2.0;
+        _maxExposureOffset = 2.0;
+      }
       if (mounted) {
         setState(() {
           _isCameraInitialized = true;
@@ -153,6 +225,7 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Future<void> _fetchLatestGalleryImage() async {
+    if (kIsWeb) return;
     try {
       final PermissionState ps = await PhotoManager.requestPermissionExtend();
       if (!ps.isAuth) return;
@@ -167,10 +240,12 @@ class _CameraScreenState extends State<CameraScreen>
       if (assets.isEmpty) return;
       final asset = assets[0];
       final Uint8List? thumb = await asset.thumbnailData;
-      if (mounted) setState(() {
-        _latestGallerImage = thumb;
-        _latestAsset = asset;
-      });
+      if (mounted) {
+        setState(() {
+          _latestGallerImage = thumb;
+          _latestAsset = asset;
+        });
+      }
     } catch (e) {
       debugPrint('Error fetching latest gallery image: $e');
     }
@@ -194,7 +269,9 @@ class _CameraScreenState extends State<CameraScreen>
                   ? FlashMode.always
                   : FlashMode.off;
     });
-    _controller?.setFlashMode(_flashMode);
+    try {
+      _controller?.setFlashMode(_flashMode);
+    } catch (_) {}
   }
 
   void _setFocusPoint(Offset globalPosition) {
@@ -204,7 +281,9 @@ class _CameraScreenState extends State<CameraScreen>
     final size = box.size;
     final x = (local.dx / size.width).clamp(0.0, 1.0);
     final y = (local.dy / size.height).clamp(0.0, 1.0);
-    _controller!.setFocusPoint(Offset(x, y));
+    try {
+      _controller!.setFocusPoint(Offset(x, y));
+    } catch (_) {}
     HapticFeedback.lightImpact();
     setState(() => _focusPoint = Offset(x, y));
     Future.delayed(const Duration(seconds: 1), () {
@@ -213,7 +292,9 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   void _setExposureOffset(double value) {
-    _controller?.setExposureOffset(value);
+    try {
+      _controller?.setExposureOffset(value);
+    } catch (_) {}
     setState(() => _exposureOffset = value);
   }
 
@@ -323,7 +404,9 @@ class _CameraScreenState extends State<CameraScreen>
           backgroundColor: Colors.black,
           body: Stack(
             children: [
-              Center(child: Image.file(file)),
+              Center(
+                child: kIsWeb ? Image.network(file.path) : Image.file(file),
+              ),
               Positioned(
                 top: 40,
                 left: 20,
@@ -364,8 +447,9 @@ class _CameraScreenState extends State<CameraScreen>
               onTap: () {
                 Navigator.pop(context);
                 setState(() => _resolutionPreset = preset);
-                if (_cameras.isNotEmpty)
+                if (_cameras.isNotEmpty) {
                   _onNewCameraSelected(_cameras[_selectedCameraIndex]);
+                }
               },
             );
           }).toList(),
@@ -499,10 +583,17 @@ class _CameraScreenState extends State<CameraScreen>
             child: Column(
               children: [
                 _buildSidebarButton(
+                  icon: Icons.auto_awesome,
+                  label: "Lenses",
+                  isActive: true,
+                  onTap: _openSnapchatLenses,
+                  isLarge: true,
+                ),
+                const SizedBox(height: 16),
+                _buildSidebarButton(
                   icon: Icons.flip_camera_ios_rounded,
                   label: "Flip",
                   onTap: _toggleCamera,
-                  isLarge: true,
                 ),
                 const SizedBox(height: 16),
                 if (isFrontCamera)
@@ -556,7 +647,7 @@ class _CameraScreenState extends State<CameraScreen>
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.8),
+                    color: Colors.red.withValues(alpha: 0.8),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
@@ -588,7 +679,7 @@ class _CameraScreenState extends State<CameraScreen>
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Colors.black.withOpacity(0.7)],
+                  colors: [Colors.transparent, Colors.black.withValues(alpha: 0.7)],
                 ),
               ),
               padding: const EdgeInsets.only(bottom: 30),
@@ -607,7 +698,11 @@ class _CameraScreenState extends State<CameraScreen>
                           onLongPressUp: _currentMode != CameraMode.photo ? _stopVideoRecording : null,
                           child: _buildShutterButton(),
                         ),
-                        const SizedBox(width: 48),
+                        _buildCircularButton(
+                          icon: Icons.auto_awesome,
+                          onTap: _openSnapchatLenses,
+                          size: 48,
+                        ),
                       ],
                     ),
                   ),
@@ -718,7 +813,7 @@ class _CameraScreenState extends State<CameraScreen>
           child: Container(
             width: size,
             height: size,
-            decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),
             child: Icon(icon, color: Colors.white, size: size * 0.6),
           ),
         ),
@@ -748,7 +843,7 @@ class _CameraScreenState extends State<CameraScreen>
                 width: size,
                 height: size,
                 decoration: BoxDecoration(
-                  color: isActive ? Colors.white.withOpacity(0.35) : Colors.white.withOpacity(0.15),
+                  color: isActive ? Colors.white.withValues(alpha: 0.35) : Colors.white.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.white30, width: 1.5),
                 ),

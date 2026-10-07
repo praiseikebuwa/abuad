@@ -7,7 +7,7 @@ class VerificationController {
         if (!this.tableBody) return;
         this.tableBody.innerHTML = '<tr><td colspan="5" class="loading-text">Loading verification requests...</td></tr>';
 
-        if (this.unsubscribe) this.unsubscribe();
+        if (typeof this.unsubscribe === 'function') this.unsubscribe();
 
         this.unsubscribe = db.collection('verification_requests')
             .where('status', '==', 'pending')
@@ -73,7 +73,7 @@ class VerificationController {
             // 1. Update Request Status
             batch.update(db.collection('verification_requests').doc(requestId), {
                 status: approved ? 'approved' : 'rejected',
-                processedAt: firebase.firestore.FieldValue.serverTimestamp()
+                processedAt: new Date().toISOString()
             });
 
             // 2. If approved, update User Profile

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -313,9 +314,22 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final otherUsers = ref.watch(usersLocationsProvider).value ?? [];
     final currentUid = ref.watch(currentUserIdProvider);
 
+    final canPop = Navigator.of(context).canPop();
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
+        leading: canPop
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () {
+                  if (Navigator.of(context).canPop()) {
+                    Navigator.of(context).pop();
+                  } else {
+                    context.go('/');
+                  }
+                },
+              )
+            : null,
         title: const Text(
           'Campus Map',
           style: TextStyle(fontWeight: FontWeight.w600),

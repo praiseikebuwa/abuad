@@ -51,8 +51,8 @@ class ConfigController {
             await db.collection('system').doc('config').set({
                 maintenanceMode: this.maintenanceToggle.checked,
                 allowSignups: this.signupsToggle.checked,
-                lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
-                updatedBy: auth.currentUser.email
+                lastUpdated: new Date().toISOString(),
+                updatedBy: (window.auth && window.auth.currentUser) ? window.auth.currentUser.email : 'admin@abuad.edu.ng'
             }, { merge: true });
 
             // 2. Save and Apply Local Theme

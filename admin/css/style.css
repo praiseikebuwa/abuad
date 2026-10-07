@@ -408,6 +408,11 @@ h3 {
     transition: var(--transition-fast);
 }
 
+.card canvas {
+    max-height: 220px !important;
+    width: 100% !important;
+}
+
 .card:hover,
 .stat-card:hover {
     transform: translateY(-4px);
@@ -967,4 +972,17 @@ input:checked+.slider:before {
     100% {
         box-shadow: 0 0 0 0 rgba(244, 63, 94, 0);
     }
+}
+
+/* --- Fix Chart.js Infinite Vertical Resizing Bug --- */
+canvas {
+    max-height: 280px !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+}
+
+.chart-card, .dashboard-card, canvas-container {
+    position: relative;
+    max-height: 360px;
+    overflow: hidden;
 }

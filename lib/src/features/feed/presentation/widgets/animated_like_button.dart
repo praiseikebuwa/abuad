@@ -1,4 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+String formatCount(int count) {
+  if (count <= 0) return '';
+  if (count >= 1000000) {
+    double m = count / 1000000;
+    return '${m.toStringAsFixed(m % 1 == 0 ? 0 : 1)}M';
+  } else if (count >= 1000) {
+    double k = count / 1000;
+    return '${k.toStringAsFixed(k % 1 == 0 ? 0 : 1)}k';
+  }
+  return '$count';
+}
 
 class AnimatedLikeButton extends StatefulWidget {
   final bool isLiked;
@@ -69,12 +81,15 @@ class _AnimatedLikeButtonState extends State<AnimatedLikeButton>
 
   @override
   Widget build(BuildContext context) {
+    final countText = formatCount(widget.count);
+
     return InkWell(
       onTap: _handleTap,
       borderRadius: BorderRadius.circular(20),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             AnimatedBuilder(
               animation: _scaleAnimation,
@@ -90,7 +105,7 @@ class _AnimatedLikeButtonState extends State<AnimatedLikeButton>
                   return ScaleTransition(scale: animation, child: child);
                 },
                 child: Icon(
-                  widget.isLiked ? Icons.favorite : Icons.favorite_border,
+                  widget.isLiked ? CupertinoIcons.heart_fill : CupertinoIcons.heart,
                   key: ValueKey(widget.isLiked),
                   size: widget.iconSize,
                   color: widget.isLiked
@@ -99,7 +114,7 @@ class _AnimatedLikeButtonState extends State<AnimatedLikeButton>
                 ),
               ),
             ),
-            if (widget.showCount && widget.count > 0) ...[
+            if (widget.showCount && countText.isNotEmpty) ...[
               const SizedBox(width: 4),
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 200),
@@ -116,13 +131,14 @@ class _AnimatedLikeButtonState extends State<AnimatedLikeButton>
                   );
                 },
                 child: Text(
-                  '${widget.count}',
-                  key: ValueKey(widget.count),
+                  countText,
+                  key: ValueKey(countText),
                   style: TextStyle(
                     color: widget.isLiked
                         ? (widget.activeColor ?? Colors.red)
                         : (widget.inactiveColor ?? Colors.grey[600]),
                     fontSize: 13,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),

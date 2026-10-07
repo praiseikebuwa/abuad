@@ -13,30 +13,37 @@ class MonitorController {
     init() {
         if (!this.feed) return;
         this.feed.innerHTML = '';
-        
+
+        let hasLoaded = false;
         this.collections.forEach(coll => {
             db.collection(coll.name)
                 .orderBy('createdAt', 'desc')
                 .limit(5)
                 .onSnapshot(snap => {
-                    snap.docChanges().forEach(change => {
-                        if (change.type === 'added') {
-                            this.addActivity(coll, change.doc.data(), change.doc.id);
+                    if (snap && snap.docs && snap.docs.length > 0) {
+                        if (!hasLoaded) {
+                            this.feed.innerHTML = '';
+                            hasLoaded = true;
                         }
-                    });
+                        snap.docs.forEach(doc => {
+                            this.addActivity(coll, doc.data(), doc.id);
+                        });
+                    } else if (!hasLoaded) {
+                        this.feed.innerHTML = '<div style="padding: 12px; color: var(--text-muted); font-size: 0.85rem; text-align: center;">No recent platform activity found.</div>';
+                    }
                 });
         });
     }
 
     addActivity(coll, data, id) {
-        if (!this.feed) return;
+        if (!this.feed || !data) return;
 
         const item = document.createElement('div');
         item.className = 'activity-item';
-        
+
         const timestamp = data.createdAt ? this.formatTime(data.createdAt) : 'Just now';
-        const title = data.displayName || data.title || data.userName || coll.label;
-        const details = data.content || data.description || data.email || `ID: ${id.substring(0,8)}`;
+        const title = data.displayName || data.title || data.username || data.fullName || coll.label;
+        const details = data.content || data.description || data.email || `ID: ${String(id).substring(0, 8)}`;
 
         item.innerHTML = `
             <div class="activity-icon" style="background: ${coll.color}20; color: ${coll.color}">
@@ -48,23 +55,23 @@ class MonitorController {
                     <span class="activity-time">${timestamp}</span>
                 </div>
                 <div class="activity-body">
-                    <b>${this.escapeHTML(title)}</b><br>
-                    <small class="text-muted">${this.escapeHTML(details.substring(0, 100))}${details.length > 100 ? '...' : ''}</small>
+                    <b>${this.escapeHTML(String(title))}</b><br>
+                    <small class="text-muted">${this.escapeHTML(String(details).substring(0, 100))}${String(details).length > 100 ? '...' : ''}</small>
                 </div>
             </div>
         `;
 
         this.feed.prepend(item);
 
-        // Keep list size manageable
         while (this.feed.children.length > this.maxItems) {
             this.feed.removeChild(this.feed.lastChild);
         }
     }
 
     formatTime(ts) {
+        if (!ts) return 'Just now';
         const d = ts.toDate ? ts.toDate() : new Date(ts);
-        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return isNaN(d.getTime()) ? 'Just now' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
 
     escapeHTML(str) {

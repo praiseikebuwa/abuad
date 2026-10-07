@@ -4,9 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import '../feed_screen.dart';
 import '../../data/post_repository.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../domain/post.dart';
-import '../../../user/data/user_repository.dart';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // FEATURE 1: Algorithmic Feed Ranking
@@ -329,83 +327,76 @@ final feedLimitProvider = NotifierProvider<FeedLimitNotifier, int>(
 );
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Paginated Feed Provider (Facebook-style Cursor Pagination)
+// Paginated Feed Provider (Continuous Cursor-Based Recommendation Feed)
 // ──────────────────────────────────────────────────────────────────────────────
 
 class PaginatedFeedNotifier extends AsyncNotifier<List<Post>> {
-  DocumentSnapshot<Map<String, dynamic>>? _lastDocument;
+  String? _nextCursor;
   bool _hasMore = true;
+  bool _isLoadingMore = false;
+
+  bool get hasMore => _hasMore;
+  bool get isLoadingMore => _isLoadingMore;
 
   @override
   FutureOr<List<Post>> build() async {
+    _nextCursor = null;
+    _hasMore = true;
+    _isLoadingMore = false;
     return _fetchInitial();
   }
 
   Future<List<Post>> _fetchInitial() async {
-    _lastDocument = null;
+    _nextCursor = null;
     _hasMore = true;
-    return _fetchPage();
+    return _fetchBatch(isInitial: true);
   }
 
   Future<void> loadMore() async {
-    if (!_hasMore || state.isLoading || state.isRefreshing) return;
+    if (!_hasMore || _isLoadingMore || state.isLoading || state.isRefreshing) return;
 
-    final currentPosts = state.value ?? <Post>[];
-    state = const AsyncLoading();
-    state = await AsyncValue.guard(() async {
-      final newPosts = await _fetchPage(startAfter: _lastDocument);
-      return [...currentPosts, ...newPosts];
-    });
+    _isLoadingMore = true;
+    ref.read(isLoadingMoreProvider.notifier).state = true;
+
+    try {
+      final currentPosts = state.value ?? <Post>[];
+      final newPosts = await _fetchBatch(isInitial: false);
+      
+      // Deduplicate against existing post IDs
+      final existingIds = currentPosts.map((p) => p.id).toSet();
+      final fresh = newPosts.where((p) => !existingIds.contains(p.id)).toList();
+
+      state = AsyncData([...currentPosts, ...fresh]);
+    } catch (e) {
+      // Keep existing state intact on error
+    } finally {
+      _isLoadingMore = false;
+      ref.read(isLoadingMoreProvider.notifier).state = false;
+    }
   }
 
-  Future<List<Post>> _fetchPage({
-    DocumentSnapshot<Map<String, dynamic>>? startAfter,
-  }) async {
+  Future<void> refresh() async {
+    _nextCursor = null;
+    _hasMore = true;
+    _isLoadingMore = false;
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() => _fetchInitial());
+  }
+
+  Future<List<Post>> _fetchBatch({required bool isInitial}) async {
     final feedType = ref.watch(feedTypeProvider);
-    final selectedChannel = ref.watch(feedChannelProvider);
     final hiddenPosts = ref.watch(hiddenPostsProvider);
     final mutedTags = ref.watch(mutedHashtagsProvider);
     final activeFilters = ref.watch(feedFilterProvider);
-
     final repo = ref.watch(postRepositoryProvider);
-    final blockedUsersAsync = ref.watch(blockedUsersProvider);
-    final blockedUserIds = blockedUsersAsync.value ?? [];
-    final currentUserId = ref.watch(currentUserIdProvider);
 
-    int limit = 15;
-    PaginatedPostsResult result;
+    final result = await repo.fetchFeedPage(
+      cursor: isInitial ? null : _nextCursor,
+      limit: 15,
+      feedType: feedType == FeedType.following ? 'following' : 'foryou',
+    );
 
-    if (feedType == FeedType.following) {
-      result = await repo.fetchFollowingPostsPage(
-        currentUserId ?? '',
-        blockedUserIds: blockedUserIds,
-        startAfter: startAfter,
-        limit: limit,
-      );
-    } else {
-      if (selectedChannel == 'all') {
-        result = await repo.fetchDiscoveryPostsPage(
-          blockedUserIds: blockedUserIds,
-          startAfter: startAfter,
-          limit: limit,
-        );
-      } else if (selectedChannel == 'reels') {
-        result = await repo.fetchVideoPostsPage(
-          blockedUserIds: blockedUserIds,
-          startAfter: startAfter,
-          limit: limit,
-        );
-      } else {
-        result = await repo.fetchChannelPostsPage(
-          selectedChannel,
-          blockedUserIds: blockedUserIds,
-          startAfter: startAfter,
-          limit: limit,
-        );
-      }
-    }
-
-    _lastDocument = result.lastDocument;
+    _nextCursor = result.nextCursor;
     _hasMore = result.hasMore;
 
     var filtered = result.posts
@@ -420,10 +411,6 @@ class PaginatedFeedNotifier extends AsyncNotifier<List<Post>> {
 
     filtered = _applySmartFilters(filtered, activeFilters);
 
-    if (feedType == FeedType.discovery && selectedChannel == 'all') {
-      filtered = rankPosts(filtered);
-    }
-
     return filtered;
   }
 }
@@ -432,3 +419,4 @@ final paginatedFeedProvider =
     AsyncNotifierProvider<PaginatedFeedNotifier, List<Post>>(
       PaginatedFeedNotifier.new,
     );
+

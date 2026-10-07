@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/user/data/user_repository.dart';
 import '../../features/chat/data/chat_repository.dart';
+import 'package:flutter/cupertino.dart';
+
 
 class ScaffoldWithBottomNav extends ConsumerWidget {
   const ScaffoldWithBottomNav({super.key, required this.navigationShell});
@@ -12,13 +14,10 @@ class ScaffoldWithBottomNav extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Watch current user to enforce profile completion
     ref.listen(currentUserProvider, (previous, next) {
-      if (next.value != null) {
-        final user = next.value!;
-        if (user.college == null ||
-            user.department == null ||
-            user.phoneNumber == null) {
+      final user = next.value;
+      if (user != null) {
+        if (user.department == null || user.department!.trim().isEmpty) {
           final location = GoRouterState.of(context).uri.toString();
           if (location != '/complete-profile') {
             WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -34,69 +33,109 @@ class ScaffoldWithBottomNav extends ConsumerWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final unreadCountAsync = ref.watch(unreadChatCountProvider);
     final unreadCount = unreadCountAsync.asData?.value ?? 0;
+    final location = GoRouterState.of(context).uri.toString();
+    final isAiActive = location.startsWith('/ai');
 
     return Scaffold(
       body: navigationShell,
-      bottomNavigationBar: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            padding: EdgeInsets.fromLTRB(
-              16,
-              12, // Reduced top padding
-              16,
-              12 +
-                  MediaQuery.of(
-                    context,
-                  ).padding.bottom, // Adjusted bottom padding
-            ),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? Colors.black.withValues(alpha: 0.6)
-                  : Colors.white.withValues(alpha: 0.7),
-              border: Border(
-                top: BorderSide(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.1)
-                      : Colors.black.withValues(alpha: 0.05),
-                  width: 1,
+      bottomNavigationBar: SafeArea(
+        child: ClipRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.black.withValues(alpha: 0.85)
+                    : Colors.white.withValues(alpha: 0.9),
+                border: Border(
+                  top: BorderSide(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.1)
+                        : Colors.black.withValues(alpha: 0.05),
+                    width: 1,
+                  ),
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 16,
+                    offset: const Offset(0, -4),
+                  ),
+                ],
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, -2),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _buildNavItem(context, 0, Icons.home_outlined, Icons.home),
-                _buildNavItem(
-                  context,
-                  1,
-                  Icons.search,
-                  Icons.search,
-                  iconSize: 26,
-                ),
-                _buildNavItem(context, 2, Icons.map_outlined, Icons.map),
-                _buildNavItem(
-                  context,
-                  3,
-                  Icons.storefront_outlined,
-                  Icons.storefront,
-                ),
-                _buildNavItem(
-                  context,
-                  4,
-                  Icons.chat_bubble_outline,
-                  Icons.chat_bubble,
-                  badgeCount: unreadCount,
-                ),
-                _buildNavItem(context, 5, Icons.person_outline, Icons.person),
-              ],
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  // 1. Home Feed
+                  _buildNavItem(
+                    context,
+                    isSelected: navigationShell.currentIndex == 0,
+                    outlineIcon: CupertinoIcons.house,
+                    filledIcon: CupertinoIcons.house_fill,
+                    onTap: () {
+                      navigationShell.goBranch(
+                        0,
+                        initialLocation: navigationShell.currentIndex == 0,
+                      );
+                    },
+                  ),
+
+                  // 2. Chat
+                  _buildNavItem(
+                    context,
+                    isSelected: navigationShell.currentIndex == 4,
+                    outlineIcon: CupertinoIcons.chat_bubble,
+                    filledIcon: CupertinoIcons.chat_bubble_fill,
+                    badgeCount: unreadCount,
+                    onTap: () {
+                      navigationShell.goBranch(
+                        4,
+                        initialLocation: navigationShell.currentIndex == 4,
+                      );
+                    },
+                  ),
+
+                  // 3. Marketplace / Store (Center)
+                  _buildNavItem(
+                    context,
+                    isSelected: navigationShell.currentIndex == 3,
+                    outlineIcon: CupertinoIcons.cart_badge_minus,
+                    filledIcon: CupertinoIcons.cart_fill,
+                    onTap: () {
+                      navigationShell.goBranch(
+                        3,
+                        initialLocation: navigationShell.currentIndex == 3,
+                      );
+                    },
+                  ),
+
+                  // 4. AI Assistant
+                  _buildNavItem(
+                    context,
+                    isSelected: isAiActive,
+                    outlineIcon: CupertinoIcons.sparkles,
+                    filledIcon: CupertinoIcons.sparkles,
+                    onTap: () {
+                      context.push('/ai');
+                    },
+                  ),
+
+                  // 5. Profile
+                  _buildNavItem(
+                    context,
+                    isSelected: navigationShell.currentIndex == 5,
+                    outlineIcon: CupertinoIcons.person,
+                    filledIcon: CupertinoIcons.person_fill,
+                    onTap: () {
+                      navigationShell.goBranch(
+                        5,
+                        initialLocation: navigationShell.currentIndex == 5,
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -104,28 +143,25 @@ class ScaffoldWithBottomNav extends ConsumerWidget {
     );
   }
 
+
+
   Widget _buildNavItem(
-    BuildContext context,
-    int index,
-    IconData outlineIcon,
-    IconData filledIcon, {
+    BuildContext context, {
+    required bool isSelected,
+    required IconData outlineIcon,
+    required IconData filledIcon,
+    required VoidCallback onTap,
     int badgeCount = 0,
-    double iconSize = 28,
+    double iconSize = 24,
   }) {
-    final isSelected = navigationShell.currentIndex == index;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return GestureDetector(
-      onTap: () {
-        navigationShell.goBranch(
-          index,
-          initialLocation: index == navigationShell.currentIndex,
-        );
-      },
+      onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        width: 44,
-        height: 44,
+        width: 40,
+        height: 40,
         alignment: Alignment.center,
         child: Stack(
           alignment: Alignment.center,
@@ -136,27 +172,27 @@ class ScaffoldWithBottomNav extends ConsumerWidget {
               size: iconSize,
               color: isSelected
                   ? (isDark ? Colors.white : Colors.black)
-                  : (isDark ? Colors.grey[600] : Colors.grey[500]),
+                  : (isDark ? Colors.grey[500] : Colors.grey[600]),
             ),
             if (badgeCount > 0)
               Positioned(
-                top: -5,
-                right: -5,
+                top: -3,
+                right: -3,
                 child: Container(
-                  padding: const EdgeInsets.all(4),
+                  padding: const EdgeInsets.all(3),
                   decoration: const BoxDecoration(
                     color: Colors.red,
                     shape: BoxShape.circle,
                   ),
                   constraints: const BoxConstraints(
-                    minWidth: 16,
-                    minHeight: 16,
+                    minWidth: 15,
+                    minHeight: 15,
                   ),
                   child: Text(
                     badgeCount > 99 ? '99+' : '$badgeCount',
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 10,
+                      fontSize: 9,
                       fontWeight: FontWeight.bold,
                     ),
                     textAlign: TextAlign.center,
@@ -166,22 +202,6 @@ class ScaffoldWithBottomNav extends ConsumerWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-extension RowExtension on Row {
-  // Helper to allow simpler list syntax in build method
-  Row copyWith({List<Widget>? items}) {
-    return Row(
-      key: key,
-      mainAxisAlignment: mainAxisAlignment,
-      mainAxisSize: mainAxisSize,
-      crossAxisAlignment: crossAxisAlignment,
-      textDirection: textDirection,
-      verticalDirection: verticalDirection,
-      textBaseline: textBaseline,
-      children: items ?? children,
     );
   }
 }

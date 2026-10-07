@@ -90,7 +90,7 @@ class ResourcesController {
                 category: categoryInput.value,
                 url: urlInput.value,
                 downloads: 0,
-                uploadedAt: firebase.firestore.FieldValue.serverTimestamp()
+                uploadedAt: new Date().toISOString()
             });
 
             window.logAdminAction('UPLOAD_RESOURCE', `Uploaded resource: ${titleInput.value}`, 'resource', docRef.id);

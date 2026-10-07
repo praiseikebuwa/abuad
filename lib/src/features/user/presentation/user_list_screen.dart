@@ -184,7 +184,7 @@ class _UserList extends ConsumerWidget {
                       );
                     },
                     loading: () => const SizedBox(width: 32),
-                    error: (_, __) => const SizedBox(width: 32),
+                    error: (_, _) => const SizedBox(width: 32),
                   );
                 },
               ),

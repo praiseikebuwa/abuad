@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 enum ReportType { post, comment, story, user }
 
 enum ReportReason {
@@ -19,7 +17,7 @@ class Report {
   final ReportReason reason;
   final String? details;
   final DateTime createdAt;
-  final String status; // 'pending', 'reviewed', 'resolved'
+  final String status;
 
   Report({
     required this.id,
@@ -40,20 +38,31 @@ class Report {
       'type': type.name,
       'reason': reason.name,
       'details': details,
-      'created_at': Timestamp.fromDate(createdAt),
+      'created_at': createdAt.toIso8601String(),
       'status': status,
     };
   }
 
   factory Report.fromMap(Map<String, dynamic> map) {
+    DateTime parseTime(dynamic raw) {
+      if (raw is String) return DateTime.tryParse(raw) ?? DateTime.now();
+      return DateTime.now();
+    }
+
     return Report(
       id: map['id'] ?? '',
-      reporterId: map['reporter_id'] ?? '',
-      targetId: map['target_id'] ?? '',
-      type: ReportType.values.byName(map['type'] ?? 'post'),
-      reason: ReportReason.values.byName(map['reason'] ?? 'other'),
+      reporterId: map['reporter_id'] ?? map['reporterId'] ?? '',
+      targetId: map['target_id'] ?? map['targetId'] ?? '',
+      type: ReportType.values.firstWhere(
+        (e) => e.name == map['type'],
+        orElse: () => ReportType.post,
+      ),
+      reason: ReportReason.values.firstWhere(
+        (e) => e.name == map['reason'],
+        orElse: () => ReportReason.other,
+      ),
       details: map['details'],
-      createdAt: (map['created_at'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      createdAt: parseTime(map['created_at'] ?? map['createdAt']),
       status: map['status'] ?? 'pending',
     );
   }

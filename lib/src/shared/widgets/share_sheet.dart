@@ -30,7 +30,7 @@ class ShareSheet extends ConsumerStatefulWidget {
 class _ShareSheetState extends ConsumerState<ShareSheet> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-  
+
   /// Selected IDs map to their data
   /// Keys are uids (for users) or channelIds (for existing chats)
   final Map<String, ({String type, dynamic data})> _selectedRecipients = {};
@@ -61,11 +61,15 @@ class _ShareSheetState extends ConsumerState<ShareSheet> {
             child: Container(
               decoration: BoxDecoration(
                 color: isDark
-                    ? const Color(0xFF171B22).withOpacity(0.85)
-                    : Colors.white.withOpacity(0.9),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+                    ? const Color(0xFF171B22).withValues(alpha: 0.85)
+                    : Colors.white.withValues(alpha: 0.9),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(30),
+                ),
                 border: Border.all(
-                  color: isDark ? Colors.white12 : Colors.black.withOpacity(0.05),
+                  color: isDark
+                      ? Colors.white12
+                      : Colors.black.withValues(alpha: 0.05),
                   width: 0.5,
                 ),
               ),
@@ -73,72 +77,154 @@ class _ShareSheetState extends ConsumerState<ShareSheet> {
                 top: false,
                 child: Column(
                   children: [
-                  // Handle
-                  Center(
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(vertical: 12),
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: isDark ? Colors.white24 : Colors.black12,
-                        borderRadius: BorderRadius.circular(2),
+                    // Handle
+                    Center(
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(vertical: 12),
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.white24 : Colors.black12,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
                     ),
-                  ),
-                  
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Share Post',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.5,
+
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Share Post',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(context),
+                            icon: const Icon(Icons.close),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Search Bar
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.05)
+                              : Colors.black.withValues(alpha: 0.03),
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        child: TextField(
+                          controller: _searchController,
+                          onChanged: (val) =>
+                              setState(() => _searchQuery = val),
+                          decoration: InputDecoration(
+                            hintText: 'Search people or chats...',
+                            prefixIcon: const Icon(Icons.search, size: 20),
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 15,
+                            ),
                           ),
                         ),
-                        IconButton(
-                          onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.close),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // Search Bar
-                  Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
-                        borderRadius: BorderRadius.circular(15),
-                      ),
-                      child: TextField(
-                        controller: _searchController,
-                        onChanged: (val) => setState(() => _searchQuery = val),
-                        decoration: InputDecoration(
-                          hintText: 'Search people or chats...',
-                          prefixIcon: const Icon(Icons.search, size: 20),
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(vertical: 15),
-                        ),
                       ),
                     ),
-                  ),
 
-                  Expanded(
-                    child: CustomScrollView(
-                      controller: scrollController,
-                      slivers: [
-                        // Recent Chats
-                        if (_searchQuery.isEmpty) ...[
+                    Expanded(
+                      child: CustomScrollView(
+                        controller: scrollController,
+                        slivers: [
+                          // Recent Chats
+                          if (_searchQuery.isEmpty) ...[
+                            const SliverToBoxAdapter(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                  vertical: 10,
+                                ),
+                                child: Text(
+                                  'Recent Chats',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            SliverToBoxAdapter(
+                              child: SizedBox(
+                                height: 110,
+                                child: channelsAsync.when(
+                                  data: (channels) => ListView.builder(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                    ),
+                                    scrollDirection: Axis.horizontal,
+                                    itemCount: channels.length,
+                                    itemBuilder: (context, index) {
+                                      final channel = channels[index];
+                                      final otherId = channel.memberIds
+                                          .firstWhere(
+                                            (id) => id != currentUser?.uid,
+                                            orElse: () => '',
+                                          );
+                                      final name = channel.type == 'group'
+                                          ? (channel.displayName ?? 'Group')
+                                          : (channel.memberNames[otherId] ??
+                                                'User');
+                                      final avatar = channel.type == 'group'
+                                          ? channel.displayAvatarUrl
+                                          : channel.memberAvatars[otherId];
+
+                                      final isSelected = _selectedRecipients
+                                          .containsKey(channel.id);
+
+                                      return _ShareRecipientItem(
+                                        name: name,
+                                        avatarUrl: avatar,
+                                        userId: otherId,
+                                        isSelected: isSelected,
+                                        onToggle: () {
+                                          setState(() {
+                                            if (isSelected) {
+                                              _selectedRecipients.remove(
+                                                channel.id,
+                                              );
+                                            } else {
+                                              _selectedRecipients[channel.id] =
+                                                  (
+                                                    type: 'channel',
+                                                    data: channel.id,
+                                                  );
+                                            }
+                                          });
+                                        },
+                                      );
+                                    },
+                                  ),
+                                  loading: () => const Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                  error: (_, _) => const SizedBox.shrink(),
+                                ),
+                              ),
+                            ),
+                          ],
+
+                          // Suggested / Search Results
                           const SliverToBoxAdapter(
                             child: Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                              padding: EdgeInsets.fromLTRB(20, 20, 20, 10),
                               child: Text(
-                                'Recent Chats',
+                                'Suggested',
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w700,
@@ -147,184 +233,149 @@ class _ShareSheetState extends ConsumerState<ShareSheet> {
                               ),
                             ),
                           ),
-                          SliverToBoxAdapter(
-                            child: SizedBox(
-                              height: 110,
-                              child: channelsAsync.when(
-                                data: (channels) => ListView.builder(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                                  scrollDirection: Axis.horizontal,
-                                  itemCount: channels.length,
-                                  itemBuilder: (context, index) {
-                                    final channel = channels[index];
-                                    final otherId = channel.memberIds.firstWhere(
-                                      (id) => id != currentUser?.uid,
-                                      orElse: () => '',
-                                    );
-                                    final name = channel.type == 'group'
-                                        ? (channel.displayName ?? 'Group')
-                                        : (channel.memberNames[otherId] ?? 'User');
-                                    final avatar = channel.type == 'group'
-                                        ? channel.displayAvatarUrl
-                                        : channel.memberAvatars[otherId];
 
-                                    final isSelected = _selectedRecipients.containsKey(channel.id);
-
-                                    return _ShareRecipientItem(
-                                      name: name,
-                                      avatarUrl: avatar,
-                                      userId: otherId,
-                                      isSelected: isSelected,
-                                      onToggle: () {
-                                        setState(() {
-                                          if (isSelected) {
-                                            _selectedRecipients.remove(channel.id);
-                                          } else {
-                                            _selectedRecipients[channel.id] = (
-                                              type: 'channel',
-                                              data: channel.id
-                                            );
-                                          }
-                                        });
-                                      },
-                                    );
-                                  },
-                                ),
-                                loading: () => const Center(child: CircularProgressIndicator()),
-                                error: (_, __) => const SizedBox.shrink(),
-                              ),
-                            ),
-                          ),
-                        ],
-
-                        // Suggested / Search Results
-                        const SliverToBoxAdapter(
-                          child: Padding(
-                            padding: EdgeInsets.fromLTRB(20, 20, 20, 10),
-                            child: Text(
-                              'Suggested',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ),
-                        ),
-                        
-                        _searchQuery.isEmpty 
-                          ? ref.watch(followingProvider(currentUser?.uid ?? '')).when(
-                              data: (following) => SliverList(
-                                delegate: SliverChildBuilderDelegate(
-                                  (context, index) {
-                                    final user = following[index];
-                                    final isSelected = _selectedRecipients.containsKey(user.uid);
-                                    return _ShareListTile(
-                                      user: user,
-                                      isSelected: isSelected,
-                                      onToggle: () {
-                                        setState(() {
-                                          if (isSelected) {
-                                            _selectedRecipients.remove(user.uid);
-                                          } else {
-                                            _selectedRecipients[user.uid] = (
-                                              type: 'user',
-                                              data: user
-                                            );
-                                          }
-                                        });
-                                      },
-                                    );
-                                  },
-                                  childCount: following.length,
-                                ),
-                              ),
-                              loading: () => const SliverToBoxAdapter(child: Center(child: CircularProgressIndicator())),
-                              error: (_, __) => const SliverToBoxAdapter(child: SizedBox.shrink()),
-                            )
-                          : StreamBuilder<List<AppUser>>(
-                              stream: ref.read(userRepositoryProvider).searchUsers(_searchQuery),
-                              builder: (context, snapshot) {
-                                if (!snapshot.hasData) return const SliverToBoxAdapter(child: SizedBox.shrink());
-                                final users = snapshot.data!;
-                                return SliverList(
-                                  delegate: SliverChildBuilderDelegate(
-                                    (context, index) {
-                                      final user = users[index];
-                                      final isSelected = _selectedRecipients.containsKey(user.uid);
-                                      return _ShareListTile(
-                                        user: user,
-                                        isSelected: isSelected,
-                                        onToggle: () {
-                                          setState(() {
-                                            if (isSelected) {
-                                              _selectedRecipients.remove(user.uid);
-                                            } else {
-                                              _selectedRecipients[user.uid] = (
-                                                type: 'user',
-                                                data: user
-                                              );
-                                            }
-                                          });
-                                        },
-                                      );
-                                    },
-                                    childCount: users.length,
+                          _searchQuery.isEmpty
+                              ? ref
+                                    .watch(
+                                      followingProvider(currentUser?.uid ?? ''),
+                                    )
+                                    .when(
+                                      data: (following) => SliverList(
+                                        delegate: SliverChildBuilderDelegate((
+                                          context,
+                                          index,
+                                        ) {
+                                          final user = following[index];
+                                          final isSelected = _selectedRecipients
+                                              .containsKey(user.uid);
+                                          return _ShareListTile(
+                                            user: user,
+                                            isSelected: isSelected,
+                                            onToggle: () {
+                                              setState(() {
+                                                if (isSelected) {
+                                                  _selectedRecipients.remove(
+                                                    user.uid,
+                                                  );
+                                                } else {
+                                                  _selectedRecipients[user
+                                                      .uid] = (
+                                                    type: 'user',
+                                                    data: user,
+                                                  );
+                                                }
+                                              });
+                                            },
+                                          );
+                                        }, childCount: following.length),
+                                      ),
+                                      loading: () => const SliverToBoxAdapter(
+                                        child: Center(
+                                          child: CircularProgressIndicator(),
+                                        ),
+                                      ),
+                                      error: (_, _) => const SliverToBoxAdapter(
+                                        child: SizedBox.shrink(),
+                                      ),
+                                    )
+                              : StreamBuilder<List<AppUser>>(
+                                  stream: Stream.fromFuture(
+                                    ref
+                                        .read(userRepositoryProvider)
+                                        .searchUsers(_searchQuery),
                                   ),
-                                );
-                              },
-                            ),
-                      ],
-                    ),
-                  ),
-
-                  // Bottom Actions
-                  SafeArea(
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          if (_selectedRecipients.isNotEmpty)
-                            _MultiSendButton(
-                              count: _selectedRecipients.length,
-                              isLoading: _isSending,
-                              onTap: _handleBulkSend,
-                            )
-                          else ...[
-                            _BottomActionButton(
-                              icon: Icons.link,
-                              label: 'Copy Link',
-                              onTap: () {
-                                Clipboard.setData(ClipboardData(
-                                    text: 'https://abuadapp.web.app/post/${widget.post.id}'));
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Link copied to clipboard')),
-                                );
-                                Navigator.pop(context);
-                              },
-                            ),
-                            _BottomActionButton(
-                              icon: Icons.share,
-                              label: 'More',
-                              onTap: () {
-                                Share.share(
-                                  'Check out this post on ABUAD Nest: https://abuadapp.web.app/post/${widget.post.id}',
-                                  subject: 'Share Post',
-                                );
-                                Navigator.pop(context);
-                              },
-                            ),
-                          ],
+                                  builder: (context, snapshot) {
+                                    if (!snapshot.hasData) {
+                                      return const SliverToBoxAdapter(
+                                        child: SizedBox.shrink(),
+                                      );
+                                    }
+                                    final users = snapshot.data!;
+                                    return SliverList(
+                                      delegate: SliverChildBuilderDelegate((
+                                        context,
+                                        index,
+                                      ) {
+                                        final user = users[index];
+                                        final isSelected = _selectedRecipients
+                                            .containsKey(user.uid);
+                                        return _ShareListTile(
+                                          user: user,
+                                          isSelected: isSelected,
+                                          onToggle: () {
+                                            setState(() {
+                                              if (isSelected) {
+                                                _selectedRecipients.remove(
+                                                  user.uid,
+                                                );
+                                              } else {
+                                                _selectedRecipients[user.uid] =
+                                                    (type: 'user', data: user);
+                                              }
+                                            });
+                                          },
+                                        );
+                                      }, childCount: users.length),
+                                    );
+                                  },
+                                ),
                         ],
                       ),
                     ),
-                  ),
-                ],
+
+                    // Bottom Actions
+                    SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            if (_selectedRecipients.isNotEmpty)
+                              _MultiSendButton(
+                                count: _selectedRecipients.length,
+                                isLoading: _isSending,
+                                onTap: _handleBulkSend,
+                              )
+                            else ...[
+                              _BottomActionButton(
+                                icon: Icons.link,
+                                label: 'Copy Link',
+                                onTap: () {
+                                  Clipboard.setData(
+                                    ClipboardData(
+                                      text:
+                                          'https://abuadapp.web.app/post/${widget.post.id}',
+                                    ),
+                                  );
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Link copied to clipboard'),
+                                    ),
+                                  );
+                                  Navigator.pop(context);
+                                },
+                              ),
+                              _BottomActionButton(
+                                icon: Icons.share,
+                                label: 'More',
+                                onTap: () {
+                                  Share.share(
+                                    'Check out this post on Abuad life: https://abuadapp.web.app/post/${widget.post.id}',
+                                    subject: 'Share Post',
+                                  );
+                                  Navigator.pop(context);
+                                },
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-          )
         );
       },
     );
@@ -368,16 +419,16 @@ class _ShareSheetState extends ConsumerState<ShareSheet> {
 
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Shared successfully!')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Shared successfully!')));
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isSending = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error sharing: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error sharing: $e')));
       }
     }
   }
@@ -385,7 +436,9 @@ class _ShareSheetState extends ConsumerState<ShareSheet> {
   Future<void> _shareToChannel(String channelId) async {
     // Legacy support or kept for individual usage if needed
     try {
-      await ref.read(chatRepositoryProvider).sendMessage(
+      await ref
+          .read(chatRepositoryProvider)
+          .sendMessage(
             channelId,
             'Shared a post with you',
             type: 'text',
@@ -399,7 +452,9 @@ class _ShareSheetState extends ConsumerState<ShareSheet> {
     try {
       final currentUser = ref.read(currentUserProvider).value;
       if (currentUser == null) return;
-      final channelId = await ref.read(chatRepositoryProvider).createOrGetChannel(
+      final channelId = await ref
+          .read(chatRepositoryProvider)
+          .createOrGetChannel(
             user.uid,
             otherUserName: user.displayName,
             otherUserAvatar: user.avatarUrl,
@@ -436,11 +491,7 @@ class _ShareRecipientItem extends StatelessWidget {
           children: [
             Stack(
               children: [
-                UserAvatar(
-                  userId: userId,
-                  avatarUrl: avatarUrl,
-                  radius: 30,
-                ),
+                UserAvatar(userId: userId, avatarUrl: avatarUrl, radius: 30),
                 if (isSelected)
                   Positioned(
                     right: 0,
@@ -506,8 +557,10 @@ class _ShareListTile extends StatelessWidget {
         user.displayName,
         style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
       ),
-      subtitle: Text('@${user.handle}',
-          style: const TextStyle(fontSize: 13, color: Colors.grey)),
+      subtitle: Text(
+        '@${user.handle}',
+        style: const TextStyle(fontSize: 13, color: Colors.grey),
+      ),
       trailing: isSelected
           ? Container(
               padding: const EdgeInsets.all(8),
@@ -520,16 +573,19 @@ class _ShareListTile extends StatelessWidget {
           : ElevatedButton(
               onPressed: onToggle,
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.secondaryTeal.withOpacity(0.1),
+                backgroundColor: AppColors.secondaryTeal.withValues(alpha: 0.1),
                 foregroundColor: AppColors.secondaryTeal,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
+                  borderRadius: BorderRadius.circular(10),
+                ),
                 elevation: 0,
                 minimumSize: const Size(60, 32),
                 padding: const EdgeInsets.symmetric(horizontal: 12),
               ),
-              child: const Text('Select',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+              child: const Text(
+                'Select',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+              ),
             ),
     );
   }
@@ -557,16 +613,18 @@ class _BottomActionButton extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: isDark
-                  ? Colors.white.withOpacity(0.05)
-                  : Colors.black.withOpacity(0.04),
+                  ? Colors.white.withValues(alpha: 0.05)
+                  : Colors.black.withValues(alpha: 0.04),
               shape: BoxShape.circle,
             ),
             child: Icon(icon, size: 24),
           ),
         ),
         const SizedBox(height: 8),
-        Text(label,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+        ),
       ],
     );
   }
@@ -593,7 +651,7 @@ class _MultiSendButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: AppColors.primaryBlue.withOpacity(0.3),
+              color: AppColors.primaryBlue.withValues(alpha: 0.3),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -627,8 +685,11 @@ class _MultiSendButton extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        const Icon(Icons.send_rounded,
-                            color: Colors.white, size: 20),
+                        const Icon(
+                          Icons.send_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
                       ],
                     ),
             ),

@@ -132,7 +132,7 @@ class EventsController {
 
         const updatedData = {
             name, status,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            updatedAt: new Date().toISOString()
         };
 
         db.collection('events').doc(eventId).update(updatedData).then(() => {
@@ -213,7 +213,7 @@ class EventsController {
             date,
             description,
             status: 'Approved',
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            createdAt: new Date().toISOString()
         }).then(() => {
             document.getElementById('create-event-modal').style.display = 'none';
             window.logAdminAction('CREATE_EVENT', `Admin created new event: ${name}`, 'event');

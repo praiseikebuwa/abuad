@@ -1,3 +1,4 @@
+import 'package:abuad/src/features/auth/data/auth_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timeago/timeago.dart' as timeago;
@@ -8,6 +9,7 @@ import '../../data/post_repository.dart';
 import '../../../../core/widgets/verification_badge.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../shared/widgets/user_avatar.dart';
+import '../../../../shared/widgets/formatted_comment_content.dart';
 import 'dart:ui';
 import 'dart:math' as math;
 
@@ -35,6 +37,7 @@ class _ReelCommentSheetState extends ConsumerState<ReelCommentSheet> {
   }
 
   Future<void> _postComment() async {
+    if (_isPosting) return;
     final content = _commentController.text.trim();
     if (content.isEmpty) return;
 
@@ -148,7 +151,49 @@ class _ReelCommentSheetState extends ConsumerState<ReelCommentSheet> {
                       if (snapshot.connectionState == ConnectionState.waiting) {
                         return const Center(child: CircularProgressIndicator());
                       }
-                      final comments = snapshot.data ?? [];
+                      final rawComments = snapshot.data ?? [];
+
+                      int getVerificationWeight(dynamic type) {
+                        final clean = (type ?? '').toString().trim().toLowerCase();
+                        switch (clean) {
+                          case 'gold':
+                            return 3;
+                          case 'violet':
+                            return 2;
+                          case 'blue':
+                          case 'true':
+                            return 1;
+                          default:
+                            return 0;
+                        }
+                      }
+
+                      // Deduplicate comments
+                      final seenIds = <String>{};
+                      final dedupedList = <Map<String, dynamic>>[];
+                      for (final c in rawComments) {
+                        final id = (c['id'] ?? '').toString();
+                        if (id.isNotEmpty && !seenIds.contains(id)) {
+                          seenIds.add(id);
+                          dedupedList.add(c);
+                        }
+                      }
+
+                      final comments = List<Map<String, dynamic>>.from(dedupedList)
+                        ..sort((a, b) {
+                          final vTypeA = a['authorVerificationType'] ?? a['author_verification_type'] ?? (a['author']?['verificationType'] ?? (a['author']?['isVerified'] == true ? 'blue' : 'none'));
+                          final vTypeB = b['authorVerificationType'] ?? b['author_verification_type'] ?? (b['author']?['verificationType'] ?? (b['author']?['isVerified'] == true ? 'blue' : 'none'));
+
+                          final weightA = getVerificationWeight(vTypeA);
+                          final weightB = getVerificationWeight(vTypeB);
+
+                          if (weightA != weightB) {
+                            return weightB.compareTo(weightA); // Gold > Violet > Blue > None pinned at TOP
+                          }
+                          final tsA = (a['timestamp'] is int) ? a['timestamp'] as int : 0;
+                          final tsB = (b['timestamp'] is int) ? b['timestamp'] as int : 0;
+                          return tsB.compareTo(tsA);
+                        });
                       if (comments.isEmpty) {
                         return Center(
                           child: Text(
@@ -318,126 +363,165 @@ class _CommentTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final repo = ref.watch(postRepositoryProvider);
     final commentId = comment['id']?.toString() ?? '';
-    final authorName = comment['userName'] ?? 'Unknown';
-    final content = comment['content'] ?? '';
-    final avatarUrl = comment['userAvatar'];
+    final authorId = (comment['authorId'] ?? comment['userId'] ?? '').toString();
+    final authorName = (comment['authorName'] ?? comment['userName'] ?? 'Student').toString();
+    final content = (comment['content'] ?? '').toString();
+    final avatarUrl = comment['authorAvatarUrl'] ?? comment['userAvatar'] as String?;
     final replyCount = (comment['replyCount'] as num?)?.toInt() ?? 0;
-    final timestamp = comment['timestamp'] != null
-        ? (comment['timestamp'] is int
-              ? DateTime.fromMillisecondsSinceEpoch(comment['timestamp'])
-              : DateTime.tryParse(comment['timestamp'].toString()) ??
-                    DateTime.now())
-        : DateTime.now();
-    final isVerified = comment['authorIsVerified'] == true;
-    final verificationType = comment['authorVerificationType'] ?? 'none';
+    final isLiked = comment['isLiked'] == true;
+    final likesCount = (comment['likesCount'] as num?)?.toInt() ?? 0;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          UserAvatar(
-            userId: comment['userId'] ?? '',
-            avatarUrl: avatarUrl,
-            displayName: authorName,
-            radius: 18,
-            showStoryRing: true,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+    int tsInt = (comment['timestamp'] is int && (comment['timestamp'] as int) > 0)
+        ? comment['timestamp'] as int
+        : DateTime.now().millisecondsSinceEpoch;
+    final timestamp = DateTime.fromMillisecondsSinceEpoch(tsInt);
+    final isVerified = comment['authorIsVerified'] == true;
+    final verificationType = (comment['authorVerificationType'] ?? 'none').toString();
+
+    return StreamBuilder<AppUser?>(
+      stream: authorId.isNotEmpty
+          ? ref.read(userRepositoryProvider).watchUser(authorId)
+          : const Stream.empty(),
+      builder: (context, snapshot) {
+        final user = snapshot.data;
+        final effectiveName = (user != null && user.displayName.isNotEmpty)
+            ? user.displayName
+            : (authorName.isNotEmpty ? authorName : 'Student');
+        final effectiveAvatar = user?.avatarUrl ?? avatarUrl;
+        final effectiveVerification = user?.verificationType ?? verificationType;
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 16.0),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              UserAvatar(
+                userId: authorId,
+                avatarUrl: effectiveAvatar,
+                displayName: effectiveName,
+                radius: 18,
+                showStoryRing: true,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      authorName,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                        color: Colors.grey,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          effectiveName,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        if (isVerified || (user?.isVerified == true)) ...[
+                          const SizedBox(width: 4),
+                          VerificationBadge(type: effectiveVerification, size: 12),
+                        ],
+                        const SizedBox(width: 8),
+                        Text(
+                          timeago.format(timestamp, locale: 'en_short'),
+                          style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                        ),
+                      ],
                     ),
-                    if (isVerified) ...[
-                      const SizedBox(width: 4),
-                      VerificationBadge(type: verificationType, size: 12),
-                    ],
-                    const SizedBox(width: 8),
-                    Text(
-                      timeago.format(timestamp, locale: 'en_short'),
-                      style: TextStyle(color: Colors.grey[600], fontSize: 11),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(content, style: const TextStyle(fontSize: 14)),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    GestureDetector(
-                      onTap: onReplyTap,
-                      child: Text(
-                        'Reply',
-                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                      ),
-                    ),
-                    if (replyCount > 0) ...[
-                      const SizedBox(width: 12),
-                      Text(
-                        '$replyCount replies',
-                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                      ),
-                    ],
-                  ],
-                ),
-                if (replyCount > 0 && commentId.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: StreamBuilder<List<Map<String, dynamic>>>(
-                      stream: repo.watchReplies(postId, commentId),
-                      builder: (context, snapshot) {
-                        final replies = snapshot.data ?? const [];
-                        if (replies.isEmpty) return const SizedBox.shrink();
-                        return Column(
-                          children: replies.map((reply) {
-                            final replyName =
-                                reply['userName']?.toString() ?? 'Unknown';
-                            final replyContent =
-                                reply['content']?.toString() ?? '';
-                            return Padding(
-                              padding: const EdgeInsets.only(
-                                left: 8,
-                                bottom: 6,
+                    const SizedBox(height: 4),
+                    FormattedCommentContent(content: content, textStyle: const TextStyle(fontSize: 14)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        GestureDetector(
+                          onTap: () {
+                            repo.toggleCommentLike(postId, commentId);
+                          },
+                          child: Row(
+                            children: [
+                              Icon(
+                                isLiked ? Icons.favorite : Icons.favorite_border,
+                                size: 16,
+                                color: isLiked ? Colors.red : Colors.grey[600],
                               ),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '$replyName: ',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 12,
-                                    ),
+                              if (likesCount > 0) ...[
+                                const SizedBox(width: 4),
+                                Text(
+                                  '$likesCount',
+                                  style: TextStyle(
+                                    color: isLiked ? Colors.red : Colors.grey[600],
+                                    fontSize: 12,
                                   ),
-                                  Expanded(
-                                    child: Text(
-                                      replyContent,
-                                      style: const TextStyle(fontSize: 12),
-                                    ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        GestureDetector(
+                          onTap: onReplyTap,
+                          child: Text(
+                            'Reply',
+                            style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                          ),
+                        ),
+                        if (replyCount > 0) ...[
+                          const SizedBox(width: 12),
+                          Text(
+                            '$replyCount replies',
+                            style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (replyCount > 0 && commentId.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: StreamBuilder<List<Map<String, dynamic>>>(
+                          stream: repo.watchReplies(postId, commentId),
+                          builder: (context, snapshot) {
+                            final replies = snapshot.data ?? const [];
+                            if (replies.isEmpty) return const SizedBox.shrink();
+                            return Column(
+                              children: replies.map((reply) {
+                                final replyName = (reply['authorName'] ?? reply['userName'] ?? 'Student').toString();
+                                final replyContent = (reply['content'] ?? '').toString();
+                                return Padding(
+                                  padding: const EdgeInsets.only(
+                                    left: 8,
+                                    bottom: 6,
                                   ),
-                                ],
-                              ),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '$replyName: ',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: FormattedCommentContent(
+                                          content: replyContent,
+                                          textStyle: const TextStyle(fontSize: 12),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
                             );
-                          }).toList(),
-                        );
-                      },
-                    ),
-                  ),
-              ],
-            ),
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

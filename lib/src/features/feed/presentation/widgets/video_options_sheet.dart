@@ -1,9 +1,6 @@
+import 'package:abuad/src/core/services/media_saver.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:dio/dio.dart';
-import 'package:gal/gal.dart';
-import 'package:path/path.dart' as path;
-import 'dart:io';
 
 class VideoOptionsSheet extends ConsumerStatefulWidget {
   final String videoUrl;
@@ -41,56 +38,25 @@ class VideoOptionsSheet extends ConsumerStatefulWidget {
 
 class _VideoOptionsSheetState extends ConsumerState<VideoOptionsSheet> {
   bool _isDownloading = false;
-  double _downloadProgress = 0;
+  final double _downloadProgress = 0;
   bool _autoAdvance = true;
 
   Future<void> _downloadVideo() async {
     setState(() {
       _isDownloading = true;
-      _downloadProgress = 0;
     });
 
-    try {
-      final tempDir = Directory.systemTemp;
-      final fileName = 'video_${DateTime.now().millisecondsSinceEpoch}.mp4';
-      final filePath = path.join(tempDir.path, fileName);
+    final success = await MediaSaver.saveVideo(widget.videoUrl);
 
-      await Dio().download(
-        widget.videoUrl,
-        filePath,
-        onReceiveProgress: (count, total) {
-          if (total != -1) {
-            setState(() {
-              _downloadProgress = count / total;
-            });
-          }
-        },
+    if (mounted) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(success ? 'Video saved to gallery' : 'Download failed'),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
       );
-
-      await Gal.putVideo(filePath);
-
-      if (mounted) {
-        Navigator.pop(context); // Close options sheet
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Video saved to gallery'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Download failed: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isDownloading = false);
-      }
+      setState(() => _isDownloading = false);
     }
   }
 

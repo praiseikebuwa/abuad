@@ -1,6 +1,6 @@
 <div align="center">
   <img src="assets/logo.png" width="120" height="120" alt="ABUAD Logo">
-  <h1>ABUAD NEST</h1>
+  <h1>Abuad life</h1>
   <p><strong>The Elite Campus Super App for Afe Babalola University</strong></p>
 
   [![Flutter](https://img.shields.io/badge/Flutter-3.10.7+-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
@@ -13,7 +13,7 @@
 
 ## 🚀 Overview
 
-**ABUAD Nest** is a high-performance, feature-rich campus ecosystem designed to centralize and elevate the student experience at Afe Babalola University. From immersive social discovery to real-time communication and essential academic utilities, ABUAD Nest is the digital backbone of campus life.
+**Abuad life** is a high-performance, feature-rich campus ecosystem designed to centralize and elevate the student experience at Afe Babalola University. From immersive social discovery to real-time communication and essential academic utilities, Abuad life is the digital backbone of campus life.
 
 > [!IMPORTANT]
 > This application is built with a **Premium UI/UX** philosophy, utilizing glassmorphism, advanced animations, and high-fidelity design tokens to deliver a "WOW" factor at every interaction.
@@ -23,17 +23,20 @@
 ## ✨ Feature Galaxy
 
 ### 📱 Social & Discovery
+
 - **Discovery Hub**: A functional search engine for finding trending hashtags, students, and content.
 - **Dynamic Feed**: Real-time media sharing with TikTok-style immersion, likes, and nested comments.
 - **Stories & Reels**: Vertical video and transient story support with high-fidelity capture.
 - **Premium Profiles**: Customizable user identities with verification badges (👑 Gold, 🎓 Student).
 
 ### 💬 Communication
+
 - **Real-time Chat**: High-performance DMs and group channels with read receipts and media sharing.
 - **Broadcast Hub**: Departmental or interest-based one-to-many communication channels.
 - **QR Engine**: Instant student profile sharing and verification via mobile scanning.
 
 ### 🏛️ Campus & Utility
+
 - **Campus Map**: Intelligent geolocation and landmark discovery across the ABUAD landscape.
 - **Marketplace**: P2P campus commerce for students to buy and sell securely.
 - **Academic Portal**: Centralized access to school results, newsletters, and departmental resources.
@@ -86,21 +89,27 @@ graph TD
 ## 🛠️ Developer Guide
 
 ### Prerequisites
+
 - Flutter SDK (Channel Stable)
 - Firebase CLI (`npm install -g firebase-tools`)
 - CocoaPods (for iOS builds)
 
 ### Quick Start
+
 1. **Clone & Install**:
+
    ```bash
    git clone https://github.com/Egcasy/abuad.git
    cd abuad
    flutter pub get
    ```
+
 2. **Generate Code**:
+
    ```bash
    flutter pub run build_runner build --delete-conflicting-outputs
    ```
+
 3. **Run Design System Check**:
    Ensure your theme tokens are synced with `AppColors` and `AppTheme`.
 
@@ -111,9 +120,11 @@ graph TD
 If you encounter `[cloud_firestore/failed-precondition]` errors, follow this protocol:
 
 1. **Deploy Missing Indexes**:
+
    ```bash
    firebase deploy --only firestore:indexes
    ```
+
 2. **Key Critical Indexes**:
    - `channels`: `member_ids` (array-contains) + `last_message_time` (descending)
    - `posts`: `hashtags` (array-contains) + `created_at` (descending)

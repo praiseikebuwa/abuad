@@ -39,7 +39,7 @@ class _BroadcastSearchScreenState extends ConsumerState<BroadcastSearchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final usersStream = ref.watch(userRepositoryProvider).searchUsers(_searchQuery);
+    final usersStream = Stream.fromFuture(ref.watch(userRepositoryProvider).searchUsers(_searchQuery));
     final currentUserId = ref.watch(chatRepositoryProvider).currentUserId;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 

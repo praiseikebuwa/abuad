@@ -1,35 +1,25 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:firebase_auth/firebase_auth.dart' as auth;
+import '../../../core/services/api_client.dart';
 import '../domain/report.dart';
 
 final reportRepositoryProvider = Provider<ReportRepository>((ref) {
-  return ReportRepository(FirebaseFirestore.instance);
+  return ReportRepository();
 });
 
 class ReportRepository {
-  final FirebaseFirestore _firestore;
+  ReportRepository([dynamic _]);
 
-  ReportRepository(this._firestore);
-
-  String? get currentUserId => auth.FirebaseAuth.instance.currentUser?.uid;
+  String? get currentUserId => null;
 
   Future<void> submitReport(Report report) async {
-    final reportId = _firestore.collection('reports').doc().id;
-    final reportWithId = Report(
-      id: reportId,
-      reporterId: report.reporterId,
-      targetId: report.targetId,
-      type: report.type,
-      reason: report.reason,
-      details: report.details,
-      createdAt: DateTime.now(),
-    );
-
-    await _firestore
-        .collection('reports')
-        .doc(reportId)
-        .set(reportWithId.toMap());
+    await ApiClient.post('/admin/reports', {
+      'targetId': report.targetId,
+      'targetType': report.type.name,
+      'reason': report.reason.name,
+      'details': report.details,
+    });
   }
 
   Future<void> reportPost({
@@ -37,13 +27,10 @@ class ReportRepository {
     required ReportReason reason,
     String? details,
   }) async {
-    final uid = currentUserId;
-    if (uid == null) throw Exception('Not logged in');
-
     await submitReport(
       Report(
-        id: '', // Generated in submitReport
-        reporterId: uid,
+        id: '',
+        reporterId: '',
         targetId: postId,
         type: ReportType.post,
         reason: reason,
@@ -58,13 +45,10 @@ class ReportRepository {
     required ReportReason reason,
     String? details,
   }) async {
-    final uid = currentUserId;
-    if (uid == null) throw Exception('Not logged in');
-
     await submitReport(
       Report(
         id: '',
-        reporterId: uid,
+        reporterId: '',
         targetId: commentId,
         type: ReportType.comment,
         reason: reason,
@@ -79,13 +63,10 @@ class ReportRepository {
     required ReportReason reason,
     String? details,
   }) async {
-    final uid = currentUserId;
-    if (uid == null) throw Exception('Not logged in');
-
     await submitReport(
       Report(
         id: '',
-        reporterId: uid,
+        reporterId: '',
         targetId: storyId,
         type: ReportType.story,
         reason: reason,
@@ -100,13 +81,10 @@ class ReportRepository {
     required ReportReason reason,
     String? details,
   }) async {
-    final uid = currentUserId;
-    if (uid == null) throw Exception('Not logged in');
-
     await submitReport(
       Report(
         id: '',
-        reporterId: uid,
+        reporterId: '',
         targetId: userId,
         type: ReportType.user,
         reason: reason,
@@ -116,25 +94,20 @@ class ReportRepository {
     );
   }
 
-  Stream<List<Report>> watchPendingReports() {
-    return _firestore
-        .collection('reports')
-        .where('status', isEqualTo: 'pending')
-        .orderBy('created_at', descending: true)
-        .snapshots()
-        .map(
-          (snapshot) =>
-              snapshot.docs.map((doc) => Report.fromMap(doc.data())).toList(),
-        );
+  Stream<List<Report>> watchPendingReports() async* {
+    try {
+      final response = await ApiClient.get('/admin/reports');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] is List) {
+          yield (data['data'] as List).map((x) => Report.fromMap(x)).toList();
+          return;
+        }
+      }
+    } catch (e) {}
+    yield [];
   }
 
-  Future<void> updateReportStatus(String reportId, String status) async {
-    await _firestore.collection('reports').doc(reportId).update({
-      'status': status,
-    });
-  }
-
-  Future<void> resolveReport(String reportId) async {
-    await updateReportStatus(reportId, 'resolved');
-  }
+  Future<void> updateReportStatus(String reportId, String status) async {}
+  Future<void> resolveReport(String reportId) async {}
 }

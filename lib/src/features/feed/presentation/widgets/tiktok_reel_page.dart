@@ -18,8 +18,8 @@ import '../providers/feed_provider.dart';
 import 'reel_comment_sheet.dart';
 import '../../../../shared/widgets/user_avatar.dart';
 import '../../../../core/utils/url_validator.dart';
+import '../../../../core/widgets/verification_badge.dart';
 import 'package:visibility_detector/visibility_detector.dart';
-
 
 /// TikTok-style reel page used inside the vertical Reels viewer.
 class TikTokReelPage extends ConsumerStatefulWidget {
@@ -40,7 +40,6 @@ class TikTokReelPage extends ConsumerStatefulWidget {
 
 class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
     with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
-
   VideoPlayerController? _controller;
   bool _isBuffering = false;
   bool _showPlayHint = false;
@@ -60,7 +59,6 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
   // Double-tap heart splash
   final List<Offset> _doubleTapPositions = [];
 
-
   @override
   bool get wantKeepAlive => true;
 
@@ -76,7 +74,8 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (_controller == null || !widget.isActive || !_isVisible) return;
 
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
       _flushWatchMetrics('app_paused');
       _controller?.pause();
     } else if (state == AppLifecycleState.resumed) {
@@ -89,7 +88,7 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
 
   void _handleVisibilityChanged(VisibilityInfo info) {
     if (!mounted) return;
-    
+
     final wasVisible = _isVisible;
     _isVisible = info.visibleFraction > 0.5;
 
@@ -103,21 +102,22 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
       }
     } else if (_isVisible && !wasVisible) {
       // Just became visible
-      if (widget.isActive && !_manuallyPaused && !_controller!.value.isPlaying) {
+      if (widget.isActive &&
+          !_manuallyPaused &&
+          !_controller!.value.isPlaying) {
         _controller!.play();
         _startWatchSessionIfNeeded();
       }
     }
   }
 
-
   void _videoListener() {
     if (!mounted || _controller == null) return;
-    
+
     final value = _controller!.value;
     final isBuffering = value.isBuffering;
     final isInitialized = value.isInitialized;
-    
+
     setState(() {
       _isBuffering = isBuffering;
       _position = value.position;
@@ -129,7 +129,10 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
     });
 
     // If it just finished initializing and we are active, start playing
-    if (widget.isActive && isInitialized && !value.isPlaying && !value.isBuffering) {
+    if (widget.isActive &&
+        isInitialized &&
+        !value.isPlaying &&
+        !value.isBuffering) {
       _controller!.play();
       _startWatchSessionIfNeeded();
     }
@@ -146,7 +149,8 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
       if (progress >= 0.95 && !_completed) {
         _completed = true;
       }
-      if (value.position.inMilliseconds <= 400 && _position.inMilliseconds > 2000) {
+      if (value.position.inMilliseconds <= 400 &&
+          _position.inMilliseconds > 2000) {
         _replayCount++;
       }
     }
@@ -178,9 +182,6 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
     // Note: We DON'T dispose the controller here because it's managed by ReelControllerManager
     super.dispose();
   }
-
-
-
 
   void _togglePlayback() {
     if (_controller == null || !_controller!.value.isInitialized) return;
@@ -235,15 +236,17 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
     final skippedQuickly = _watchedMsAccumulated < 3000;
 
     try {
-      await ref.read(postRepositoryProvider).trackReelWatchMetrics(
-        postId: widget.post.id,
-        watchedMs: _watchedMsAccumulated,
-        completionRate: completionRate,
-        replayCount: _replayCount,
-        skippedQuickly: skippedQuickly,
-        completed: _completed,
-        source: 'reels_$reason',
-      );
+      await ref
+          .read(postRepositoryProvider)
+          .trackReelWatchMetrics(
+            postId: widget.post.id,
+            watchedMs: _watchedMsAccumulated,
+            completionRate: completionRate,
+            replayCount: _replayCount,
+            skippedQuickly: skippedQuickly,
+            completed: _completed,
+            source: 'reels_$reason',
+          );
     } catch (e) {
       debugPrint('Failed to track reel watch metrics: $e');
     }
@@ -272,22 +275,24 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
     _startOverlayTimer();
   }
 
-
-
   void _onDoubleTap(Offset position, WidgetRef ref, domain.Post post) {
     setState(() {
       _doubleTapPositions.add(position);
     });
 
     // Handle the like logic
-    final firebaseLiked = ref.read(isPostLikedProvider(post.id)).value ?? false;
-    if (!firebaseLiked) {
+    final apiLiked = ref.read(isPostLikedProvider(post.id)).value ?? false;
+    if (!apiLiked) {
       ref.read(optimisticLikeProvider.notifier).toggle(post.id, false);
-      ref.read(postRepositoryProvider).toggleLike(post.id).then((_) {
-        ref.read(optimisticLikeProvider.notifier).confirm(post.id);
-      }).catchError((_) {
-        ref.read(optimisticLikeProvider.notifier).revert(post.id, false);
-      });
+      ref
+          .read(postRepositoryProvider)
+          .toggleLike(post.id)
+          .then((_) {
+            ref.read(optimisticLikeProvider.notifier).confirm(post.id);
+          })
+          .catchError((_) {
+            ref.read(optimisticLikeProvider.notifier).revert(post.id, false);
+          });
     }
 
     // Remove heart after animation
@@ -320,22 +325,24 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
   }
 
   void _openProfileByUserId(String userId) {
-    if (!mounted) return;
-    context.push('/profile/$userId');
+    if (!mounted || userId.isEmpty) return;
+    context.push('/user/$userId');
   }
 
   Future<void> _openProfileByHandle(String handle) async {
     final cleanHandle = handle.startsWith('@') ? handle.substring(1) : handle;
     if (cleanHandle.isEmpty) return;
     try {
-      final user = await ref.read(userRepositoryProvider).getUserByHandle(cleanHandle);
+      final user = await ref
+          .read(userRepositoryProvider)
+          .getUserByHandle(cleanHandle);
       if (!mounted) return;
       if (user != null) {
-        context.push('/profile/${user.uid}');
+        context.push('/user/${user.uid}');
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('User @$cleanHandle not found')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('User @$cleanHandle not found')));
       }
     } catch (e) {
       if (!mounted) return;
@@ -396,7 +403,7 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
                   color: AppColors.secondaryTeal,
                 ),
                 title: const Text('Boost this post'),
-                subtitle: const Text('Show it to more students on ABUAD Nest'),
+                subtitle: const Text('Show it to more students on Abuad life'),
                 onTap: () {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -414,9 +421,9 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
                 subtitle: const Text('Add to your bookmarks'),
                 onTap: () {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Post saved!')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('Post saved!')));
                 },
               ),
             ],
@@ -438,9 +445,12 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
       _controller?.removeListener(_videoListener);
       _controller = controller;
       _controller?.addListener(_videoListener);
-      
+
       // Auto-play if it's already initialized and we are active
-      if (widget.isActive && _controller != null && _controller!.value.isInitialized && !_controller!.value.isPlaying) {
+      if (widget.isActive &&
+          _controller != null &&
+          _controller!.value.isInitialized &&
+          !_controller!.value.isPlaying) {
         _controller!.play();
       }
     }
@@ -451,13 +461,13 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
       stream: repo.watchPost(widget.post.id),
       builder: (context, snapshot) {
         final livePost = snapshot.data ?? widget.post;
-        final firebaseLiked =
+        final apiLiked =
             ref.watch(isPostLikedProvider(livePost.id)).value ?? false;
         final optimisticMap = ref.watch(optimisticLikeProvider);
         final optimisticOverride = optimisticMap.containsKey(livePost.id)
             ? optimisticMap[livePost.id]!
             : null;
-        final isLiked = optimisticOverride ?? firebaseLiked;
+        final isLiked = optimisticOverride ?? apiLiked;
         final likeDelta = optimisticMap.containsKey(livePost.id)
             ? (optimisticMap[livePost.id]! ? 1 : -1)
             : 0;
@@ -474,115 +484,132 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
             onLongPress: () => _showEngagementMenu(livePost),
             onTap: _onSurfaceTap,
             child: Container(
+              color: Colors.black,
+              child: Stack(
+                children: [
+                  // Video Background
+                  Positioned.fill(child: _buildVideoLayer(controller, error)),
 
-            color: Colors.black,
-            child: Stack(
-              children: [
-                // Video Background
-                Positioned.fill(child: _buildVideoLayer(controller, error)),
-
-                // Loading/Buffering indicator
-                if (controller == null || !controller.value.isInitialized || _isBuffering)
-                  Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                        if (error != null) ...[
-                          const SizedBox(height: 12),
-                          Text(
-                            'Failed to load video',
-                            style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12),
+                  // Loading/Buffering indicator
+                  if (controller == null ||
+                      !controller.value.isInitialized ||
+                      _isBuffering)
+                    Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
                           ),
-                          TextButton(
-                            onPressed: () => ref.read(reelControllerProvider.notifier).retry(widget.post),
-                            child: const Text('Retry', style: TextStyle(color: AppColors.secondaryTeal)),
-                          ),
+                          if (error != null) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              'Failed to load video',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.7),
+                                fontSize: 12,
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () => ref
+                                  .read(reelControllerProvider.notifier)
+                                  .retry(widget.post),
+                              child: const Text(
+                                'Retry',
+                                style: TextStyle(
+                                  color: AppColors.secondaryTeal,
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
-                  ),
 
-                // Play hint
-                Positioned.fill(
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 300),
-                    opacity: _showPlayHint ? 1 : 0,
-                    child: const Center(
-                      child: Icon(
-                        Icons.play_arrow,
-                        color: Colors.white54,
-                        size: 64,
+                  // Play hint
+                  Positioned.fill(
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 300),
+                      opacity: _showPlayHint ? 1 : 0,
+                      child: const Center(
+                        child: Icon(
+                          Icons.play_arrow,
+                          color: Colors.white54,
+                          size: 64,
+                        ),
                       ),
                     ),
                   ),
-                ),
 
-                Positioned.fill(
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 220),
-                    opacity: _showOverlayUi ? 1 : 0,
-                    child: _buildGradientOverlay(),
-                  ),
-                ),
-
-                // Bottom Content (Username, Caption, Hashtags)
-                Positioned(
-                  left: 16,
-                  right: 80,
-                  bottom: MediaQuery.of(context).padding.bottom + 16,
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 220),
-                    opacity: _showOverlayUi ? 1 : 0,
-                    child: SafeArea(
-                      top: false,
-                      child: _buildCaptionSection(livePost),
+                  Positioned.fill(
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 220),
+                      opacity: _showOverlayUi ? 1 : 0,
+                      child: _buildGradientOverlay(),
                     ),
                   ),
-                ),
 
-                // Sidebar Actions
-                Positioned(
-                  right: 12,
-                  bottom: MediaQuery.of(context).padding.bottom + 80,
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 220),
-                    opacity: _showOverlayUi ? 1 : 0,
-                    child: SafeArea(
-                      top: false,
-                      child: _buildActionColumn(
-                        context,
-                        livePost,
-                        isLiked,
-                        likeCount,
+                  // Bottom Content (Username, Caption, Hashtags)
+                  Positioned(
+                    left: 16,
+                    right: 80,
+                    bottom: MediaQuery.of(context).padding.bottom + 16,
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 220),
+                      opacity: _showOverlayUi ? 1 : 0,
+                      child: SafeArea(
+                        top: false,
+                        child: _buildCaptionSection(livePost),
                       ),
                     ),
                   ),
-                ),
 
-                // Music Disc (positioned relative to bottom right)
-                Positioned(
-                  right: 12,
-                  bottom: MediaQuery.of(context).padding.bottom + 16,
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 220),
-                    opacity: _showOverlayUi ? 1 : 0,
-                    child: SafeArea(top: false, child: _MusicDisc(post: livePost)),
+                  // Sidebar Actions
+                  Positioned(
+                    right: 12,
+                    bottom: MediaQuery.of(context).padding.bottom + 80,
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 220),
+                      opacity: _showOverlayUi ? 1 : 0,
+                      child: SafeArea(
+                        top: false,
+                        child: _buildActionColumn(
+                          context,
+                          livePost,
+                          isLiked,
+                          likeCount,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
 
-                // Double Tap Hearts
-                ..._doubleTapPositions.map((pos) => _buildHeartSplash(pos)),
+                  // Music Disc (positioned relative to bottom right)
+                  Positioned(
+                    right: 12,
+                    bottom: MediaQuery.of(context).padding.bottom + 16,
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 220),
+                      opacity: _showOverlayUi ? 1 : 0,
+                      child: SafeArea(
+                        top: false,
+                        child: _MusicDisc(post: livePost),
+                      ),
+                    ),
+                  ),
 
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: _buildProgressBar(),
-                ),
-              ],
+                  // Double Tap Hearts
+                  ..._doubleTapPositions.map((pos) => _buildHeartSplash(pos)),
+
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: _buildProgressBar(),
+                  ),
+                ],
+              ),
             ),
-          ),
           ),
         );
       },
@@ -593,11 +620,7 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
     return Positioned(
       left: position.dx - 50,
       top: position.dy - 50,
-      child: const Icon(
-        Icons.favorite,
-        color: Colors.redAccent,
-        size: 100,
-      )
+      child: const Icon(Icons.favorite, color: Colors.redAccent, size: 100)
           .animate()
           .scale(
             duration: 300.ms,
@@ -611,32 +634,65 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
   }
 
   Widget _buildVideoLayer(VideoPlayerController? controller, String? error) {
-    if (controller != null && controller.value.isInitialized) {
-      final size = controller.value.size;
-      final width = (size.width > 0 ? size.width : 1.0).toDouble();
-      final height = (size.height > 0 ? size.height : 1.0).toDouble();
-      return SizedBox.expand(
-        child: FittedBox(
-          fit: BoxFit.cover,
-          child: SizedBox(
-            width: width,
-            height: height,
-            child: VideoPlayer(controller),
+    final mediaUrl = widget.post.mediaUrl.trim();
+    final isVideoFile = mediaUrl.toLowerCase().endsWith('.mp4') ||
+        mediaUrl.toLowerCase().endsWith('.mov') ||
+        mediaUrl.toLowerCase().endsWith('.webm') ||
+        mediaUrl.toLowerCase().contains('/videos/');
+
+    final posterUrl = (!isVideoFile && mediaUrl.isNotEmpty) ? mediaUrl : null;
+
+    final bool isReady = controller != null && controller.value.isInitialized;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // 1. Instant Poster / Thumbnail Layer (Prevents black flash while loading)
+        if (posterUrl != null && posterUrl.isNotEmpty)
+          CachedNetworkImage(
+            imageUrl: posterUrl,
+            fit: BoxFit.cover,
+            placeholder: (context, url) => Container(color: Colors.black),
+            errorWidget: (context, url, err) => Container(
+              color: Colors.black,
+              child: Center(
+                child: Icon(
+                  Icons.play_circle_outline,
+                  color: Colors.white.withValues(alpha: 0.15),
+                  size: 80,
+                ),
+              ),
+            ),
+          )
+        else
+          Container(
+            color: Colors.black,
+            child: Center(
+              child: Icon(
+                Icons.play_circle_outline,
+                color: Colors.white.withValues(alpha: 0.15),
+                size: 80,
+              ),
+            ),
           ),
-        ),
-      );
-    }
-    
-    // Placeholder while loading
-    return Container(
-      color: Colors.black,
-      child: Center(
-        child: Icon(
-          Icons.play_circle_outline,
-          color: Colors.white.withOpacity(0.1),
-          size: 80,
-        ),
-      ),
+
+        // 2. Active Video Layer (Plays on top as soon as ready)
+        if (isReady)
+          SizedBox.expand(
+            child: FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: controller.value.size.width > 0
+                    ? controller.value.size.width
+                    : 16.0,
+                height: controller.value.size.height > 0
+                    ? controller.value.size.height
+                    : 9.0,
+                child: VideoPlayer(controller),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -646,11 +702,7 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            Colors.transparent,
-            Colors.black26,
-            Colors.black54,
-          ],
+          colors: [Colors.transparent, Colors.black26, Colors.black54],
           stops: [0.55, 0.8, 1.0],
         ),
       ),
@@ -677,7 +729,9 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
   }
 
   Widget _buildCaptionSection(domain.Post post) {
-    final authorHandle = post.authorHandle.isNotEmpty ? post.authorHandle : post.authorName;
+    final authorHandle = post.authorHandle.isNotEmpty
+        ? post.authorHandle
+        : post.authorName;
     final List<String> words = post.content.split(RegExp(r'\s+'));
 
     return Column(
@@ -686,14 +740,26 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
       children: [
         GestureDetector(
           onTap: () => _openProfileByUserId(post.authorId),
-          child: Text(
-            '@$authorHandle',
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
-              shadows: [Shadow(color: Colors.black54, blurRadius: 4)],
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '@$authorHandle',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  shadows: [Shadow(color: Colors.black54, blurRadius: 4)],
+                ),
+              ),
+              if (post.isVerified) ...[
+                const SizedBox(width: 4),
+                VerificationBadge(
+                  type: post.verificationType,
+                  size: 16,
+                ),
+              ],
+            ],
           ),
         ),
         const SizedBox(height: 8),
@@ -714,8 +780,10 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
               ),
               children: words.map((word) {
                 final normalized = _normalizeToken(word);
-                final isTag = normalized.startsWith('#') && normalized.length > 1;
-                final isMention = normalized.startsWith('@') && normalized.length > 1;
+                final isTag =
+                    normalized.startsWith('#') && normalized.length > 1;
+                final isMention =
+                    normalized.startsWith('@') && normalized.length > 1;
                 return TextSpan(
                   text: '$word ',
                   style: TextStyle(
@@ -728,13 +796,13 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
                   ),
                   recognizer: (isTag || isMention)
                       ? (TapGestureRecognizer()
-                        ..onTap = () {
-                          if (isTag) {
-                            _openHashtag(normalized);
-                          } else {
-                            _openProfileByHandle(normalized);
-                          }
-                        })
+                          ..onTap = () {
+                            if (isTag) {
+                              _openHashtag(normalized);
+                            } else {
+                              _openProfileByHandle(normalized);
+                            }
+                          })
                       : null,
                 );
               }).toList(),
@@ -750,8 +818,10 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
               ),
               children: words.map((word) {
                 final normalized = _normalizeToken(word);
-                final isTag = normalized.startsWith('#') && normalized.length > 1;
-                final isMention = normalized.startsWith('@') && normalized.length > 1;
+                final isTag =
+                    normalized.startsWith('#') && normalized.length > 1;
+                final isMention =
+                    normalized.startsWith('@') && normalized.length > 1;
                 return TextSpan(
                   text: '$word ',
                   style: TextStyle(
@@ -764,13 +834,13 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
                   ),
                   recognizer: (isTag || isMention)
                       ? (TapGestureRecognizer()
-                        ..onTap = () {
-                          if (isTag) {
-                            _openHashtag(normalized);
-                          } else {
-                            _openProfileByHandle(normalized);
-                          }
-                        })
+                          ..onTap = () {
+                            if (isTag) {
+                              _openHashtag(normalized);
+                            } else {
+                              _openProfileByHandle(normalized);
+                            }
+                          })
                       : null,
                 );
               }).toList(),
@@ -799,11 +869,7 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
         const SizedBox(height: 12),
         Row(
           children: [
-            const Icon(
-              Icons.music_note_rounded,
-              size: 16,
-              color: Colors.white,
-            ),
+            const Icon(Icons.music_note_rounded, size: 16, color: Colors.white),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -821,6 +887,7 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
       ],
     );
   }
+
   Widget _buildActionColumn(
     BuildContext context,
     domain.Post post,
@@ -866,18 +933,16 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
           iconColor: isLiked ? const Color(0xFFFE2C55) : Colors.white,
           label: _formatNumber(likeCount),
           onTap: () async {
-            final firebaseLiked =
+            final apiLiked =
                 ref.watch(isPostLikedProvider(post.id)).value ?? false;
-            ref
-                .read(optimisticLikeProvider.notifier)
-                .toggle(post.id, firebaseLiked);
+            ref.read(optimisticLikeProvider.notifier).toggle(post.id, apiLiked);
             try {
               await ref.read(postRepositoryProvider).toggleLike(post.id);
               ref.read(optimisticLikeProvider.notifier).confirm(post.id);
             } catch (_) {
               ref
                   .read(optimisticLikeProvider.notifier)
-                  .revert(post.id, firebaseLiked);
+                  .revert(post.id, apiLiked);
             }
           },
         ),
@@ -900,7 +965,10 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
               label: _formatNumber(post.savesCount),
               onTap: () async {
                 try {
-                  await ref.read(userRepositoryProvider).togglePostSave(post.id);
+                  await ref
+                      .read(userRepositoryProvider)
+                      .togglePostSave(post.id);
+                  ref.invalidate(isPostSavedProvider(post.id));
                 } catch (e) {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -986,7 +1054,8 @@ class _MusicDisc extends StatefulWidget {
   State<_MusicDisc> createState() => _MusicDiscState();
 }
 
-class _MusicDiscState extends State<_MusicDisc> with SingleTickerProviderStateMixin {
+class _MusicDiscState extends State<_MusicDisc>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
 
   @override
@@ -1022,24 +1091,25 @@ class _MusicDiscState extends State<_MusicDisc> with SingleTickerProviderStateMi
           border: Border.all(color: Colors.white24, width: 2),
         ),
         child: ClipOval(
-          child: (widget.post.authorAvatarUrl != null &&
-                widget.post.authorAvatarUrl!.isNotEmpty &&
-                UrlValidator.isValidUrl(widget.post.authorAvatarUrl!))
-            ? CachedNetworkImage(
-                imageUrl: widget.post.authorAvatarUrl!,
-                fit: BoxFit.cover,
-              )
-            : Container(
-                color: Colors.grey[800],
-                child: Center(
-                  child: Text(
-                    widget.post.authorName.isNotEmpty
-                        ? widget.post.authorName[0]
-                        : '?',
-                    style: const TextStyle(color: Colors.white, fontSize: 10),
+          child:
+              (widget.post.authorAvatarUrl != null &&
+                  widget.post.authorAvatarUrl!.isNotEmpty &&
+                  UrlValidator.isValidUrl(widget.post.authorAvatarUrl!))
+              ? CachedNetworkImage(
+                  imageUrl: widget.post.authorAvatarUrl!,
+                  fit: BoxFit.cover,
+                )
+              : Container(
+                  color: Colors.grey[800],
+                  child: Center(
+                    child: Text(
+                      widget.post.authorName.isNotEmpty
+                          ? widget.post.authorName[0]
+                          : '?',
+                      style: const TextStyle(color: Colors.white, fontSize: 10),
+                    ),
                   ),
                 ),
-              ),
         ),
       ),
     );
@@ -1081,7 +1151,7 @@ class _FollowButtonState extends ConsumerState<_FollowButton> {
             try {
               // Trigger the follow repository call
               await ref.read(userRepositoryProvider).followUser(widget.userId);
-              
+
               // Give the user a moment to see the 'tick' animation
               await Future.delayed(const Duration(milliseconds: 800));
             } catch (e) {
@@ -1097,11 +1167,13 @@ class _FollowButtonState extends ConsumerState<_FollowButton> {
             width: 22,
             height: 22,
             decoration: BoxDecoration(
-              color: _isFollowingInProgress ? Colors.green : const Color(0xFFFE2C55),
+              color: _isFollowingInProgress
+                  ? Colors.green
+                  : const Color(0xFFFE2C55),
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
+                  color: Colors.black.withValues(alpha: 0.2),
                   blurRadius: 4,
                   offset: const Offset(0, 2),
                 ),
@@ -1110,13 +1182,13 @@ class _FollowButtonState extends ConsumerState<_FollowButton> {
             child: Center(
               child: _isFollowingInProgress
                   ? const Icon(
-                      Icons.check_rounded,
-                      color: Colors.white,
-                      size: 16,
-                    )
-                      .animate()
-                      .scale(duration: 200.ms, curve: Curves.easeOutBack)
-                     .rotate(begin: -0.5, end: 0, duration: 400.ms)
+                          Icons.check_rounded,
+                          color: Colors.white,
+                          size: 16,
+                        )
+                        .animate()
+                        .scale(duration: 200.ms, curve: Curves.easeOutBack)
+                        .rotate(begin: -0.5, end: 0, duration: 400.ms)
                   : const Icon(
                       Icons.add_rounded,
                       color: Colors.white,
@@ -1127,7 +1199,7 @@ class _FollowButtonState extends ConsumerState<_FollowButton> {
         );
       },
       loading: () => const SizedBox.shrink(),
-      error: (_, __) => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
     );
   }
 }

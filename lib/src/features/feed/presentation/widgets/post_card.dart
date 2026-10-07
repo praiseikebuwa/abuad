@@ -1,5 +1,5 @@
-import 'package:abuad/src/features/user/data/user_repository.dart';
 import 'package:abuad/src/shared/widgets/user_avatar.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart';
@@ -13,9 +13,9 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/verification_badge.dart';
 import '../../../../core/utils/url_validator.dart';
 import 'package:abuad/src/features/feed/data/post_repository.dart';
+import '../../../auth/data/auth_repository.dart';
 import '../../domain/post.dart' as domain;
 import '../providers/feed_provider.dart';
-
 import 'animated_like_button.dart';
 import 'poll_widget.dart';
 import 'video_post_widget.dart';
@@ -88,9 +88,6 @@ class _PostCardState extends ConsumerState<PostCard> {
     final displayAuthorName = isPureRepost
         ? (post.repostData!['author_name'] ?? 'Unknown')
         : post.authorName;
-    final displayAuthorHandle = isPureRepost
-        ? (post.repostData!['author_handle'] ?? '')
-        : post.authorHandle;
     final displayAvatarUrl = isPureRepost
         ? post.repostData!['author_avatar_url']
         : post.authorAvatarUrl;
@@ -131,14 +128,21 @@ class _PostCardState extends ConsumerState<PostCard> {
         (e) => e.name == displayMediaTypeStr,
         orElse: () => domain.MediaType.none,
       );
-    } else if (isPureRepost && displayMediaUrl.isNotEmpty) {
-      // Fallback logic for pure repost media type if string is missing
-      if (displayMediaUrl.endsWith('.mp4')) {
+    }
+    if (displayMediaUrl.isNotEmpty) {
+      final lowerUrl = displayMediaUrl.toLowerCase();
+      if (lowerUrl.contains('.mp4') ||
+          lowerUrl.contains('.mov') ||
+          lowerUrl.contains('.webm') ||
+          lowerUrl.contains('.m3u8') ||
+          lowerUrl.contains('/videos/') ||
+          displayMediaTypeStr == 'video') {
         displayMediaType = domain.MediaType.video;
-      } else if (displayMediaUrl.contains('giphy') ||
-          displayMediaUrl.endsWith('.gif')) {
+      } else if (lowerUrl.contains('giphy') ||
+          lowerUrl.endsWith('.gif') ||
+          displayMediaTypeStr == 'gif') {
         displayMediaType = domain.MediaType.gif;
-      } else {
+      } else if (displayMediaType == domain.MediaType.none) {
         displayMediaType = domain.MediaType.image;
       }
     }
@@ -148,6 +152,10 @@ class _PostCardState extends ConsumerState<PostCard> {
         ? post.repostData!['author_id']
         : post.authorId;
     final shouldWatch = !displayIsAnonymous && authorIdToWatch != null;
+
+    final locationText = (post.locationName?.trim().isNotEmpty == true)
+        ? post.locationName!.trim()
+        : (post.latitude != null ? 'ABUAD Campus' : null);
 
     final cardContent = InkWell(
       onTap: widget.onTap ?? () => _openPostDetail(context),
@@ -165,7 +173,7 @@ class _PostCardState extends ConsumerState<PostCard> {
                 child: Row(
                   children: [
                     Icon(
-                      Icons.repeat,
+                      CupertinoIcons.repeat,
                       size: 16,
                       color: AppColors.secondaryTeal,
                     ),
@@ -190,8 +198,6 @@ class _PostCardState extends ConsumerState<PostCard> {
                 final user = snapshot.data;
                 final effectiveAuthorName =
                     user?.displayName ?? displayAuthorName;
-                final effectiveAuthorHandle =
-                    user?.handle ?? displayAuthorHandle;
                 final effectiveAvatarUrl = user?.avatarUrl ?? displayAvatarUrl;
                 final effectiveIsVerified =
                     user?.isVerified ?? displayIsVerified;
@@ -221,15 +227,12 @@ class _PostCardState extends ConsumerState<PostCard> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Header: Name, Verified, Handle, Dot, Time
+                          // Header: Name + Verified + Timestamp + Follow (Single Line), More Menu (Right)
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              // Name & Badge
-                              Flexible(
-                                flex: 3,
+                              Expanded(
                                 child: Row(
-                                  mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Flexible(
                                       child: Text(
@@ -240,106 +243,72 @@ class _PostCardState extends ConsumerState<PostCard> {
                                           fontWeight: FontWeight.w800,
                                           fontSize: 15,
                                           letterSpacing: -0.2,
-                                          color:
-                                              theme.textTheme.bodyLarge?.color,
+                                          color: theme.textTheme.bodyLarge?.color,
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
                                     ),
-                                    if (effectiveIsVerified &&
-                                        !displayIsAnonymous) ...[
+                                    if (effectiveIsVerified && !displayIsAnonymous) ...[
                                       const SizedBox(width: 4),
                                       VerificationBadge(
                                         type: effectiveVerificationType,
                                         size: 14,
                                       ),
                                     ],
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      '• ${timeago.format(displayTimestamp, locale: 'en_short')}',
+                                      style: TextStyle(
+                                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    Consumer(
+                                      builder: (context, ref, child) {
+                                        final currentUserId = ref.watch(authRepositoryProvider).currentUser?.uid ??
+                                            ref.watch(currentUserProvider).value?.uid;
+                                        if ((currentUserId != null && currentUserId == post.authorId) || post.isAnonymous) {
+                                          return const SizedBox.shrink();
+                                        }
+                                        final isFollowingAsync = ref.watch(
+                                          isFollowingProvider(post.authorId),
+                                        );
+                                        return isFollowingAsync.when(
+                                          data: (isFollowing) {
+                                            if (isFollowing) return const SizedBox.shrink();
+                                            return Padding(
+                                              padding: const EdgeInsets.only(left: 8.0),
+                                              child: GestureDetector(
+                                                onTap: () {
+                                                  ref
+                                                      .read(userRepositoryProvider)
+                                                      .followUser(post.authorId);
+                                                },
+                                                child: Text(
+                                                  'Follow',
+                                                  style: TextStyle(
+                                                    color: AppColors.secondaryTeal,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 13,
+                                                  ),
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                          loading: () => const SizedBox.shrink(),
+                                          error: (_, _) => const SizedBox.shrink(),
+                                        );
+                                      },
+                                    ),
                                   ],
                                 ),
                               ),
-
-                              // Handle & Time
-                              if (!displayIsAnonymous) ...[
-                                const SizedBox(width: 4),
-                                Flexible(
-                                  flex: 2,
-                                  child: Text(
-                                    '@$effectiveAuthorHandle',
-                                    style: TextStyle(
-                                      color: isDark
-                                          ? Colors.grey[500]
-                                          : Colors.grey[600],
-                                      fontSize: 13,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                              Text(
-                                ' • ${timeago.format(displayTimestamp, locale: 'en_short')}',
-                                style: TextStyle(
-                                  color: isDark
-                                      ? Colors.grey[500]
-                                      : Colors.grey[600],
-                                  fontSize: 13,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              // Follow Button
-                              Consumer(
-                                builder: (context, ref, child) {
-                                  final currentUser = ref
-                                      .watch(currentUserProvider)
-                                      .value;
-                                  if (currentUser?.uid == post.authorId ||
-                                      post.isAnonymous) {
-                                    return const SizedBox.shrink();
-                                  }
-                                  final isFollowingAsync = ref.watch(
-                                    isFollowingProvider(post.authorId),
-                                  );
-                                  return isFollowingAsync.when(
-                                    data: (isFollowing) {
-                                      if (isFollowing) {
-                                        return const SizedBox.shrink();
-                                      }
-                                      return Padding(
-                                        padding: const EdgeInsets.only(
-                                          left: 8.0,
-                                          right: 4.0,
-                                        ),
-                                        child: GestureDetector(
-                                          onTap: () {
-                                            ref
-                                                .read(userRepositoryProvider)
-                                                .followUser(post.authorId);
-                                          },
-                                          child: Text(
-                                            'Follow',
-                                            style: TextStyle(
-                                              color: AppColors.secondaryTeal,
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 13,
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                    loading: () => const SizedBox.shrink(),
-                                    error: (_, __) => const SizedBox.shrink(),
-                                  );
-                                },
-                              ),
-                              const Spacer(),
                               IconButton(
-                                onPressed: () =>
-                                    _showPostMenu(context, ref, post),
+                                onPressed: () => _showPostMenu(context, ref, post),
                                 icon: Icon(
                                   Icons.more_horiz,
-                                  size: 18,
-                                  color: isDark
-                                      ? Colors.grey[500]
-                                      : Colors.grey[600],
+                                  size: 20,
+                                  color: isDark ? Colors.grey[400] : Colors.grey[600],
                                 ),
                                 padding: EdgeInsets.zero,
                                 constraints: const BoxConstraints(),
@@ -347,20 +316,20 @@ class _PostCardState extends ConsumerState<PostCard> {
                               ),
                             ],
                           ),
-                          if (post.latitude != null)
+                          if (locationText != null && displayMediaUrl.isEmpty)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 4.0),
                               child: Row(
                                 children: [
                                   const Icon(
-                                    Icons.location_on,
+                                    CupertinoIcons.location_fill,
                                     size: 12,
                                     color: AppColors.secondaryTeal,
                                   ),
                                   const SizedBox(width: 4),
-                                  const Text(
-                                    "ABUAD Campus",
-                                    style: TextStyle(
+                                  Text(
+                                    locationText,
+                                    style: const TextStyle(
                                       color: AppColors.secondaryTeal,
                                       fontSize: 12,
                                       fontWeight: FontWeight.w500,
@@ -522,24 +491,78 @@ class _PostCardState extends ConsumerState<PostCard> {
 
                           // Media (Displayed - Original or Reposted)
                           if (displayMediaUrl.isNotEmpty) ...[
-                            GestureDetector(
-                              onTap: () {
-                                if (displayMediaType ==
-                                    domain.MediaType.video) {
-                                  if (widget.onVideoTap != null) {
-                                    widget.onVideoTap!();
-                                  } else {
-                                    // View Video in TikTok Style
-                                    context.push(
-                                      '/reels',
-                                      extra: {
-                                        'videos': [post],
-                                        'index': 0,
-                                      },
-                                    );
-                                  }
-                                } else {
-                                  // View Image in Full Screen
+                            if (displayMediaType == domain.MediaType.video)
+                              Stack(
+                                alignment: Alignment.bottomCenter,
+                                children: [
+                                  VideoPostWidget(
+                                    onTap: () {
+                                      if (widget.onVideoTap != null) {
+                                        widget.onVideoTap!();
+                                      } else {
+                                        context.push(
+                                          '/reels',
+                                          extra: {
+                                            'videos': [post],
+                                            'initialIndex': 0,
+                                          },
+                                        );
+                                      }
+                                    },
+                                    videoUrl: displayMediaUrl,
+                                  ),
+                                  if (_showVideoCaption)
+                                    IgnorePointer(
+                                      child: _buildVideoCaption(
+                                        videoCaption,
+                                        isDark,
+                                      ),
+                                    ),
+                                  if (locationText != null)
+                                    Positioned(
+                                      left: 12,
+                                      bottom: 12,
+                                      child: IgnorePointer(
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 6,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.black.withValues(
+                                              alpha: 0.65,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              20,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const Icon(
+                                                CupertinoIcons.location_fill,
+                                                size: 14,
+                                                color: Colors.white,
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                locationText,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              )
+                            else
+                              GestureDetector(
+                                onTap: () {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
@@ -549,209 +572,219 @@ class _PostCardState extends ConsumerState<PostCard> {
                                       ),
                                     ),
                                   );
-                                }
-                              },
-                              child: displayMediaType == domain.MediaType.video
-                                  ? Stack(
-                                      alignment: Alignment.bottomCenter,
-                                      children: [
-                                        VideoPostWidget(
-                                          onTap: () {
-                                            if (widget.onVideoTap != null) {
-                                              widget.onVideoTap!();
-                                            } else {
-                                              context.push(
-                                                '/reels',
-                                                extra: {
-                                                  'videos': [post],
-                                                  'initialIndex': 0,
-                                                },
-                                              );
-                                            }
-                                          },
-                                          videoUrl: displayMediaUrl,
+                                },
+                                child: Stack(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(16),
+                                      child: ConstrainedBox(
+                                        constraints: const BoxConstraints(
+                                          maxHeight: 380,
+                                          minHeight: 180,
                                         ),
-                                        if (_showVideoCaption)
-                                          _buildVideoCaption(
-                                            videoCaption,
-                                            isDark,
-                                          ),
-                                      ],
-                                    )
-                                  : Hero(
-                                      tag: 'post_media_${post.id}',
-                                      child:
-                                          (displayMediaUrl.isNotEmpty &&
-                                              UrlValidator.isValidUrl(
-                                                displayMediaUrl,
-                                              ))
-                                          ? ClipRRect(
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                              child: CachedNetworkImage(
-                                                imageUrl: displayMediaUrl,
-                                                height: 250,
-                                                width: double.infinity,
-                                                fit: BoxFit.cover,
-                                                errorWidget:
-                                                    (
-                                                      context,
-                                                      url,
-                                                      error,
-                                                    ) => Container(
-                                                      height: 250,
-                                                      color: Colors.black,
-                                                      child: const Icon(
-                                                        Icons
-                                                            .broken_image_outlined,
-                                                        color: Colors.white,
-                                                        size: 48,
+                                        child: SizedBox(
+                                          width: double.infinity,
+                                          child: Hero(
+                                            tag: 'post_media_${post.id}',
+                                            child: (displayMediaUrl.isNotEmpty &&
+                                                    UrlValidator.isValidUrl(displayMediaUrl))
+                                                ? CachedNetworkImage(
+                                                    imageUrl: displayMediaUrl,
+                                                    width: double.infinity,
+                                                    fit: BoxFit.cover,
+                                                    placeholder: (context, url) => Container(
+                                                      height: 220,
+                                                      decoration: BoxDecoration(
+                                                        color: isDark
+                                                            ? const Color(0xFF1E293B)
+                                                            : const Color(0xFFE2E8F0),
+                                                      ),
+                                                      child: Center(
+                                                        child: SizedBox(
+                                                          width: 28,
+                                                          height: 28,
+                                                          child: CircularProgressIndicator(
+                                                            strokeWidth: 2,
+                                                            color: Theme.of(context).colorScheme.secondary,
+                                                          ),
+                                                        ),
                                                       ),
                                                     ),
+                                                    errorWidget: (context, url, error) => Container(
+                                                      height: 220,
+                                                      decoration: BoxDecoration(
+                                                        gradient: isDark
+                                                            ? const LinearGradient(
+                                                                colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
+                                                                begin: Alignment.topLeft,
+                                                                end: Alignment.bottomRight,
+                                                              )
+                                                            : const LinearGradient(
+                                                                colors: [Color(0xFFE2E8F0), Color(0xFFCBD5E1)],
+                                                                begin: Alignment.topLeft,
+                                                                end: Alignment.bottomRight,
+                                                              ),
+                                                      ),
+                                                      child: Center(
+                                                        child: Column(
+                                                          mainAxisAlignment: MainAxisAlignment.center,
+                                                          children: [
+                                                            Icon(
+                                                              Icons.photo_library_outlined,
+                                                              color: isDark ? Colors.white38 : Colors.black38,
+                                                              size: 36,
+                                                            ),
+                                                            const SizedBox(height: 6),
+                                                            Text(
+                                                              'Image preview',
+                                                              style: TextStyle(
+                                                                color: isDark ? Colors.white54 : Colors.black54,
+                                                                fontSize: 12,
+                                                                fontWeight: FontWeight.w500,
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  )
+                                                : Container(
+                                                    height: 220,
+                                                    decoration: BoxDecoration(
+                                                      color: isDark ? Colors.grey[900] : Colors.grey[200],
+                                                    ),
+                                                    child: Center(
+                                                      child: Icon(
+                                                        Icons.photo_library_outlined,
+                                                        color: isDark ? Colors.white38 : Colors.black38,
+                                                        size: 36,
+                                                      ),
+                                                    ),
+                                                  ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    if (locationText != null)
+                                      Positioned(
+                                        left: 12,
+                                        bottom: 12,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 6,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.black.withValues(
+                                              alpha: 0.65,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              20,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const Icon(
+                                                CupertinoIcons.location_fill,
+                                                size: 14,
+                                                color: Colors.white,
                                               ),
-                                            )
-                                          : Container(
-                                              height: 250,
-                                              decoration: BoxDecoration(
-                                                color: isDark
-                                                    ? Colors.grey[900]
-                                                    : Colors.grey[200],
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
-                                              ),
-                                              child: const Center(
-                                                child: Icon(
-                                                  Icons.broken_image_outlined,
-                                                  size: 48,
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                locationText,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w600,
                                                 ),
                                               ),
-                                            ),
-                                    ),
-                            ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
                             const SizedBox(height: 12),
                           ],
 
-                          // Actions Row
+                          // Actions Row (Matching reference screenshot UI)
                           Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              _ActionButton(
-                                icon: Icons.chat_bubble_outline,
-                                count: livePost.commentsCount,
-                                color: isDark
-                                    ? Colors.grey[500]!
-                                    : Colors.grey[600]!,
-                                onTap: () => context.push(
-                                  '/post/${post.id}',
-                                  extra: post,
-                                ),
-                              ),
-                              _ActionButton(
-                                icon: Icons.repeat,
-                                count: livePost.repostCount,
-                                color: AppColors.secondaryTeal,
-                                onTap: () {
-                                  _showRepostBottomSheet(context, ref, post);
-                                },
-                              ),
+                              // 1. Heart / Like Button
                               Consumer(
                                 builder: (context, ref, child) {
-                                  // Feature 6: Optimistic Likes
-                                  // Check if there's an optimistic override, otherwise use Firebase stream
-                                  final optimisticMap = ref.watch(
-                                    optimisticLikeProvider,
-                                  );
-                                  final firebaseLiked =
-                                      ref
-                                          .watch(isPostLikedProvider(post.id))
-                                          .value ??
-                                      false;
-                                  final isLiked =
-                                      optimisticMap.containsKey(post.id)
+                                  final optimisticMap = ref.watch(optimisticLikeProvider);
+                                  final apiLiked = ref.watch(isPostLikedProvider(post.id)).value ?? false;
+                                  final isLiked = optimisticMap.containsKey(post.id)
                                       ? optimisticMap[post.id]!
-                                      : firebaseLiked;
-                                  final optimisticCount =
-                                      optimisticMap.containsKey(post.id)
-                                      ? livePost.likesCount +
-                                            (optimisticMap[post.id]! ? 1 : -1)
+                                      : apiLiked;
+                                  final optimisticCount = optimisticMap.containsKey(post.id)
+                                      ? livePost.likesCount + (optimisticMap[post.id]! ? 1 : -1)
                                       : livePost.likesCount;
                                   return AnimatedLikeButton(
                                     isLiked: isLiked,
                                     count: optimisticCount.clamp(0, 999999),
+                                    inactiveColor: isDark ? Colors.grey[500]! : Colors.grey[600]!,
                                     onTap: () async {
-                                      // Immediately update UI (optimistic)
-                                      ref
-                                          .read(optimisticLikeProvider.notifier)
-                                          .toggle(post.id, firebaseLiked);
+                                      ref.read(optimisticLikeProvider.notifier).toggle(post.id, apiLiked);
                                       try {
-                                        await ref
-                                            .read(postRepositoryProvider)
-                                            .toggleLike(post.id);
-                                        // Confirm: remove optimistic override once Firebase responds
-                                        ref
-                                            .read(
-                                              optimisticLikeProvider.notifier,
-                                            )
-                                            .confirm(post.id);
+                                        await ref.read(postRepositoryProvider).toggleLike(post.id);
+                                        ref.read(optimisticLikeProvider.notifier).confirm(post.id);
                                       } catch (_) {
-                                        // Revert on failure
-                                        ref
-                                            .read(
-                                              optimisticLikeProvider.notifier,
-                                            )
-                                            .revert(post.id, firebaseLiked);
+                                        ref.read(optimisticLikeProvider.notifier).revert(post.id, apiLiked);
                                       }
                                     },
                                   );
                                 },
                               ),
+                              const SizedBox(width: 16),
+                              // 2. Comment Button
+                              _ActionButton(
+                                icon: CupertinoIcons.chat_bubble,
+                                count: livePost.commentsCount,
+                                color: isDark ? Colors.grey[500]! : Colors.grey[600]!,
+                                onTap: () => context.push(
+                                  '/post/${post.id}',
+                                  extra: post,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              // 3. Repost Button
+                              _ActionButton(
+                                icon: Icons.repeat,
+                                count: livePost.repostCount > 0 ? livePost.repostCount : null,
+                                color: isDark ? Colors.grey[500]! : Colors.grey[600]!,
+                                onTap: () => _showRepostBottomSheet(context, ref, post),
+                              ),
+                              const SizedBox(width: 16),
+                              // 4. Share / Forward Button
+                              _ActionButton(
+                                icon: CupertinoIcons.arrowshape_turn_up_right,
+                                count: livePost.sharesCount > 0 ? livePost.sharesCount : null,
+                                color: isDark ? Colors.grey[500]! : Colors.grey[600]!,
+                                onTap: () => ShareSheet.show(context, post),
+                              ),
+                              const Spacer(),
+                              // 4. Bookmark / Save Button (Far Right)
                               Consumer(
                                 builder: (context, ref, child) {
-                                  final isSavedAsync = ref.watch(
-                                    isPostSavedProvider(post.id),
-                                  );
+                                  final isSavedAsync = ref.watch(isPostSavedProvider(post.id));
                                   final isSaved = isSavedAsync.value ?? false;
-
                                   return _ActionButton(
-                                    icon: isSaved
-                                        ? Icons.bookmark
-                                        : Icons.bookmark_border,
-                                    count: null, // Private action
+                                    icon: isSaved ? CupertinoIcons.bookmark_solid : CupertinoIcons.bookmark,
+                                    count: livePost.savesCount > 0 ? livePost.savesCount : null,
                                     color: isSaved
                                         ? AppColors.secondaryTeal
-                                        : (isDark
-                                              ? Colors.grey[500]!
-                                              : Colors.grey[600]!),
+                                        : (isDark ? Colors.grey[500]! : Colors.grey[600]!),
                                     onTap: () {
-                                      ref
-                                          .read(userRepositoryProvider)
-                                          .togglePostSave(post.id);
+                                      ref.read(userRepositoryProvider).togglePostSave(post.id);
                                     },
                                   );
                                 },
                               ),
-                              _ActionButton(
-                                icon: Icons.share_outlined,
-                                count: null,
-                                color: isDark
-                                    ? Colors.grey[500]!
-                                    : Colors.grey[600]!,
-                                onTap: () => ShareSheet.show(context, post),
-                              ),
-                              const SizedBox(width: 8), // Extra edge padding
                             ],
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 6),
-                            child: Text(
-                              'Live stats: ${livePost.likesCount} likes · ${livePost.commentsCount} replies · ${livePost.repostCount} reposts',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: isDark
-                                    ? Colors.white60
-                                    : Colors.grey[600],
-                              ),
-                            ),
                           ),
                         ],
                       ),
@@ -818,8 +851,10 @@ class _PostCardState extends ConsumerState<PostCard> {
       builder: (context) => Consumer(
         builder: (context, ref, _) {
           final repo = ref.read(postRepositoryProvider);
-          final currentUserId = repo.currentUserId;
-          final isOwnPost = post.authorId == currentUserId;
+          final currentUserId = repo.currentUserId ??
+              ref.read(authRepositoryProvider).currentUser?.uid ??
+              ref.read(currentUserProvider).value?.uid;
+          final isOwnPost = currentUserId != null && post.authorId == currentUserId;
 
           return SafeArea(
             top: false,
@@ -828,7 +863,7 @@ class _PostCardState extends ConsumerState<PostCard> {
               children: [
                 if (isOwnPost)
                   ListTile(
-                    leading: const Icon(Icons.delete, color: Colors.red),
+                    leading: const Icon(CupertinoIcons.delete, color: Colors.red),
                     title: const Text(
                       'Delete Post',
                       style: TextStyle(color: Colors.red),
@@ -878,7 +913,7 @@ class _PostCardState extends ConsumerState<PostCard> {
                     final isSaved = isSavedAsync.value ?? false;
                     return ListTile(
                       leading: Icon(
-                        isSaved ? Icons.bookmark : Icons.bookmark_border,
+                        isSaved ? CupertinoIcons.bookmark_solid : CupertinoIcons.bookmark,
                         color: isSaved ? AppColors.secondaryTeal : null,
                       ),
                       title: Text(isSaved ? 'Unsave Post' : 'Save Post'),
@@ -890,7 +925,7 @@ class _PostCardState extends ConsumerState<PostCard> {
                   },
                 ),
                 ListTile(
-                  leading: const Icon(Icons.share_outlined),
+                  leading: const Icon(CupertinoIcons.arrowshape_turn_up_right),
                   title: const Text('Share Post'),
                   onTap: () {
                     Navigator.pop(context);
@@ -935,7 +970,7 @@ class _PostCardState extends ConsumerState<PostCard> {
                 if (!isOwnPost)
                   ListTile(
                     leading: const Icon(
-                      Icons.thumb_down_alt_outlined,
+                      CupertinoIcons.hand_thumbsdown,
                       color: Colors.blueGrey,
                     ),
                     title: const Text('Not Interested'),
@@ -1099,11 +1134,29 @@ class _PostCardState extends ConsumerState<PostCard> {
                       child: const Text("Cancel"),
                     ),
                     ElevatedButton(
-                      onPressed: () {
-                        ref
-                            .read(postRepositoryProvider)
-                            .repost(originalPost, commentController.text);
+                      onPressed: () async {
+                        final commentText = commentController.text.trim();
+                        final scaffoldMessenger = ScaffoldMessenger.of(context);
                         Navigator.pop(context);
+                        try {
+                          await ref
+                              .read(postRepositoryProvider)
+                              .repost(originalPost, commentText);
+                          ref.invalidate(paginatedFeedProvider);
+                          final currentUserId = ref.read(authRepositoryProvider).currentUser?.uid;
+                          if (currentUserId != null) {
+                            ref.invalidate(userPostsProvider(currentUserId));
+                          }
+                          scaffoldMessenger.showSnackBar(
+                            const SnackBar(
+                              content: Text("Post reposted successfully!"),
+                              behavior: SnackBarBehavior.floating,
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        } catch (e) {
+                          debugPrint('Error posting repost: $e');
+                        }
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
@@ -1271,7 +1324,11 @@ class _PostCardState extends ConsumerState<PostCard> {
 
     return RichText(
       text: TextSpan(
-        style: const TextStyle(fontSize: 15, height: 1.3),
+        style: TextStyle(
+          fontSize: 16,
+          height: 1.35,
+          color: theme.textTheme.bodyLarge?.color,
+        ),
         children: spans,
       ),
     );
@@ -1450,6 +1507,8 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final countText = count != null ? formatCount(count!) : '';
+
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque, // Ensure tap target
@@ -1467,10 +1526,10 @@ class _ActionButton extends StatelessWidget {
                   ? color // Use passed color (grey/themed)
                   : (count! > 0 ? color : color.withValues(alpha: 0.7)),
             ),
-            if (count != null && count! > 0) ...[
+            if (countText.isNotEmpty) ...[
               const SizedBox(width: 4),
               Text(
-                '$count',
+                countText,
                 style: TextStyle(
                   color: color,
                   fontSize: 12,

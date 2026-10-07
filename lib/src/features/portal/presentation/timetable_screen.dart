@@ -61,7 +61,7 @@ class TimetableScreen extends StatelessWidget {
                   width: 80,
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   decoration: BoxDecoration(
-                    color: AppColors.secondaryTeal.withOpacity(0.1),
+                    color: AppColors.secondaryTeal.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Column(

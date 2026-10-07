@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:dio/dio.dart';
-import 'package:gal/gal.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:toastification/toastification.dart';
+import '../../../../core/services/media_saver.dart';
 import '../../../../core/utils/url_validator.dart';
 
 class FullScreenImageView extends StatelessWidget {
@@ -14,53 +12,27 @@ class FullScreenImageView extends StatelessWidget {
   const FullScreenImageView({super.key, required this.imageUrl, this.heroTag});
 
   Future<void> _saveImage(BuildContext context) async {
-    try {
-      // Check permissions
-      final hasAccess = await Gal.hasAccess();
-      if (!hasAccess) {
-        await Gal.requestAccess();
-      }
+    if (context.mounted) {
+      toastification.show(
+        context: context,
+        title: const Text('Saving...'),
+        type: ToastificationType.info,
+        autoCloseDuration: const Duration(seconds: 2),
+      );
+    }
 
-      // Show loading
-      if (context.mounted) {
-        toastification.show(
-          context: context,
-          title: const Text('Saving...'),
-          type: ToastificationType.info,
-          autoCloseDuration: const Duration(seconds: 2),
-        );
-      }
+    final success = await MediaSaver.saveImage(imageUrl);
 
-      // 1. Get temporary directory
-      final tempDir = await getTemporaryDirectory();
-      final path =
-          '${tempDir.path}/abuad_${DateTime.now().millisecondsSinceEpoch}.jpg';
-
-      // 2. Download image
-      await Dio().download(imageUrl, path);
-
-      // 3. Save to gallery using Gal
-      await Gal.putImage(path);
-
-      if (context.mounted) {
-        toastification.show(
-          context: context,
-          title: const Text('Success!'),
-          description: const Text('Image saved to gallery.'),
-          type: ToastificationType.success,
-          autoCloseDuration: const Duration(seconds: 3),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        toastification.show(
-          context: context,
-          title: const Text('Error'),
-          description: Text(e.toString()),
-          type: ToastificationType.error,
-          autoCloseDuration: const Duration(seconds: 3),
-        );
-      }
+    if (context.mounted) {
+      toastification.show(
+        context: context,
+        title: Text(success ? 'Success!' : 'Error'),
+        description: Text(
+          success ? 'Image saved to gallery.' : 'Failed to save image.',
+        ),
+        type: success ? ToastificationType.success : ToastificationType.error,
+        autoCloseDuration: const Duration(seconds: 3),
+      );
     }
   }
 

@@ -14,13 +14,19 @@ class AuthController {
             if (user) {
                 try {
                     // Check if user has admin role
-                    const userDoc = await db.collection('users').doc(user.uid).get();
-                    if (userDoc.exists && userDoc.data().role === 'admin') {
+                    const role = (user.role || '').toLowerCase();
+                    if (role === 'admin') {
                         this.showDashboard();
                     } else {
-                        alert("Access Denied: You do not have administrator privileges.");
-                        await auth.signOut();
-                        this.showLogin();
+                        const userDoc = await db.collection('users').doc(user.id || user.uid).get();
+                        const docRole = ((userDoc.data() && userDoc.data().role) || '').toLowerCase();
+                        if (userDoc.exists && docRole === 'admin') {
+                            this.showDashboard();
+                        } else {
+                            alert("Access Denied: You do not have administrator privileges.");
+                            await auth.signOut();
+                            this.showLogin();
+                        }
                     }
                 } catch (error) {
                     console.error("Error verifying admin status:", error);

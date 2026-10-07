@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -83,21 +84,13 @@ class _AddMarketplaceItemScreenState
 
   Future<void> _editImage(int index) async {
     final file = _imageFiles[index];
-    
-    await UnifiedImageEditor.open(
-      context,
-      file: file,
-      onDone: (editedFile) {
-        setState(() {
-          _imageFiles[index] = File(editedFile.path);
-        });
-        
-        // "Carry" the result and show how it looks in a preview
-        if (mounted) {
-          _showGlimpsePreview();
-        }
-      },
-    );
+    final edited = await UnifiedImageEditor.open(context, file: file);
+    if (edited != null && mounted) {
+      setState(() {
+        _imageFiles[index] = File(edited.path);
+      });
+      _showGlimpsePreview();
+    }
   }
 
   Future<void> _generateMagicDraft() async {
@@ -231,7 +224,7 @@ class _AddMarketplaceItemScreenState
     // Miniature version of MarketplaceItemCard logic
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.9),
+        color: Colors.white.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
@@ -244,7 +237,9 @@ class _AddMarketplaceItemScreenState
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16),
                 image: DecorationImage(
-                  image: FileImage(File(item.images.first)),
+                  image: kIsWeb
+                      ? NetworkImage(item.images.first)
+                      : FileImage(File(item.images.first)) as ImageProvider,
                   fit: BoxFit.cover,
                 ),
               ),
@@ -346,7 +341,7 @@ class _AddMarketplaceItemScreenState
       margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
+        color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white10),
       ),
@@ -360,7 +355,7 @@ class _AddMarketplaceItemScreenState
                 Text(
                   title,
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.5),
+                    color: Colors.white.withValues(alpha: 0.5),
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 1.2,
@@ -475,7 +470,7 @@ class _AddMarketplaceItemScreenState
                               width: double.infinity,
                               child: SegmentedButton<String>(
                                 style: SegmentedButton.styleFrom(
-                                  backgroundColor: Colors.white.withOpacity(0.05),
+                                  backgroundColor: Colors.white.withValues(alpha: 0.05),
                                   selectedBackgroundColor: AppColors.secondaryTeal,
                                   foregroundColor: Colors.white,
                                   selectedForegroundColor: Colors.black,
@@ -505,7 +500,7 @@ class _AddMarketplaceItemScreenState
                           style: const TextStyle(color: Colors.white70, fontSize: 14),
                           decoration: InputDecoration(
                             hintText: 'Tell students more about your item...',
-                            hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                            hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
                             border: InputBorder.none,
                           ),
                           validator: (v) => v!.isEmpty ? 'Description is required' : null,
@@ -561,7 +556,7 @@ class _AddMarketplaceItemScreenState
         width: 140,
         margin: const EdgeInsets.only(right: 12),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.05),
+          color: Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: Colors.white24),
         ),
@@ -586,7 +581,9 @@ class _AddMarketplaceItemScreenState
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(20),
-            child: Image.file(_imageFiles[index], fit: BoxFit.cover),
+            child: kIsWeb
+                ? Image.network(_imageFiles[index].path, fit: BoxFit.cover)
+                : Image.file(_imageFiles[index], fit: BoxFit.cover),
           ),
           Positioned(
             top: 8,
@@ -596,7 +593,7 @@ class _AddMarketplaceItemScreenState
           Positioned(
             top: 8,
             left: 8,
-            child: _circleActionButton(Icons.brush, () => _editImage(index), AppColors.secondaryTeal.withOpacity(0.8)),
+            child: _circleActionButton(Icons.brush, () => _editImage(index), AppColors.secondaryTeal.withValues(alpha: 0.8)),
           ),
         ],
       ).animate().fadeIn().scale(begin: const Offset(0.9, 0.9)),
@@ -617,10 +614,10 @@ class _AddMarketplaceItemScreenState
   InputDecoration _glassInputDecoration(String label, IconData icon) {
     return InputDecoration(
       labelText: label,
-      labelStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+      labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
       prefixIcon: Icon(icon, color: AppColors.secondaryTeal, size: 20),
       border: InputBorder.none,
-      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white.withOpacity(0.1))),
+      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
       focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: AppColors.secondaryTeal)),
     );
   }

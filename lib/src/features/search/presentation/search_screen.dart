@@ -90,30 +90,47 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
   }
 
   Widget _buildSearchHeader(bool isDark) {
+    final canPop = Navigator.of(context).canPop();
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       child: Column(
         children: [
-          // Glassmorphic Search Bar
-          ClipRRect(
-            borderRadius: BorderRadius.circular(24),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: Container(
-                height: 48,
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.1)
-                      : Colors.black.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.1)
-                        : Colors.black.withValues(alpha: 0.1),
-                    width: 0.5,
-                  ),
+          Row(
+            children: [
+              if (canPop) ...[
+                IconButton(
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  color: isDark ? Colors.white : Colors.black,
+                  onPressed: () {
+                    if (Navigator.of(context).canPop()) {
+                      Navigator.of(context).pop();
+                    } else {
+                      context.go('/');
+                    }
+                  },
                 ),
-                child: TextField(
+                const SizedBox(width: 4),
+              ],
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: Container(
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.1)
+                            : Colors.black.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.1)
+                              : Colors.black.withValues(alpha: 0.1),
+                          width: 0.5,
+                        ),
+                      ),
+                      child: TextField(
                   controller: _searchController,
                   onChanged: (value) => setState(() => _query = value),
                   onSubmitted: (value) {
@@ -145,12 +162,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
                     border: InputBorder.none,
                     enabledBorder: InputBorder.none,
                     focusedBorder: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                 ),
               ),
             ),
           ),
+        ),
+      ],
+    ),
 
           // Categorized Search Tabs (Shown only when searching)
           if (_query.isNotEmpty) ...[
@@ -472,7 +491,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
           )),
         ),
       ),
-      error: (_, __) => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
     );
   }
 }
@@ -612,8 +631,8 @@ class _SuggestedUsersCarousel extends ConsumerWidget {
                                         shape: BoxShape.circle,
                                         boxShadow: [
                                           BoxShadow(
-                                            color: Colors.black.withOpacity(
-                                              0.1,
+                                            color: Colors.black.withValues(
+                                              alpha: 0.1,
                                             ),
                                             blurRadius: 4,
                                           ),
@@ -948,8 +967,8 @@ class _MasonryPostItem extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            AppColors.secondaryTeal.withOpacity(0.8),
-            AppColors.secondaryTeal.withOpacity(0.4),
+            AppColors.secondaryTeal.withValues(alpha: 0.8),
+            AppColors.secondaryTeal.withValues(alpha: 0.4),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -990,7 +1009,7 @@ class _SearchResultsList extends ConsumerWidget {
     final postRepo = ref.watch(postRepositoryProvider);
 
     return StreamBuilder<List<Post>>(
-      stream: postRepo.searchPosts(query),
+      stream: Stream.fromFuture(postRepo.searchPosts(query)),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const _SearchSkeleton();
@@ -1029,7 +1048,7 @@ class _PeopleSearchResults extends ConsumerWidget {
     final userRepo = ref.watch(userRepositoryProvider);
 
     return StreamBuilder<List<AppUser>>(
-      stream: userRepo.searchUsers(query),
+      stream: Stream.fromFuture(userRepo.searchUsers(query)),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const _SearchSkeleton();

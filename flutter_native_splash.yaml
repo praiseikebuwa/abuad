@@ -1,31 +1,16 @@
 flutter_native_splash:
-  # ABUAD App - Optimized Splash Screen
-  # Using full-screen background image to prevent circular cropping on Android 12+
-  
-  # Set the logo as the FULL background image
-  background_image: assets/images/logo.png
-  background_image_dark: assets/images/logo.png
-  
-  # Optional background color for padding areas
-  color: "#8B5CF6"
+  color: "#0B1B3A"
   color_dark: "#000000"
-  
-  # Remove the centered image to avoid double-layering
-  # image: assets/images/logo.png
-  
-  # Gravity for the background image
-  android_gravity: center
-  ios_content_mode: center
-  web_image_mode: center
-  
+  image: assets/images/logo.png
+  image_dark: assets/images/logo.png
+
+  android: true
+  ios: true
+  web: true
   fullscreen: true
-  
+
   android_12:
-    background_image: assets/images/logo.png
-    background_image_dark: assets/images/logo.png
-    color: "#8B5CF6"
+    color: "#0B1B3A"
     color_dark: "#000000"
-    
-    # Disable the centered icon to allow the background image to be the primary focus
-    # or use a very small, complementary icon if desired.
-    # image: assets/images/logo.png
+    image: assets/images/logo.png
+    image_dark: assets/images/logo.png

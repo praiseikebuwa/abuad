@@ -135,7 +135,7 @@ class _GPACalculatorScreenState extends ConsumerState<GPACalculatorScreen> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(24),
-              color: theme.primaryColor.withOpacity(0.1),
+              color: theme.primaryColor.withValues(alpha: 0.1),
               child: Column(
                 children: [
                   const Text('Calculated GPA', style: TextStyle(fontSize: 14)),
@@ -163,7 +163,7 @@ class _GPACalculatorScreenState extends ConsumerState<GPACalculatorScreen> {
                       children: [
                         CircleAvatar(
                           radius: 14,
-                          backgroundColor: theme.primaryColor.withOpacity(0.1),
+                          backgroundColor: theme.primaryColor.withValues(alpha: 0.1),
                           child: Text(
                             '${index + 1}',
                             style: TextStyle(

@@ -1,7 +1,9 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:glassmorphism/glassmorphism.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -9,18 +11,20 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/utils/url_validator.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../data/post_repository.dart';
+import '../../auth/data/auth_repository.dart';
 import '../domain/post.dart' as domain;
 import 'widgets/poll_widget.dart';
 import 'widgets/animated_like_button.dart';
 import 'widgets/video_post_widget.dart';
 import 'package:flutter/gestures.dart';
-import '../../user/data/user_repository.dart';
 import '../../../core/widgets/verification_badge.dart';
 
 import '../domain/report.dart';
 import 'widgets/report_bottom_sheet.dart';
 import '../../../core/theme/app_colors.dart';
 import 'widgets/link_preview_card.dart';
+import 'providers/feed_provider.dart';
+import '../../../shared/widgets/formatted_comment_content.dart';
 // import '../../chat/presentation/widgets/attachment_preview.dart';
 
 class PostDetailScreen extends ConsumerStatefulWidget {
@@ -65,18 +69,9 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     });
   }
 
-  int _getVerificationWeight(String? type) {
-    switch (type) {
-      case 'gold':
-        return 0;
-      case 'blue':
-        return 1;
-      default:
-        return 2;
-    }
-  }
 
   Future<void> _postComment() async {
+    if (_isPosting) return;
     final content = _commentController.text.trim();
     if (content.isEmpty) {
       return;
@@ -159,14 +154,75 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     }
   }
 
-  void _showCommentMenu(BuildContext context, String commentId, bool isOwn) {
+  Future<void> _editComment(String commentId, String currentContent) async {
+    final controller = TextEditingController(text: currentContent);
+    final editedText = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Comment'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            hintText: 'Update your comment...',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.secondaryTeal,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (editedText != null && editedText.isNotEmpty) {
+      try {
+        final repo = ref.read(postRepositoryProvider);
+        final postId = widget.post?.id ?? widget.postId!;
+        await repo.editComment(postId, commentId, editedText);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Comment updated')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error updating comment: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  void _showCommentMenu(BuildContext context, String commentId, bool isOwn, {String? currentContent}) {
     showModalBottomSheet(
       context: context,
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (isOwn)
+            if (isOwn) ...[
+              ListTile(
+                leading: const Icon(Icons.edit, color: Colors.blue),
+                title: const Text('Edit Comment'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _editComment(commentId, currentContent ?? '');
+                },
+              ),
               ListTile(
                 leading: const Icon(Icons.delete, color: Colors.red),
                 title: const Text(
@@ -177,8 +233,8 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                   Navigator.pop(context);
                   _deleteComment(commentId);
                 },
-              )
-            else
+              ),
+            ] else ...[
               ListTile(
                 leading: const Icon(Icons.report_outlined),
                 title: const Text('Report Comment'),
@@ -195,6 +251,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                   );
                 },
               ),
+            ],
             ListTile(
               leading: const Icon(Icons.cancel),
               title: const Text('Cancel'),
@@ -349,11 +406,29 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                       child: const Text("Cancel"),
                     ),
                     ElevatedButton(
-                      onPressed: () {
-                        ref
-                            .read(postRepositoryProvider)
-                            .repost(originalPost, commentController.text);
+                      onPressed: () async {
+                        final commentText = commentController.text;
+                        final scaffoldMessenger = ScaffoldMessenger.of(context);
                         Navigator.pop(context);
+                        try {
+                          await ref
+                              .read(postRepositoryProvider)
+                              .repost(originalPost, commentText);
+                          ref.invalidate(paginatedFeedProvider);
+                          final currentUserId = ref.read(authRepositoryProvider).currentUser?.uid;
+                          if (currentUserId != null) {
+                            ref.invalidate(userPostsProvider(currentUserId));
+                          }
+                          scaffoldMessenger.showSnackBar(
+                            const SnackBar(
+                              content: Text("Post reposted successfully!"),
+                              behavior: SnackBarBehavior.floating,
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        } catch (e) {
+                          debugPrint('Error posting repost: $e');
+                        }
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
@@ -373,7 +448,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                     const CircleAvatar(
                       radius: 18,
                       backgroundColor: Colors.grey,
-                      child: Icon(Icons.person, color: Colors.white, size: 20),
+                      child: Icon(CupertinoIcons.person_add, color: Colors.white, size: 20),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -460,8 +535,9 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     }
 
     final commentsStream = repo.watchComments(postId);
-    final isLikedStream = repo.isPostLiked(postId);
+    final isLikedStream = repo.watchPostLiked(postId);
     final currentUserId = repo.currentUserId;
+    final currentUser = ref.watch(authRepositoryProvider).currentUser;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
@@ -478,7 +554,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
       child: Scaffold(
         appBar: AppBar(
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
+            icon: const Icon(CupertinoIcons.arrow_left),
             onPressed: () {
               if (Navigator.of(context).canPop()) {
                 Navigator.of(context).pop();
@@ -491,10 +567,10 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
           centerTitle: true,
           actions: [
             IconButton(
-              icon: const Icon(Icons.share_outlined),
+              icon: const Icon(CupertinoIcons.arrowshape_turn_up_right),
               onPressed: () {
                 Share.share(
-                  'Check out this post on ABUAD Nest: https://abuadapp.web.app/post/$postId',
+                  'Check out this post on Abuad life: https://abuadapp.web.app/post/$postId',
                   subject: 'Check out this post on ABUAD',
                 );
               },
@@ -592,7 +668,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                   child: Row(
                                     children: [
                                       Icon(
-                                        Icons.repeat,
+                                        CupertinoIcons.repeat,
                                         size: 16,
                                         color: isDark
                                             ? Colors.grey[500]
@@ -764,7 +840,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                                               CircularProgressIndicator(),
                                                         ),
                                                       ),
-                                                  errorWidget: (_, __, ___) =>
+                                                  errorWidget: (_, _, _) =>
                                                       const SizedBox(),
                                                 )
                                               : const SizedBox(),
@@ -801,13 +877,21 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
 
                               // Stats Row
                               if (post.repostCount > 0 ||
-                                  post.likesCount > 0) ...[
+                                  post.likesCount > 0 ||
+                                  post.commentsCount > 0) ...[
                                 Padding(
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 4.0,
                                   ),
                                   child: Row(
                                     children: [
+                                      if (post.commentsCount > 0) ...[
+                                        _StatText(
+                                          count: post.commentsCount,
+                                          label: post.commentsCount == 1 ? 'Comment' : 'Comments',
+                                        ),
+                                        const SizedBox(width: 20),
+                                      ],
                                       if (post.repostCount > 0) ...[
                                         _StatText(
                                           count: post.repostCount,
@@ -832,18 +916,17 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                     MainAxisAlignment.spaceAround,
                                 children: [
                                   IconButton(
-                                    icon: const Icon(Icons.chat_bubble_outline),
+                                    icon: const Icon(CupertinoIcons.chat_bubble),
                                     onPressed: () {
                                       // Focus logic handled by placing focus node or just tapping the bottom field
-                                      // For now, we can rely on the user tapping the bottom field
                                     },
-                                    color: Colors.grey[600],
+                                    color: isDark ? Colors.grey[500] : Colors.grey[600],
                                   ),
                                   IconButton(
-                                    icon: const Icon(Icons.repeat),
+                                    icon: const Icon(CupertinoIcons.arrow_2_squarepath),
                                     onPressed: () =>
                                         _showRepostBottomSheet(post),
-                                    color: Colors.grey[600],
+                                    color: isDark ? Colors.grey[500] : Colors.grey[600],
                                   ),
                                   StreamBuilder<bool>(
                                     stream: isLikedStream,
@@ -851,10 +934,10 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                       final isLiked = snapshot.data ?? false;
                                       return AnimatedLikeButton(
                                         isLiked: isLiked,
-                                        count:
-                                            0, // We hide count in the button for this view
+                                        count: 0,
                                         showCount: false,
-                                        iconSize: 24,
+                                        iconSize: 22,
+                                        inactiveColor: isDark ? Colors.grey[500] : Colors.grey[600],
                                         onTap: () => repo.toggleLike(post.id),
                                       );
                                     },
@@ -870,11 +953,11 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                       return IconButton(
                                         icon: Icon(
                                           isSaved
-                                              ? Icons.bookmark
-                                              : Icons.bookmark_border,
+                                              ? CupertinoIcons.bookmark_solid
+                                              : CupertinoIcons.bookmark,
                                           color: isSaved
                                               ? AppColors.secondaryTeal
-                                              : Colors.grey[600],
+                                              : (isDark ? Colors.grey[500] : Colors.grey[600]),
                                         ),
                                         onPressed: () {
                                           ref
@@ -885,13 +968,13 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                     },
                                   ),
                                   IconButton(
-                                    icon: const Icon(Icons.share_outlined),
+                                    icon: const Icon(CupertinoIcons.share),
                                     onPressed: () {
                                       Share.share(
-                                        '${post.authorName} (@${post.authorHandle}): ${post.content}\n\nSent from ABUAD Nest',
+                                        '${post.authorName} (@${post.authorHandle}): ${post.content}\n\nSent from Abuad life',
                                       );
                                     },
-                                    color: Colors.grey[600],
+                                    color: isDark ? Colors.grey[500] : Colors.grey[600],
                                   ),
                                 ],
                               ),
@@ -912,23 +995,48 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
 
                             final rawComments = snapshot.data ?? [];
 
-                            // Sort: Gold > Blue > None, then Timestamp (Asc)
-                            final comments =
-                                List<Map<String, dynamic>>.from(rawComments)
-                                  ..sort((a, b) {
-                                    final weightA = _getVerificationWeight(
-                                      a['authorVerificationType'],
-                                    );
-                                    final weightB = _getVerificationWeight(
-                                      b['authorVerificationType'],
-                                    );
-                                    if (weightA != weightB) {
-                                      return weightA.compareTo(weightB);
-                                    }
-                                    return (a['timestamp'] ?? 0).compareTo(
-                                      b['timestamp'] ?? 0,
-                                    );
-                                  });
+                            int getVerificationWeight(dynamic type) {
+                              final clean = (type ?? '').toString().trim().toLowerCase();
+                              switch (clean) {
+                                case 'gold':
+                                  return 3;
+                                case 'violet':
+                                  return 2;
+                                case 'blue':
+                                case 'true':
+                                  return 1;
+                                default:
+                                  return 0;
+                              }
+                            }
+
+                            // Deduplicate comments
+                            final seenIds = <String>{};
+                            final dedupedList = <Map<String, dynamic>>[];
+                            for (final c in rawComments) {
+                              final id = (c['id'] ?? '').toString();
+                              if (id.isNotEmpty && !seenIds.contains(id)) {
+                                seenIds.add(id);
+                                dedupedList.add(c);
+                              }
+                            }
+
+                            // Sort: Gold > Violet > Blue > None pinned at top, then Timestamp (Desc)
+                            final comments = List<Map<String, dynamic>>.from(dedupedList)
+                              ..sort((a, b) {
+                                final vTypeA = a['authorVerificationType'] ?? a['author_verification_type'] ?? (a['author']?['verificationType'] ?? (a['author']?['isVerified'] == true ? 'blue' : 'none'));
+                                final vTypeB = b['authorVerificationType'] ?? b['author_verification_type'] ?? (b['author']?['verificationType'] ?? (b['author']?['isVerified'] == true ? 'blue' : 'none'));
+
+                                final weightA = getVerificationWeight(vTypeA);
+                                final weightB = getVerificationWeight(vTypeB);
+
+                                if (weightA != weightB) {
+                                  return weightB.compareTo(weightA); // Gold (3) > Violet (2) > Blue (1) > None (0) at TOP
+                                }
+                                final tsA = (a['timestamp'] is int) ? a['timestamp'] as int : 0;
+                                final tsB = (b['timestamp'] is int) ? b['timestamp'] as int : 0;
+                                return tsB.compareTo(tsA);
+                              });
 
                             if (comments.isEmpty) {
                               return Padding(
@@ -982,6 +1090,13 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                           color: isDark ? Colors.grey[900]! : Colors.grey[200]!,
                         ),
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, -2),
+                        ),
+                      ],
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -993,20 +1108,20 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                               horizontal: 16,
                               vertical: 8,
                             ),
-                            color: theme.primaryColor.withOpacity(0.05),
+                            color: AppColors.secondaryTeal.withValues(alpha: 0.1),
                             child: Row(
                               children: [
                                 Text(
                                   "Replying to ",
                                   style: TextStyle(
-                                    color: Colors.grey[600],
+                                    color: isDark ? Colors.white70 : Colors.black87,
                                     fontSize: 13,
                                   ),
                                 ),
                                 Text(
                                   "@$_replyToUserName",
                                   style: TextStyle(
-                                    color: theme.primaryColor,
+                                    color: AppColors.secondaryTeal,
                                     fontSize: 13,
                                     fontWeight: FontWeight.bold,
                                   ),
@@ -1026,20 +1141,24 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                         // Visibility Indicator
                         if (_replyToCommentId == null)
                           Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 2),
                             child: Row(
                               children: [
                                 Icon(
                                   Icons.public,
-                                  size: 14,
-                                  color: theme.primaryColor.withOpacity(0.8),
+                                  size: 13,
+                                  color: AppColors.secondaryTeal.withValues(
+                                    alpha: 0.8,
+                                  ),
                                 ),
                                 const SizedBox(width: 6),
                                 Text(
                                   "Everyone can reply",
                                   style: TextStyle(
-                                    color: theme.primaryColor.withOpacity(0.8),
-                                    fontSize: 13,
+                                    color: AppColors.secondaryTeal.withValues(
+                                      alpha: 0.8,
+                                    ),
+                                    fontSize: 12,
                                     fontWeight: FontWeight.w500,
                                   ),
                                 ),
@@ -1048,69 +1167,63 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                           ),
 
                         Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 4,
+                          padding: EdgeInsets.only(
+                            left: 12,
+                            right: 12,
+                            top: 6,
+                            bottom: max(MediaQuery.of(context).padding.bottom > 0 ? 6 : 12, 12),
                           ),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              CircleAvatar(
-                                radius: 16,
-                                backgroundColor: theme.primaryColor.withOpacity(
-                                  0.1,
-                                ),
-                                child: Icon(
-                                  Icons.person,
-                                  color: theme.primaryColor,
-                                  size: 20,
-                                ),
+                              UserAvatar(
+                                userId: currentUserId ?? '',
+                                avatarUrl: currentUser?.avatarUrl,
+                                displayName: currentUser?.displayName,
+                                radius: 18,
                               ),
-                              const SizedBox(width: 12),
+                              const SizedBox(width: 10),
                               Expanded(
-                                child: GlassmorphicContainer(
-                                  width: double.infinity,
-                                  height: 50,
-                                  borderRadius: 25,
-                                  blur: 20,
-                                  alignment: Alignment.center,
-                                  border: 1,
-                                  linearGradient: LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: [
-                                      isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
-                                      isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.02),
-                                    ],
-                                    stops: const [0.1, 1],
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: isDark
+                                        ? Colors.white.withValues(alpha: 0.08)
+                                        : Colors.grey[100],
+                                    borderRadius: BorderRadius.circular(24),
+                                    border: Border.all(
+                                      color: isDark
+                                          ? Colors.white12
+                                          : Colors.grey[300]!,
+                                    ),
                                   ),
-                                  borderGradient: LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: [
-                                      isDark ? Colors.white.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.1),
-                                      isDark ? Colors.white.withValues(alpha: 0.0) : Colors.black.withValues(alpha: 0.0),
-                                    ],
-                                  ),
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                                    child: TextField(
-                                      controller: _commentController,
-                                      decoration: const InputDecoration(
-                                        hintText: 'Post your reply',
-                                        border: InputBorder.none,
-                                        isDense: true,
-                                        contentPadding: EdgeInsets.only(bottom: 2),
+                                  child: TextField(
+                                    controller: _commentController,
+                                    cursorColor: AppColors.secondaryTeal,
+                                    maxLines: 4,
+                                    minLines: 1,
+                                    textCapitalization:
+                                        TextCapitalization.sentences,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: isDark ? Colors.white : Colors.black87,
+                                    ),
+                                    decoration: InputDecoration(
+                                      hintText: 'Post your reply',
+                                      hintStyle: TextStyle(
+                                        fontSize: 14,
+                                        color: isDark ? Colors.grey[400] : Colors.grey[500],
                                       ),
-                                      maxLines: 1,
-                                      textCapitalization:
-                                          TextCapitalization.sentences,
-                                      style: const TextStyle(fontSize: 14),
+                                      border: InputBorder.none,
+                                      isDense: true,
+                                      contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 10,
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 8),
+                              const SizedBox(width: 6),
                               IconButton(
                                 onPressed: _isPosting ? null : _postComment,
                                 icon: _isPosting
@@ -1119,12 +1232,13 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                         height: 20,
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2,
+                                          color: AppColors.secondaryTeal,
                                         ),
                                       )
-                                    : Icon(
-                                        Icons.send_rounded,
-                                        color: theme.primaryColor,
-                                        size: 24,
+                                    : const Icon(
+                                        CupertinoIcons.arrow_up_circle_fill,
+                                        color: AppColors.secondaryTeal,
+                                        size: 30,
                                       ),
                               ),
                             ],
@@ -1337,7 +1451,7 @@ class _CommentItem extends ConsumerStatefulWidget {
   final String? currentUserId;
   final String postId;
   final Function(String, String) onReply;
-  final Function(BuildContext, String, bool) onMenu;
+  final Function(BuildContext, String, bool, {String? currentContent}) onMenu;
 
   const _CommentItem({
     required this.comment,
@@ -1359,33 +1473,47 @@ class _CommentItemState extends ConsumerState<_CommentItem> {
     final comment = widget.comment;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final timestamp = DateTime.fromMillisecondsSinceEpoch(
-      comment['timestamp'] ?? 0,
-    );
-    final isOwnComment = comment['userId'] == widget.currentUserId;
-    final userId = comment['userId'] as String?;
+
+    final String commentId = comment['id']?.toString() ?? '';
+    final String authorId = (comment['authorId'] ?? comment['userId'] ?? '').toString();
+    final String rawName = (comment['authorName'] ?? comment['userName'] ?? 'Student').toString();
+    final String? rawAvatar = comment['authorAvatarUrl'] ?? comment['userAvatar'] as String?;
+    final String rawVerificationType = (comment['authorVerificationType'] ?? 'none').toString();
+
+    int tsInt = (comment['timestamp'] is int && (comment['timestamp'] as int) > 0)
+        ? comment['timestamp'] as int
+        : DateTime.now().millisecondsSinceEpoch;
+    final timestamp = DateTime.fromMillisecondsSinceEpoch(tsInt);
+
+    final bool isOwnComment = widget.currentUserId != null &&
+        authorId.isNotEmpty &&
+        authorId == widget.currentUserId;
     final replyCount = comment['replyCount'] as int? ?? 0;
+    final bool isLiked = comment['isLiked'] == true;
+    final int likesCount = comment['likesCount'] as int? ?? 0;
 
     return StreamBuilder<AppUser?>(
-      stream: userId != null
-          ? ref.read(userRepositoryProvider).watchUser(userId)
+      stream: authorId.isNotEmpty
+          ? ref.read(userRepositoryProvider).watchUser(authorId)
           : const Stream.empty(),
       builder: (context, userSnapshot) {
         final user = userSnapshot.data;
-        final effectiveName =
-            user?.displayName ?? comment['userName'] ?? 'Student';
-        final effectiveAvatar = user?.avatarUrl ?? comment['userAvatar'];
-        final verificationType =
-            user?.verificationType ??
-            comment['authorVerificationType'] ??
-            'none';
+        final effectiveName = (user != null && user.displayName.isNotEmpty)
+            ? user.displayName
+            : (rawName.isNotEmpty ? rawName : 'Student');
+        final effectiveAvatar = user?.avatarUrl ?? rawAvatar;
+        final verificationType = user?.verificationType ?? rawVerificationType;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             InkWell(
-              onLongPress: () =>
-                  widget.onMenu(context, comment['id'], isOwnComment),
+              onLongPress: () => widget.onMenu(
+                context,
+                commentId,
+                isOwnComment,
+                currentContent: comment['content'],
+              ),
               child: Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
@@ -1396,10 +1524,10 @@ class _CommentItemState extends ConsumerState<_CommentItem> {
                   children: [
                     GestureDetector(
                       onTap: () {
-                        if (userId != null) context.push('/user/$userId');
+                        if (authorId.isNotEmpty) context.push('/user/$authorId');
                       },
                       child: UserAvatar(
-                        userId: userId ?? '',
+                        userId: authorId,
                         avatarUrl: effectiveAvatar,
                         displayName: effectiveName,
                         radius: 18,
@@ -1415,8 +1543,8 @@ class _CommentItemState extends ConsumerState<_CommentItem> {
                             children: [
                               GestureDetector(
                                 onTap: () {
-                                  if (userId != null) {
-                                    context.push('/user/$userId');
+                                  if (authorId.isNotEmpty) {
+                                    context.push('/user/$authorId');
                                   }
                                 },
                                 child: Text(
@@ -1440,12 +1568,25 @@ class _CommentItemState extends ConsumerState<_CommentItem> {
                                   fontSize: 12,
                                 ),
                               ),
+                              const Spacer(),
+                              IconButton(
+                                icon: const Icon(Icons.more_horiz, size: 18),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                color: Colors.grey[600],
+                                onPressed: () => widget.onMenu(
+                                  context,
+                                  commentId,
+                                  isOwnComment,
+                                  currentContent: comment['content'],
+                                ),
+                              ),
                             ],
                           ),
                           const SizedBox(height: 4),
-                          Text(
-                            comment['content'] ?? '',
-                            style: const TextStyle(fontSize: 14, height: 1.3),
+                          FormattedCommentContent(
+                            content: comment['content'] ?? '',
+                            textStyle: const TextStyle(fontSize: 14, height: 1.3),
                           ),
 
                           // Comment Media
@@ -1477,9 +1618,44 @@ class _CommentItemState extends ConsumerState<_CommentItem> {
                           const SizedBox(height: 8),
                           Row(
                             children: [
+                              // Like comment button & count
+                              GestureDetector(
+                                onTap: () {
+                                  ref
+                                      .read(postRepositoryProvider)
+                                      .toggleCommentLike(widget.postId, commentId);
+                                },
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      isLiked
+                                          ? CupertinoIcons.heart_fill
+                                          : CupertinoIcons.heart,
+                                      size: 16,
+                                      color: isLiked
+                                          ? Colors.red
+                                          : Colors.grey[600],
+                                    ),
+                                    if (likesCount > 0) ...[
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        '$likesCount',
+                                        style: TextStyle(
+                                          color: isLiked
+                                              ? Colors.red
+                                              : Colors.grey[600],
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 18),
                               GestureDetector(
                                 onTap: () => widget.onReply(
-                                  comment['id'],
+                                  commentId,
                                   effectiveName,
                                 ),
                                 child: Text(
@@ -1503,8 +1679,8 @@ class _CommentItemState extends ConsumerState<_CommentItem> {
                                     _showReplies
                                         ? "Hide replies"
                                         : "Show $replyCount replies",
-                                    style: TextStyle(
-                                      color: theme.primaryColor,
+                                    style: const TextStyle(
+                                      color: AppColors.secondaryTeal,
                                       fontSize: 12,
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -1525,7 +1701,7 @@ class _CommentItemState extends ConsumerState<_CommentItem> {
                 padding: const EdgeInsets.only(left: 48),
                 child: _ReplyList(
                   postId: widget.postId,
-                  commentId: comment['id'],
+                  commentId: commentId,
                   currentUserId: widget.currentUserId,
                   onMenu: widget.onMenu,
                 ),
@@ -1541,7 +1717,7 @@ class _ReplyList extends ConsumerWidget {
   final String postId;
   final String commentId;
   final String? currentUserId;
-  final Function(BuildContext, String, bool) onMenu;
+  final Function(BuildContext, String, bool, {String? currentContent}) onMenu;
 
   const _ReplyList({
     required this.postId,
@@ -1579,7 +1755,7 @@ class _ReplyList extends ConsumerWidget {
 class _ReplyItem extends ConsumerWidget {
   final Map<String, dynamic> reply;
   final String? currentUserId;
-  final Function(BuildContext, String, bool) onMenu;
+  final Function(BuildContext, String, bool, {String? currentContent}) onMenu;
 
   const _ReplyItem({
     required this.reply,
@@ -1590,26 +1766,36 @@ class _ReplyItem extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final timestamp = DateTime.fromMillisecondsSinceEpoch(
-      reply['timestamp'] ?? 0,
-    );
-    final isOwnReply = reply['userId'] == currentUserId;
-    final userId = reply['userId'] as String?;
+    final String authorId = (reply['authorId'] ?? reply['userId'] ?? '').toString();
+    final String rawName = (reply['authorName'] ?? reply['userName'] ?? 'Student').toString();
+    final String? rawAvatar = reply['authorAvatarUrl'] ?? reply['userAvatar'] as String?;
+    final String rawVerificationType = (reply['authorVerificationType'] ?? 'none').toString();
+
+    int tsInt = (reply['timestamp'] is int && (reply['timestamp'] as int) > 0)
+        ? reply['timestamp'] as int
+        : DateTime.now().millisecondsSinceEpoch;
+    final timestamp = DateTime.fromMillisecondsSinceEpoch(tsInt);
+    final isOwnReply = currentUserId != null && authorId.isNotEmpty && authorId == currentUserId;
 
     return StreamBuilder<AppUser?>(
-      stream: userId != null
-          ? ref.read(userRepositoryProvider).watchUser(userId)
+      stream: authorId.isNotEmpty
+          ? ref.read(userRepositoryProvider).watchUser(authorId)
           : const Stream.empty(),
       builder: (context, userSnapshot) {
         final user = userSnapshot.data;
-        final effectiveName =
-            user?.displayName ?? reply['userName'] ?? 'Student';
-        final effectiveAvatar = user?.avatarUrl ?? reply['userAvatar'];
-        final verificationType =
-            user?.verificationType ?? reply['authorVerificationType'] ?? 'none';
+        final effectiveName = (user != null && user.displayName.isNotEmpty)
+            ? user.displayName
+            : (rawName.isNotEmpty ? rawName : 'Student');
+        final effectiveAvatar = user?.avatarUrl ?? rawAvatar;
+        final verificationType = user?.verificationType ?? rawVerificationType;
 
         return InkWell(
-          onLongPress: () => onMenu(context, reply['id'], isOwnReply),
+          onLongPress: () => onMenu(
+            context,
+            reply['id']?.toString() ?? '',
+            isOwnReply,
+            currentContent: reply['content'],
+          ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
@@ -1617,11 +1803,11 @@ class _ReplyItem extends ConsumerWidget {
               children: [
                 GestureDetector(
                   onTap: () {
-                    if (userId != null) context.push('/user/$userId');
+                    if (authorId.isNotEmpty) context.push('/user/$authorId');
                   },
                   child: CircleAvatar(
                     radius: 14,
-                    backgroundColor: theme.primaryColor.withOpacity(0.1),
+                    backgroundColor: theme.primaryColor.withValues(alpha: 0.1),
                     backgroundImage: effectiveAvatar != null
                         ? CachedNetworkImageProvider(effectiveAvatar)
                         : null,
@@ -1666,11 +1852,10 @@ class _ReplyItem extends ConsumerWidget {
                         ],
                       ),
                       const SizedBox(height: 2),
-                      Text(
-                        reply['content'] ?? '',
-                        style: const TextStyle(fontSize: 13, height: 1.3),
+                      FormattedCommentContent(
+                        content: reply['content'] ?? '',
+                        textStyle: const TextStyle(fontSize: 13, height: 1.3),
                       ),
-                      // Media in replies too?
                       if (reply['imageUrl'] != null &&
                           reply['imageUrl'] != '') ...[
                         const SizedBox(height: 6),

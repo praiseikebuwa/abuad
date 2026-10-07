@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../data/auth_repository.dart';
-import '../../user/data/user_repository.dart';
 import '../../../core/services/geofence_service.dart';
 import '../../../core/utils/auth_error_handler.dart';
 import '../../../core/presentation/widgets/custom_snackbar.dart';
@@ -57,36 +56,22 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
         return;
       }
 
-      // 1. Sign up with Firebase Auth
+      // 1. Sign up with backend API
+      final email = _emailController.text.trim();
+      final displayName = email.split('@')[0];
       await ref.read(authRepositoryProvider).signUpWithEmailAndPassword(
-            _emailController.text.trim(),
-            _passwordController.text.trim(),
+            email: email,
+            password: _passwordController.text.trim(),
+            fullName: displayName,
+            username: displayName,
           );
 
-      // 2. Create User Profile
-      final user = ref.read(authRepositoryProvider).currentUser;
-      if (user != null) {
-        final userRepo = ref.read(userRepositoryProvider);
-        final email = _emailController.text.trim();
-        final displayName = email.split('@')[0];
-        final handle = await userRepo.generateHandle(displayName);
-
-        final appUser = AppUser(
-          uid: user.uid,
-          displayName: displayName,
-          email: email,
-          handle: handle,
-          isVerified: false,
-          verificationType: 'none',
-          followersCount: 0,
-          followingCount: 0,
-          status: 'online',
-          college: 'ABUAD',
-          streakCount: 0,
-          createdAt: DateTime.now(),
-        );
-
-        await userRepo.createOrUpdateUser(appUser);
+      // 2. Navigate immediately to complete profile or home
+      if (mounted) {
+        final user = ref.read(authRepositoryProvider).currentUser;
+        if (user != null) {
+          context.go('/complete-profile');
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -127,7 +112,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
               height: 180,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white.withOpacity(0.05),
+                color: Colors.white.withValues(alpha: 0.05),
               ),
             ),
           ).animate().fade(duration: 1200.ms).scale(begin: const Offset(0.8, 0.8)),
@@ -140,7 +125,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
               height: 250,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppColors.secondaryTeal.withOpacity(0.1),
+                color: AppColors.secondaryTeal.withValues(alpha: 0.1),
               ),
             ),
           ).animate().fade(duration: 1500.ms).scale(begin: const Offset(0.5, 0.5)),
@@ -160,7 +145,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                         onPressed: () => context.go('/login'),
                         icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
                         style: IconButton.styleFrom(
-                          backgroundColor: Colors.white.withOpacity(0.1),
+                          backgroundColor: Colors.white.withValues(alpha: 0.1),
                           padding: const EdgeInsets.all(12),
                         ),
                       ),
@@ -176,17 +161,16 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                         height: 80,
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
+                          color: Colors.white.withValues(alpha: 0.1),
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: Colors.white.withOpacity(0.2),
+                            color: Colors.white.withValues(alpha: 0.2),
                             width: 1.5,
                           ),
                         ),
-                        child: const Icon(
-                          Icons.school_rounded,
-                          size: 40,
-                          color: Colors.white,
+                        child: Image.asset(
+                          'assets/images/logo.png',
+                          fit: BoxFit.contain,
                         ),
                       ),
                     ).animate().fadeIn(duration: 600.ms).scale(curve: Curves.bounceOut),
@@ -207,7 +191,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                         Text(
                           'Create your campus account',
                           style: theme.textTheme.bodyMedium?.copyWith(
-                            color: Colors.white.withOpacity(0.7),
+                            color: Colors.white.withValues(alpha: 0.7),
                           ),
                         ),
                       ],
@@ -223,10 +207,10 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                         child: Container(
                           padding: const EdgeInsets.all(32),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.08),
+                            color: Colors.white.withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(32),
                             border: Border.all(
-                              color: Colors.white.withOpacity(0.15),
+                              color: Colors.white.withValues(alpha: 0.15),
                               width: 1.5,
                             ),
                             boxShadow: AppColors.glassShadow,
@@ -310,7 +294,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                       children: [
                         Text(
                           'Already have an account? ',
-                          style: TextStyle(color: Colors.white.withOpacity(0.7)),
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
                         ),
                         TextButton(
                           onPressed: () => context.go('/login'),
@@ -364,27 +348,27 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
           style: const TextStyle(color: Colors.white, fontSize: 16),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
-            prefixIcon: Icon(icon, color: Colors.white.withOpacity(0.5), size: 20),
+            hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
+            prefixIcon: Icon(icon, color: Colors.white.withValues(alpha: 0.5), size: 20),
             suffixIcon: isPassword
                 ? IconButton(
                     icon: Icon(
                       obscureText ? Icons.visibility_off_rounded : Icons.visibility_rounded,
-                      color: Colors.white.withOpacity(0.5),
+                      color: Colors.white.withValues(alpha: 0.5),
                       size: 20,
                     ),
                     onPressed: onToggleVisibility,
                   )
                 : null,
             filled: true,
-            fillColor: Colors.white.withOpacity(0.05),
+            fillColor: Colors.white.withValues(alpha: 0.05),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
+              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
+              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
@@ -415,7 +399,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: AppColors.accentAmber.withOpacity(0.3),
+            color: AppColors.accentAmber.withValues(alpha: 0.3),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),

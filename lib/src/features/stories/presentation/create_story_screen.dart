@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:glassmorphism/glassmorphism.dart';
@@ -6,10 +7,9 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../data/story_repository.dart';
-import '../../user/data/user_repository.dart';
+import '../../auth/data/auth_repository.dart';
 import '../domain/story.dart';
 import '../../shared/presentation/unified_image_editor.dart';
-import '../../../core/router/app_router.dart';
 import '../../../core/utils/url_validator.dart';
 
 /// Screen for creating a new story
@@ -106,11 +106,9 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
       backgroundColor: Colors.transparent,
       builder: (context) {
         final isDark = Theme.of(context).brightness == Brightness.dark;
-        return Container(
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
+        return Material(
+          color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           child: SafeArea(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -236,11 +234,9 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
       backgroundColor: Colors.transparent,
       builder: (context) {
         final isDark = Theme.of(context).brightness == Brightness.dark;
-        return Container(
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
+        return Material(
+          color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           child: SafeArea(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -337,11 +333,18 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
       return;
     }
 
-    final messenger = ScaffoldMessenger.of(rootNavigatorKey.currentContext!);
-    final authRepo = ref.read(currentUserProvider).value;
-    if (authRepo == null) return;
-    
+    final authUser = ref.read(authRepositoryProvider).currentUser ?? ref.read(currentUserProvider).value;
+    final currentUid = authUser?.uid ?? ref.read(authRepositoryProvider).currentUserId;
+
+    if (currentUid == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('User session invalid. Please sign in again.')),
+      );
+      return;
+    }
+
     final repo = ref.read(storyRepositoryProvider);
+    final container = ref.container;
 
     // Capture all UI state before popping
     final selectedMedia = _selectedMedia;
@@ -356,8 +359,12 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
     final linkUrl = _linkUrl;
     final visibility = _visibility;
 
+    final messenger = ScaffoldMessenger.of(context);
+
     // Pop immediately
-    Navigator.pop(context);
+    if (mounted) {
+      Navigator.pop(context);
+    }
 
     messenger.showSnackBar(
       const SnackBar(
@@ -367,70 +374,70 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
     );
 
     // Background process
-    () async {
-      try {
-        String content = '';
-        String type = 'image';
-        String? caption = captionText.isEmpty ? null : captionText;
-        int? backgroundColor;
-        int? textColor;
-        bool isRawContent = false;
+    try {
+      String content = '';
+      String type = 'image';
+      String? caption = captionText.isEmpty ? null : captionText;
+      int? backgroundColor;
+      int? textColor;
+      bool isRawContent = false;
 
-        if (resharedStory != null) {
-          content = resharedStory.content;
-          type = resharedStory.type;
-          isRawContent = true;
-        } else if (isTextMode) {
-          content = textContent;
-          type = 'text';
-          caption = null;
-          backgroundColor = bgColor;
-          textColor = txtColor;
-        }
-
-        // Extract mentions
-        final List<String> mentions = [];
-        final String mentionSource = isTextMode ? content : (caption ?? '');
-        final RegExp mentionRegex = RegExp(r'@(\w+)');
-        for (final match in mentionRegex.allMatches(mentionSource)) {
-          if (match.group(1) != null) {
-            mentions.add(match.group(1)!);
-          }
-        }
-
-        await repo.createStory(
-          mediaFile: isTextMode || resharedStory != null ? null : selectedMedia!,
-          type: type,
-          caption: caption,
-          content: content,
-          isRawContent: isRawContent,
-          mentions: mentions,
-          linkUrl: resharedStory != null ? 'https://abuadapp.web.app/post/${resharedStory.id}' : linkUrl,
-          visibility: visibility,
-          backgroundColor: backgroundColor,
-          textColor: textColor,
-          fontFamily: isTextMode ? fontFamily : null,
-          textAlign: isTextMode ? textAlignName : null,
-          reshareAuthorId: resharedStory?.authorId,
-          reshareAuthorName: resharedStory?.userName,
-          reshareStoryId: resharedStory?.id,
-        );
-
-        messenger.showSnackBar(
-          const SnackBar(
-            content: Text('✅ Story shared!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      } catch (e) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text('❌ Failed to share story: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+      if (resharedStory != null) {
+        content = resharedStory.content;
+        type = resharedStory.type;
+        isRawContent = true;
+      } else if (isTextMode) {
+        content = textContent;
+        type = 'text';
+        caption = null;
+        backgroundColor = bgColor;
+        textColor = txtColor;
       }
-    }();
+
+      // Extract mentions
+      final List<String> mentions = [];
+      final String mentionSource = isTextMode ? content : (caption ?? '');
+      final RegExp mentionRegex = RegExp(r'@(\w+)');
+      for (final match in mentionRegex.allMatches(mentionSource)) {
+        if (match.group(1) != null) {
+          mentions.add(match.group(1)!);
+        }
+      }
+
+      await repo.createStory(
+        mediaFile: isTextMode || resharedStory != null ? null : selectedMedia,
+        type: type,
+        caption: caption,
+        content: content,
+        isRawContent: isRawContent,
+        mentions: mentions,
+        linkUrl: resharedStory != null ? 'https://abuadapp.web.app/post/${resharedStory.id}' : linkUrl,
+        visibility: visibility,
+        backgroundColor: backgroundColor,
+        textColor: textColor,
+        fontFamily: isTextMode ? fontFamily : null,
+        textAlign: isTextMode ? textAlignName : null,
+        reshareAuthorId: resharedStory?.authorId,
+        reshareAuthorName: resharedStory?.userName,
+        reshareStoryId: resharedStory?.id,
+      );
+
+      container.invalidate(activeStoriesProvider);
+
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('✅ Story shared!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('❌ Failed to share story: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -546,7 +553,7 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                   border: Border.all(color: Colors.white24, width: 2),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.5),
+                      color: Colors.black.withValues(alpha: 0.5),
                       blurRadius: 20,
                       spreadRadius: 5,
                     )
@@ -576,10 +583,23 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                             ),
                           )
                         else
-                          CachedNetworkImage(
-                            imageUrl: story.content,
-                            fit: BoxFit.cover,
-                          ),
+                          (story.content.isNotEmpty && UrlValidator.isValidUrl(story.content))
+                              ? CachedNetworkImage(
+                                  imageUrl: story.content,
+                                  fit: BoxFit.cover,
+                                  errorWidget: (context, url, error) => Container(
+                                    color: Colors.black,
+                                    child: const Center(
+                                      child: Icon(Icons.broken_image, color: Colors.white54, size: 48),
+                                    ),
+                                  ),
+                                )
+                              : Container(
+                                  color: Colors.black,
+                                  child: const Center(
+                                    child: Icon(Icons.broken_image, color: Colors.white54, size: 48),
+                                  ),
+                                ),
                           
                         // Dark overlay and username at bottom
                         Positioned(
@@ -772,7 +792,27 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                 ? Stack(
                     alignment: Alignment.center,
                     children: [
-                      Image.file(File(_selectedMedia!.path), fit: BoxFit.contain),
+                      kIsWeb
+                          ? Image.network(
+                              _selectedMedia!.path,
+                              fit: BoxFit.contain,
+                              errorBuilder: (context, error, stackTrace) => Container(
+                                color: Colors.black,
+                                child: const Center(
+                                  child: Icon(Icons.broken_image, color: Colors.white54, size: 48),
+                                ),
+                              ),
+                            )
+                          : Image.file(
+                              File(_selectedMedia!.path),
+                              fit: BoxFit.contain,
+                              errorBuilder: (context, error, stackTrace) => Container(
+                                color: Colors.black,
+                                child: const Center(
+                                  child: Icon(Icons.broken_image, color: Colors.white54, size: 48),
+                                ),
+                              ),
+                            ),
                       Positioned(
                         top: 16,
                         right: 16,
@@ -780,16 +820,16 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                           backgroundColor: Colors.black54,
                           child: IconButton(
                             icon: const Icon(Icons.edit, color: Colors.white),
-                            onPressed: () {
-                              UnifiedImageEditor.open(
+                            onPressed: () async {
+                              final edited = await UnifiedImageEditor.open(
                                 context,
                                 file: File(_selectedMedia!.path),
-                                onDone: (editedFile) {
-                                  setState(() {
-                                    _selectedMedia = editedFile;
-                                  });
-                                },
                               );
+                              if (edited != null && mounted) {
+                                setState(() {
+                                  _selectedMedia = edited;
+                                });
+                              }
                             },
                           ),
                         ),
@@ -933,16 +973,16 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: _selectedMedia != null && !_isUploading
-                          ? () {
-                              UnifiedImageEditor.open(
+                          ? () async {
+                              final edited = await UnifiedImageEditor.open(
                                 context,
                                 file: File(_selectedMedia!.path),
-                                onDone: (editedFile) {
-                                  setState(() {
-                                    _selectedMedia = editedFile;
-                                  });
-                                },
                               );
+                              if (edited != null && mounted) {
+                                setState(() {
+                                  _selectedMedia = edited;
+                                });
+                              }
                             }
                           : null,
                       icon: const Icon(Icons.brush, size: 20),

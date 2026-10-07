@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../camera/presentation/camera_screen.dart';
@@ -11,8 +12,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../data/post_repository.dart';
+import 'providers/feed_provider.dart';
 import '../../shared/presentation/unified_image_editor.dart';
-import '../../user/data/user_repository.dart';
 import '../../../core/services/firebase_storage_service.dart';
 import '../domain/post.dart';
 import '../../auth/data/auth_repository.dart';
@@ -153,8 +154,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     try {
       final results = await ref
           .read(userRepositoryProvider)
-          .searchUsers(query)
-          .first;
+          .searchUsers(query);
       setState(() {
         _userSuggestions = results.take(5).toList();
       });
@@ -426,7 +426,8 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
 
     final userRepo = ref.read(userRepositoryProvider);
     final postRepo = ref.read(postRepositoryProvider);
-    final storage = FirebaseStorageService();
+    final storage = CloudStorageService();
+    final container = ref.container;
 
     // Capture all UI state before popping
     final content = _contentController.text.trim();
@@ -533,6 +534,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
           visibility: visibility,
           latitude: latitude,
           longitude: longitude,
+          locationName: _address,
           replyPermission: replyPermission,
           scheduledAt: scheduledAt,
           mediaAltText: mediaAltText,
@@ -540,9 +542,10 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
         );
 
         await postRepo.addPost(post);
+        container.invalidate(paginatedFeedProvider);
         messenger.showSnackBar(
           const SnackBar(
-            content: Text('✅ Post shared!'),
+            content: Text('Post shared!'),
             backgroundColor: Colors.green,
           ),
         );
@@ -576,10 +579,13 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
         leadingWidth: 80,
         leading: TextButton(
           onPressed: () async {
+            final nav = Navigator.of(context);
             if (_contentController.text.isNotEmpty) {
               await _saveDraft();
             }
-            if (mounted) context.pop();
+            if (mounted) {
+              nav.pop();
+            }
           },
           child: Icon(
             Icons.close,
@@ -600,10 +606,10 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryInk,
                   foregroundColor: Colors.white,
-                  disabledBackgroundColor: AppColors.primaryInk.withOpacity(
-                    0.5,
+                  disabledBackgroundColor: AppColors.primaryInk.withValues(
+                    alpha: 0.5,
                   ),
-                  disabledForegroundColor: Colors.white.withOpacity(0.5),
+                  disabledForegroundColor: Colors.white.withValues(alpha: 0.5),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(20),
                   ),
@@ -652,7 +658,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                       radius: 20,
                       backgroundColor: Colors.grey,
                     ),
-                    error: (_, __) => const CircleAvatar(
+                    error: (_, _) => const CircleAvatar(
                       radius: 20,
                       backgroundColor: Colors.grey,
                     ),
@@ -991,27 +997,34 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                               children: [
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(16),
-                                  child: Image.file(
-                                    File(_selectedImage!.path),
-                                    width: double.infinity,
-                                    fit: BoxFit.cover,
-                                    height: 300,
-                                  ),
+                                  child: kIsWeb
+                                      ? Image.network(
+                                          _selectedImage!.path,
+                                          width: double.infinity,
+                                          fit: BoxFit.cover,
+                                          height: 300,
+                                        )
+                                      : Image.file(
+                                          File(_selectedImage!.path),
+                                          width: double.infinity,
+                                          fit: BoxFit.cover,
+                                          height: 300,
+                                        ),
                                 ),
                                 Positioned(
                                   top: 8,
                                   right: 48,
                                   child: IconButton(
-                                    onPressed: () {
-                                      UnifiedImageEditor.open(
+                                    onPressed: () async {
+                                      final edited = await UnifiedImageEditor.open(
                                         context,
                                         file: File(_selectedImage!.path),
-                                        onDone: (editedFile) {
-                                          setState(() {
-                                            _selectedImage = editedFile;
-                                          });
-                                        },
                                       );
+                                      if (edited != null && mounted) {
+                                        setState(() {
+                                          _selectedImage = edited;
+                                        });
+                                      }
                                     },
                                     icon: Container(
                                       padding: const EdgeInsets.all(8),
@@ -1162,7 +1175,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                               vertical: 8,
                             ),
                             decoration: BoxDecoration(
-                              color: AppColors.secondaryTeal.withOpacity(0.1),
+                              color: AppColors.secondaryTeal.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Row(

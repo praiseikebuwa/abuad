@@ -1,60 +1,22 @@
-import 'dart:ui';
 import 'package:abuad/src/core/services/notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:toastification/toastification.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'src/core/router/app_router.dart';
 import 'src/core/database/local_database.dart';
 import 'src/core/theme/app_theme.dart';
-import 'src/features/utilities/broadcast_listener.dart';
-import 'src/features/settings/presentation/settings_screen.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'src/core/services/api_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'src/core/providers/shared_preferences_provider.dart';
-import 'package:firebase_app_check/firebase_app_check.dart';
-
+import 'src/features/utilities/broadcast_listener.dart';
+import 'src/features/settings/presentation/settings_screen.dart';
+import 'src/features/auth/data/auth_repository.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  if (!kIsWeb) {
-    try {
-      await FirebaseAppCheck.instance.activate(
-        androidProvider: AndroidProvider.playIntegrity,
-        appleProvider: AppleProvider.deviceCheck,
-      );
-    } catch (e) {
-      debugPrint("Firebase App Check activation failed: $e");
-      // Optional: record to crashlytics as non-fatal
-      FirebaseCrashlytics.instance.recordError(e, StackTrace.current, reason: 'AppCheck Activation');
-    }
-  }
-
-  if (!kIsWeb) {
-    // Pass all uncaught "fatal" errors from the framework to Crashlytics
-    FlutterError.onError = (errorDetails) {
-      FirebaseCrashlytics.instance.recordFlutterFatalError(errorDetails);
-    };
-    // Pass all uncaught asynchronous errors that aren't handled by the Flutter framework to Crashlytics
-    PlatformDispatcher.instance.onError = (error, stack) {
-      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-      return true;
-    };
-  }
 
   try {
-    if (!kIsWeb) {
-      // Register background handler
-      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-    }
-
     // Configure System UI for Edge-to-Edge
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setSystemUIOverlayStyle(
@@ -87,6 +49,9 @@ void main() async {
   );
   // Initialize Hive (Legacy/Local cache) - Optional now
   await container.read(localDatabaseProvider.future);
+
+  // Restore authenticated session tokens and user profile
+  await container.read(authRepositoryProvider).init();
 
   runApp(UncontrolledProviderScope(container: container, child: const MyApp()));
 }
@@ -139,6 +104,7 @@ class _ConnectivityListenerState extends State<_ConnectivityListener>
     });
     _updateStatus('online');
     Connectivity().onConnectivityChanged.listen((result) {
+      if (!mounted) return;
       if (result.contains(ConnectivityResult.none)) {
         toastification.show(
           context: context,
@@ -172,16 +138,7 @@ class _ConnectivityListenerState extends State<_ConnectivityListener>
 
   Future<void> _updateStatus(String status) async {
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .update({
-              'status': status,
-              'last_seen': FieldValue.serverTimestamp(),
-            });
-      }
+      await ApiClient.post('/auth/sync', {'status': status});
     } catch (e) {
       debugPrint("Error updating status: $e");
     }

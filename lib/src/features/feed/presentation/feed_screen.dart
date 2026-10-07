@@ -70,63 +70,86 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   void _showAccessibilitySheet() {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (context) => Consumer(
         builder: (context, bottomRef, child) {
           final settings = bottomRef.watch(feedAccessibilityProvider);
           return SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.accessibility),
-                  title: const Text('Accessibility & Safe Preview'),
-                  subtitle: const Text(
-                    'Adjust text size and auto-generated summaries for new posts.',
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.85,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(height: 8),
+                      Container(
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.withValues(alpha: 0.4),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.accessibility),
+                        title: const Text('Accessibility & Safe Preview'),
+                        subtitle: const Text(
+                          'Adjust text size and auto-generated summaries for new posts.',
+                        ),
+                      ),
+                      SwitchListTile(
+                        value: settings.largeFonts,
+                        title: const Text('Larger fonts'),
+                        subtitle: const Text('Bigger text throughout the feed.'),
+                        onChanged: (_) => bottomRef
+                            .read(feedAccessibilityProvider.notifier)
+                            .toggleLargeFonts(),
+                      ),
+                      SwitchListTile(
+                        value: settings.blindMode,
+                        title: const Text('Blind-mode summary'),
+                        subtitle: const Text(
+                          'Show quick text-only previews for new posts.',
+                        ),
+                        onChanged: (_) => bottomRef
+                            .read(feedAccessibilityProvider.notifier)
+                            .toggleBlindMode(),
+                      ),
+                      SwitchListTile(
+                        value: settings.highContrast,
+                        title: const Text('High Contrast'),
+                        subtitle: const Text('Enhance text and icon clarity.'),
+                        onChanged: (_) => bottomRef
+                            .read(feedAccessibilityProvider.notifier)
+                            .toggleHighContrast(),
+                      ),
+                      SwitchListTile(
+                        value: settings.reducedMotion,
+                        title: const Text('Reduced Motion'),
+                        subtitle: const Text('Minimize UI animations.'),
+                        onChanged: (_) => bottomRef
+                            .read(feedAccessibilityProvider.notifier)
+                            .toggleReducedMotion(),
+                      ),
+                      SwitchListTile(
+                        value: settings.dyslexicFont,
+                        title: const Text('Dyslexic Friendly'),
+                        subtitle: const Text('Swap to an easier-to-read font.'),
+                        onChanged: (_) => bottomRef
+                            .read(feedAccessibilityProvider.notifier)
+                            .toggleDyslexicFont(),
+                      ),
+                    ],
                   ),
                 ),
-                SwitchListTile(
-                  value: settings.largeFonts,
-                  title: const Text('Larger fonts'),
-                  subtitle: const Text('Bigger text throughout the feed.'),
-                  onChanged: (_) => bottomRef
-                      .read(feedAccessibilityProvider.notifier)
-                      .toggleLargeFonts(),
-                ),
-                SwitchListTile(
-                  value: settings.blindMode,
-                  title: const Text('Blind-mode summary'),
-                  subtitle: const Text(
-                    'Show quick text-only previews for new posts.',
-                  ),
-                  onChanged: (_) => bottomRef
-                      .read(feedAccessibilityProvider.notifier)
-                      .toggleBlindMode(),
-                ),
-                SwitchListTile(
-                  value: settings.highContrast,
-                  title: const Text('High Contrast'),
-                  subtitle: const Text('Enhance text and icon clarity.'),
-                  onChanged: (_) => bottomRef
-                      .read(feedAccessibilityProvider.notifier)
-                      .toggleHighContrast(),
-                ),
-                SwitchListTile(
-                  value: settings.reducedMotion,
-                  title: const Text('Reduced Motion'),
-                  subtitle: const Text('Minimize UI animations.'),
-                  onChanged: (_) => bottomRef
-                      .read(feedAccessibilityProvider.notifier)
-                      .toggleReducedMotion(),
-                ),
-                SwitchListTile(
-                  value: settings.dyslexicFont,
-                  title: const Text('Dyslexic Friendly'),
-                  subtitle: const Text('Swap to an easier-to-read font.'),
-                  onChanged: (_) => bottomRef
-                      .read(feedAccessibilityProvider.notifier)
-                      .toggleDyslexicFont(),
-                ),
-              ],
+              ),
             ),
           );
         },
@@ -189,39 +212,42 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
         child: Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
         appBar: AppBar(
-          title: Text(
-            'ABUAD Feed',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 20,
-              color: isDark
-                  ? const Color.fromARGB(255, 0, 0, 0)
-                  : const Color.fromARGB(255, 0, 0, 0),
-            ),
-          ),
+          titleSpacing: 16,
+          automaticallyImplyLeading: false,
           centerTitle: false,
           surfaceTintColor: Colors.transparent,
           scrolledUnderElevation: 0,
           backgroundColor: Colors.transparent,
           elevation: 0,
-          leading: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: GestureDetector(
-              onTap: () => context.push('/profile'),
-              child: CircleAvatar(
-                backgroundColor: const Color.fromARGB(
-                  255,
-                  8,
-                  36,
-                  161,
-                ).withValues(alpha: 0.15),
-                child: Icon(
-                  Icons.person,
-                  color: const Color.fromARGB(255, 0, 0, 0),
-                  size: 20,
+          title: Row(
+            children: [
+              Text(
+                'ABUAD',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 20,
+                  color: isDark ? Colors.white : Colors.black,
                 ),
               ),
-            ),
+              const Spacer(),
+              _CompactTabItem(
+                label: 'Following',
+                isSelected: feedType == FeedType.following,
+                onTap: () => ref
+                    .read(feedTypeProvider.notifier)
+                    .setType(FeedType.following),
+                isDark: isDark,
+              ),
+              const SizedBox(width: 12),
+              _CompactTabItem(
+                label: 'Discovery',
+                isSelected: feedType == FeedType.discovery,
+                onTap: () => ref
+                    .read(feedTypeProvider.notifier)
+                    .setType(FeedType.discovery),
+                isDark: isDark,
+              ),
+            ],
           ),
           actions: [
             Consumer(
@@ -236,14 +262,14 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                   icon: unreadCount > 0
                       ? Badge(
                           label: Text('$unreadCount'),
-                          child: const Icon(
+                          child: Icon(
                             Icons.more_vert,
-                            color: Color.fromARGB(255, 0, 0, 0),
+                            color: isDark ? Colors.white : Colors.black,
                           ),
                         )
-                      : const Icon(
+                      : Icon(
                           Icons.more_vert,
-                          color: Color.fromARGB(255, 0, 0, 0),
+                          color: isDark ? Colors.white : Colors.black,
                         ),
                   onSelected: (value) {
                     if (value == 'notifications') {
@@ -323,42 +349,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
               },
             ),
           ],
-          bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(48),
-            child: Container(
-              height: 48,
-              decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(
-                    color: isDark
-                        ? Colors.white10
-                        : Colors.black.withValues(alpha: 0.05),
-                    width: 0.5,
-                  ),
-                ),
-              ),
-              child: Row(
-                children: [
-                  _MainTabItem(
-                    label: 'Following',
-                    isSelected: feedType == FeedType.following,
-                    onTap: () => ref
-                        .read(feedTypeProvider.notifier)
-                        .setType(FeedType.following),
-                    isDark: isDark,
-                  ),
-                  _MainTabItem(
-                    label: 'Discovery',
-                    isSelected: feedType == FeedType.discovery,
-                    onTap: () => ref
-                        .read(feedTypeProvider.notifier)
-                        .setType(FeedType.discovery),
-                    isDark: isDark,
-                  ),
-                ],
-              ),
-            ),
-          ),
         ),
         body: Stack(
           children: [
@@ -369,8 +359,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
             RefreshIndicator(
               onRefresh: () async {
                 HapticFeedback.mediumImpact();
-                ref.invalidate(paginatedFeedProvider);
-                await Future.delayed(const Duration(milliseconds: 800));
+                await ref.read(paginatedFeedProvider.notifier).refresh();
               },
               color: theme.colorScheme.primary,
               displacement: feedType == FeedType.discovery ? 70 : 10,
@@ -507,15 +496,17 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                       ];
                       final displayPosts = injectSystemPosts(posts, injections);
 
+                      final isLoadingMore = ref.watch(isLoadingMoreProvider);
+
                       return Column(
                         children: [
-
                           Expanded(
                             child: ListView.separated(
                               controller: _scrollController,
-                              itemCount: displayPosts.length,
+                              itemCount: displayPosts.length + (isLoadingMore ? 1 : 0),
                               padding: EdgeInsets.only(
                                 top: feedType == FeedType.discovery ? 65 : 12,
+                                bottom: 80,
                               ),
                               separatorBuilder: (context, index) {
                                 return Divider(
@@ -527,6 +518,29 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                                 );
                               },
                               itemBuilder: (context, index) {
+                                // Prefetch next batch when user gets within 4 items of the bottom
+                                if (index >= displayPosts.length - 4) {
+                                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                                    ref.read(paginatedFeedProvider.notifier).loadMore();
+                                  });
+                                }
+
+                                if (index == displayPosts.length) {
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 24.0),
+                                    child: Center(
+                                      child: SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2.5,
+                                          color: theme.colorScheme.primary,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }
+
                                 final post = displayPosts[index];
                                 if (post.authorId == '__system__') {
                                   return _InjectedEventCard(post: post);
@@ -538,19 +552,27 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                                         .where(
                                           (p) =>
                                               p.mediaType ==
-                                              domain.MediaType.video,
+                                                  domain.MediaType.video ||
+                                              p.mediaUrl.toLowerCase().contains('.mp4') ||
+                                              p.mediaUrl.toLowerCase().contains('.mov') ||
+                                              p.mediaUrl.toLowerCase().contains('.webm') ||
+                                              p.mediaUrl.toLowerCase().contains('.m3u8') ||
+                                              p.id == post.id,
                                         )
                                         .toList();
-                                    final videoIndex = videoPosts.indexOf(post);
-                                    if (videoIndex != -1) {
-                                      context.push(
-                                        '/reels',
-                                        extra: {
-                                          'videos': videoPosts,
-                                          'index': videoIndex,
-                                        },
-                                      );
-                                    }
+                                    final videoIndex = videoPosts.indexWhere(
+                                      (p) => p.id == post.id,
+                                    );
+                                    context.push(
+                                      '/reels',
+                                      extra: {
+                                        'videos': videoPosts.isNotEmpty
+                                            ? videoPosts
+                                            : [post],
+                                        'initialIndex':
+                                            videoIndex >= 0 ? videoIndex : 0,
+                                      },
+                                    );
                                   },
                                 );
                               },
@@ -652,66 +674,83 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                           ),
                         ),
                       ),
-                      child: ListView(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Row(
                         children: [
-                          _TabItem(
-                            label: 'For You',
-                            id: 'all',
-                            selectedId: selectedChannel,
-                            isDark: isDark,
-                            icon: Icons.auto_awesome,
-                            activeColor: Colors.blueAccent,
+                          Expanded(
+                            child: ListView(
+                              scrollDirection: Axis.horizontal,
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              children: [
+                                _TabItem(
+                                  label: 'For You',
+                                  id: 'all',
+                                  selectedId: selectedChannel,
+                                  isDark: isDark,
+                                  icon: Icons.auto_awesome,
+                                  activeColor: Colors.blueAccent,
+                                ),
+                                _TabItem(
+                                  label: 'Reels',
+                                  id: 'reels',
+                                  selectedId: selectedChannel,
+                                  isDark: isDark,
+                                  icon: Icons.movie_outlined,
+                                  activeColor: Colors.pinkAccent,
+                                ),
+                                _TabItem(
+                                  label: 'General',
+                                  id: 'general',
+                                  selectedId: selectedChannel,
+                                  isDark: isDark,
+                                  icon: Icons.public,
+                                  activeColor: AppColors.primaryInk,
+                                ),
+                                _TabItem(
+                                  label: 'Engineering',
+                                  id: 'engineering',
+                                  selectedId: selectedChannel,
+                                  isDark: isDark,
+                                  icon: Icons.engineering,
+                                  activeColor: Colors.blue,
+                                ),
+                                _TabItem(
+                                  label: 'Hostel',
+                                  id: 'hostel',
+                                  selectedId: selectedChannel,
+                                  isDark: isDark,
+                                  icon: Icons.home_work,
+                                  activeColor: Colors.orange,
+                                ),
+                                _TabItem(
+                                  label: 'Confessions',
+                                  id: 'confessions',
+                                  selectedId: selectedChannel,
+                                  isDark: isDark,
+                                  icon: Icons.visibility_off,
+                                  activeColor: Colors.deepPurple,
+                                ),
+                                _TabItem(
+                                  label: 'Freshers',
+                                  id: 'freshers',
+                                  selectedId: selectedChannel,
+                                  isDark: isDark,
+                                  icon: Icons.school,
+                                  activeColor: Colors.green,
+                                ),
+                              ],
+                            ),
                           ),
-                          _TabItem(
-                            label: 'Reels',
-                            id: 'reels',
-                            selectedId: selectedChannel,
-                            isDark: isDark,
-                            icon: Icons.movie_outlined,
-                            activeColor: Colors.pinkAccent,
+                          IconButton(
+                            icon: Icon(
+                              Icons.search_rounded,
+                              color: isDark ? Colors.white70 : Colors.black87,
+                              size: 22,
+                            ),
+                            onPressed: () {
+                              context.push('/search');
+                            },
                           ),
-                          _TabItem(
-                            label: 'General',
-                            id: 'general',
-                            selectedId: selectedChannel,
-                            isDark: isDark,
-                            icon: Icons.public,
-                            activeColor: AppColors.primaryInk,
-                          ),
-                          _TabItem(
-                            label: 'Engineering',
-                            id: 'engineering',
-                            selectedId: selectedChannel,
-                            isDark: isDark,
-                            icon: Icons.engineering,
-                            activeColor: Colors.blue,
-                          ),
-                          _TabItem(
-                            label: 'Hostel',
-                            id: 'hostel',
-                            selectedId: selectedChannel,
-                            isDark: isDark,
-                            icon: Icons.home_work,
-                            activeColor: Colors.orange,
-                          ),
-                          _TabItem(
-                            label: 'Confessions',
-                            id: 'confessions',
-                            selectedId: selectedChannel,
-                            isDark: isDark,
-                            icon: Icons.visibility_off,
-                            activeColor: Colors.deepPurple,
-                          ),
-                          _TabItem(
-                            label: 'Freshers',
-                            id: 'freshers',
-                            selectedId: selectedChannel,
-                            isDark: isDark,
-                            icon: Icons.school,
-                            activeColor: Colors.green,
-                          ),
+                          const SizedBox(width: 4),
                         ],
                       ),
                     ),
@@ -862,13 +901,13 @@ class FeedTypeNotifier extends Notifier<FeedType> {
   }
 }
 
-class _MainTabItem extends StatelessWidget {
+class _CompactTabItem extends StatelessWidget {
   final String label;
   final bool isSelected;
   final VoidCallback onTap;
   final bool isDark;
 
-  const _MainTabItem({
+  const _CompactTabItem({
     required this.label,
     required this.isSelected,
     required this.onTap,
@@ -877,35 +916,35 @@ class _MainTabItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
+    final activeColor = isDark ? Colors.white : AppColors.primaryInk;
+    final inactiveColor = isDark
+        ? Colors.white38
+        : AppColors.primaryInk.withValues(alpha: 0.4);
+
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Spacer(),
             Text(
               label,
               style: TextStyle(
-                fontSize: 16,
+                fontSize: 15,
                 fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                color: isSelected
-                    ? (isDark ? Colors.white : AppColors.primaryInk)
-                    : (isDark
-                          ? Colors.white38
-                          : AppColors.primaryInk.withAlpha(102)),
+                color: isSelected ? activeColor : inactiveColor,
               ),
             ),
-            const Spacer(),
+            const SizedBox(height: 3),
             AnimatedContainer(
               duration: const Duration(milliseconds: 200),
-              height: 3,
-              width: isSelected ? 80 : 0,
+              height: 2.5,
+              width: isSelected ? 28 : 0,
               decoration: BoxDecoration(
-                color: isDark ? Colors.white : AppColors.primaryInk,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(3),
-                ),
+                color: activeColor,
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
           ],
@@ -914,6 +953,8 @@ class _MainTabItem extends StatelessWidget {
     );
   }
 }
+
+
 
 // ──────────────────────────────────────────────────────────────────────────────
 

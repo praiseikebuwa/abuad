@@ -113,11 +113,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // 4. Update Header Admin Info
-    firebase.auth().onAuthStateChanged(user => {
-        if (user) {
-            document.getElementById('admin-name').innerText = user.displayName || 'Administrator';
-        }
-    });
+    if (window.auth) {
+        window.auth.onAuthStateChanged(user => {
+            if (user) {
+                const adminNameElem = document.getElementById('admin-name');
+                if (adminNameElem) {
+                    adminNameElem.innerText = user.fullName || user.displayName || 'Administrator';
+                }
+            }
+        });
+    }
 
     // 5. Hook up special buttons
     // Delegate events to parent or re-attach on tab switch?

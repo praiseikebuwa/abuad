@@ -16,7 +16,7 @@ class UsersController {
         this.tableBody.innerHTML = '<tr><td colspan="5" class="loading-text">Loading users directory...</td></tr>';
 
         // Unsubscribe from previous listener if exists
-        if (this.unsubscribe) this.unsubscribe();
+        if (typeof this.unsubscribe === 'function') this.unsubscribe();
 
         this.unsubscribe = db.collection('users')
             .limit(500)
@@ -44,8 +44,11 @@ class UsersController {
         }
         const lower = query.toLowerCase();
         const filtered = this.users.filter(u =>
+            (u.fullName && u.fullName.toLowerCase().includes(lower)) ||
             (u.displayName && u.displayName.toLowerCase().includes(lower)) ||
+            (u.display_name && u.display_name.toLowerCase().includes(lower)) ||
             (u.email && u.email.toLowerCase().includes(lower)) ||
+            (u.username && u.username.toLowerCase().includes(lower)) ||
             (u.handle && u.handle.toLowerCase().includes(lower))
         );
         this.renderTable(filtered);
@@ -61,20 +64,25 @@ class UsersController {
 
         userList.forEach(user => {
             const tr = document.createElement('tr');
-            const displayName = user.display_name || user.displayName || 'No Name';
-            const initial = displayName[0].toUpperCase();
-            const avatarUrl = user.avatar_url || user.profile_image_url || user.avatarUrl;
-            const vType = user.verification_type || user.verificationType || (user.is_verified || user.isVerified ? 'blue' : 'none');
+            const displayName = user.fullName || user.displayName || user.display_name || user.username || 'Unknown';
+            const handle = user.username || user.handle || '';
+            const initial = displayName.length > 0 ? displayName[0].toUpperCase() : '?';
+            const avatarUrl = user.avatarUrl || user.avatar_url || user.profile_image_url;
+            const rawVType = (user.verificationType || user.verification_type || (user.isVerified || user.is_verified ? 'blue' : 'none')).toString().toLowerCase();
+            const vType = rawVType === 'violet' ? 'violet' : (rawVType === 'gold' ? 'gold' : (rawVType === 'blue' ? 'blue' : 'none'));
 
             let badgeHtml = '';
             let iconHtml = '';
 
-            if (vType === 'gold') {
-                badgeHtml = '<span class="badge badge-gold">Gold</span>';
-                iconHtml = '<i class="fas fa-check-circle verified-icon-gold" title="Gold Verified"></i>';
+            if (vType === 'violet') {
+                badgeHtml = '<span class="badge" style="background: rgba(124, 58, 237, 0.2); color: #7C3AED; border: 1px solid #7C3AED; padding: 2px 8px; border-radius: 12px; font-weight: 600; font-size: 0.8rem;">Violet</span>';
+                iconHtml = '<i class="fas fa-check-circle" style="color: #7C3AED; margin-left: 4px;" title="Violet Verified"></i>';
+            } else if (vType === 'gold') {
+                badgeHtml = '<span class="badge" style="background: rgba(217, 119, 6, 0.2); color: #D97706; border: 1px solid #D97706; padding: 2px 8px; border-radius: 12px; font-weight: 600; font-size: 0.8rem;">Gold</span>';
+                iconHtml = '<i class="fas fa-check-circle" style="color: #D97706; margin-left: 4px;" title="Gold Verified"></i>';
             } else if (vType === 'blue') {
-                badgeHtml = '<span class="badge badge-verified">Blue</span>';
-                iconHtml = '<i class="fas fa-check-circle verified-icon" title="Blue Verified"></i>';
+                badgeHtml = '<span class="badge" style="background: rgba(2, 132, 199, 0.2); color: #0284C7; border: 1px solid #0284C7; padding: 2px 8px; border-radius: 12px; font-weight: 600; font-size: 0.8rem;">Blue</span>';
+                iconHtml = '<i class="fas fa-check-circle" style="color: #0284C7; margin-left: 4px;" title="Blue Verified"></i>';
             } else {
                 badgeHtml = '<span class="badge badge-gray">None</span>';
             }
@@ -90,7 +98,7 @@ class UsersController {
                                 ${displayName} 
                                 ${iconHtml}
                             </div>
-                            <small class="user-email">${user.email || 'No email'}</small>
+                            <small class="user-email">${user.email || (handle ? '@' + handle : 'No email')}</small>
                         </div>
                     </div>
                 </td>
@@ -102,7 +110,7 @@ class UsersController {
                 <td>
                     ${badgeHtml}
                 </td>
-                <td>${formatDate(user.created_at || user.createdAt)}</td>
+                <td>${formatDate(user.createdAt || user.created_at)}</td>
                 <td>
                     <div class="action-buttons" style="display: flex; gap: 8px; align-items: center;">
                         <button class="btn-icon btn-view" 
@@ -110,21 +118,26 @@ class UsersController {
                                 title="View Profile" style="color: #4facfe; background: rgba(79, 172, 254, 0.1); border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer;">
                             <i class="fas fa-id-badge"></i>
                         </button>
-                        <div class="verification-tier-buttons" style="display: flex; gap: 2px; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 2px;">
+                        <div class="verification-tier-buttons" style="display: flex; gap: 2px; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 2px; background: rgba(0,0,0,0.2);">
                             <button class="btn-icon btn-tier-none ${vType === 'none' ? 'active' : ''}" 
                                     onclick="window.usersController.setVerification('${user.id}', 'none')"
-                                    title="Unverify" style="background: ${vType === 'none' ? 'rgba(255,255,255,0.1)' : 'transparent'}; border: none; color: #fff; padding: 4px 6px; cursor: pointer; border-radius: 2px;">
+                                    title="Unverify" style="background: ${vType === 'none' ? 'rgba(255,255,255,0.2)' : 'transparent'}; border: none; color: #aaa; padding: 4px 6px; cursor: pointer; border-radius: 2px;">
                                 <i class="fas fa-times"></i>
                             </button>
                             <button class="btn-icon btn-tier-blue ${vType === 'blue' ? 'active' : ''}" 
                                     onclick="window.usersController.setVerification('${user.id}', 'blue')"
-                                    title="Blue Badge" style="background: ${vType === 'blue' ? 'rgba(29, 161, 242, 0.2)' : 'transparent'}; border: none; color: #1DA1F2; padding: 4px 6px; cursor: pointer; border-radius: 2px;">
-                                <i class="fas fa-check"></i>
+                                    title="Blue Badge (#0284C7)" style="background: ${vType === 'blue' ? 'rgba(2, 132, 199, 0.3)' : 'transparent'}; border: none; color: #0284C7; padding: 4px 6px; cursor: pointer; border-radius: 2px;">
+                                <i class="fas fa-check-circle"></i>
                             </button>
                             <button class="btn-icon btn-tier-gold ${vType === 'gold' ? 'active' : ''}" 
                                     onclick="window.usersController.setVerification('${user.id}', 'gold')"
-                                    title="Gold Badge" style="background: ${vType === 'gold' ? 'rgba(255, 215, 0, 0.2)' : 'transparent'}; border: none; color: #FFD700; padding: 4px 6px; cursor: pointer; border-radius: 2px;">
+                                    title="Gold Badge (#D97706)" style="background: ${vType === 'gold' ? 'rgba(217, 119, 6, 0.3)' : 'transparent'}; border: none; color: #D97706; padding: 4px 6px; cursor: pointer; border-radius: 2px;">
                                 <i class="fas fa-award"></i>
+                            </button>
+                            <button class="btn-icon btn-tier-violet ${vType === 'violet' ? 'active' : ''}" 
+                                    onclick="window.usersController.setVerification('${user.id}', 'violet')"
+                                    title="Violet Badge (#7C3AED)" style="background: ${vType === 'violet' ? 'rgba(124, 58, 237, 0.3)' : 'transparent'}; border: none; color: #7C3AED; padding: 4px 6px; cursor: pointer; border-radius: 2px;">
+                                <i class="fas fa-crown"></i>
                             </button>
                         </div>
                         <button class="btn-icon ${user.status === 'banned' ? 'btn-unban' : 'btn-ban'}" 
@@ -161,64 +174,194 @@ class UsersController {
             document.body.appendChild(modal);
         }
 
-        const displayName = user.display_name || user.displayName || 'No Name';
-        const avatarUrl = user.avatar_url || user.profile_image_url || user.avatarUrl;
-        const initial = displayName[0].toUpperCase();
-        const vType = user.verification_type || user.verificationType || (user.is_verified || user.isVerified ? 'blue' : 'none');
-        const vBadge = vType === 'gold' ? '🥇 Gold' : (vType === 'blue' ? 'Verified' : 'None');
+        const displayName = user.fullName || user.displayName || user.display_name || user.username || 'No Name';
+        const handle = user.username || user.handle || 'no_handle';
+        const avatarUrl = user.avatarUrl || user.avatar_url || user.profile_image_url;
+        const bannerUrl = user.bannerUrl || user.banner_url;
+        const initial = displayName.length > 0 ? displayName[0].toUpperCase() : '?';
+
+        const rawVType = (user.verificationType || user.verification_type || (user.isVerified || user.is_verified ? 'blue' : 'none')).toString().toLowerCase();
+        
+        let vBadgeHtml = '';
+        if (rawVType === 'violet') {
+            vBadgeHtml = '<span class="badge" style="background: rgba(124, 58, 237, 0.2); color: #7C3AED; border: 1px solid #7C3AED; padding: 4px 10px; border-radius: 12px; font-weight: 600; font-size: 0.85rem;"><i class="fas fa-crown"></i> Violet Badge</span>';
+        } else if (rawVType === 'gold') {
+            vBadgeHtml = '<span class="badge" style="background: rgba(217, 119, 6, 0.2); color: #D97706; border: 1px solid #D97706; padding: 4px 10px; border-radius: 12px; font-weight: 600; font-size: 0.85rem;"><i class="fas fa-award"></i> Gold Badge</span>';
+        } else if (rawVType === 'blue') {
+            vBadgeHtml = '<span class="badge" style="background: rgba(2, 132, 199, 0.2); color: #0284C7; border: 1px solid #0284C7; padding: 4px 10px; border-radius: 12px; font-weight: 600; font-size: 0.85rem;"><i class="fas fa-check-circle"></i> Blue Badge</span>';
+        } else {
+            vBadgeHtml = '<span class="badge badge-gray" style="padding: 4px 10px; border-radius: 12px;">None</span>';
+        }
+
+        const followers = user.followersCount ?? user.followers_count ?? 0;
+        const following = user.followingCount ?? user.following_count ?? 0;
+        const streak = user.streakCount ?? user.streak_count ?? user.streak ?? 0;
+        const collegeDept = [user.college, user.department].filter(Boolean).join(' / ') || 'N/A';
+        const levelRole = [user.level ? `Level ${user.level}` : null, user.role || 'STUDENT'].filter(Boolean).join(' • ') || 'Student';
+        const phone = user.phoneNumber || user.phone_number || 'N/A';
+        const bio = user.bio || 'No biography provided.';
+
+        // Social links matching drawing
+        const socialLinks = [];
+        const extractRawUsername = (url) => {
+            try {
+                const u = new URL(url);
+                const parts = u.pathname.split('/').filter(Boolean);
+                if (parts.length > 0) {
+                    const last = parts[parts.length - 1].replace(/^@/, '');
+                    if (last !== 'add' && last !== 'in' && last !== 'user' && last !== 'u') return last;
+                    if (parts.length > 1) return parts[parts.length - 2].replace(/^@/, '');
+                }
+            } catch (e) {}
+            return '';
+        };
+
+        const cleanDisplayUrl = (url) => url.replace(/^https?:\/\/(www\.)?/, '');
+
+        if (user.snapchatUrl || user.snapchat_url) {
+            const url = user.snapchatUrl || user.snapchat_url;
+            const uName = extractRawUsername(url);
+            socialLinks.push({ icon: 'fab fa-snapchat-ghost', brandColor: '#FFFC00', iconColor: '#000', title: uName ? '@' + uName : 'Snapchat', subtitle: cleanDisplayUrl(url), url, avatarUrl: uName ? `https://unavatar.io/snapchat/${uName}` : null });
+        }
+        if (user.githubUrl || user.github_url) {
+            const url = user.githubUrl || user.github_url;
+            const uName = extractRawUsername(url);
+            socialLinks.push({ icon: 'fab fa-github', brandColor: '#24292E', iconColor: '#fff', title: uName ? '@' + uName : 'GitHub', subtitle: cleanDisplayUrl(url), url, avatarUrl: uName ? `https://github.com/${uName}.png` : null });
+        }
+        if (user.twitterUrl || user.twitter_url) {
+            const url = user.twitterUrl || user.twitter_url;
+            const uName = extractRawUsername(url);
+            socialLinks.push({ icon: 'fab fa-twitter', brandColor: '#14171A', iconColor: '#fff', title: uName ? '@' + uName : 'Twitter', subtitle: cleanDisplayUrl(url), url, avatarUrl: uName ? `https://unavatar.io/x/${uName}` : null });
+        }
+        if (user.instagramUrl || user.instagram_url) {
+            const url = user.instagramUrl || user.instagram_url;
+            const uName = extractRawUsername(url);
+            socialLinks.push({ icon: 'fab fa-instagram', brandColor: '#E4405F', iconColor: '#fff', title: uName ? '@' + uName : 'Instagram', subtitle: cleanDisplayUrl(url), url, avatarUrl: uName ? `https://unavatar.io/instagram/${uName}` : null });
+        }
+        if (user.linkedinUrl || user.linkedin_url) {
+            const url = user.linkedinUrl || user.linkedin_url;
+            const uName = extractRawUsername(url);
+            socialLinks.push({ icon: 'fab fa-linkedin-in', brandColor: '#0A66C2', iconColor: '#fff', title: uName ? '@' + uName : 'LinkedIn', subtitle: cleanDisplayUrl(url), url, avatarUrl: uName ? `https://unavatar.io/linkedin/${uName}` : null });
+        }
+        if (user.youtubeUrl || user.youtube_url) {
+            const url = user.youtubeUrl || user.youtube_url;
+            const uName = extractRawUsername(url);
+            socialLinks.push({ icon: 'fab fa-youtube', brandColor: '#FF0000', iconColor: '#fff', title: uName ? '@' + uName : 'YouTube', subtitle: cleanDisplayUrl(url), url, avatarUrl: uName ? `https://unavatar.io/youtube/${uName}` : null });
+        }
+        if (user.tiktokUrl || user.tiktok_url) {
+            const url = user.tiktokUrl || user.tiktok_url;
+            const uName = extractRawUsername(url);
+            socialLinks.push({ icon: 'fab fa-tiktok', brandColor: '#010101', iconColor: '#fff', title: uName ? '@' + uName : 'TikTok', subtitle: cleanDisplayUrl(url), url, avatarUrl: uName ? `https://unavatar.io/tiktok/${uName}` : null });
+        }
+        if (user.facebookUrl || user.facebook_url) {
+            const url = user.facebookUrl || user.facebook_url;
+            const uName = extractRawUsername(url);
+            socialLinks.push({ icon: 'fab fa-facebook-f', brandColor: '#1877F2', iconColor: '#fff', title: uName ? '@' + uName : 'Facebook', subtitle: cleanDisplayUrl(url), url, avatarUrl: uName ? `https://unavatar.io/facebook/${uName}` : null });
+        }
+        if (user.twitchUrl || user.twitch_url) {
+            const url = user.twitchUrl || user.twitch_url;
+            const uName = extractRawUsername(url);
+            socialLinks.push({ icon: 'fab fa-twitch', brandColor: '#9146FF', iconColor: '#fff', title: uName ? '@' + uName : 'Twitch', subtitle: cleanDisplayUrl(url), url, avatarUrl: uName ? `https://unavatar.io/twitch/${uName}` : null });
+        }
+        if (user.websiteUrl || user.website_url) {
+            const url = user.websiteUrl || user.website_url;
+            const clean = cleanDisplayUrl(url);
+            const domain = clean.split('/')[0];
+            socialLinks.push({ icon: 'fas fa-globe', brandColor: '#0284C7', iconColor: '#fff', title: domain, subtitle: clean, url, avatarUrl: `https://unavatar.io/${domain}` });
+        }
+
+        let socialsHtml = '';
+        if (socialLinks.length > 0) {
+            socialsHtml = `
+                <div style="margin-top:16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <small style="color:var(--text-muted); font-size: 0.75rem; font-weight: 600;">Social Media Profiles</small>
+                        ${socialLinks.length > 1 ? '<small style="color:var(--text-muted); font-size: 0.7rem;"><i class="fas fa-arrows-alt-h"></i> Swipe left</small>' : ''}
+                    </div>
+                    <div style="display:flex; overflow-x:auto; gap:10px; padding-bottom:6px; scrollbar-width: thin;">
+                        ${socialLinks.map(s => `
+                            <a href="${s.url}" target="_blank" rel="noopener noreferrer" style="display:flex; align-items:center; gap:10px; background:rgba(30, 41, 59, 0.8); border: 1.5px solid ${s.brandColor}; padding:8px 12px; border-radius:14px; text-decoration:none; flex-shrink:0; width: 230px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);">
+                                <div style="width: 40px; height: 40px; border-radius: 50%; background: ${s.brandColor}; display:flex; align-items:center; justify-content:center; flex-shrink:0; color: ${s.iconColor}; font-size: 1.1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.3); overflow:hidden;">
+                                    ${s.avatarUrl ? `<img src="${s.avatarUrl}" style="width:100%; height:100%; object-fit:cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-flex';" /><i class="${s.icon}" style="display:none;"></i>` : `<i class="${s.icon}"></i>`}
+                                </div>
+                                <div style="overflow:hidden; flex:1;">
+                                    <div style="color: #ffffff; font-weight: bold; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${s.title}</div>
+                                    <div style="color: #22C55E; font-weight: 600; font-size: 0.72rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top:1px;">${s.subtitle}</div>
+                                </div>
+                            </a>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
 
         modal.innerHTML = `
-            <div class="modal-content" style="width: 500px;">
-                <div class="modal-header">
-                    <h2>User Profile Details</h2>
+            <div class="modal-content" style="width: 540px; border-radius: 16px; overflow: hidden; max-height: 90vh; display: flex; flex-direction: column;">
+                ${bannerUrl ? `
+                    <div style="height: 120px; background: url('${bannerUrl}') center/cover no-repeat; position: relative;"></div>
+                ` : `
+                    <div style="height: 80px; background: linear-gradient(135deg, #1e293b, #0f172a); position: relative;"></div>
+                `}
+                <div class="modal-header" style="padding: 15px 20px; border-bottom: 1px solid rgba(255,255,255,0.1); background: transparent;">
+                    <h2 style="margin:0; font-size: 1.3rem;">User Profile Details</h2>
                     <button onclick="document.getElementById('user-detail-modal').style.display='none'" class="btn-close">&times;</button>
                 </div>
-                <div class="modal-body">
-                    <div style="display:flex; gap:20px; align-items:center; margin-bottom:25px;">
-                        <div class="avatar-initial" style="width:80px; height:80px; font-size:2rem; background-color: ${seededColor(displayName)}; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
+                <div class="modal-body" style="padding: 20px; overflow-y: auto;">
+                    <div style="display:flex; gap:16px; align-items:center; margin-bottom:20px; margin-top: ${bannerUrl ? '-40px' : '0'};">
+                        <div class="avatar-initial" style="width:72px; height:72px; font-size:1.8rem; background-color: ${seededColor(displayName)}; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.4); border: 3px solid #1e293b;">
                             ${avatarUrl ? `<img src="${avatarUrl}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';" /><span style="display:none;">${initial}</span>` : initial}
                         </div>
-                        <div>
-                            <h2 style="margin:0">${displayName}</h2>
-                            <p style="color:var(--text-secondary); margin:4px 0;">@${user.handle || 'no_handle'}</p>
-                            <span class="status-badge ${user.status || 'offline'}">${user.status || 'Offline'}</span>
+                        <div style="flex:1;">
+                            <h2 style="margin:0; font-size: 1.25rem;">${displayName}</h2>
+                            <p style="color:var(--text-secondary); margin:2px 0 6px 0; font-size: 0.9rem;">@${handle}</p>
+                            <div style="display:flex; gap:8px; align-items:center;">
+                                <span class="status-badge ${user.status || 'offline'}">${user.status === 'online' ? '● Online' : (user.status === 'banned' ? '🚫 Banned' : 'Offline')}</span>
+                                <span style="font-size:0.8rem; color:#aaa; background:rgba(255,255,255,0.06); padding:2px 8px; border-radius:8px;">${levelRole}</span>
+                            </div>
                         </div>
                     </div>
 
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
-                        <div class="card" style="padding:15px; background:rgba(255,255,255,0.02)">
-                            <small style="color:var(--text-muted)">Email</small>
-                            <div style="font-weight:500; word-break:break-all;">${user.email || 'N/A'}</div>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+                        <div class="card" style="padding:12px; background:rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid rgba(255,255,255,0.05);">
+                            <small style="color:var(--text-muted); font-size: 0.75rem;">Email Address</small>
+                            <div style="font-weight:500; word-break:break-all; font-size: 0.9rem; margin-top:2px;">${user.email || 'N/A'}</div>
                         </div>
-                        <div class="card" style="padding:15px; background:rgba(255,255,255,0.02)">
-                            <small style="color:var(--text-muted)">College/Department</small>
-                            <div style="font-weight:500;">${user.college || user.department || 'N/A'}</div>
+                        <div class="card" style="padding:12px; background:rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid rgba(255,255,255,0.05);">
+                            <small style="color:var(--text-muted); font-size: 0.75rem;">Phone Number</small>
+                            <div style="font-weight:500; font-size: 0.9rem; margin-top:2px;">${phone}</div>
                         </div>
-                        <div class="card" style="padding:15px; background:rgba(255,255,255,0.02)">
-                            <small style="color:var(--text-muted)">Followers</small>
-                            <div style="font-weight:500;">${user.followers_count || 0}</div>
+                        <div class="card" style="padding:12px; background:rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid rgba(255,255,255,0.05);">
+                            <small style="color:var(--text-muted); font-size: 0.75rem;">College / Department</small>
+                            <div style="font-weight:500; font-size: 0.9rem; margin-top:2px;">${collegeDept}</div>
                         </div>
-                        <div class="card" style="padding:15px; background:rgba(255,255,255,0.02)">
-                            <small style="color:var(--text-muted)">Verification</small>
-                            <div style="font-weight:500;">${vBadge}</div>
+                        <div class="card" style="padding:12px; background:rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid rgba(255,255,255,0.05);">
+                            <small style="color:var(--text-muted); font-size: 0.75rem;">Verification Tier</small>
+                            <div style="font-weight:500; margin-top:4px;">${vBadgeHtml}</div>
+                        </div>
+                        <div class="card" style="padding:12px; background:rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid rgba(255,255,255,0.05);">
+                            <small style="color:var(--text-muted); font-size: 0.75rem;">Followers / Following</small>
+                            <div style="font-weight:500; font-size: 0.9rem; margin-top:2px;">${followers} Followers • ${following} Following</div>
+                        </div>
+                        <div class="card" style="padding:12px; background:rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid rgba(255,255,255,0.05);">
+                            <small style="color:var(--text-muted); font-size: 0.75rem;">Streak / Activity</small>
+                            <div style="font-weight:500; font-size: 0.9rem; margin-top:2px;">🔥 ${streak} Day Streak</div>
                         </div>
                     </div>
 
-                    <div style="margin-top:20px;">
-                        <small style="color:var(--text-muted)">Biography</small>
-                        <p style="margin-top:5px; line-height:1.4;">${user.bio || '<i>No biography provided.</i>'}</p>
+                    <div style="margin-top:16px;">
+                        <small style="color:var(--text-muted); font-size: 0.75rem;">Biography</small>
+                        <p style="margin-top:4px; line-height:1.4; font-size: 0.9rem; color: ${user.bio ? 'var(--text-primary)' : 'var(--text-muted)'};">${user.bio ? user.bio : '<i>No biography provided.</i>'}</p>
                     </div>
 
-                    <div style="margin-top:20px;">
-                        <small style="color:var(--text-muted)">Streak/Activity</small>
-                        <div style="display:flex; gap:10px; margin-top:5px;">
-                             <span>🔥 ${user.streak_count || user.streak || 0} Day Streak</span>
-                             <span>📅 Joined ${formatDate(user.created_at || user.createdAt)}</span>
-                        </div>
+                    ${socialsHtml}
+
+                    <div style="margin-top:16px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.05); display:flex; justify-content:space-between; font-size: 0.8rem; color: var(--text-muted);">
+                        <span>📅 Joined ${formatDate(user.createdAt || user.created_at)}</span>
+                        ${user.lastSeen || user.last_seen ? `<span>👀 Last Active ${formatDate(user.lastSeen || user.last_seen)}</span>` : ''}
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button class="btn-primary" style="width:100%" onclick="document.getElementById('user-detail-modal').style.display='none'">Done</button>
+                <div class="modal-footer" style="padding: 15px 20px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <button class="btn-primary" style="width:100%; border-radius: 8px;" onclick="document.getElementById('user-detail-modal').style.display='none'">Done</button>
                 </div>
             </div>
         `;
@@ -228,11 +371,16 @@ class UsersController {
 
     setVerification(uid, type) {
         db.collection('users').doc(uid).update({
+            verification_type: type,
             verificationType: type,
+            is_verified: type !== 'none',
             isVerified: type !== 'none'
         }).then(() => {
-            window.logAdminAction('VERIFY_USER', `Updated verification tier to ${type} for User ${uid}`, 'user', uid);
-        }).catch(err => alert("Error: " + err.message));
+            if (typeof window.logAdminAction === 'function') {
+                window.logAdminAction('VERIFY_USER', `Updated verification tier to ${type} for User ${uid}`, 'user', uid);
+            }
+            this.load();
+        }).catch(err => alert("Error setting verification: " + err.message));
     }
 
     toggleBan(uid, isBanned) {

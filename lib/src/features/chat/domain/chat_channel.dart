@@ -1,19 +1,19 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:convert';
 
 class ChatChannel {
   final String id;
   final String type; // 'direct' or 'group'
-  final String? displayName; // Nullable for direct chats
-  final String? displayAvatarUrl; // Nullable for direct chats
-  final String? createdBy; // userId of group creator
+  final String? displayName;
+  final String? displayAvatarUrl;
+  final String? createdBy;
   final List<String> memberIds;
-  final Map<String, dynamic> lastMessage; // copy of the last message
+  final Map<String, dynamic> lastMessage;
   final DateTime lastMessageTime;
   final Map<String, int> unreadCounts;
-  final Map<String, bool> typingUsers; // userId -> isTyping
-  final Map<String, String> memberNames; // userId -> displayName
-  final Map<String, String?> memberAvatars; // userId -> avatarUrl
-  final Map<String, String> verificationTypes; // userId -> verificationType
+  final Map<String, bool> typingUsers;
+  final Map<String, String> memberNames;
+  final Map<String, String?> memberAvatars;
+  final Map<String, String> verificationTypes;
   final List<String> adminIds;
   final bool restrictInfoUpdates;
   final bool restrictMessaging;
@@ -56,7 +56,7 @@ class ChatChannel {
       'created_by': createdBy,
       'member_ids': memberIds,
       'last_message': lastMessage,
-      'last_message_time': Timestamp.fromDate(lastMessageTime),
+      'last_message_time': lastMessageTime.toIso8601String(),
       'member_names': memberNames,
       'member_avatars': memberAvatars,
       'verification_types': verificationTypes,
@@ -67,46 +67,100 @@ class ChatChannel {
       'typing_users': typingUsers,
       'streak_count': streakCount,
       'last_snap_time': lastSnapTime.map(
-        (key, value) => MapEntry(key, Timestamp.fromDate(value)),
+        (key, value) => MapEntry(key, value.toIso8601String()),
       ),
-      'streak_expiry': streakExpiry != null
-          ? Timestamp.fromDate(streakExpiry!)
-          : null,
+      'streak_expiry': streakExpiry?.toIso8601String(),
       'pinned_by': pinnedBy,
       'archived_by': archivedBy,
     };
   }
 
   factory ChatChannel.fromMap(Map<String, dynamic> map) {
+    DateTime parseTime(dynamic raw) {
+      if (raw is String) return DateTime.tryParse(raw) ?? DateTime.now();
+      return DateTime.now();
+    }
+
+    List<String> parseList(dynamic raw) {
+      if (raw == null) return [];
+      if (raw is List) return raw.map((e) => e.toString()).toList();
+      if (raw is String && raw.isNotEmpty) {
+        try {
+          final decoded = json.decode(raw);
+          if (decoded is List) return decoded.map((e) => e.toString()).toList();
+        } catch (_) {}
+      }
+      return [];
+    }
+
+    Map<String, String> parseStringMap(dynamic raw) {
+      if (raw == null) return {};
+      if (raw is Map) {
+        return raw.map((k, v) => MapEntry(k.toString(), v?.toString() ?? ''));
+      }
+      if (raw is String && raw.isNotEmpty) {
+        try {
+          final decoded = json.decode(raw);
+          if (decoded is Map) {
+            return decoded.map((k, v) => MapEntry(k.toString(), v?.toString() ?? ''));
+          }
+        } catch (_) {}
+      }
+      return {};
+    }
+
+    Map<String, String?> parseNullableStringMap(dynamic raw) {
+      if (raw == null) return {};
+      if (raw is Map) {
+        return raw.map((k, v) => MapEntry(k.toString(), v?.toString()));
+      }
+      if (raw is String && raw.isNotEmpty) {
+        try {
+          final decoded = json.decode(raw);
+          if (decoded is Map) {
+            return decoded.map((k, v) => MapEntry(k.toString(), v?.toString()));
+          }
+        } catch (_) {}
+      }
+      return {};
+    }
+
+    Map<String, dynamic> parseLastMessage(dynamic raw) {
+      if (raw is Map) return Map<String, dynamic>.from(raw);
+      if (raw is String && raw.isNotEmpty) {
+        try {
+          final decoded = json.decode(raw);
+          if (decoded is Map) return Map<String, dynamic>.from(decoded);
+        } catch (_) {}
+        return {'content': raw, 'text': raw};
+      }
+      return {};
+    }
+
     return ChatChannel(
       id: map['id'] ?? '',
       type: map['type'] ?? 'direct',
-      displayName: map['display_name'],
-      displayAvatarUrl: map['display_avatar_url'],
-      createdBy: map['created_by'],
-      memberIds: List<String>.from(map['member_ids'] ?? []),
-      lastMessage: Map<String, dynamic>.from(map['last_message'] ?? {}),
-      lastMessageTime:
-          (map['last_message_time'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      unreadCounts: Map<String, int>.from(map['unread_counts'] ?? {}),
-      typingUsers: Map<String, bool>.from(map['typing_users'] ?? {}),
-      memberNames: Map<String, String>.from(map['member_names'] ?? {}),
-      memberAvatars: Map<String, String?>.from(map['member_avatars'] ?? {}),
-      verificationTypes: Map<String, String>.from(
-        map['verification_types'] ?? {},
-      ),
-      adminIds: List<String>.from(map['admin_ids'] ?? []),
-      restrictInfoUpdates: map['restrict_info_updates'] ?? false,
-      restrictMessaging: map['restrict_messaging'] ?? false,
-      streakCount: map['streak_count'] ?? 0,
-      lastSnapTime:
-          (map['last_snap_time'] as Map<String, dynamic>?)?.map(
-            (key, value) => MapEntry(key, (value as Timestamp).toDate()),
-          ) ??
-          {},
-      streakExpiry: (map['streak_expiry'] as Timestamp?)?.toDate(),
-      pinnedBy: List<String>.from(map['pinned_by'] ?? []),
-      archivedBy: List<String>.from(map['archived_by'] ?? []),
+      displayName: map['display_name'] ?? map['displayName'] ?? map['name'],
+      displayAvatarUrl: map['display_avatar_url'] ?? map['displayAvatarUrl'],
+      createdBy: map['created_by'] ?? map['createdBy'],
+      memberIds: parseList(map['member_ids'] ?? map['memberIds']),
+      lastMessage: parseLastMessage(map['last_message'] ?? map['lastMessage']),
+      lastMessageTime: parseTime(map['last_message_time'] ?? map['lastMessageTime'] ?? map['createdAt']),
+      unreadCounts: Map<String, int>.from(map['unread_counts'] ?? map['unreadCounts'] ?? {}),
+      typingUsers: Map<String, bool>.from(map['typing_users'] ?? map['typingUsers'] ?? {}),
+      memberNames: parseStringMap(map['member_names'] ?? map['memberNames']),
+      memberAvatars: parseNullableStringMap(map['member_avatars'] ?? map['memberAvatars']),
+      verificationTypes: parseStringMap(map['verification_types'] ?? map['verificationTypes']),
+      adminIds: parseList(map['admin_ids'] ?? map['adminIds']),
+      restrictInfoUpdates: map['restrict_info_updates'] ?? map['restrictInfoUpdates'] ?? false,
+      restrictMessaging: map['restrict_messaging'] ?? map['restrictMessaging'] ?? false,
+      streakCount: map['streak_count'] ?? map['streakCount'] ?? 0,
+      lastSnapTime: (map['last_snap_time'] as Map<String, dynamic>?)?.map(
+            (key, value) => MapEntry(key, parseTime(value)),
+          ) ?? {},
+      streakExpiry: map['streak_expiry'] != null ? parseTime(map['streak_expiry']) : null,
+      pinnedBy: parseList(map['pinned_by'] ?? map['pinnedBy']),
+      archivedBy: parseList(map['archived_by'] ?? map['archivedBy']),
     );
   }
 }

@@ -64,11 +64,11 @@ class AuditController {
     // Utility to log actions from other controllers
     static async logAction(action, details, targetType, targetId) {
         try {
-            const user = firebase.auth().currentUser;
+            const user = window.auth ? window.auth.currentUser : null;
             await db.collection('audit_logs').add({
-                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                adminId: user ? user.uid : 'system',
-                adminName: user ? user.displayName : 'System',
+                timestamp: new Date().toISOString(),
+                adminId: user ? (user.id || user.uid) : 'system',
+                adminName: user ? (user.fullName || user.displayName) : 'System',
                 adminEmail: user ? user.email : 'system@abuad.edu.ng',
                 action: action,
                 actionType: this.deriveActionType(action),

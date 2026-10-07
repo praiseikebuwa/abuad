@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 class ChatMessage {
   final String id;
   final String senderId;
@@ -7,26 +5,26 @@ class ChatMessage {
   final String type; // 'text', 'image', 'location', 'voice', 'giphy'
   final DateTime timestamp;
   final bool isRead;
-  final List<String> readBy; // List of user IDs who have read this message
-  final String? imageUrl; // For image and giphy messages
-  final double? imageWidth; // For proper aspect ratio
+  final List<String> readBy;
+  final String? imageUrl;
+  final double? imageWidth;
   final double? imageHeight;
-  final String? audioUrl; // For voice messages
-  final int? duration; // Duration in seconds
-  final double? latitude; // For location messages
+  final String? audioUrl;
+  final int? duration;
+  final double? latitude;
   final double? longitude;
   final String? replyToId;
   final String? replyToContent;
   final String? replyToSenderId;
-  final Map<String, String> reactions; // userId -> emoji
-  final List<String> mentions; // List of user IDs mentioned in the message
-  final bool isSnap; // Whether it disappears after viewing
+  final Map<String, String> reactions;
+  final List<String> mentions;
+  final bool isSnap;
   final bool isEdited;
   final bool isDeleted;
   final bool isPinned;
-  final List<String> savedBy; // List of user IDs who have saved this message in chat
-  final String? forwardedFrom; // Name or ID of original sender
-  final String? sharedPostId; // ID of a post shared in this message
+  final List<String> savedBy;
+  final String? forwardedFrom;
+  final String? sharedPostId;
 
   ChatMessage({
     required this.id,
@@ -63,7 +61,7 @@ class ChatMessage {
       'sender_id': senderId,
       'content': content,
       'type': type,
-      'created_at': Timestamp.fromDate(timestamp),
+      'created_at': timestamp.toIso8601String(),
       'read_by': readBy,
       if (imageUrl != null) 'image_url': imageUrl,
       if (imageWidth != null) 'image_width': imageWidth,
@@ -88,17 +86,23 @@ class ChatMessage {
   }
 
   factory ChatMessage.fromMap(Map<String, dynamic> map) {
+    DateTime ts = DateTime.now();
+    final rawTs = map['created_at'] ?? map['createdAt'];
+    if (rawTs is String) {
+      ts = DateTime.tryParse(rawTs) ?? DateTime.now();
+    }
+
     return ChatMessage(
       id: map['id'] ?? '',
-      senderId: map['sender_id'] ?? '',
-      content: map['content'] ?? '',
+      senderId: map['sender_id'] ?? map['senderId'] ?? '',
+      content: map['content'] ?? map['text'] ?? '',
       type: map['type'] ?? 'text',
-      timestamp: (map['created_at'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      timestamp: ts,
       isRead: false,
       readBy: List<String>.from(map['read_by'] ?? []),
-      imageUrl: map['image_url'],
-      imageWidth: map['image_width']?.toDouble(),
-      imageHeight: map['image_height']?.toDouble(),
+      imageUrl: map['image_url'] ?? map['mediaUrl'],
+      imageWidth: (map['image_width'] as num?)?.toDouble(),
+      imageHeight: (map['image_height'] as num?)?.toDouble(),
       audioUrl: map['audio_url'],
       duration: map['duration'],
       latitude: (map['latitude'] as num?)?.toDouble(),

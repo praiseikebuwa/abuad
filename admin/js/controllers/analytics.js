@@ -78,8 +78,8 @@ class AnalyticsController {
             d.setDate(now.getDate() - i);
             d.setHours(0, 0, 0, 0);
 
-            const start = firebase.firestore.Timestamp.fromDate(d);
-            const end = firebase.firestore.Timestamp.fromDate(new Date(d.getTime() + 24 * 60 * 60 * 1000));
+            const start = d.toISOString();
+            const end = new Date(d.getTime() + 24 * 60 * 60 * 1000).toISOString();
 
             labels.push(d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
             promises.push(
@@ -100,7 +100,7 @@ class AnalyticsController {
     initCharts(realData, growth) {
         const commonOptions = {
             responsive: true,
-            maintainAspectRatio: false,
+            maintainAspectRatio: true,
             plugins: {
                 legend: {
                     display: false
@@ -128,10 +128,10 @@ class AnalyticsController {
             return new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: growth.labels,
+                    labels: (growth && growth.labels) ? growth.labels : [],
                     datasets: [{
                         label: 'New Users',
-                        data: growth.data,
+                        data: (growth && growth.data) ? growth.data : [],
                         borderColor: '#2dd4bf',
                         backgroundColor: 'rgba(45, 212, 191, 0.1)',
                         borderWidth: 3,

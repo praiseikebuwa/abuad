@@ -1,7 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/services/api_client.dart';
 
 class BroadcastListener extends StatefulWidget {
   final Widget child;
@@ -12,29 +13,32 @@ class BroadcastListener extends StatefulWidget {
 }
 
 class _BroadcastListenerState extends State<BroadcastListener> {
-  StreamSubscription<QuerySnapshot>? _subscription;
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    _subscription = FirebaseFirestore.instance
-        .collection('announcements')
-        .where('active', isEqualTo: true)
-        .orderBy('created_at', descending: true)
-        .limit(1)
-        .snapshots()
-        .listen((snapshot) {
-          if (snapshot.docs.isNotEmpty) {
-            final doc = snapshot.docs.first;
-            final data = doc.data(); // Ensure correct type for data
-            _checkAndShowAlert(doc.id, data);
-          }
-        });
+    _fetchBroadcasts();
+    _timer = Timer.periodic(const Duration(minutes: 5), (_) => _fetchBroadcasts());
+  }
+
+  Future<void> _fetchBroadcasts() async {
+    if (!ApiClient.isAuthenticated) return;
+    try {
+      final response = await ApiClient.get('/announcements');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] is List && (data['data'] as List).isNotEmpty) {
+          final first = (data['data'] as List).first;
+          _checkAndShowAlert(first['id'] ?? '1', first as Map<String, dynamic>);
+        }
+      }
+    } catch (_) {}
   }
 
   @override
   void dispose() {
-    _subscription?.cancel();
+    _timer?.cancel();
     super.dispose();
   }
 

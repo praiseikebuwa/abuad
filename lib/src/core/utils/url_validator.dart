@@ -1,3 +1,6 @@
+import 'package:flutter/foundation.dart';
+import '../services/api_client.dart';
+
 class UrlValidator {
   /// Returns true if the [url] is a well-formed absolute URL with a host (authority).
   static bool isValidUrl(String? url) {
@@ -34,5 +37,15 @@ class UrlValidator {
         : 'https://$trimmed';
 
     return isValidUrl(withScheme) ? withScheme : null;
+  }
+
+  static String formatImageUrl(String? url) {
+    if (url == null || url.trim().isEmpty) return '';
+    final trimmed = url.trim();
+    if (kIsWeb && (trimmed.contains('r2.dev/') || trimmed.contains('cloudflarestorage.com/'))) {
+      final base = ApiClient.baseUrl;
+      return '$base/media/proxy?url=${Uri.encodeComponent(trimmed)}';
+    }
+    return trimmed;
   }
 }

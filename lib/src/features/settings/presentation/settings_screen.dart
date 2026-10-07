@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../auth/data/auth_repository.dart';
-import '../../user/data/user_repository.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/providers/shared_preferences_provider.dart';
 
@@ -113,12 +112,13 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           _SettingsTile(
-            icon: Icons.grid_view_outlined,
-            title: "App Icon",
-            subtitle: "Change the app's home screen icon",
+            icon: Icons.chat_bubble_outline_rounded,
+            title: "Chat & Stories",
+            subtitle: "Wallpapers, theme accents, privacy, & media",
             showArrow: true,
-            onTap: () => context.push('/settings/app-icon'),
+            onTap: () => context.push('/chat/settings'),
           ),
+
 
           const SizedBox(height: 24),
           _SectionHeader(title: "NOTIFICATIONS"),
@@ -674,43 +674,50 @@ class _SettingsTile extends StatelessWidget {
         ),
         boxShadow: AppColors.softShadow,
       ),
-      child: ListTile(
-        onTap: onTap,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: (iconColor ?? theme.colorScheme.primary).withOpacity(0.1),
-            shape: BoxShape.circle,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        child: ListTile(
+          onTap: onTap,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
           ),
-          child: Icon(
-            icon,
-            color: iconColor ?? theme.colorScheme.primary,
-            size: 20,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          leading: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: (iconColor ?? theme.colorScheme.primary).withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              color: iconColor ?? theme.colorScheme.primary,
+              size: 20,
+            ),
           ),
+          title: Text(
+            title,
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: textColor ?? theme.textTheme.bodyLarge?.color,
+              fontSize: 15,
+            ),
+          ),
+          subtitle: subtitle != null
+              ? Text(
+                  subtitle!,
+                  style: TextStyle(
+                    color: theme.textTheme.bodySmall?.color,
+                    fontSize: 13,
+                  ),
+                )
+              : null,
+          trailing:
+              trailing ??
+              (showArrow
+                  ? Icon(Icons.chevron_right, color: Colors.grey[400])
+                  : null),
         ),
-        title: Text(
-          title,
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            color: textColor ?? theme.textTheme.bodyLarge?.color,
-            fontSize: 15,
-          ),
-        ),
-        subtitle: subtitle != null
-            ? Text(
-                subtitle!,
-                style: TextStyle(
-                  color: theme.textTheme.bodySmall?.color,
-                  fontSize: 13,
-                ),
-              )
-            : null,
-        trailing:
-            trailing ??
-            (showArrow
-                ? Icon(Icons.chevron_right, color: Colors.grey[400])
-                : null),
       ),
     );
   }

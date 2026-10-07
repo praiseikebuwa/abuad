@@ -75,7 +75,7 @@ class MarketplaceDetailScreen extends ConsumerWidget {
                                   height: 8,
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
-                                    color: Colors.white.withOpacity(0.8),
+                                    color: Colors.white.withValues(alpha: 0.8),
                                   ),
                                 ),
                               ),
@@ -153,7 +153,7 @@ class MarketplaceDetailScreen extends ConsumerWidget {
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.grey.withOpacity(0.1),
+                        color: Colors.grey.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
@@ -202,7 +202,7 @@ class MarketplaceDetailScreen extends ConsumerWidget {
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
                             color: isDark
-                                ? Colors.white.withOpacity(0.05)
+                                ? Colors.white.withValues(alpha: 0.05)
                                 : Colors.grey[100],
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
@@ -280,7 +280,7 @@ class MarketplaceDetailScreen extends ConsumerWidget {
           color: theme.scaffoldBackgroundColor,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 10,
               offset: const Offset(0, -5),
             ),

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../auth/data/auth_repository.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../core/services/api_client.dart';
 
 class HelpCenterScreen extends StatelessWidget {
   const HelpCenterScreen({super.key});
@@ -76,12 +76,11 @@ class _SupportFormScreenState extends ConsumerState<SupportFormScreen> {
     setState(() => _isSubmitting = true);
     try {
       final user = ref.read(authRepositoryProvider).currentUser;
-      await FirebaseFirestore.instance.collection('support_tickets').add({
+      await ApiClient.post('/reports', {
         'userId': user?.uid,
         'userEmail': user?.email,
         'type': widget.type,
         'message': _controller.text.trim(),
-        'timestamp': FieldValue.serverTimestamp(),
         'status': 'open',
       });
 

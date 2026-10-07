@@ -128,16 +128,16 @@ class _PremiumVideoPlayerState extends ConsumerState<PremiumVideoPlayer> {
             if (_isVfxActive)
               Positioned.fill(
                 child: Container(
-                  color: Colors.amber.withOpacity(0.12),
+                  color: Colors.amber.withValues(alpha: 0.12),
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 0.1, sigmaY: 0.1),
                     child: Container(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: [
-                            Colors.blue.withOpacity(0.05),
+                            Colors.blue.withValues(alpha: 0.05),
                             Colors.transparent,
-                            Colors.orange.withOpacity(0.05),
+                            Colors.orange.withValues(alpha: 0.05),
                           ],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
@@ -295,7 +295,7 @@ class _PremiumVideoPlayerState extends ConsumerState<PremiumVideoPlayer> {
                         ? widget.post.authorHandle
                         : '@${widget.post.authorHandle}',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.7),
+                      color: Colors.white.withValues(alpha: 0.7),
                       fontSize: 14,
                       shadows: const [
                         Shadow(blurRadius: 10, color: Colors.black54),
@@ -376,7 +376,7 @@ class _PremiumVideoPlayerState extends ConsumerState<PremiumVideoPlayer> {
               _fitMode == BoxFit.cover
                   ? Icons.zoom_in_map_rounded
                   : Icons.zoom_out_map_rounded,
-              color: Colors.white.withOpacity(0.8),
+              color: Colors.white.withValues(alpha: 0.8),
               size: 26,
             ),
             onPressed: () {
@@ -394,7 +394,7 @@ class _PremiumVideoPlayerState extends ConsumerState<PremiumVideoPlayer> {
               Icons.auto_awesome_rounded,
               color: _isVfxActive
                   ? Colors.amber
-                  : Colors.white.withOpacity(0.8),
+                  : Colors.white.withValues(alpha: 0.8),
               size: 26,
             ),
             onPressed: () {

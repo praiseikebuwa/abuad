@@ -39,7 +39,6 @@ class ReelControllerManager extends Notifier<ReelControllerState> {
   );
   final Set<String> _initializingIds = <String>{};
   final Map<String, StreamSubscription<FileResponse>> _cacheSubscriptions = {};
-  Set<String> _activeWindowIds = <String>{};
 
   @override
   ReelControllerState build() {
@@ -67,7 +66,6 @@ class ReelControllerManager extends Notifier<ReelControllerState> {
     for (int i = start; i <= end; i++) {
       activeIds.add(posts[i].id);
     }
-    _activeWindowIds = activeIds;
 
     // 2. Dispose and remove controllers for posts outside the window
     final updatedControllers = Map<String, VideoPlayerController>.from(state.controllers);
@@ -102,39 +100,22 @@ class ReelControllerManager extends Notifier<ReelControllerState> {
     if (state.controllers.containsKey(post.id) || _initializingIds.contains(post.id)) return;
 
     _initializingIds.add(post.id);
-    final controller = await _buildControllerForUrl(post.id, post.mediaUrl);
 
-    if (!ref.mounted || !_activeWindowIds.contains(post.id)) {
-      await controller.dispose();
-      _initializingIds.remove(post.id);
-      return;
-    }
-    if (state.controllers.containsKey(post.id)) {
-      await controller.dispose();
-      _initializingIds.remove(post.id);
-      return;
-    }
+    // Create and register controller immediately so the UI tree gets a valid controller on frame 0
+    final controller = VideoPlayerController.networkUrl(
+      Uri.parse(post.mediaUrl),
+      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+    );
 
     state = state.copyWith(
       controllers: Map<String, VideoPlayerController>.from(state.controllers)..[post.id] = controller,
     );
+
+    // Background disk cache prime
+    _primeDiskCache(post.id, post.mediaUrl);
+
+    // Kick off initialization immediately
     _initController(post.id, controller);
-  }
-
-  Future<VideoPlayerController> _buildControllerForUrl(String postId, String mediaUrl) async {
-    final cached = await _cacheManager.getFileFromCache(mediaUrl);
-    if (cached != null) {
-      return VideoPlayerController.file(
-        cached.file,
-        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-      );
-    }
-
-    _primeDiskCache(postId, mediaUrl);
-    return VideoPlayerController.networkUrl(
-      Uri.parse(mediaUrl),
-      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-    );
   }
 
   void _primeDiskCache(String postId, String mediaUrl) {
@@ -177,7 +158,10 @@ class ReelControllerManager extends Notifier<ReelControllerState> {
     _cacheSubscriptions.remove(post.id)?.cancel();
     _initializingIds.remove(post.id);
 
-    final controller = await _buildControllerForUrl(post.id, post.mediaUrl);
+    final controller = VideoPlayerController.networkUrl(
+      Uri.parse(post.mediaUrl),
+      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+    );
     if (!ref.mounted) {
       await controller.dispose();
       return;

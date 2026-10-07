@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
-import 'package:dio/dio.dart';
-import 'package:gal/gal.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:toastification/toastification.dart';
+import '../../../../core/services/media_saver.dart';
 
 class FullScreenVideoView extends StatefulWidget {
   final String videoUrl;
@@ -39,48 +37,27 @@ class _FullScreenVideoViewState extends State<FullScreenVideoView> {
   }
 
   Future<void> _saveVideo() async {
-    try {
-      final hasAccess = await Gal.hasAccess();
-      if (!hasAccess) {
-        await Gal.requestAccess();
-      }
+    if (mounted) {
+      toastification.show(
+        context: context,
+        title: const Text('Downloading...'),
+        type: ToastificationType.info,
+        autoCloseDuration: const Duration(seconds: 2),
+      );
+    }
 
-      if (mounted) {
-        toastification.show(
-          context: context,
-          title: const Text('Downloading...'),
-          type: ToastificationType.info,
-          autoCloseDuration: const Duration(seconds: 2),
-        );
-      }
+    final success = await MediaSaver.saveVideo(widget.videoUrl);
 
-      final tempDir = await getTemporaryDirectory();
-      final path =
-          '${tempDir.path}/ABUAD_VIDEO_${DateTime.now().millisecondsSinceEpoch}.mp4';
-
-      await Dio().download(widget.videoUrl, path);
-
-      await Gal.putVideo(path);
-
-      if (mounted) {
-        toastification.show(
-          context: context,
-          title: const Text('Success!'),
-          description: const Text('Video saved to gallery.'),
-          type: ToastificationType.success,
-          autoCloseDuration: const Duration(seconds: 3),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        toastification.show(
-          context: context,
-          title: const Text('Error'),
-          description: Text(e.toString()),
-          type: ToastificationType.error,
-          autoCloseDuration: const Duration(seconds: 3),
-        );
-      }
+    if (mounted) {
+      toastification.show(
+        context: context,
+        title: Text(success ? 'Success!' : 'Error'),
+        description: Text(
+          success ? 'Video saved to gallery.' : 'Failed to save video.',
+        ),
+        type: success ? ToastificationType.success : ToastificationType.error,
+        autoCloseDuration: const Duration(seconds: 3),
+      );
     }
   }
 

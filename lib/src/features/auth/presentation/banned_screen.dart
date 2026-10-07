@@ -24,7 +24,7 @@ class BannedScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 16),
             const Text(
-              'Your account has been suspended for violating ABUAD Nest community guidelines. If you believe this is a mistake, please contact administration.',
+              'Your account has been suspended for violating Abuad life community guidelines. If you believe this is a mistake, please contact administration.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 16),
             ),

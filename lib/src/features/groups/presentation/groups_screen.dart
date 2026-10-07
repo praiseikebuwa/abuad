@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import '../../auth/data/auth_repository.dart';
 import '../data/group_repository.dart';
 import 'create_group_screen.dart';
 import '../../notifications/presentation/widgets/notification_icon.dart';
+
 
 class GroupsScreen extends ConsumerWidget {
   const GroupsScreen({super.key});
@@ -124,7 +125,7 @@ class GroupsScreen extends ConsumerWidget {
                               child: OutlinedButton(
                                 onPressed: () {
                                   final userId =
-                                      FirebaseAuth.instance.currentUser?.uid;
+                                      ref.read(authRepositoryProvider).currentUserId;
                                   if (userId != null) {
                                     ref
                                         .read(groupRepositoryProvider)

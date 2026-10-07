@@ -1,183 +1,155 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_sign_in/google_sign_in.dart';
+import '../../../core/services/api_client.dart';
+import '../../user/data/user_repository.dart';
+export '../../user/data/user_repository.dart' show AppUser, userRepositoryProvider, userProvider, isFollowingProvider, isBlockedProvider;
+import 'package:shared_preferences/shared_preferences.dart';
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
-  return AuthRepository(FirebaseAuth.instance);
+  return AuthRepository();
 });
 
-final authStateChangesProvider = StreamProvider<User?>((ref) {
+final currentUserProvider = StreamProvider<AppUser?>((ref) {
   return ref.watch(authRepositoryProvider).authStateChanges;
 });
 
+final currentUserIdProvider = Provider<String?>((ref) {
+  return ref.watch(authRepositoryProvider).currentUserId;
+});
+
+
 class AuthRepository {
-  final FirebaseAuth _auth;
+  final _controller = StreamController<AppUser?>.broadcast();
+  AppUser? _currentUser;
 
-  AuthRepository(this._auth);
+  AuthRepository();
 
-  Stream<User?> get authStateChanges => _auth.authStateChanges();
+  AppUser? get currentUser => _currentUser;
+  String? get currentUserId => _currentUser?.uid;
+  Stream<AppUser?> get authStateChanges => _controller.stream;
 
-  User? get currentUser => _auth.currentUser;
+  Future<void> init() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final accessToken = prefs.getString('accessToken');
+      final refreshToken = prefs.getString('refreshToken');
 
-  // Check if user has an email/password provider linked
-  bool get isPasswordLinked {
-    final user = _auth.currentUser;
-    if (user == null) return false;
-    return user.providerData.any((info) => info.providerId == 'password');
+      if (accessToken != null && accessToken.isNotEmpty) {
+        await ApiClient.setTokens(accessToken: accessToken, refreshToken: refreshToken);
+        final res = await ApiClient.get('/auth/me');
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body);
+          if (data['success'] == true && data['data'] != null) {
+            _currentUser = AppUser.fromMap(data['data']);
+            _controller.add(_currentUser);
+            return;
+          }
+        }
+        // If access token expired, try refreshing token
+        if (refreshToken != null) {
+          final refreshed = await ApiClient.refreshToken();
+          if (refreshed) {
+            final res2 = await ApiClient.get('/auth/me');
+            if (res2.statusCode == 200) {
+              final data2 = jsonDecode(res2.body);
+              if (data2['success'] == true && data2['data'] != null) {
+                _currentUser = AppUser.fromMap(data2['data']);
+                _controller.add(_currentUser);
+                return;
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('AuthRepository.init error: $e');
+    }
   }
 
-  // Sign In with Email and Password
-  Future<void> signInWithEmailAndPassword(String email, String password) async {
-    await _auth.signInWithEmailAndPassword(email: email, password: password);
+  void setCurrentUser(AppUser? user) {
+    _currentUser = user;
+    _controller.add(user);
   }
 
-  // Sign Up with Email and Password
-  Future<void> signUpWithEmailAndPassword(String email, String password) async {
-    await _auth.createUserWithEmailAndPassword(
-      email: email,
-      password: password,
-    );
-    // Note: Profile creation will be handled by a Cloud Function or manually after this call
+  Future<Map<String, dynamic>?> signInWithEmailAndPassword(String email, String password) async {
+    final response = await ApiClient.post('/auth/login', {
+      'emailOrUsername': email,
+      'password': password,
+    });
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      if (data['success'] == true) {
+        final accessToken = data['data']['accessToken'];
+        final refreshToken = data['data']['refreshToken'];
+        ApiClient.setTokens(accessToken: accessToken, refreshToken: refreshToken);
+        _currentUser = AppUser.fromMap(data['data']['user']);
+        _controller.add(_currentUser);
+        return data['data']['user'];
+      }
+    }
+    throw Exception('Login failed: ${response.body}');
   }
 
-  // Sign Out
-  Future<void> signOut() async {
-    await _auth.signOut();
-  }
-
-  // Password Reset
-  Future<void> sendPasswordResetEmail(String email) async {
-    final actionCodeSettings = ActionCodeSettings(
-      url: 'https://abuadapp.web.app/login',
-      handleCodeInApp: true,
-      androidPackageName: 'com.egcasy.abuad',
-      androidInstallApp: true,
-      androidMinimumVersion: '1',
-      iOSBundleId: 'com.egcasy.abuad',
-    );
-    await _auth.sendPasswordResetEmail(
-      email: email,
-      actionCodeSettings: actionCodeSettings,
-    );
-  }
-
-  // Email Verification
-  Future<void> sendEmailVerification() async {
-    final user = _auth.currentUser;
-    if (user == null) return;
-
-    final actionCodeSettings = ActionCodeSettings(
-      url: 'https://abuadapp.web.app/login',
-      handleCodeInApp: true,
-      androidPackageName: 'com.egcasy.abuad',
-      androidInstallApp: true,
-      androidMinimumVersion: '1',
-      iOSBundleId: 'com.egcasy.abuad',
-    );
-
-    await user.sendEmailVerification(actionCodeSettings);
-  }
-
-  // Change Password
-  Future<void> changePassword({
-    required String currentPassword,
-    required String newPassword,
+  Future<Map<String, dynamic>?> signUpWithEmailAndPassword({
+    required String email,
+    required String password,
+    required String fullName,
+    required String username,
   }) async {
-    final user = _auth.currentUser;
-    if (user == null) throw Exception('No user logged in');
+    final response = await ApiClient.post('/auth/register', {
+      'email': email,
+      'password': password,
+      'fullName': fullName,
+      'username': username,
+    });
 
-    final email = user.email;
-    if (email == null) throw Exception('User email not found');
-
-    // Re-authenticate user
-    final credential = EmailAuthProvider.credential(
-      email: email,
-      password: currentPassword,
-    );
-
-    try {
-      await user.reauthenticateWithCredential(credential);
-      await user.updatePassword(newPassword);
-    } catch (e) {
-      if (e is FirebaseAuthException) {
-        if (e.code == 'wrong-password') {
-          throw Exception('Incorrect current password');
-        } else if (e.code == 'weak-password') {
-          throw Exception('New password is too weak');
-        }
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      if (data['success'] == true) {
+        final accessToken = data['data']['accessToken'];
+        final refreshToken = data['data']['refreshToken'];
+        ApiClient.setTokens(accessToken: accessToken, refreshToken: refreshToken);
+        _currentUser = AppUser.fromMap(data['data']['user']);
+        _controller.add(_currentUser);
+        return data['data']['user'];
       }
-      throw Exception('Failed to change password: $e');
     }
+    throw Exception('Registration failed: ${response.body}');
   }
 
-  // Google Sign In
-  Future<UserCredential?> signInWithGoogle() async {
-    try {
-      if (kIsWeb) {
-        // Use signInWithPopup for Web - more reliable and doesn't require GoogleSignIn package config
-        final googleProvider = GoogleAuthProvider();
-        return await _auth.signInWithPopup(googleProvider);
-      }
-
-      // Mobile/Desktop flow
-      final GoogleSignIn googleSignIn = GoogleSignIn();
-      final googleUser = await googleSignIn.signIn();
-
-      if (googleUser == null) return null;
-
-      final googleAuth = await googleUser.authentication;
-
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      return await _auth.signInWithCredential(credential);
-    } catch (e) {
-      debugPrint('Google Sign-In Error: $e');
-      throw Exception('Google Sign-In failed: $e');
-    }
+  Future<void> signInWithGoogle() async {
+    throw UnimplementedError('Google sign-in is disabled. Please sign in with email and password.');
   }
 
-  // Link Email/Password to current account
-  Future<void> linkWithEmailPassword(String email, String password) async {
-    final user = _auth.currentUser;
-    if (user == null) throw Exception('No user logged in');
+  bool get isPasswordLinked => true;
 
-    final credential = EmailAuthProvider.credential(
-      email: email,
-      password: password,
-    );
-
-    try {
-      await user.linkWithCredential(credential);
-    } catch (e) {
-      if (e is FirebaseAuthException) {
-        if (e.code == 'credential-already-in-use') {
-          throw Exception('This email is already linked to another account.');
-        } else if (e.code == 'email-already-in-use') {
-          throw Exception('This email address is already in use.');
-        }
-      }
-      throw Exception('Failed to link account: $e');
-    }
+  Future<void> changePassword({String? currentPassword, String? newPassword}) async {
+    await ApiClient.post('/auth/change-password', {
+      'currentPassword': currentPassword,
+      'newPassword': newPassword,
+    });
   }
 
-  // Delete Account
+  Future<void> linkWithEmailPassword(String email, String password) async {}
+
   Future<void> deleteAccount() async {
-    final user = _auth.currentUser;
-    if (user == null) throw Exception('No user logged in');
+    await ApiClient.post('/auth/delete-account', {});
+  }
 
+  Future<void> signOut() async {
     try {
-      await user.delete();
-    } catch (e) {
-      if (e is FirebaseAuthException && e.code == 'requires-recent-login') {
-        throw Exception(
-          'Please log out and log back in to delete your account.',
-        );
-      }
-      throw Exception('Failed to delete account: $e');
-    }
+      await ApiClient.post('/auth/logout', {});
+    } catch (_) {}
+    ApiClient.clearTokens();
+    _currentUser = null;
+    _controller.add(null);
+  }
+
+  Future<void> sendPasswordResetEmail(String email) async {
+    await ApiClient.post('/auth/forgot-password', {'email': email});
   }
 }
+

@@ -31,9 +31,9 @@ class BroadcastController {
                 title: title,
                 body: message,
                 type: type,
-                senderId: firebase.auth().currentUser.uid,
+                senderId: window.auth && window.auth.currentUser ? (window.auth.currentUser.id || window.auth.currentUser.uid) : 'admin',
                 senderName: 'Admin',
-                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                timestamp: new Date().toISOString(),
                 active: true
             });
 

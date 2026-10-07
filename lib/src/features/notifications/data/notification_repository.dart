@@ -1,10 +1,14 @@
+import 'dart:async';
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import '../../../core/services/api_client.dart';
 import '../domain/notification.dart';
 
 final notificationRepositoryProvider = Provider<NotificationRepository>((ref) {
-  return NotificationRepository(FirebaseFirestore.instance);
+  final repo = NotificationRepository();
+  ref.onDispose(() => repo.dispose());
+  return repo;
 });
 
 final userNotificationsProvider = StreamProvider<List<AppNotification>>((ref) {
@@ -13,40 +17,52 @@ final userNotificationsProvider = StreamProvider<List<AppNotification>>((ref) {
 });
 
 class NotificationRepository {
-  final FirebaseFirestore _firestore;
+  final _controller = StreamController<List<AppNotification>>.broadcast();
+  List<AppNotification> _cachedNotifications = [];
+  bool _hasFetched = false;
 
-  NotificationRepository(this._firestore);
+  NotificationRepository([dynamic _]);
 
-  String? get currentUserId => FirebaseAuth.instance.currentUser?.uid;
+  String? get currentUserId => null;
 
-  // Watch notifications for current user
   Stream<List<AppNotification>> watchNotifications() {
-    final uid = currentUserId;
-    if (uid == null) return Stream.value([]);
-
-    return _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('notifications')
-        .orderBy('timestamp', descending: true)
-        .limit(100)
-        .snapshots()
-        .map(
-          (snapshot) => snapshot.docs
-              .map((doc) => AppNotification.fromMap(doc.data()))
-              .toList(),
-        );
+    // Emit current cache immediately if available
+    if (_hasFetched) {
+      scheduleMicrotask(() {
+        if (!_controller.isClosed) {
+          _controller.add(List.unmodifiable(_cachedNotifications));
+        }
+      });
+    }
+    // Fetch fresh from backend
+    fetchNotifications();
+    return _controller.stream;
   }
 
-  // Use subcollection approach for potentially better write rules scaling?
-  // Let's stick to root collection 'notifications' with recipient_id index for simplicity
-  // unless we want strict sharding.
-  // Actually, better to query root collection so we have one global place,
-  // as long as we index recipient_id.
-
-  // UPDATE: User requested "add all this... update firestore rules"
-  // so let's use a root collection 'notifications'
-  // where document ID is auto-generated and contains recipient_id field.
+  Future<List<AppNotification>> fetchNotifications() async {
+    try {
+      final response = await ApiClient.get('/utilities/notifications');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] is List) {
+          _cachedNotifications = (data['data'] as List)
+              .map((x) => AppNotification.fromMap(x as Map<String, dynamic>))
+              .toList();
+          _hasFetched = true;
+          if (!_controller.isClosed) {
+            _controller.add(List.unmodifiable(_cachedNotifications));
+          }
+          return _cachedNotifications;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching notifications: $e');
+    }
+    if (!_hasFetched && !_controller.isClosed) {
+      _controller.add([]);
+    }
+    return _cachedNotifications;
+  }
 
   Future<void> sendNotification({
     required String recipientId,
@@ -58,54 +74,95 @@ class NotificationRepository {
     required String body,
     String? relatedId,
   }) async {
-    final docRef = _firestore
-        .collection('users')
-        .doc(recipientId)
-        .collection('notifications')
-        .doc();
-
-    final notification = AppNotification(
-      id: docRef.id,
-      recipientId: recipientId,
-      senderId: senderId,
-      senderName: senderName,
-      senderAvatarUrl: senderAvatarUrl,
-      type: type,
-      title: title,
-      body: body,
-      relatedId: relatedId,
-      timestamp: DateTime.now(),
-      isRead: false,
-    );
-
-    await docRef.set(notification.toMap());
+    if (recipientId.isEmpty || recipientId == senderId) {
+      return;
+    }
+    try {
+      await ApiClient.post('/utilities/notifications', {
+        'recipientId': recipientId,
+        'senderId': senderId,
+        'senderName': senderName,
+        'senderAvatarUrl': senderAvatarUrl,
+        'title': title,
+        'body': body,
+        'type': type.name,
+        'relatedId': relatedId,
+      });
+    } catch (e) {
+      debugPrint('Error sending notification: $e');
+    }
   }
 
   Future<void> markAsRead(String notificationId) async {
-    final uid = currentUserId;
-    if (uid == null) return;
-    await _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('notifications')
-        .doc(notificationId)
-        .update({'is_read': true});
+    // Optimistic update
+    final index = _cachedNotifications.indexWhere((n) => n.id == notificationId);
+    if (index != -1) {
+      _cachedNotifications[index] = _cachedNotifications[index].copyWith(isRead: true);
+      if (!_controller.isClosed) {
+        _controller.add(List.unmodifiable(_cachedNotifications));
+      }
+    }
+    try {
+      await ApiClient.patch('/utilities/notifications/$notificationId/read', {});
+    } catch (e) {
+      debugPrint('Error marking notification as read: $e');
+    }
+  }
+
+  Future<void> markAllAsRead() async {
+    // Optimistic update
+    _cachedNotifications = _cachedNotifications
+        .map((n) => n.copyWith(isRead: true))
+        .toList();
+    if (!_controller.isClosed) {
+      _controller.add(List.unmodifiable(_cachedNotifications));
+    }
+    try {
+      await ApiClient.patch('/utilities/notifications/read-all', {});
+    } catch (e) {
+      debugPrint('Error marking all notifications as read: $e');
+    }
+  }
+
+  Future<void> deleteNotification(String notificationId) async {
+    // Optimistic update
+    _cachedNotifications.removeWhere((n) => n.id == notificationId);
+    if (!_controller.isClosed) {
+      _controller.add(List.unmodifiable(_cachedNotifications));
+    }
+    try {
+      await ApiClient.delete('/utilities/notifications/$notificationId');
+    } catch (e) {
+      debugPrint('Error deleting notification: $e');
+    }
   }
 
   Future<void> deleteNotifications(List<String> notificationIds) async {
-    final uid = currentUserId;
-    if (uid == null) return;
-
-    final batch = _firestore.batch();
-    final collection = _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('notifications');
-
-    for (final id in notificationIds) {
-      batch.delete(collection.doc(id));
+    final idSet = notificationIds.toSet();
+    _cachedNotifications.removeWhere((n) => idSet.contains(n.id));
+    if (!_controller.isClosed) {
+      _controller.add(List.unmodifiable(_cachedNotifications));
     }
+    try {
+      await ApiClient.delete('/utilities/notifications', {'ids': notificationIds});
+    } catch (e) {
+      debugPrint('Error deleting notifications: $e');
+    }
+  }
 
-    await batch.commit();
+  Future<void> clearAllNotifications() async {
+    _cachedNotifications.clear();
+    if (!_controller.isClosed) {
+      _controller.add([]);
+    }
+    try {
+      await ApiClient.delete('/utilities/notifications', {});
+    } catch (e) {
+      debugPrint('Error clearing all notifications: $e');
+    }
+  }
+
+  void dispose() {
+    _controller.close();
   }
 }

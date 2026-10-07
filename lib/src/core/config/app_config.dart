@@ -1,11 +1,15 @@
+import '../services/api_client.dart';
+
 class AppConfig {
-  /// OpenAI API Key for content moderation. 
-  /// In a production app, this should be stored securely (e.g., Environment Variables or Secrets Manager).
-  static const String openAiApiKey = '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';
-  
-  /// Base URL for OpenAI API
-  static const String openAiBaseUrl = 'https://api.openai.com/v1';
+  /// Base URL for backend API
+  static String get apiBaseUrl => ApiClient.baseUrl;
+
+  /// Enable AI Content Moderation via Backend Cloudflare Workers AI
+  static const bool enableAiModeration = true;
 
   /// Whether to block posts entirely or just flag them
   static const bool blockFlaggedPosts = false;
+
+  /// Cloudflare Workers AI Model used on backend
+  static const String cloudflareAiModel = '@cf/meta/llama-3-8b-instruct';
 }

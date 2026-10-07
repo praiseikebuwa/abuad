@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/utils/url_validator.dart';
-import '../../user/data/user_repository.dart';
+import '../../auth/data/auth_repository.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/firebase_storage_service.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -28,38 +28,73 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   late TextEditingController _facebookController;
   late TextEditingController _twitterController;
   late TextEditingController _instagramController;
-  late TextEditingController _linkedinController;
+  late TextEditingController _whatsappController;
   late TextEditingController _tiktokController;
   late TextEditingController _youtubeController;
   late TextEditingController _snapchatController;
   late TextEditingController _githubController;
   late TextEditingController _twitchController;
+  bool _isPopulated = false;
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    final user = ref.read(currentUserProvider).value;
-    _displayNameController = TextEditingController(
-      text: user?.displayName ?? '',
-    );
-    _bioController = TextEditingController(text: user?.bio ?? '');
-    _handleController = TextEditingController(text: user?.handle ?? '');
-    _collegeController = TextEditingController(text: user?.college ?? '');
-    _departmentController = TextEditingController(text: user?.department ?? '');
-    _phoneController = TextEditingController(text: user?.phoneNumber ?? '');
-    _websiteController = TextEditingController(text: user?.websiteUrl ?? '');
-    _facebookController = TextEditingController(text: user?.facebookUrl ?? '');
-    _twitterController = TextEditingController(text: user?.twitterUrl ?? '');
-    _instagramController = TextEditingController(
-      text: user?.instagramUrl ?? '',
-    );
-    _linkedinController = TextEditingController(text: user?.linkedinUrl ?? '');
-    _tiktokController = TextEditingController(text: user?.tiktokUrl ?? '');
-    _youtubeController = TextEditingController(text: user?.youtubeUrl ?? '');
-    _snapchatController = TextEditingController(text: user?.snapchatUrl ?? '');
-    _githubController = TextEditingController(text: user?.githubUrl ?? '');
-    _twitchController = TextEditingController(text: user?.twitchUrl ?? '');
+    _displayNameController = TextEditingController();
+    _bioController = TextEditingController();
+    _handleController = TextEditingController();
+    _collegeController = TextEditingController();
+    _departmentController = TextEditingController();
+    _phoneController = TextEditingController();
+    _websiteController = TextEditingController();
+    _facebookController = TextEditingController();
+    _twitterController = TextEditingController();
+    _instagramController = TextEditingController();
+    _whatsappController = TextEditingController();
+    _tiktokController = TextEditingController();
+    _youtubeController = TextEditingController();
+    _snapchatController = TextEditingController();
+    _githubController = TextEditingController();
+    _twitchController = TextEditingController();
+
+    final authRepo = ref.read(authRepositoryProvider);
+    final initialUser = authRepo.currentUser ?? ref.read(currentUserProvider).value;
+    if (initialUser != null) {
+      _populateControllers(initialUser);
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final currentUid = authRepo.currentUser?.uid ?? authRepo.currentUserId;
+      if (currentUid != null) {
+        final freshUser = await ref.read(userRepositoryProvider).getUserById(currentUid);
+        if (freshUser != null && mounted) {
+          setState(() {
+            _populateControllers(freshUser, force: true);
+          });
+        }
+      }
+    });
+  }
+
+  void _populateControllers(AppUser user, {bool force = false}) {
+    if (_isPopulated && !force) return;
+    _isPopulated = true;
+    _displayNameController.text = user.displayName;
+    _bioController.text = user.bio ?? '';
+    _handleController.text = user.handle;
+    _collegeController.text = user.college ?? '';
+    _departmentController.text = user.department ?? '';
+    _phoneController.text = user.phoneNumber ?? '';
+    _websiteController.text = user.websiteUrl ?? '';
+    _facebookController.text = user.facebookUrl ?? '';
+    _twitterController.text = user.twitterUrl ?? '';
+    _instagramController.text = user.instagramUrl ?? '';
+    _whatsappController.text = user.whatsappUrl ?? '';
+    _tiktokController.text = user.tiktokUrl ?? '';
+    _youtubeController.text = user.youtubeUrl ?? '';
+    _snapchatController.text = user.snapchatUrl ?? '';
+    _githubController.text = user.githubUrl ?? '';
+    _twitchController.text = user.twitchUrl ?? '';
   }
 
   @override
@@ -74,7 +109,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     _facebookController.dispose();
     _twitterController.dispose();
     _instagramController.dispose();
-    _linkedinController.dispose();
+    _whatsappController.dispose();
     _tiktokController.dispose();
     _youtubeController.dispose();
     _snapchatController.dispose();
@@ -84,8 +119,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   }
 
   Future<void> _pickAndUploadImage(bool isAvatar) async {
-    final user = ref.read(currentUserProvider).value;
-    if (user == null) return;
+    final authRepo = ref.read(authRepositoryProvider);
+    final userUid = authRepo.currentUser?.uid ?? authRepo.currentUserId ?? ref.read(currentUserProvider).value?.uid;
+    if (userUid == null) return;
 
     final picker = ImagePicker();
     final ImageSource? source = await showModalBottomSheet<ImageSource>(
@@ -94,15 +130,21 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         top: false,
         child: Wrap(
           children: [
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: const Text('Choose from gallery'),
-              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            Material(
+              color: Colors.transparent,
+              child: ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('Choose from gallery'),
+                onTap: () => Navigator.pop(context, ImageSource.gallery),
+              ),
             ),
-            ListTile(
-              leading: const Icon(Icons.camera_alt),
-              title: const Text('Take a photo'),
-              onTap: () => Navigator.pop(context, ImageSource.camera),
+            Material(
+              color: Colors.transparent,
+              child: ListTile(
+                leading: const Icon(Icons.camera_alt),
+                title: const Text('Take a photo'),
+                onTap: () => Navigator.pop(context, ImageSource.camera),
+              ),
             ),
           ],
         ),
@@ -120,21 +162,28 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
       if (pickedFile != null && mounted) {
         setState(() => _isLoading = true);
         try {
-          final storage = FirebaseStorageService();
+          final storage = CloudStorageService();
           final url = await storage.uploadImage(
             pickedFile,
-            path: 'profile_images/${user.uid}/',
+            path: 'profile_images/$userUid/',
           );
 
           if (url.isNotEmpty && mounted) {
-            await ref.read(userRepositoryProvider).updateUser(user.uid, {
-              isAvatar ? 'avatar_url' : 'banner_url': url,
+            final snakeKey = isAvatar ? 'avatar_url' : 'banner_url';
+            final camelKey = isAvatar ? 'avatarUrl' : 'bannerUrl';
+            await ref.read(userRepositoryProvider).updateUser(userUid, {
+              snakeKey: url,
+              camelKey: url,
             });
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(isAvatar ? 'Avatar updated!' : 'Banner updated!'),
-              ),
-            );
+            ref.invalidate(userProvider(userUid));
+            await ref.read(authRepositoryProvider).init();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(isAvatar ? 'Avatar updated!' : 'Banner updated!'),
+                ),
+              );
+            }
           }
         } catch (e) {
           if (mounted) {
@@ -155,27 +204,45 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final user = ref.read(currentUserProvider).value;
-      if (user == null) throw Exception('User not found');
+      final authRepo = ref.read(authRepositoryProvider);
+      final userUid = authRepo.currentUser?.uid ?? authRepo.currentUserId ?? ref.read(currentUserProvider).value?.uid;
+      if (userUid == null) throw Exception('User session invalid. Please sign in again.');
 
-      await ref.read(userRepositoryProvider).updateUser(user.uid, {
+      await ref.read(userRepositoryProvider).updateUser(userUid, {
         'display_name': _displayNameController.text.trim(),
+        'fullName': _displayNameController.text.trim(),
         'bio': _bioController.text.trim(),
         'handle': _handleController.text.trim(),
+        'username': _handleController.text.trim(),
         'college': _collegeController.text.trim(),
         'department': _departmentController.text.trim(),
         'phone_number': _phoneController.text.trim(),
+        'phoneNumber': _phoneController.text.trim(),
         'website_url': _websiteController.text.trim(),
+        'websiteUrl': _websiteController.text.trim(),
         'facebook_url': _facebookController.text.trim(),
+        'facebookUrl': _facebookController.text.trim(),
         'twitter_url': _twitterController.text.trim(),
+        'twitterUrl': _twitterController.text.trim(),
         'instagram_url': _instagramController.text.trim(),
-        'linkedin_url': _linkedinController.text.trim(),
+        'instagramUrl': _instagramController.text.trim(),
+        'whatsapp_url': _whatsappController.text.trim(),
+        'whatsappUrl': _whatsappController.text.trim(),
         'tiktok_url': _tiktokController.text.trim(),
+        'tiktokUrl': _tiktokController.text.trim(),
         'youtube_url': _youtubeController.text.trim(),
+        'youtubeUrl': _youtubeController.text.trim(),
         'snapchat_url': _snapchatController.text.trim(),
+        'snapchatUrl': _snapchatController.text.trim(),
         'github_url': _githubController.text.trim(),
+        'githubUrl': _githubController.text.trim(),
         'twitch_url': _twitchController.text.trim(),
+        'twitchUrl': _twitchController.text.trim(),
       });
+
+      ref.invalidate(userProvider(userUid));
+      ref.invalidate(currentUserProvider);
+      await authRepo.init();
 
       if (mounted) {
         context.pop();
@@ -198,7 +265,14 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final user = ref.watch(currentUserProvider).value;
+    final authRepo = ref.watch(authRepositoryProvider);
+    final currentUid = authRepo.currentUser?.uid ?? authRepo.currentUserId;
+    final userAsync = currentUid != null ? ref.watch(userProvider(currentUid)) : null;
+    final user = userAsync?.value ?? authRepo.currentUser ?? ref.watch(currentUserProvider).value;
+    if (user != null && !_isPopulated) {
+      _populateControllers(user);
+    }
+
     final bannerUrl = user?.bannerUrl;
     final avatarUrl = user?.avatarUrl;
 
@@ -238,81 +312,96 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
             child: Column(
               children: [
                 // Banner & Avatar Section
-                Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    // Banner
-                    GestureDetector(
-                      onTap: () => _pickAndUploadImage(false),
-                      child: Container(
+                SizedBox(
+                  height: 220,
+                  width: double.infinity,
+                  child: Stack(
+                    children: [
+                      // Banner
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
                         height: 160,
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          color: isDark ? Colors.grey[900] : Colors.grey[200],
-                          image: (bannerUrl != null &&
-                                  UrlValidator.isValidUrl(bannerUrl))
-                              ? DecorationImage(
-                                  image: CachedNetworkImageProvider(bannerUrl),
-                                  fit: BoxFit.cover,
-                                )
-                              : null,
-                        ),
-                        child: Center(
+                        child: GestureDetector(
+                          onTap: () => _pickAndUploadImage(false),
                           child: Container(
-                            padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.4),
-                              shape: BoxShape.circle,
+                              color: isDark ? Colors.grey[900] : Colors.grey[200],
+                              image: (bannerUrl != null &&
+                                      UrlValidator.isValidUrl(bannerUrl))
+                                  ? DecorationImage(
+                                      image: CachedNetworkImageProvider(
+                                        UrlValidator.formatImageUrl(bannerUrl),
+                                      ),
+                                      fit: BoxFit.cover,
+                                    )
+                                  : null,
                             ),
-                            child: const Icon(
-                              Icons.camera_alt,
-                              color: Colors.white,
-                              size: 24,
+                            child: Center(
+                              child: Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.5),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.camera_alt,
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                    // Avatar
-                    Positioned(
-                      bottom: -50,
-                      left: 16,
-                      child: GestureDetector(
-                        onTap: () => _pickAndUploadImage(true),
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: isDark ? Colors.black : Colors.white,
-                                shape: BoxShape.circle,
+                      // Avatar
+                      Positioned(
+                        top: 110,
+                        left: 16,
+                        width: 105,
+                        height: 105,
+                        child: GestureDetector(
+                          onTap: () => _pickAndUploadImage(true),
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: isDark ? Colors.black : Colors.white,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: CircleAvatar(
+                                  radius: 45,
+                                  backgroundColor: isDark
+                                      ? const Color(0xFF1E293B)
+                                      : const Color(0xFFE2E8F0),
+                                  backgroundImage: (avatarUrl != null &&
+                                          UrlValidator.isValidUrl(avatarUrl))
+                                      ? CachedNetworkImageProvider(
+                                          UrlValidator.formatImageUrl(avatarUrl),
+                                        )
+                                      : null,
+                                  child: (avatarUrl == null ||
+                                          !UrlValidator.isValidUrl(avatarUrl))
+                                      ? Text(
+                                          user?.displayName.isNotEmpty == true
+                                              ? user!.displayName[0].toUpperCase()
+                                              : (user?.handle.isNotEmpty == true
+                                                  ? user!.handle[0].toUpperCase()
+                                                  : 'P'),
+                                          style: TextStyle(
+                                            fontSize: 32,
+                                            fontWeight: FontWeight.bold,
+                                            color: isDark
+                                                ? Colors.white
+                                                : AppColors.primaryInk,
+                                          ),
+                                        )
+                                      : null,
+                                ),
                               ),
-                              child: CircleAvatar(
-                                radius: 45,
-                                backgroundColor: isDark
-                                    ? Colors.grey[800]
-                                    : Colors.grey[200],
-                                backgroundImage: (avatarUrl != null &&
-                                        UrlValidator.isValidUrl(avatarUrl))
-                                    ? CachedNetworkImageProvider(avatarUrl)
-                                    : null,
-                                child: (avatarUrl == null ||
-                                        !UrlValidator.isValidUrl(avatarUrl))
-                                    ? Text(
-                                        user?.displayName.isNotEmpty == true
-                                            ? user!.displayName[0].toUpperCase()
-                                            : '?',
-                                        style: TextStyle(
-                                          fontSize: 32,
-                                          fontWeight: FontWeight.bold,
-                                          color: theme.colorScheme.primary,
-                                        ),
-                                      )
-                                    : null,
-                              ),
-                            ),
-                            if (user != null)
                               Positioned(
                                 right: 0,
                                 bottom: 0,
@@ -335,13 +424,14 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                                   ),
                                 ),
                               ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 60),
+                const SizedBox(height: 16),
 
                 // Form Fields
                 Padding(
@@ -402,6 +492,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                                     return;
                                   }
 
+                                  final messenger = ScaffoldMessenger.of(context);
                                   setState(() => _isLoading = true);
                                   try {
                                     final repo = ref.read(
@@ -414,13 +505,15 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                                       _handleController.text = newHandle;
                                     });
                                   } catch (e) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          'Error generating handle: $e',
+                                    if (mounted) {
+                                      messenger.showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'Error generating handle: $e',
+                                          ),
                                         ),
-                                      ),
-                                    );
+                                      );
+                                    }
                                   } finally {
                                     setState(() => _isLoading = false);
                                   }
@@ -514,11 +607,11 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                           keyboardType: TextInputType.url,
                         ),
                         _buildInputField(
-                          controller: _linkedinController,
-                          label: 'LinkedIn',
-                          hint: 'https://linkedin.com/in/username',
-                          icon: FontAwesomeIcons.linkedin,
-                          iconColor: const Color(0xFF0077B5),
+                          controller: _whatsappController,
+                          label: 'WhatsApp',
+                          hint: 'https://wa.me/234...',
+                          icon: FontAwesomeIcons.whatsapp,
+                          iconColor: const Color(0xFF25D366),
                           keyboardType: TextInputType.url,
                         ),
                         _buildInputField(

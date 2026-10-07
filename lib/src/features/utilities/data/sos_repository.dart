@@ -1,5 +1,6 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/services/api_client.dart';
 
 class SOSAlert {
   final String id;
@@ -8,7 +9,7 @@ class SOSAlert {
   final double latitude;
   final double longitude;
   final DateTime timestamp;
-  final String status; // active, resolved
+  final String status;
 
   SOSAlert({
     required this.id,
@@ -27,16 +28,14 @@ class SOSAlert {
       'userName': userName,
       'latitude': latitude,
       'longitude': longitude,
-      'timestamp': FieldValue.serverTimestamp(),
+      'timestamp': timestamp.toIso8601String(),
       'status': status,
     };
   }
 }
 
 class SOSRepository {
-  final FirebaseFirestore _firestore;
-
-  SOSRepository(this._firestore);
+  SOSRepository([dynamic _]);
 
   Future<void> sendSOS({
     required String userId,
@@ -44,19 +43,14 @@ class SOSRepository {
     required double lat,
     required double lng,
   }) async {
-    final docRef = _firestore.collection('sos_alerts').doc();
-    final alert = SOSAlert(
-      id: docRef.id,
-      userId: userId,
-      userName: userName,
-      latitude: lat,
-      longitude: lng,
-      timestamp: DateTime.now(),
-    );
-    await docRef.set(alert.toMap());
+    await ApiClient.post('/utilities/sos', {
+      'latitude': lat,
+      'longitude': lng,
+      'message': 'EMERGENCY SOS ALERT from $userName',
+    });
   }
 }
 
 final sosRepositoryProvider = Provider<SOSRepository>((ref) {
-  return SOSRepository(FirebaseFirestore.instance);
+  return SOSRepository();
 });

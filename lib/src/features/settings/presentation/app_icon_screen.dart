@@ -8,7 +8,8 @@ import '../../../core/theme/app_colors.dart';
 // Local data model – separate from the package's abstract AppIcon class
 // ---------------------------------------------------------------------------
 class NestIcon {
-  final String name;     // icon alias name (Android/iOS)
+  final String name;
+  // icon alias name (Android/iOS)
   final String assetPath;
   final String label;
   final bool isDefault;

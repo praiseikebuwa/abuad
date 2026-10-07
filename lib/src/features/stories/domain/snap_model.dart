@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 class Snap {
   final String id;
   final String userId;
@@ -31,22 +29,27 @@ class Snap {
       'user_avatar': userAvatar,
       'image_url': imageUrl,
       'caption': caption,
-      'created_at': Timestamp.fromDate(createdAt),
-      'expires_at': Timestamp.fromDate(expiresAt),
+      'created_at': createdAt.toIso8601String(),
+      'expires_at': expiresAt.toIso8601String(),
       'viewers': viewers,
     };
   }
 
   factory Snap.fromMap(Map<String, dynamic> map) {
+    DateTime parseTime(dynamic raw) {
+      if (raw is String) return DateTime.tryParse(raw) ?? DateTime.now();
+      return DateTime.now();
+    }
+
     return Snap(
       id: map['id'] ?? '',
-      userId: map['user_id'] ?? '',
-      userName: map['user_name'] ?? '',
-      userAvatar: map['user_avatar'] ?? '',
-      imageUrl: map['image_url'] ?? '',
+      userId: map['user_id'] ?? map['userId'] ?? '',
+      userName: map['user_name'] ?? map['userName'] ?? '',
+      userAvatar: map['user_avatar'] ?? map['userAvatar'] ?? '',
+      imageUrl: map['image_url'] ?? map['imageUrl'] ?? '',
       caption: map['caption'],
-      createdAt: (map['created_at'] as Timestamp).toDate(),
-      expiresAt: (map['expires_at'] as Timestamp).toDate(),
+      createdAt: parseTime(map['created_at'] ?? map['createdAt']),
+      expiresAt: parseTime(map['expires_at'] ?? map['expiresAt']),
       viewers: List<String>.from(map['viewers'] ?? []),
     );
   }

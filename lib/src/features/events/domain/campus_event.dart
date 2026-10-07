@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 class CampusEvent {
   final String id;
   final String title;
@@ -25,21 +23,26 @@ class CampusEvent {
       'title': title,
       'description': description,
       'location': location,
-      'date': Timestamp.fromDate(date),
+      'date': date.toIso8601String(),
       'image_url': imageUrl,
       'is_online': isOnline,
     };
   }
 
   factory CampusEvent.fromMap(Map<String, dynamic> map) {
+    DateTime parseTime(dynamic raw) {
+      if (raw is String) return DateTime.tryParse(raw) ?? DateTime.now();
+      return DateTime.now();
+    }
+
     return CampusEvent(
       id: map['id'] ?? '',
       title: map['title'] ?? '',
       description: map['description'] ?? '',
       location: map['location'] ?? '',
-      date: (map['date'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      imageUrl: map['image_url'] ?? '',
-      isOnline: map['is_online'] ?? false,
+      date: parseTime(map['date'] ?? map['createdAt']),
+      imageUrl: map['image_url'] ?? map['imageUrl'] ?? '',
+      isOnline: map['is_online'] ?? map['isOnline'] ?? false,
     );
   }
 }

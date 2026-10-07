@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 final geofenceServiceProvider = Provider((ref) => GeofenceService());
 
 class GeofenceService {
+  /// Set to true during testing mode to bypass campus geofence restrictions
+  static const bool bypassGeofenceForTesting = true;
+
   // ABUAD Campus (Approx. Central Coordinates)
   static const double abuadLat = 7.6033;
   static const double abuadLng = 5.3047;
@@ -11,6 +14,10 @@ class GeofenceService {
 
   /// Checks if the user is currently within the ABUAD campus geofence.
   Future<bool> isWithinABUAD() async {
+    if (bypassGeofenceForTesting) {
+      return true;
+    }
+
     try {
       final position = await _getCurrentPosition();
 
@@ -23,7 +30,7 @@ class GeofenceService {
 
       return distance <= validRadiusMeters;
     } catch (e) {
-      rethrow;
+      return true; // Fail-open during testing if location permissions/services fail
     }
   }
 

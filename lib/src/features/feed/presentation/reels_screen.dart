@@ -13,7 +13,7 @@ final reelsProvider = StreamProvider.family<List<Post>, ({ReelFeedMode mode, Str
   if (args.mode == ReelFeedMode.following) {
     final userId = args.userId;
     if (userId == null) return Stream<List<Post>>.value(const []);
-    return repo.watchFollowingPosts(userId, limit: 30).map(
+    return repo.watchFollowingPosts(userId).map(
       (posts) => posts.where((post) => post.mediaType.name == 'video').toList(),
     );
   }
@@ -49,6 +49,15 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
         ? 0
         : widget.initialIndex.clamp(0, maxIndex);
     _pageController = PageController(initialPage: _currentIndex);
+
+    // Warm up the active video immediately with 0ms delay
+    if (widget.videos.isNotEmpty) {
+      Future.microtask(() {
+        if (mounted) {
+          ref.read(reelControllerProvider.notifier).updateConfig(_currentIndex, widget.videos);
+        }
+      });
+    }
   }
 
   @override
@@ -56,7 +65,6 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
     super.didUpdateWidget(oldWidget);
     if (widget.videos.length != oldWidget.videos.length) {
       _syncIndexWithPosts(widget.videos);
-      _hasInitialized = false;
     }
   }
 
@@ -67,17 +75,27 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
   }
 
   void _syncIndexWithPosts(List<Post> posts) {
-    if (_lastPostsLength == posts.length) return;
+    if (posts.isEmpty || _lastPostsLength == posts.length) return;
+    final hadPreviousPosts = _lastPostsLength > 0;
     _lastPostsLength = posts.length;
 
-    final maxIndex = posts.isEmpty ? 0 : posts.length - 1;
-    final nextIndex = _currentIndex.clamp(0, maxIndex);
-    _currentIndex = nextIndex;
+    final maxIndex = posts.length - 1;
+    if (_currentIndex > maxIndex) {
+      _currentIndex = maxIndex;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_pageController.hasClients) return;
+        _pageController.jumpToPage(_currentIndex);
+      });
+    }
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_pageController.hasClients || posts.isEmpty) return;
-      _pageController.jumpToPage(nextIndex);
-    });
+    if (!hadPreviousPosts) {
+      // First time we get posts, update config immediately
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ref.read(reelControllerProvider.notifier).updateConfig(_currentIndex, posts);
+        }
+      });
+    }
   }
 
   Widget _buildViewer(List<Post> posts) {
@@ -221,16 +239,43 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final videos = widget.videos;
     final currentUserId = ref.watch(currentUserIdProvider);
     final reelsAsync = ref.watch(reelsProvider((mode: _feedMode, userId: currentUserId)));
-    _syncIndexWithPosts(videos);
+
+    final recommendedPosts = reelsAsync.value ?? [];
+
+    // Create a comprehensive unified video playlist starting with widget.videos
+    final List<Post> playlist = [];
+    final Set<String> seenIds = {};
+
+    for (final p in widget.videos) {
+      if (seenIds.add(p.id)) {
+        playlist.add(p);
+      }
+    }
+
+    for (final p in recommendedPosts) {
+      if (seenIds.add(p.id)) {
+        playlist.add(p);
+      }
+    }
+
+    _syncIndexWithPosts(playlist);
+
+    if (playlist.isNotEmpty && !_hasInitialized) {
+      _hasInitialized = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ref.read(reelControllerProvider.notifier).updateConfig(_currentIndex, playlist);
+        }
+      });
+    }
 
     return Scaffold(
       backgroundColor: Colors.black,
       extendBodyBehindAppBar: true,
-      body: videos.isNotEmpty
-          ? _buildViewer(videos)
+      body: playlist.isNotEmpty
+          ? _buildViewer(playlist)
           : reelsAsync.when(
               loading: () => const Center(
                 child: CircularProgressIndicator(color: Colors.white),
@@ -243,17 +288,6 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
               ),
               data: (posts) {
                 _syncIndexWithPosts(posts);
-
-                // Initial preloading if this is the first data load
-                if (posts.isNotEmpty && !_hasInitialized) {
-                  _hasInitialized = true;
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted) {
-                      ref.read(reelControllerProvider.notifier).updateConfig(_currentIndex, posts);
-                    }
-                  });
-                }
-
                 return _buildViewer(posts);
               },
             ),

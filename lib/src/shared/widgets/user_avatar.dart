@@ -6,6 +6,8 @@ import '../../features/stories/data/story_repository.dart';
 import '../../features/stories/domain/story.dart';
 import '../../features/auth/data/auth_repository.dart';
 import '../../core/utils/url_validator.dart';
+import '../../features/stories/presentation/my_story_screen.dart';
+import '../../features/stories/presentation/create_story_screen.dart';
 
 class UserAvatar extends ConsumerWidget {
   final String userId;
@@ -34,7 +36,8 @@ class UserAvatar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final storiesGroupedAsync = ref.watch(allStoriesGroupedProvider);
-    final currentUserId = ref.watch(authRepositoryProvider).currentUser?.uid;
+    final currentUserId = ref.watch(authRepositoryProvider).currentUser?.uid ??
+        ref.watch(currentUserIdProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (!showStoryRing) {
@@ -57,7 +60,7 @@ class UserAvatar extends ConsumerWidget {
         if (!canTap) return _buildAvatar(context, internalTap: true);
 
         return GestureDetector(
-          onTap: onTap ?? () => _showStatusMenu(context, groups),
+          onTap: onTap ?? () => _showStatusMenu(context, groups, currentUserId),
           child: Container(
             padding: EdgeInsets.all(radius * 0.12),
             decoration: BoxDecoration(
@@ -69,7 +72,7 @@ class UserAvatar extends ConsumerWidget {
                     end: Alignment.bottomRight,
                   )
                   : null,
-              color: allViewed ? Colors.grey.withOpacity(0.5) : null,
+              color: allViewed ? Colors.grey.withValues(alpha: 0.5) : null,
             ),
             child: Container(
               padding: EdgeInsets.all(radius * 0.08),
@@ -87,12 +90,18 @@ class UserAvatar extends ConsumerWidget {
     );
   }
 
-  void _showStatusMenu(BuildContext context, Map<String, List<Story>> groups) {
+  void _showStatusMenu(
+    BuildContext context,
+    Map<String, List<Story>> groups,
+    String? currentUserId,
+  ) {
+    final isSelf = currentUserId != null && currentUserId == userId;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        final isDark = Theme.of(context).brightness == Brightness.dark;
         return Container(
           decoration: BoxDecoration(
             color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
@@ -103,85 +112,175 @@ class UserAvatar extends ConsumerWidget {
             top: false,
             child: Column(
               mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 20),
-                decoration: BoxDecoration(
-                  color: Colors.grey[400],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
                   decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.1),
-                    shape: BoxShape.circle,
+                    color: Colors.grey[400],
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  child: const Icon(Icons.play_circle_fill, color: Colors.blue),
                 ),
-                title: const Text(
-                  'View Status',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: const Text('See recent updates'),
-                onTap: () {
-                  Navigator.pop(context);
-                  context.push('/stories/$userId', extra: groups);
-                },
-              ),
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withOpacity(0.1),
-                    shape: BoxShape.circle,
+                if (displayName != null && displayName!.isNotEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                    child: Row(
+                      children: [
+                        _buildAvatar(context, internalTap: true),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                displayName!,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                isSelf ? 'Your status update' : 'Recent status update',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  child: const Icon(Icons.person, color: Colors.grey),
+                  const Divider(height: 24),
+                ],
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF00E5FF).withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.play_circle_fill, color: Color(0xFF00E5FF)),
+                  ),
+                  title: Text(
+                    isSelf ? 'View My Status' : 'View Status',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: const Text('Watch active stories'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    context.push('/stories/$userId', extra: groups);
+                  },
                 ),
-                title: const Text(
-                  'View Profile',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                if (isSelf) ...[
+                  ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.insights_rounded, color: Color(0xFF8B5CF6)),
+                    ),
+                    title: const Text(
+                      'My Status & Analytics',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: const Text('See viewers, likes & delete status'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const MyStoryScreen()),
+                      );
+                    },
+                  ),
+                  ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.add_circle_outline_rounded, color: Colors.green),
+                    ),
+                    title: const Text(
+                      'Add New Status',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: const Text('Share photo or text status'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const CreateStoryScreen()),
+                      );
+                    },
+                  ),
+                ],
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.person, color: isDark ? Colors.grey[300] : Colors.grey[700]),
+                  ),
+                  title: const Text(
+                    'View Profile',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: const Text('See user details'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    context.push('/user/$userId');
+                  },
                 ),
-                subtitle: const Text('See user details'),
-                onTap: () {
-                  Navigator.pop(context);
-                  context.push('/user/$userId');
-                },
-              ),
-              const SizedBox(height: 12),
-            ],
+                const SizedBox(height: 12),
+              ],
+            ),
           ),
-          )
         );
       },
     );
   }
 
   Widget _buildAvatar(BuildContext context, {bool internalTap = false}) {
+    final hasValidUrl = avatarUrl != null &&
+        avatarUrl!.isNotEmpty &&
+        UrlValidator.isValidUrl(avatarUrl);
+
+    final fallbackText = Text(
+      (displayName != null && displayName!.isNotEmpty)
+          ? displayName![0].toUpperCase()
+          : '?',
+      style: TextStyle(
+        color: Colors.white,
+        fontSize: radius * 0.8,
+        fontWeight: FontWeight.bold,
+      ),
+    );
+
     final avatar = CircleAvatar(
       radius: radius,
-      backgroundImage: (avatarUrl != null &&
-              avatarUrl!.isNotEmpty &&
-              UrlValidator.isValidUrl(avatarUrl))
-          ? CachedNetworkImageProvider(avatarUrl!)
-          : null,
       backgroundColor: backgroundColor ?? const Color(0xFF8B5CF6),
-      child:
-          (avatarUrl == null || avatarUrl!.isEmpty)
-              ? Text(
-                (displayName != null && displayName!.isNotEmpty)
-                    ? displayName![0].toUpperCase()
-                    : '?',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: radius * 0.8,
-                  fontWeight: FontWeight.bold,
-                ),
-              )
-              : null,
+      child: hasValidUrl
+          ? ClipOval(
+              child: CachedNetworkImage(
+                imageUrl: avatarUrl!,
+                width: radius * 2,
+                height: radius * 2,
+                fit: BoxFit.cover,
+                placeholder: (context, url) => fallbackText,
+                errorWidget: (context, url, error) => fallbackText,
+              ),
+            )
+          : fallbackText,
     );
 
     if (internalTap) return avatar;

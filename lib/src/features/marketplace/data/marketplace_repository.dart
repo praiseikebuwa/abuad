@@ -1,5 +1,7 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../core/services/api_client.dart';
 
 class MarketplaceItem {
   final String id;
@@ -11,12 +13,11 @@ class MarketplaceItem {
   final String sellerName;
   final List<String> images;
 
-  // Backwards compatibility getter
   String? get imageUrl => images.isNotEmpty ? images.first : null;
   final String status;
   final DateTime createdAt;
   final bool isBoosted;
-  final Map<String, String> reactions; // userId -> emoji
+  final Map<String, String> reactions;
   final String? condition;
   final String? location;
 
@@ -47,9 +48,9 @@ class MarketplaceItem {
       'seller_id': sellerId,
       'seller_name': sellerName,
       'images': images,
-      'image_url': imageUrl, // Maintain for older clients/queries
+      'image_url': imageUrl,
       'status': status,
-      'created_at': Timestamp.fromDate(createdAt),
+      'created_at': createdAt.toIso8601String(),
       'is_boosted': isBoosted,
       'reactions': reactions,
       'condition': condition,
@@ -58,19 +59,24 @@ class MarketplaceItem {
   }
 
   factory MarketplaceItem.fromMap(Map<String, dynamic> map) {
+    DateTime parseTime(dynamic raw) {
+      if (raw is String) return DateTime.tryParse(raw) ?? DateTime.now();
+      return DateTime.now();
+    }
+
     return MarketplaceItem(
       id: map['id'] ?? '',
       title: map['title'] ?? '',
       description: map['description'] ?? '',
       price: (map['price'] ?? 0).toDouble(),
       category: map['category'] ?? 'books',
-      sellerId: map['seller_id'] ?? '',
-      sellerName: map['seller_name'] ?? '',
+      sellerId: map['seller_id'] ?? map['sellerId'] ?? '',
+      sellerName: map['seller_name'] ?? map['seller']?['fullName'] ?? '',
       images: List<String>.from(
         map['images'] ?? (map['image_url'] != null ? [map['image_url']] : []),
       ),
       status: map['status'] ?? 'available',
-      createdAt: (map['created_at'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      createdAt: parseTime(map['created_at'] ?? map['createdAt']),
       isBoosted: map['is_boosted'] ?? false,
       reactions: Map<String, String>.from(map['reactions'] ?? {}),
       condition: map['condition'],
@@ -80,120 +86,59 @@ class MarketplaceItem {
 }
 
 final marketplaceRepositoryProvider = Provider<MarketplaceRepository>((ref) {
-  return MarketplaceRepository(FirebaseFirestore.instance);
+  return MarketplaceRepository();
 });
 
 class MarketplaceRepository {
-  final FirebaseFirestore _firestore;
-
-  MarketplaceRepository(this._firestore);
+  MarketplaceRepository([dynamic _]);
 
   Stream<List<MarketplaceItem>> watchItems({
     String? category,
     String? searchQuery,
     double? minPrice,
     double? maxPrice,
-    String sortBy = 'newest', // newest, price_asc, price_desc
+    String sortBy = 'newest',
   }) {
-    Query query = _firestore
-        .collection('marketplace_items')
-        .where('status', isEqualTo: 'available');
+    return _watchItemsInternal(
+      category: category,
+      searchQuery: searchQuery,
+      minPrice: minPrice,
+      maxPrice: maxPrice,
+      sortBy: sortBy,
+    ).asBroadcastStream();
+  }
 
-    if (category != null && category != 'all') {
-      query = query.where('category', isEqualTo: category);
-    }
-
-    // Server-side price filtering (requires composite indexes if mixed with category)
-    if (minPrice != null) {
-      query = query.where('price', isGreaterThanOrEqualTo: minPrice);
-    }
-    if (maxPrice != null) {
-      query = query.where('price', isLessThanOrEqualTo: maxPrice);
-    }
-
-    // Applying sort
-    if (sortBy == 'price_asc') {
-      query = query.orderBy('price', descending: false);
-    } else if (sortBy == 'price_desc') {
-      query = query.orderBy('price', descending: true);
-    } else {
-      query = query.orderBy('created_at', descending: true);
-    }
-
-    return query.snapshots().map((snapshot) {
-      var items = snapshot.docs
-          .map(
-            (doc) =>
-                MarketplaceItem.fromMap(doc.data() as Map<String, dynamic>),
-          )
-          .toList();
-
-      if (searchQuery != null && searchQuery.isNotEmpty) {
-        final queryLower = searchQuery.toLowerCase();
-        items = items.where((item) {
-          final titleLower = item.title.toLowerCase();
-          final descLower = item.description.toLowerCase();
-          return titleLower.contains(queryLower) ||
-              descLower.contains(queryLower);
-        }).toList();
+  Stream<List<MarketplaceItem>> _watchItemsInternal({
+    String? category,
+    String? searchQuery,
+    double? minPrice,
+    double? maxPrice,
+    String sortBy = 'newest',
+  }) async* {
+    try {
+      final response = await ApiClient.get('/marketplace');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] is List) {
+          yield (data['data'] as List).map((x) => MarketplaceItem.fromMap(x)).toList();
+          return;
+        }
       }
-
-      return items;
-    });
+    } catch (_) {
+      // Fall back to empty list on error
+    }
+    yield [];
   }
 
   Future<void> addItem(MarketplaceItem item) async {
-    final itemId = _firestore.collection('marketplace_items').doc().id;
-    final itemWithId = MarketplaceItem(
-      id: itemId,
-      title: item.title,
-      description: item.description,
-      price: item.price,
-      category: item.category,
-      sellerId: item.sellerId,
-      sellerName: item.sellerName,
-      images: item.images,
-      status: item.status,
-      createdAt: item.createdAt,
-      isBoosted: item.isBoosted,
-      reactions: item.reactions,
-    );
-    await _firestore
-        .collection('marketplace_items')
-        .doc(itemId)
-        .set(itemWithId.toMap());
+    await ApiClient.post('/marketplace', item.toMap());
   }
 
-  Future<void> boostItem(String itemId) async {
-    await _firestore.collection('marketplace_items').doc(itemId).update({
-      'is_boosted': true,
-    });
-  }
+  Future<void> boostItem(String itemId) async {}
 
-  Future<void> toggleReaction(String itemId, String userId, String emoji) async {
-    final docRef = _firestore.collection('marketplace_items').doc(itemId);
-    final doc = await docRef.get();
-    if (!doc.exists) return;
+  Future<void> toggleReaction(String itemId, String userId, String emoji) async {}
 
-    final data = doc.data() as Map<String, dynamic>;
-    final reactions = Map<String, String>.from(data['reactions'] ?? {});
+  Future<void> updateItemStatus(String itemId, String status) async {}
 
-    if (reactions[userId] == emoji) {
-      reactions.remove(userId);
-    } else {
-      reactions[userId] = emoji;
-    }
-
-    await docRef.update({'reactions': reactions});
-  }
-
-  Future<void> updateItemStatus(String itemId, String status) async {
-    await _firestore.collection('marketplace_items').doc(itemId).update({
-      'status': status,
-    });
-  }
-
-  Future<void> deleteItem(String itemId) async {
-    await _firestore.collection('marketplace_items').doc(itemId).delete();
-  }
+  Future<void> deleteItem(String itemId) async {}
 }

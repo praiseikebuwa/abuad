@@ -1,10 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../user/data/user_repository.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../../core/services/firebase_storage_service.dart';
-import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'dart:async';
 
@@ -24,9 +23,9 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
   String? _department;
   String? _college;
   XFile? _pickedFile;
+  Uint8List? _pickedBytes;
   bool _isLoading = false;
 
-  @override
   @override
   void initState() {
     super.initState();
@@ -135,8 +134,10 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery);
     if (picked != null) {
+      final bytes = await picked.readAsBytes();
       setState(() {
         _pickedFile = picked;
+        _pickedBytes = bytes;
       });
     }
   }
@@ -155,7 +156,7 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
     try {
       final authRepo = ref.read(authRepositoryProvider);
       final userRepo = ref.read(userRepositoryProvider);
-      final storage = FirebaseStorageService();
+      final storage = CloudStorageService();
 
       final currentUser = authRepo.currentUser;
       if (currentUser == null) return;
@@ -182,34 +183,29 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
         handle = await userRepo
             .generateHandle(_nameController.text.trim())
             .timeout(const Duration(seconds: 8));
-        debugPrint('✅ Generated handle: $handle');
+        debugPrint('Generated handle: $handle');
       }
 
-      debugPrint('📝 Updating user profile in Firestore...');
+      debugPrint('Updating user profile in backend...');
       await userRepo
           .updateUser(currentUser.uid, {
-            'display_name': _nameController.text.trim(),
+            'fullName': _nameController.text.trim(),
             'handle': handle,
-            'email': currentUser.email ?? '',
-            'phone_number': _phoneController.text.trim(),
+            'email': currentUser.email,
+            'phoneNumber': _phoneController.text.trim(),
             'college': _college,
             'department': _department,
             'bio': _bioController.text.trim(),
-            'avatar_url': photoUrl,
+            'avatarUrl': photoUrl,
           })
           .timeout(const Duration(seconds: 8));
-      debugPrint('✅ Firestore update successful!');
+      debugPrint('✅ Profile update successful!');
 
-      // Force refresh of the user provider to ensure the navigation guard
-      // in ScaffoldWithBottomNav sees the updated data immediately.
-      debugPrint('⏳ Refreshing user provider...');
-      ref.invalidate(currentUserProvider);
-      // Wait for the next value to be emitted by the StreamProvider
-      await ref.read(currentUserProvider.future);
-      debugPrint('✅ User provider refreshed!');
-
-      // Allow a small delay for the provider to update before navigating
-      await Future.delayed(const Duration(milliseconds: 500));
+      // Fetch the updated user profile and set it on AuthRepository
+      final updatedUser = await userRepo.getCurrentUser();
+      if (updatedUser != null) {
+        authRepo.setCurrentUser(updatedUser);
+      }
 
       if (mounted) {
         context.go('/'); // Navigate to Feed
@@ -259,10 +255,10 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
                 child: CircleAvatar(
                   radius: 50,
                   backgroundColor: Colors.grey[200],
-                  backgroundImage: _pickedFile != null
-                      ? FileImage(File(_pickedFile!.path))
+                  backgroundImage: _pickedBytes != null
+                      ? MemoryImage(_pickedBytes!)
                       : null,
-                  child: _pickedFile == null
+                  child: _pickedBytes == null
                       ? const Icon(
                           Icons.add_a_photo,
                           size: 40,

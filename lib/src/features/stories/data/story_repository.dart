@@ -1,19 +1,16 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
+import '../../../core/config/app_config.dart';
+import '../../../core/services/api_client.dart';
+import '../../../core/services/moderation_service.dart';
 import '../../auth/data/auth_repository.dart';
 import '../domain/story.dart';
-import 'package:image_picker/image_picker.dart';
-import '../../../core/services/firebase_storage_service.dart';
-import '../../user/data/user_repository.dart';
-import '../../../core/utils/profanity_filter.dart';
-import '../../../core/services/moderation_service.dart';
 
 final storyRepositoryProvider = Provider<StoryRepository>((ref) {
-  return StoryRepository(
-    FirebaseFirestore.instance,
-    ref,
-    FirebaseStorageService(),
-  );
+  return StoryRepository(ref);
 });
 
 final activeStoriesProvider = StreamProvider<List<Story>>((ref) {
@@ -31,33 +28,34 @@ final allStoriesGroupedProvider = Provider<AsyncValue<Map<String, List<Story>>>>
   });
 });
 
-
 class StoryRepository {
-  final FirebaseFirestore _firestore;
   final Ref _ref;
-  final FirebaseStorageService _storage;
 
-  StoryRepository(this._firestore, this._ref, this._storage);
+  StoryRepository(this._ref);
 
   String? get currentUserId =>
-      _ref.read(authRepositoryProvider).currentUser?.uid;
+      _ref.read(authRepositoryProvider).currentUser?.uid ??
+      _ref.read(authRepositoryProvider).currentUserId;
 
-  // Watch all active stories (expiresAt > now)
-  Stream<List<Story>> watchActiveStories() {
-    return _firestore
-        .collection('stories')
-        .where('expires_at', isGreaterThan: Timestamp.now())
-        .where('status', isEqualTo: 'active')
-        .snapshots()
-        .map(
-          (snapshot) =>
-              snapshot.docs.map((doc) => Story.fromMap(doc.data())).toList(),
-        );
+  Stream<List<Story>> watchActiveStories() async* {
+    try {
+      final response = await ApiClient.get('/stories');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] is List) {
+          yield (data['data'] as List).map((x) => Story.fromMap(x)).toList();
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching active stories: $e');
+    }
+    yield [];
   }
 
   Future<void> createStory({
     XFile? mediaFile,
-    required String content, // If text
+    required String content,
     bool isRawContent = false,
     String type = 'image',
     String? caption,
@@ -73,37 +71,46 @@ class StoryRepository {
     String? reshareStoryId,
   }) async {
     final uid = currentUserId;
-    if (uid == null) return;
+    if (uid == null) throw Exception('User not authenticated');
 
-    // Stage 1 & 2: Moderation for caption and text content
-    String textToModerate = [content, caption ?? ''].join(' ').trim();
-    bool isSafe = true;
-
-    if (textToModerate.isNotEmpty) {
-      // Local Moderation (Fast)
-      isSafe = !ProfanityFilter.hasProfanity(textToModerate);
-
-      // AI Moderation (Robust)
-      if (isSafe) {
-        isSafe = await ModerationService.isContentSafe(textToModerate);
-      }
-    }
-
-    final status = isSafe ? 'active' : 'flagged';
-
-    // Fetch user details for denormalization
-    final user = await _ref.read(userRepositoryProvider).getUserById(uid);
-    if (user == null) return;
+    var user = await _ref.read(userRepositoryProvider).getUserById(uid);
+    user ??= _ref.read(authRepositoryProvider).currentUser;
+    if (user == null) throw Exception('User profile details not found');
 
     String finalContent = content;
     if (mediaFile != null) {
-      // Upload logic if mediaFile provided
-      finalContent = type == 'video'
-          ? await _storage.uploadVideo(mediaFile, path: 'stories/$uid/')
-          : await _storage.uploadImage(mediaFile, path: 'stories/$uid/');
+      try {
+        final bytes = await mediaFile.readAsBytes();
+        final uploadedUrl = await ApiClient.uploadBytes(
+          bytes,
+          mediaFile.name.isNotEmpty ? mediaFile.name : 'story_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        );
+        if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
+          finalContent = uploadedUrl;
+        } else {
+          finalContent = mediaFile.path;
+        }
+      } catch (e) {
+        debugPrint('Error uploading story media: $e');
+        finalContent = mediaFile.path;
+      }
     }
 
-    final id = _firestore.collection('stories').doc().id;
+    if (caption != null && caption.isNotEmpty) {
+      final isTextSafe = await ModerationService.isContentSafe(caption);
+      if (!isTextSafe && AppConfig.blockFlaggedPosts) {
+        throw Exception('Story caption violates community guidelines.');
+      }
+    }
+
+    if (finalContent.isNotEmpty) {
+      final isMediaSafe = await ModerationService.isMediaSafe(finalContent, mediaType: type);
+      if (!isMediaSafe && AppConfig.blockFlaggedPosts) {
+        throw Exception('Story media violates community guidelines.');
+      }
+    }
+
+    final id = 'story_${DateTime.now().millisecondsSinceEpoch}';
     final now = DateTime.now();
     final expiresAt = now.add(const Duration(hours: 24));
 
@@ -126,37 +133,40 @@ class StoryRepository {
       textAlign: textAlign,
       userName: user.displayName,
       userAvatar: user.avatarUrl ?? '',
-      status: status,
+      status: 'active',
       reshareAuthorId: reshareAuthorId,
       reshareAuthorName: reshareAuthorName,
       reshareStoryId: reshareStoryId,
     );
 
-    await _firestore.collection('stories').doc(id).set(story.toMap());
+    await ApiClient.post('/stories', story.toMap());
+    _ref.invalidate(activeStoriesProvider);
   }
 
   Future<void> markAsViewed(String storyId) async {
-    final uid = currentUserId;
-    if (uid == null) return;
-
-    await _firestore.collection('stories').doc(storyId).update({
-      'viewers': FieldValue.arrayUnion([uid]),
-    });
+    try {
+      await ApiClient.post('/stories/$storyId/view', {});
+      _ref.invalidate(activeStoriesProvider);
+    } catch (e) {
+      debugPrint('Error marking story viewed: $e');
+    }
   }
 
   Future<void> likeStory(String storyId, {required bool isLiking}) async {
-    final uid = currentUserId;
-    if (uid == null) return;
-
-    await _firestore.collection('stories').doc(storyId).update({
-      'likes': isLiking ? FieldValue.arrayUnion([uid]) : FieldValue.arrayRemove([uid]),
-    });
+    try {
+      await ApiClient.post('/stories/$storyId/like', {'isLiking': isLiking});
+      _ref.invalidate(activeStoriesProvider);
+    } catch (e) {
+      debugPrint('Error liking story: $e');
+    }
   }
 
   Future<void> deleteStory(String storyId) async {
-    final uid = currentUserId;
-    if (uid == null) return;
-    // Optional: Verify authorId matches uid before deleting (Firestore rules should handle this but code check is good)
-    await _firestore.collection('stories').doc(storyId).delete();
+    try {
+      await ApiClient.delete('/stories/$storyId');
+      _ref.invalidate(activeStoriesProvider);
+    } catch (e) {
+      debugPrint('Error deleting story: $e');
+    }
   }
 }

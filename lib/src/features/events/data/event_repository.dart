@@ -1,50 +1,31 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import '../../../core/services/api_client.dart';
 import '../domain/event.dart';
 
 final eventRepositoryProvider = Provider<EventRepository>((ref) {
-  return EventRepository(FirebaseFirestore.instance);
+  return EventRepository();
 });
 
 class EventRepository {
-  final FirebaseFirestore _firestore;
+  EventRepository([dynamic _]);
 
-  EventRepository(this._firestore);
-
-  Stream<List<AppEvent>> watchUpcomingEvents() {
-    final now = DateTime.now();
-    return _firestore
-        .collection('events')
-        .where('date', isGreaterThan: Timestamp.fromDate(now))
-        .orderBy('date', descending: false)
-        .snapshots()
-        .map(
-          (snapshot) => snapshot.docs
-              .map((doc) => AppEvent.fromMap(doc.id, doc.data()))
-              .toList(),
-        );
+  Stream<List<AppEvent>> watchUpcomingEvents() async* {
+    try {
+      final response = await ApiClient.get('/events');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] is List) {
+          yield (data['data'] as List).map((x) => AppEvent.fromMap(x['id'] ?? '', x)).toList();
+          return;
+        }
+      }
+    } catch (e) {}
+    yield [];
   }
 
-  Future<void> addEvent(AppEvent event) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      throw Exception('User must be logged in to create an event');
-    }
-
-    final eventId = _firestore.collection('events').doc().id;
-    final eventWithId = AppEvent(
-      id: eventId,
-      title: event.title,
-      description: event.description,
-      location: event.location,
-      date: event.date,
-      organizer: event.organizer,
-      organizerId: user.uid,
-      imageUrl: event.imageUrl,
-      attendeesCount: 0,
-      isOnline: event.isOnline,
-    );
-    await _firestore.collection('events').doc(eventId).set(eventWithId.toMap());
+  Future<void> createEvent(AppEvent event) async {
+    await ApiClient.post('/events', event.toMap());
   }
 }

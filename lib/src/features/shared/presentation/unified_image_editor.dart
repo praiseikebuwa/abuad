@@ -6,33 +6,46 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pro_image_editor/pro_image_editor.dart';
 import '../../../core/theme/app_colors.dart';
 
-/// A unified screen for editing images across the ABUAD app.
-/// This screen wraps [ProImageEditor] with consistent branding and configuration.
+/// A unified image editor screen for the ABUAD app.
+///
+/// **How it works**: the editor pops with the edited [XFile] as its result.
+/// The caller `await`s [open] and checks the return value — no callback
+/// dependency on a potentially-disposed widget tree.
+///
+/// Usage:
+/// ```dart
+/// final edited = await UnifiedImageEditor.open(context, file: myFile);
+/// if (edited != null && mounted) setState(() => _selectedImage = edited);
+/// ```
 class UnifiedImageEditor extends StatefulWidget {
   final File file;
-  final Function(XFile editedFile) onImageEditingComplete;
 
   const UnifiedImageEditor({
     super.key,
     required this.file,
-    required this.onImageEditingComplete,
   });
 
-  /// Static helper to simplify navigation and launching the editor.
-  static Future<void> open(
+  /// Pushes the editor and returns the edited [XFile], or `null` if cancelled.
+  ///
+  /// The optional [onDone] callback is supported for backwards compatibility
+  /// but is called **after** the route has already popped — callers should
+  /// prefer awaiting the return value directly.
+  static Future<XFile?> open(
     BuildContext context, {
     required File file,
-    required Function(XFile editedFile) onDone,
+    Function(XFile editedFile)? onDone,
   }) async {
-    await Navigator.push(
+    final result = await Navigator.push<XFile>(
       context,
       MaterialPageRoute(
-        builder: (context) => UnifiedImageEditor(
-          file: file,
-          onImageEditingComplete: onDone,
-        ),
+        fullscreenDialog: true,
+        builder: (_) => UnifiedImageEditor(file: file),
       ),
     );
+    if (result != null) {
+      onDone?.call(result);
+    }
+    return result;
   }
 
   @override
@@ -42,42 +55,43 @@ class UnifiedImageEditor extends StatefulWidget {
 class _UnifiedImageEditorState extends State<UnifiedImageEditor> {
   bool _isProcessing = false;
 
+  Future<void> _handleEditComplete(Uint8List bytes) async {
+    if (_isProcessing) return;
+    setState(() => _isProcessing = true);
+
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final editedPath = '${tempDir.path}/edited_$timestamp.jpg';
+      await File(editedPath).writeAsBytes(bytes);
+
+      // Pop WITH the result so the awaiting caller receives the edited file.
+      if (mounted) {
+        Navigator.of(context).pop(XFile(editedPath));
+      }
+    } catch (e) {
+      debugPrint('UnifiedImageEditor: error saving image: $e');
+      if (mounted) {
+        setState(() => _isProcessing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save edit: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ProImageEditor.file(
       widget.file,
       callbacks: ProImageEditorCallbacks(
-        onImageEditingComplete: (Uint8List bytes) async {
-          if (_isProcessing) return;
-          
-          setState(() {
-            _isProcessing = true;
-          });
-
-          try {
-            // Save edited image to a temporary file
-            final tempDir = await getTemporaryDirectory();
-            final timestamp = DateTime.now().millisecondsSinceEpoch;
-            final editedPath = '${tempDir.path}/edited_$timestamp.jpg';
-            final editedFile = File(editedPath);
-            await editedFile.writeAsBytes(bytes);
-            
-            widget.onImageEditingComplete(XFile(editedPath));
-            
-            if (mounted) {
-              Navigator.pop(context);
-            }
-          } catch (e) {
-            debugPrint('Error saving edited image: $e');
-            if (mounted) {
-              setState(() {
-                _isProcessing = false;
-              });
-            }
-          }
-        },
-        onCloseEditor: (editorMode) {
-          if (mounted) Navigator.pop(context);
+        onImageEditingComplete: _handleEditComplete,
+        onCloseEditor: (_) {
+          // Pop with null — caller treats null as "cancelled, keep original".
+          if (mounted) Navigator.of(context).pop(null);
         },
       ),
       configs: ProImageEditorConfigs(

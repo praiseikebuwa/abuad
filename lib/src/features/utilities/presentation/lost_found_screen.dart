@@ -190,8 +190,8 @@ class LostFoundList extends ConsumerWidget {
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: isLost
-              ? Colors.red.withOpacity(0.1)
-              : Colors.green.withOpacity(0.1),
+              ? Colors.red.withValues(alpha: 0.1)
+              : Colors.green.withValues(alpha: 0.1),
           child: Icon(
             isLost ? Icons.warning_amber_rounded : Icons.check_circle_outline,
             color: isLost ? Colors.red : Colors.green,
@@ -218,7 +218,7 @@ class LostFoundList extends ConsumerWidget {
                     vertical: 2,
                   ),
                   decoration: BoxDecoration(
-                    color: theme.primaryColor.withOpacity(0.1),
+                    color: theme.primaryColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(

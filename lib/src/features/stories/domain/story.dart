@@ -1,10 +1,10 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:convert';
 
 class Story {
   final String id;
   final String authorId;
-  final String content; // URL for image/video or text
-  final String type; // 'image', 'video', 'text'
+  final String content;
+  final String type;
   final String? caption;
   final DateTime createdAt;
   final DateTime expiresAt;
@@ -12,12 +12,12 @@ class Story {
   final List<String> likes;
   final List<String> mentions;
   final String? linkUrl;
-  final String visibility; // 'everyone', 'followers', 'close_friends'
+  final String visibility;
   final int? backgroundColor;
   final int? textColor;
   final String? fontFamily;
   final String? textAlign;
-  final String status; // 'active', 'flagged', 'deleted'
+  final String status;
   final String userName;
   final String userAvatar;
   final String? reshareAuthorId;
@@ -107,10 +107,13 @@ class Story {
       'id': id,
       'author_id': authorId,
       'content': content,
+      'mediaUrl': content,
+      'media_url': content,
+      'mediaType': type,
       'type': type,
       'caption': caption,
-      'created_at': Timestamp.fromDate(createdAt),
-      'expires_at': Timestamp.fromDate(expiresAt),
+      'created_at': createdAt.toIso8601String(),
+      'expires_at': expiresAt.toIso8601String(),
       'viewers': viewers,
       'likes': likes,
       'mentions': mentions,
@@ -130,29 +133,65 @@ class Story {
   }
 
   factory Story.fromMap(Map<String, dynamic> map) {
+    DateTime parseTime(dynamic raw) {
+      if (raw is String) return DateTime.tryParse(raw) ?? DateTime.now();
+      return DateTime.now();
+    }
+
+    List<String> parseStringList(dynamic raw) {
+      if (raw == null) return [];
+      if (raw is List) {
+        return raw.map((e) => e.toString()).toList();
+      }
+      if (raw is String && raw.isNotEmpty) {
+        try {
+          final decoded = json.decode(raw);
+          if (decoded is List) {
+            return decoded.map((e) => e.toString()).toList();
+          }
+        } catch (_) {}
+      }
+      return [];
+    }
+
+    final authorMap = map['author'] is Map<String, dynamic>
+        ? map['author'] as Map<String, dynamic>
+        : null;
+
     return Story(
-      id: map['id'] ?? '',
-      authorId: map['author_id'] ?? '',
-      content: map['content'] ?? '',
-      type: map['type'] ?? 'image',
+      id: map['id'] ?? map['_id'] ?? '',
+      authorId: map['author_id'] ??
+          map['authorId'] ??
+          authorMap?['id'] ??
+          authorMap?['_id'] ??
+          '',
+      content: map['content'] ?? map['mediaUrl'] ?? map['media_url'] ?? '',
+      type: map['type'] ?? map['mediaType'] ?? 'image',
       caption: map['caption'],
-      createdAt: (map['created_at'] as Timestamp).toDate(),
-      expiresAt: (map['expires_at'] as Timestamp).toDate(),
-      viewers: List<String>.from(map['viewers'] ?? []),
-      likes: List<String>.from(map['likes'] ?? []),
-      mentions: List<String>.from(map['mentions'] ?? []),
-      linkUrl: map['link_url'],
+      createdAt: parseTime(map['created_at'] ?? map['createdAt']),
+      expiresAt: parseTime(map['expires_at'] ?? map['expiresAt']),
+      viewers: parseStringList(map['viewers'] ?? map['viewers_list']),
+      likes: parseStringList(map['likes'] ?? map['likes_list']),
+      mentions: parseStringList(map['mentions']),
+      linkUrl: map['link_url'] ?? map['linkUrl'],
       visibility: map['visibility'] ?? 'everyone',
-      backgroundColor: map['background_color'],
-      textColor: map['text_color'],
-      fontFamily: map['font_family'],
-      textAlign: map['text_align'],
+      backgroundColor: map['background_color'] ?? map['backgroundColor'],
+      textColor: map['text_color'] ?? map['textColor'],
+      fontFamily: map['font_family'] ?? map['fontFamily'],
+      textAlign: map['text_align'] ?? map['textAlign'],
       status: map['status'] ?? 'active',
-      userName: map['user_name'] ?? '',
-      userAvatar: map['user_avatar'] ?? '',
-      reshareAuthorId: map['reshare_author_id'],
-      reshareAuthorName: map['reshare_author_name'],
-      reshareStoryId: map['reshare_story_id'],
+      userName: map['user_name'] ??
+          map['userName'] ??
+          authorMap?['fullName'] ??
+          authorMap?['username'] ??
+          '',
+      userAvatar: map['user_avatar'] ??
+          map['userAvatar'] ??
+          authorMap?['avatarUrl'] ??
+          '',
+      reshareAuthorId: map['reshare_author_id'] ?? map['reshareAuthorId'],
+      reshareAuthorName: map['reshare_author_name'] ?? map['reshareAuthorName'],
+      reshareStoryId: map['reshare_story_id'] ?? map['reshareStoryId'],
     );
   }
 }

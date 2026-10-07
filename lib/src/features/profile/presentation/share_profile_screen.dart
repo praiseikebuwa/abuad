@@ -38,11 +38,11 @@ class ShareProfileScreen extends ConsumerWidget {
                   colors: isDark
                       ? [
                           AppColors.primaryInk,
-                          AppColors.secondaryTeal.withOpacity(0.5),
+                          AppColors.secondaryTeal.withValues(alpha: 0.5),
                         ]
                       : [
                           AppColors.surfaceLight,
-                          AppColors.secondaryTeal.withOpacity(0.1),
+                          AppColors.secondaryTeal.withValues(alpha: 0.1),
                         ],
                 ),
               ),
@@ -58,7 +58,7 @@ class ShareProfileScreen extends ConsumerWidget {
               height: 300,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppColors.secondaryTeal.withOpacity(0.1),
+                color: AppColors.secondaryTeal.withValues(alpha: 0.1),
               ),
             ),
           ),
@@ -113,11 +113,11 @@ class ShareProfileScreen extends ConsumerWidget {
                                   padding: const EdgeInsets.all(32),
                                   decoration: BoxDecoration(
                                     color: (isDark ? Colors.white : AppColors.primaryInk)
-                                        .withOpacity(isDark ? 0.05 : 0.03),
+                                        .withValues(alpha: isDark ? 0.05 : 0.03),
                                     borderRadius: BorderRadius.circular(32),
                                     border: Border.all(
                                       color: (isDark ? Colors.white : AppColors.primaryInk)
-                                          .withOpacity(0.1),
+                                          .withValues(alpha: 0.1),
                                     ),
                                   ),
                                   child: Column(
@@ -156,7 +156,7 @@ class ShareProfileScreen extends ConsumerWidget {
                                         style: TextStyle(
                                           fontSize: 16,
                                           color: (isDark ? Colors.white : AppColors.primaryInk)
-                                              .withOpacity(0.6),
+                                              .withValues(alpha: 0.6),
                                         ),
                                       ),
                                       const SizedBox(height: 32),
@@ -168,7 +168,7 @@ class ShareProfileScreen extends ConsumerWidget {
                                           borderRadius: BorderRadius.circular(24),
                                           boxShadow: [
                                             BoxShadow(
-                                              color: Colors.black.withOpacity(0.1),
+                                              color: Colors.black.withValues(alpha: 0.1),
                                               blurRadius: 20,
                                               offset: const Offset(0, 10),
                                             ),
@@ -193,7 +193,7 @@ class ShareProfileScreen extends ConsumerWidget {
                                         'Scan to view profile',
                                         style: TextStyle(
                                           color: (isDark ? Colors.white : AppColors.primaryInk)
-                                              .withOpacity(0.5),
+                                              .withValues(alpha: 0.5),
                                           fontWeight: FontWeight.w500,
                                         ),
                                       ),
@@ -279,7 +279,7 @@ class _ActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final bgColor = isPrimary
         ? AppColors.secondaryTeal
-        : (isDark ? Colors.white10 : Colors.black.withOpacity(0.05));
+        : (isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05));
     final textColor = isPrimary
         ? Colors.white
         : (isDark ? Colors.white : AppColors.primaryInk);
@@ -293,7 +293,7 @@ class _ActionButton extends StatelessWidget {
           color: bgColor,
           borderRadius: BorderRadius.circular(16),
           border: isPrimary ? null : Border.all(
-            color: (isDark ? Colors.white : AppColors.primaryInk).withOpacity(0.1),
+            color: (isDark ? Colors.white : AppColors.primaryInk).withValues(alpha: 0.1),
           ),
         ),
         child: Row(

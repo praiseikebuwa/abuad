@@ -13,7 +13,8 @@ import '../../features/chat/presentation/chat_screen.dart';
 import '../../features/chat/presentation/user_search_screen.dart';
 import '../../features/chat/presentation/create_group_screen.dart';
 import '../../features/notifications/presentation/notifications_screen.dart';
-import '../../features/chat/presentation/group_info_screen.dart';
+import '../../features/chat/presentation/chat_info_screen.dart';
+import '../../features/chat/presentation/group_settings_screen.dart';
 import '../../features/chat/presentation/chat_settings_screen.dart';
 import '../../features/map/presentation/map_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
@@ -22,7 +23,6 @@ import '../../shared/widgets/scaffold_with_bottom_nav.dart';
 import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/presentation/signup_screen.dart';
 import '../../features/auth/presentation/complete_profile_screen.dart';
-import '../../features/auth/presentation/splash_screen.dart';
 import '../../features/auth/presentation/onboarding_screen.dart';
 import '../../features/auth/presentation/banned_screen.dart';
 import '../../features/auth/data/auth_repository.dart';
@@ -39,7 +39,6 @@ import '../../features/marketplace/data/marketplace_repository.dart';
 import '../../features/feed/presentation/reels_screen.dart';
 import '../../features/feed/domain/post.dart';
 import '../../features/user/presentation/user_list_screen.dart';
-import '../../features/user/data/user_repository.dart';
 import '../../features/stories/domain/story.dart';
 import '../../features/stories/presentation/story_viewer_screen.dart';
 import '../../features/chat/presentation/qr_scanner_screen.dart';
@@ -48,6 +47,7 @@ import '../../features/chat/presentation/broadcast_message_screen.dart';
 import '../../features/settings/presentation/app_icon_screen.dart';
 import '../../features/settings/presentation/support_screens.dart';
 import '../../features/settings/presentation/legal_screen.dart';
+import '../../features/ai/presentation/ai_screen.dart';
 
 final rootNavigatorKey = GlobalKey<NavigatorState>();
 final _feedNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'feed');
@@ -55,12 +55,47 @@ final _chatNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'chat');
 final _mapNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'map');
 final _profileNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'profile');
 
+CustomTransitionPage<T> buildPageWithAnimation<T>({
+  required BuildContext context,
+  required GoRouterState state,
+  required Widget child,
+  Duration duration = const Duration(milliseconds: 220),
+}) {
+  return CustomTransitionPage<T>(
+    key: state.pageKey,
+    child: child,
+    transitionDuration: duration,
+    reverseTransitionDuration: duration,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final fadeAnimation = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+      );
+      final slideAnimation = Tween<Offset>(
+        begin: const Offset(0.0, 0.04),
+        end: Offset.zero,
+      ).animate(CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+      ));
+
+      return FadeTransition(
+        opacity: fadeAnimation,
+        child: SlideTransition(
+          position: slideAnimation,
+          child: child,
+        ),
+      );
+    },
+  );
+}
+
 final goRouterProvider = Provider<GoRouter>((ref) {
   final authRepo = ref.watch(authRepositoryProvider);
 
   return GoRouter(
     navigatorKey: rootNavigatorKey,
-    initialLocation: '/splash',
+    initialLocation: '/',
     refreshListenable: GoRouterRefreshStream(
       // Only watch user data if logged in to avoid empty document path errors
       authRepo.currentUser != null
@@ -77,71 +112,41 @@ final goRouterProvider = Provider<GoRouter>((ref) {
 
       final isLoggingIn = state.uri.toString() == '/login';
       final isSigningUp = state.uri.toString() == '/signup';
-      final isSplash = state.uri.toString() == '/splash';
       final isOnboarding = state.uri.toString() == '/onboarding';
       final isCompletingProfile = state.uri.toString() == '/complete-profile';
       final isBanned = state.uri.toString() == '/banned';
 
-      if (isFirstLaunch && !isOnboarding && !isSplash) {
+      if (isFirstLaunch && !isOnboarding) {
         return '/onboarding';
       }
 
       if (!isLoggedIn &&
           !isLoggingIn &&
           !isSigningUp &&
-          !isSplash &&
           !isOnboarding) {
         return '/login';
       }
 
       if (isLoggedIn) {
-        // Only check profile completion if not on splash or onboarding
-        if (isSplash || isOnboarding) return null;
+        if (isOnboarding) return null;
 
-        // Get user data to check for completeness
-        final userAsync = ref.read(currentUserProvider);
-        if (userAsync.isLoading) {
-          return null; // Don't redirect while loading data
-        }
+        final user = authRepo.currentUser;
+        if (user != null) {
+          final isIncomplete =
+              user.department == null || user.department!.trim().isEmpty;
 
-        // Do not force profile completion if there's an error (e.g., offline or permission denied).
-        // Let the normal navigation handle it, which will display the error correctly.
-        if (userAsync.hasError) {
-          if (isLoggingIn || isSigningUp || isOnboarding) {
+          if (user.isBanned && !isBanned) {
+            return '/banned';
+          }
+
+          if (isIncomplete && !isCompletingProfile) {
+            return '/complete-profile';
+          }
+
+          if (!isIncomplete &&
+              (isLoggingIn || isSigningUp || isCompletingProfile || isBanned)) {
             return '/';
           }
-          return null;
-        }
-
-        final user = userAsync.value;
-
-        // If profile is incomplete, force redirect to /complete-profile
-        final isIncomplete =
-            user == null ||
-            user.college == null ||
-            user.college == 'ABUAD' || // 'ABUAD' is default from signup
-            user.department == null ||
-            user.bio == null ||
-            user.bio!.isEmpty;
-
-        if (isIncomplete &&
-            !isCompletingProfile &&
-            !isLoggingIn &&
-            !isSigningUp) {
-          return '/complete-profile';
-        }
-
-        // Check if user is banned
-        if (user != null && user.isBanned && !isBanned && !isSplash) {
-          return '/banned';
-        }
-
-        // If logged in and on auth pages, go to root
-        if (isLoggingIn ||
-            isSigningUp ||
-            isOnboarding ||
-            (isBanned && user != null && !user.isBanned)) {
-          return '/';
         }
       }
 
@@ -150,7 +155,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(
         path: '/splash',
-        builder: (context, state) => const SplashScreen(),
+        redirect: (context, state) => '/',
       ),
       GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
       GoRoute(
@@ -238,58 +243,94 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/events',
         parentNavigatorKey: rootNavigatorKey,
-        builder: (context, state) => const EventsScreen(),
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const EventsScreen(),
+        ),
       ),
       GoRoute(
         path: '/resources',
         parentNavigatorKey: rootNavigatorKey,
-        builder: (context, state) => const ResourcesScreen(),
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const ResourcesScreen(),
+        ),
       ),
       GoRoute(
         path: '/groups',
         parentNavigatorKey: rootNavigatorKey,
-        builder: (context, state) => const GroupsScreen(),
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const GroupsScreen(),
+        ),
       ),
       GoRoute(
         path: '/settings',
         parentNavigatorKey: rootNavigatorKey,
-        builder: (context, state) => const SettingsScreen(),
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const SettingsScreen(),
+        ),
         routes: [
           GoRoute(
             path: 'app-icon',
             parentNavigatorKey: rootNavigatorKey,
-            builder: (context, state) => const AppIconScreen(),
+            pageBuilder: (context, state) => buildPageWithAnimation(
+              context: context,
+              state: state,
+              child: const AppIconScreen(),
+            ),
           ),
           GoRoute(
             path: 'help',
             parentNavigatorKey: rootNavigatorKey,
-            builder: (context, state) => const HelpCenterScreen(),
+            pageBuilder: (context, state) => buildPageWithAnimation(
+              context: context,
+              state: state,
+              child: const HelpCenterScreen(),
+            ),
           ),
           GoRoute(
             path: 'support',
             parentNavigatorKey: rootNavigatorKey,
-            builder: (context, state) {
+            pageBuilder: (context, state) {
               final extra = state.extra as Map<String, dynamic>?;
-              return SupportFormScreen(
-                title: extra?['title'] ?? 'Support',
-                type: extra?['type'] ?? 'feedback',
+              return buildPageWithAnimation(
+                context: context,
+                state: state,
+                child: SupportFormScreen(
+                  title: extra?['title'] ?? 'Support',
+                  type: extra?['type'] ?? 'feedback',
+                ),
               );
             },
           ),
           GoRoute(
             path: 'privacy',
             parentNavigatorKey: rootNavigatorKey,
-            builder: (context, state) => const LegalScreen(
-              title: 'Privacy Policy',
-              markdownPath: 'assets/legal/privacy.md',
+            pageBuilder: (context, state) => buildPageWithAnimation(
+              context: context,
+              state: state,
+              child: const LegalScreen(
+                title: 'Privacy Policy',
+                markdownPath: 'assets/legal/privacy_policy.md',
+              ),
             ),
           ),
           GoRoute(
             path: 'terms',
             parentNavigatorKey: rootNavigatorKey,
-            builder: (context, state) => const LegalScreen(
-              title: 'Terms of Service',
-              markdownPath: 'assets/legal/terms.md',
+            pageBuilder: (context, state) => buildPageWithAnimation(
+              context: context,
+              state: state,
+              child: const LegalScreen(
+                title: 'Terms of Service',
+                markdownPath: 'assets/legal/terms_of_service.md',
+              ),
             ),
           ),
         ],
@@ -297,7 +338,46 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/notifications',
         parentNavigatorKey: rootNavigatorKey,
-        builder: (context, state) => const NotificationsScreen(),
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const NotificationsScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/ai',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const AiScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/reels',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) {
+          final payload = state.extra;
+          List<Post> videos = [];
+          int initialIndex = 0;
+          if (payload is Map<String, dynamic>) {
+            final rawVideos = payload['videos'];
+            if (rawVideos is Iterable) {
+              videos = rawVideos.whereType<Post>().toList();
+            }
+            initialIndex = (payload['initialIndex'] as int?) ??
+                (payload['index'] as int?) ??
+                0;
+          } else if (payload is List<Post>) {
+            videos = payload;
+          } else if (payload is Post) {
+            videos = [payload];
+          }
+          return ReelsScreen(
+            videos: videos,
+            initialIndex: initialIndex,
+          );
+        },
       ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {
@@ -328,14 +408,21 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                     parentNavigatorKey: rootNavigatorKey,
                     builder: (context, state) {
                       final payload = state.extra;
-                      final extraMap = payload is Map<String, dynamic>
-                          ? payload
-                          : null;
-                      final rawVideos = extraMap?['videos'];
-                      final videos = rawVideos is Iterable
-                          ? rawVideos.whereType<Post>().toList()
-                          : <Post>[];
-                      final initialIndex = (extraMap?['index'] as int?) ?? 0;
+                      List<Post> videos = [];
+                      int initialIndex = 0;
+                      if (payload is Map<String, dynamic>) {
+                        final rawVideos = payload['videos'];
+                        if (rawVideos is Iterable) {
+                          videos = rawVideos.whereType<Post>().toList();
+                        }
+                        initialIndex = (payload['initialIndex'] as int?) ??
+                            (payload['index'] as int?) ??
+                            0;
+                      } else if (payload is List<Post>) {
+                        videos = payload;
+                      } else if (payload is Post) {
+                        videos = [payload];
+                      }
                       return ReelsScreen(
                         videos: videos,
                         initialIndex: initialIndex,
@@ -385,8 +472,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: '/search',
-                pageBuilder: (context, state) =>
-                    const NoTransitionPage(child: SearchScreen()),
+                pageBuilder: (context, state) => buildPageWithAnimation(
+                  context: context,
+                  state: state,
+                  child: const SearchScreen(),
+                ),
               ),
             ],
           ),
@@ -416,7 +506,14 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                     path: 'detail',
                     parentNavigatorKey: rootNavigatorKey,
                     builder: (context, state) {
-                      final item = state.extra as MarketplaceItem;
+                      final item = state.extra;
+                      if (item is! MarketplaceItem) {
+                        // Extra was null or wrong type – go back to marketplace
+                        WidgetsBinding.instance.addPostFrameCallback(
+                          (_) => Navigator.of(context).maybePop(),
+                        );
+                        return const MarketplaceScreen();
+                      }
                       return MarketplaceDetailScreen(item: item);
                     },
                   ),
@@ -435,31 +532,60 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                     const NoTransitionPage(child: ChatListScreen()),
                 routes: [
                   GoRoute(
+                    path: 'settings',
+                    parentNavigatorKey: rootNavigatorKey,
+                    pageBuilder: (context, state) => buildPageWithAnimation(
+                      context: context,
+                      state: state,
+                      child: const ChatSettingsScreen(),
+                    ),
+                  ),
+                  GoRoute(
                     path: 'user-search',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const UserSearchScreen(),
+                    pageBuilder: (context, state) => buildPageWithAnimation(
+                      context: context,
+                      state: state,
+                      child: const UserSearchScreen(),
+                    ),
                   ),
                   GoRoute(
                     path: 'create-group',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const CreateGroupScreen(),
+                    pageBuilder: (context, state) => buildPageWithAnimation(
+                      context: context,
+                      state: state,
+                      child: const CreateGroupScreen(),
+                    ),
                   ),
                   GoRoute(
                     path: 'scanner',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const QRScannerScreen(),
+                    pageBuilder: (context, state) => buildPageWithAnimation(
+                      context: context,
+                      state: state,
+                      child: const QRScannerScreen(),
+                    ),
                   ),
                   GoRoute(
                     path: 'broadcast',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const BroadcastSearchScreen(),
+                    pageBuilder: (context, state) => buildPageWithAnimation(
+                      context: context,
+                      state: state,
+                      child: const BroadcastSearchScreen(),
+                    ),
                     routes: [
                       GoRoute(
                         path: 'compose',
                         parentNavigatorKey: rootNavigatorKey,
-                        builder: (context, state) {
+                        pageBuilder: (context, state) {
                           final recipients = state.extra as List<AppUser>;
-                          return BroadcastMessageScreen(recipients: recipients);
+                          return buildPageWithAnimation(
+                            context: context,
+                            state: state,
+                            child: BroadcastMessageScreen(recipients: recipients),
+                          );
                         },
                       ),
                     ],
@@ -475,17 +601,37 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                       GoRoute(
                         path: 'info',
                         parentNavigatorKey: rootNavigatorKey,
-                        builder: (context, state) {
+                        pageBuilder: (context, state) {
                           final channelId = state.pathParameters['channelId']!;
-                          return GroupInfoScreen(channelId: channelId);
+                          return buildPageWithAnimation(
+                            context: context,
+                            state: state,
+                            child: ChatInfoScreen(channelId: channelId),
+                          );
+                        },
+                      ),
+                      GoRoute(
+                        path: 'group-settings',
+                        parentNavigatorKey: rootNavigatorKey,
+                        pageBuilder: (context, state) {
+                          final channelId = state.pathParameters['channelId']!;
+                          return buildPageWithAnimation(
+                            context: context,
+                            state: state,
+                            child: GroupSettingsScreen(channelId: channelId),
+                          );
                         },
                       ),
                       GoRoute(
                         path: 'settings',
                         parentNavigatorKey: rootNavigatorKey,
-                        builder: (context, state) {
+                        pageBuilder: (context, state) {
                           final channelId = state.pathParameters['channelId']!;
-                          return ChatSettingsScreen(channelId: channelId);
+                          return buildPageWithAnimation(
+                            context: context,
+                            state: state,
+                            child: ChatSettingsScreen(channelId: channelId),
+                          );
                         },
                       ),
                     ],

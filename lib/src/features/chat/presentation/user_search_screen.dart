@@ -25,9 +25,9 @@ class _UserSearchScreenState extends ConsumerState<UserSearchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final usersStream = ref
-        .watch(userRepositoryProvider)
-        .searchUsers(_searchQuery);
+    final usersStream = Stream.fromFuture(
+      ref.watch(userRepositoryProvider).searchUsers(_searchQuery),
+    );
     final currentUserId = ref.watch(chatRepositoryProvider).currentUserId;
 
     return Scaffold(

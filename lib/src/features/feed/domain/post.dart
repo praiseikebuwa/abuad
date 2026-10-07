@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:convert';
 
 enum MediaType { none, image, video, gif }
 
@@ -27,11 +27,12 @@ class Post {
   final Map<String, dynamic>? repostData;
   final List<String> hashtags;
   final List<String> mentions;
-  final String visibility; // everyone, followers
-  final String status; // active, flagged, removed
+  final String visibility;
+  final String status;
   final double? latitude;
   final double? longitude;
-  final String replyPermission; // everyone, following, mentioned
+  final String? locationName;
+  final String replyPermission;
   final DateTime? scheduledAt;
   final String? mediaAltText;
   final String? linkUrl;
@@ -65,6 +66,7 @@ class Post {
     this.status = 'active',
     this.latitude,
     this.longitude,
+    this.locationName,
     this.replyPermission = 'everyone',
     this.scheduledAt,
     this.mediaAltText,
@@ -90,7 +92,7 @@ class Post {
       'saves_count': savesCount,
       'poll_data': pollData,
       'repost_data': repostData,
-      'created_at': Timestamp.fromDate(timestamp),
+      'created_at': timestamp.toIso8601String(),
       'is_verified': isVerified,
       'verification_type': verificationType,
       'is_anonymous': isAnonymous,
@@ -100,89 +102,124 @@ class Post {
       'status': status,
       'latitude': latitude,
       'longitude': longitude,
+      'location_name': locationName,
       'reply_permission': replyPermission,
-      'scheduled_at': scheduledAt != null
-          ? Timestamp.fromDate(scheduledAt!)
-          : null,
+      'scheduled_at': scheduledAt?.toIso8601String(),
       'media_alt_text': mediaAltText,
       'link_url': linkUrl,
     };
   }
 
   factory Post.fromMap(Map<String, dynamic> map) {
-    final mUrl = map['media_url'] ?? '';
+    final mUrl = map['media_url'] ?? map['mediaUrl'] ?? '';
 
     MediaType mType = MediaType.none;
+    final typeStr = map['media_type'] ?? map['mediaType'];
+    if (typeStr != null && typeStr is String && typeStr.isNotEmpty) {
+      mType = MediaType.values.firstWhere(
+        (e) => e.name == typeStr,
+        orElse: () => MediaType.none,
+      );
+    }
     if (mUrl.isNotEmpty) {
-      final typeStr = map['media_type'] as String?;
-      if (typeStr != null) {
-        mType = MediaType.values.firstWhere(
-          (e) => e.name == typeStr,
-          orElse: () => MediaType.none,
-        );
-      } else {
-        // Fallback logic
-        if (mUrl.endsWith('.mp4')) {
-          mType = MediaType.video;
-        } else if (mUrl.contains('giphy') || mUrl.endsWith('.gif')) {
-          mType = MediaType.gif;
-        } else {
-          mType = MediaType.image;
-        }
+      final lower = mUrl.toLowerCase();
+      if (lower.contains('.mp4') ||
+          lower.contains('.mov') ||
+          lower.contains('.webm') ||
+          lower.contains('.m3u8') ||
+          lower.contains('/videos/')) {
+        mType = MediaType.video;
+      } else if (lower.contains('giphy') || lower.endsWith('.gif')) {
+        mType = MediaType.gif;
+      } else if (mType == MediaType.none) {
+        mType = MediaType.image;
       }
     }
 
     final String postId = map['id'] ?? map['post_id'] ?? '';
 
-    DateTime ts;
-    final dynamic rawTs = map['created_at'] ?? map['timestamp'];
-    if (rawTs is Timestamp) {
-      ts = rawTs.toDate();
-    } else if (rawTs is String) {
-      ts = DateTime.tryParse(rawTs) ?? DateTime.now();
-    } else {
-      ts = DateTime.now();
+    DateTime parseTime(dynamic raw) {
+      if (raw is String) return DateTime.tryParse(raw) ?? DateTime.now();
+      return DateTime.now();
     }
+
+    int parseInt(dynamic raw) {
+      if (raw is int) return raw;
+      if (raw is num) return raw.toInt();
+      if (raw is String) return int.tryParse(raw) ?? 0;
+      return 0;
+    }
+
+    List<String> parseStringList(dynamic raw) {
+      if (raw == null) return [];
+      if (raw is List) return raw.map((e) => e.toString()).toList();
+      if (raw is String && raw.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(raw);
+          if (decoded is List) return decoded.map((e) => e.toString()).toList();
+        } catch (_) {}
+      }
+      return [];
+    }
+
+    Map<String, dynamic>? parseMap(dynamic raw) {
+      if (raw == null) return null;
+      if (raw is Map<String, dynamic>) return raw;
+      if (raw is String && raw.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(raw);
+          if (decoded is Map<String, dynamic>) return decoded;
+        } catch (_) {}
+      }
+      return null;
+    }
+
+    final String rawHandle = map['author_handle'] ?? map['author']?['username'] ?? 'anon';
+    final String handle = rawHandle.startsWith('@') ? rawHandle : '@$rawHandle';
 
     return Post(
       id: postId,
-      authorId: map['author_id'] ?? '',
-      authorName: map['author_name'] ?? 'Anonymous',
-      authorHandle: map['author_handle'] ?? '@anon',
-      authorAvatarUrl: map['author_avatar_url'],
-      isVerified: map['is_verified'] ?? map['isVerified'] ?? false,
-      verificationType:
-          map['verification_type'] ??
-          map['verificationType'] ??
-          ((map['is_verified'] == true || map['isVerified'] == true)
-              ? 'blue'
-              : 'none'),
-      isAnonymous: map['is_anonymous'] ?? false,
+      authorId: map['author_id'] ?? map['authorId'] ?? map['author']?['id'] ?? '',
+      authorName: map['author_name'] ?? map['author']?['fullName'] ?? map['author']?['username'] ?? 'Anonymous',
+      authorHandle: handle,
+      authorAvatarUrl: map['author_avatar_url'] ?? map['author']?['avatarUrl'],
+      isVerified: map['is_verified'] ?? map['isVerified'] ?? map['author']?['isVerified'] ?? false,
+      verificationType: (map['verification_type'] ??
+              map['verificationType'] ??
+              map['author']?['verificationType'] ??
+              ((map['is_verified'] == true || map['isVerified'] == true || map['author']?['isVerified'] == true)
+                  ? 'blue'
+                  : 'none'))
+          .toString()
+          .toLowerCase(),
+      isAnonymous: map['is_anonymous'] ?? map['isAnonymous'] ?? false,
       content: map['content'] ?? '',
       mediaUrl: mUrl,
       mediaType: mType,
-      timestamp: ts,
-      likesCount: map['likes_count'] ?? 0,
-      commentsCount: map['comments_count'] ?? 0,
-      repostCount: map['repost_count'] ?? 0,
-      viewsCount: map['views_count'] ?? 0,
-      sharesCount: map['shares_count'] ?? 0,
-      savesCount: map['saves_count'] ?? 0,
-      channelId: (map['channel_id'] == 'public')
+      timestamp: parseTime(map['created_at'] ?? map['createdAt']),
+      likesCount: parseInt(map['likes_count'] ?? map['likesCount'] ?? map['_count']?['likes']),
+      commentsCount: parseInt(map['comments_count'] ?? map['commentsCount'] ?? map['_count']?['comments']),
+      repostCount: parseInt(map['repost_count'] ?? map['repostCount']),
+      viewsCount: parseInt(map['views_count'] ?? map['viewsCount']),
+      sharesCount: parseInt(map['shares_count'] ?? map['sharesCount']),
+      savesCount: parseInt(map['saves_count'] ?? map['savesCount']),
+      isLiked: map['is_liked'] ?? map['isLiked'] ?? false,
+      channelId: (map['channel_id'] == 'public' || map['channelId'] == 'public')
           ? 'general'
-          : (map['channel_id'] ?? 'general'),
-      pollData: map['poll_data'],
-      repostData: map['repost_data'],
-      hashtags: List<String>.from(map['hashtags'] ?? []),
-      mentions: List<String>.from(map['mentions'] ?? []),
+          : (map['channel_id'] ?? map['channelId'] ?? 'general'),
+      pollData: parseMap(map['poll_data'] ?? map['pollData']),
+      repostData: parseMap(map['repost_data'] ?? map['repostData']),
+      hashtags: parseStringList(map['hashtags']),
+      mentions: parseStringList(map['mentions']),
       visibility: map['visibility'] ?? 'everyone',
       status: map['status'] ?? 'active',
       latitude: (map['latitude'] as num?)?.toDouble(),
       longitude: (map['longitude'] as num?)?.toDouble(),
-      replyPermission: map['reply_permission'] ?? 'everyone',
-      scheduledAt: (map['scheduled_at'] as Timestamp?)?.toDate(),
-      mediaAltText: map['media_alt_text'],
-      linkUrl: map['link_url'],
+      locationName: map['location_name'] ?? map['locationName'] ?? map['location'],
+      replyPermission: map['reply_permission'] ?? map['replyPermission'] ?? 'everyone',
+      scheduledAt: map['scheduled_at'] != null ? parseTime(map['scheduled_at']) : (map['scheduledAt'] != null ? parseTime(map['scheduledAt']) : null),
+      mediaAltText: map['media_alt_text'] ?? map['mediaAltText'],
+      linkUrl: map['link_url'] ?? map['linkUrl'],
     );
   }
 

@@ -37,7 +37,7 @@ class AppTheme {
         elevation: 0,
         color: AppColors.surfaceElevated,
         margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-        shadowColor: Colors.black.withOpacity(0.06),
+        shadowColor: Colors.black.withValues(alpha: 0.06),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
           side: const BorderSide(color: AppColors.borderLight, width: 0.5),
@@ -204,7 +204,7 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: AppColors.surfaceDarkElevated,
-        hintStyle: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 14),
+        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 14),
         labelStyle: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w500),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),

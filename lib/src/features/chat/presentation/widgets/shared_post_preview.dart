@@ -37,10 +37,10 @@ class SharedPostPreview extends ConsumerWidget {
             width: 250,
             margin: const EdgeInsets.symmetric(vertical: 4),
             decoration: BoxDecoration(
-              color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+              color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.1),
+                color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.1),
                 width: 1,
               ),
             ),
@@ -136,7 +136,7 @@ class SharedPostPreview extends ConsumerWidget {
                                 Container(
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.4),
+                                    color: Colors.black.withValues(alpha: 0.4),
                                     shape: BoxShape.circle,
                                   ),
                                   child: const Icon(

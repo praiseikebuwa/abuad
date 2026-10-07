@@ -72,7 +72,7 @@ class AppColors {
   // Shadows
   static List<BoxShadow> get softShadow => [
     BoxShadow(
-      color: Colors.black.withOpacity(0.05),
+      color: Colors.black.withValues(alpha: 0.05),
       blurRadius: 20,
       offset: const Offset(0, 10),
     ),
@@ -80,7 +80,7 @@ class AppColors {
 
   static List<BoxShadow> get glassShadow => [
     BoxShadow(
-      color: Colors.black.withOpacity(0.1),
+      color: Colors.black.withValues(alpha: 0.1),
       blurRadius: 30,
       offset: const Offset(0, 10),
     ),
