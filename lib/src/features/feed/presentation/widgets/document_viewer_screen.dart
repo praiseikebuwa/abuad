@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:archive/archive.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -175,11 +174,11 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> with Single
 
   void _detectFileType() {
     final ext = _extension.toLowerCase();
+    _activeViewMode = 0; // Default to Document Reader mode on screen
     if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'].contains(ext)) {
       _isImage = true;
     } else if (ext == 'pdf') {
       _isPdf = true;
-      _activeViewMode = kIsWeb ? 1 : 0; // Default to embedded view on web for PDF
     } else if (['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx'].contains(ext)) {
       _isOfficeDoc = true;
     }
@@ -355,7 +354,17 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> with Single
   }
 
   String get _googleEmbedUrl {
-    return 'https://docs.google.com/gview?url=${Uri.encodeComponent(widget.documentUrl)}&embedded=true';
+    final url = widget.documentUrl;
+    final isLocal = url.contains('localhost') ||
+        url.contains('127.0.0.1') ||
+        url.contains('192.168.') ||
+        url.contains('0.0.0.0') ||
+        url.startsWith('blob:');
+
+    if (_isPdf || isLocal) {
+      return url;
+    }
+    return 'https://docs.google.com/gview?url=${Uri.encodeComponent(url)}&embedded=true';
   }
 
   @override
