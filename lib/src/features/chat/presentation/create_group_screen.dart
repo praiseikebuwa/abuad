@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -24,6 +25,7 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
   final List<AppUser> _selectedUsers = [];
   bool _isCreating = false;
   String? _groupAvatarPath;
+  Uint8List? _groupAvatarBytes;
   bool _isPrivate = true;
   bool _memberApprovals = true;
   int _activeTab = 0; // 0: Frequently Contacted, 1: All Contacts
@@ -41,8 +43,10 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
   Future<void> _pickGroupPhoto() async {
     final picked = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
     if (picked != null) {
+      final bytes = await picked.readAsBytes();
       setState(() {
         _groupAvatarPath = picked.path;
+        _groupAvatarBytes = bytes;
       });
     }
   }
@@ -192,11 +196,11 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
                             color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
                             shape: BoxShape.circle,
                           ),
-                          child: _groupAvatarPath != null
+                          child: _groupAvatarBytes != null
                               ? ClipRRect(
                                   borderRadius: BorderRadius.circular(42),
-                                  child: Image.file(
-                                    File(_groupAvatarPath!),
+                                  child: Image.memory(
+                                    _groupAvatarBytes!,
                                     fit: BoxFit.cover,
                                     errorBuilder: (context, error, stackTrace) => const Icon(
                                       Icons.camera_alt_rounded,
@@ -205,11 +209,34 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
                                     ),
                                   ),
                                 )
-                              : const Icon(
-                                  Icons.camera_alt_rounded,
-                                  size: 36,
-                                  color: Color(0xFF94A3B8),
-                                ),
+                              : (_groupAvatarPath != null
+                                  ? ClipRRect(
+                                      borderRadius: BorderRadius.circular(42),
+                                      child: kIsWeb
+                                          ? Image.network(
+                                              _groupAvatarPath!,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (context, error, stackTrace) => const Icon(
+                                                Icons.camera_alt_rounded,
+                                                size: 36,
+                                                color: Color(0xFF94A3B8),
+                                              ),
+                                            )
+                                          : Image.file(
+                                              File(_groupAvatarPath!),
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (context, error, stackTrace) => const Icon(
+                                                Icons.camera_alt_rounded,
+                                                size: 36,
+                                                color: Color(0xFF94A3B8),
+                                              ),
+                                            ),
+                                    )
+                                  : const Icon(
+                                      Icons.camera_alt_rounded,
+                                      size: 36,
+                                      color: Color(0xFF94A3B8),
+                                    )),
                         ),
                         Positioned(
                           right: -2,
@@ -643,15 +670,16 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
                           .where((u) => u.uid != currentUserId)
                           .toList();
 
-                      // Default mock list if users are empty
                       if (users.isEmpty) {
-                        users = [
-                          AppUser(uid: 'u_daniel', displayName: 'Daniel', handle: 'daniel', department: 'Major - 2nd Year CS', email: 'daniel@abuad.edu.ng'),
-                          AppUser(uid: 'u_chidinma', displayName: 'Chidinma', handle: 'chidinma', department: 'Chidinma - 3rd Year Biology', email: 'chidinma@abuad.edu.ng'),
-                          AppUser(uid: 'u_priya', displayName: 'Priya', handle: 'priya', department: 'Major - 2nd Year CS', email: 'priya@abuad.edu.ng'),
-                          AppUser(uid: 'u_sarah', displayName: 'Sarah', handle: 'sarah', department: 'Major - 2nd Year EY', email: 'sarah@abuad.edu.ng'),
-                          AppUser(uid: 'u_david', displayName: 'David Okafor', handle: 'david', department: 'Major - 2nd Year CS', email: 'david@abuad.edu.ng'),
-                        ];
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 32.0),
+                          child: Center(
+                            child: Text(
+                              _searchQuery.isNotEmpty ? 'No users matching "$_searchQuery"' : 'No contacts found',
+                              style: TextStyle(fontSize: 14, color: textSecondary),
+                            ),
+                          ),
+                        );
                       }
 
                       return ListView.separated(

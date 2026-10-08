@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -106,6 +107,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Color _getThemeColor(String name) {
     switch (name) {
+      case 'Indigo':
+        return const Color(0xFF6366F1);
+      case 'Teal':
+        return const Color(0xFF14B8A6);
       case 'Blue':
         return const Color(0xFF3B82F6);
       case 'Purple':
@@ -117,7 +122,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       case 'Emerald':
         return const Color(0xFF10B981);
       default:
-        return AppColors.secondaryTeal;
+        return const Color(0xFF6366F1);
     }
   }
 
@@ -141,6 +146,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
         ),
       );
+    }
+
+    if (kIsWeb) {
+      if (_wallpaperPath!.startsWith('http') || _wallpaperPath!.startsWith('blob:')) {
+        return Container(
+          decoration: BoxDecoration(
+            image: DecorationImage(
+              image: NetworkImage(_wallpaperPath!),
+              fit: BoxFit.cover,
+              colorFilter: ColorFilter.mode(
+                Colors.black.withValues(alpha: _wallpaperDim),
+                BlendMode.darken,
+              ),
+            ),
+          ),
+        );
+      }
+      return const SizedBox.shrink();
     }
 
     if (File(_wallpaperPath!).existsSync()) {
@@ -880,7 +903,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               IconButton(
                 icon: const Icon(Icons.share),
                 onPressed: () {
-                  Share.share(url, subject: 'Image from Abuad life Chat');
+                  SharePlus.instance.share(
+                    ShareParams(
+                      text: url,
+                      subject: 'Image from Abuad life Chat',
+                    ),
+                  );
                 },
               ),
             ],
@@ -1263,12 +1291,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     const SizedBox(height: 4),
                     Align(
                       alignment: Alignment.bottomRight,
-                      child: Text(
-                        _formatTime(message.timestamp),
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: isMe ? Colors.white70 : (isDark ? Colors.white54 : Colors.grey[500]),
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Text(
+                            _formatTime(message.timestamp),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: isMe ? Colors.white70 : (isDark ? Colors.white54 : Colors.grey[500]),
+                            ),
+                          ),
+                          if (isMe) ...[
+                            const SizedBox(width: 3),
+                            _buildMessageStatusIcon(
+                              message,
+                              isMe: isMe,
+                              isRead: message.isRead || message.readBy.length > 1,
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                   ],
@@ -2025,42 +2067,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             actions: [
               IconButton(
                 icon: Icon(
-                  Icons.videocam_outlined,
+                  Icons.search_rounded,
                   color: headerTextColor.withValues(alpha: 0.9),
-                  size: 24,
+                  size: 23,
                 ),
-                onPressed: () => _startCall(
-                  isVideo: true,
-                  name: displayName,
-                  avatar: displayAvatar,
-                ),
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Search in conversation...')),
+                  );
+                },
               ),
-              if (isGroup)
-                IconButton(
-                  icon: Icon(
-                    Icons.search_rounded,
-                    color: headerTextColor.withValues(alpha: 0.9),
-                    size: 23,
-                  ),
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Search in conversation...')),
-                    );
-                  },
-                )
-              else
-                IconButton(
-                  icon: Icon(
-                    Icons.phone_outlined,
-                    color: headerTextColor.withValues(alpha: 0.9),
-                    size: 21,
-                  ),
-                  onPressed: () => _startCall(
-                    isVideo: false,
-                    name: displayName,
-                    avatar: displayAvatar,
-                  ),
-                ),
               PopupMenuButton<String>(
                 icon: Icon(
                   Icons.more_horiz_rounded,
@@ -2210,10 +2226,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
                         final messages = snapshot.data!;
 
-                        // Combine real messages with uploading snaps
-                        final List<dynamic> items = List.from(messages);
+                        // Reverse messages so newest is at index 0 for reverse: true ListView
+                        final List<dynamic> items = List.from(messages.reversed);
                         _uploadingSnaps.forEach((fileName, progress) {
-                          // Add a virtual message for the uploading snap
+                          // Add a virtual message for the uploading snap at the bottom (index 0)
                           items.insert(0, {
                             'fileName': fileName,
                             'progress': progress,
@@ -2950,21 +2966,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                                                       ),
                                                                     ),
                                                                     if (isMe) ...[
-                                                                      const SizedBox(width: 4),
-                                                                      if (isRead)
-                                                                        const Text(
-                                                                          'Read ',
-                                                                          style: TextStyle(
-                                                                            fontSize: 10,
-                                                                            color: Colors.white70,
-                                                                          ),
-                                                                        ),
-                                                                      Icon(
-                                                                        isRead
-                                                                            ? Icons.done_all_rounded
-                                                                            : Icons.done_rounded,
-                                                                        size: 14,
-                                                                        color: Colors.white,
+                                                                      const SizedBox(width: 3),
+                                                                      _buildMessageStatusIcon(
+                                                                        message,
+                                                                        isMe: isMe,
+                                                                        isRead: isRead,
                                                                       ),
                                                                     ],
                                                                   ],
@@ -3023,24 +3029,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                                 ],
                                               ),
                                             ),
-                                          if (isMe) ...[
-                                            const SizedBox(height: 2),
-                                            Row(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.end,
-                                              children: [
-                                                Icon(
-                                                  isRead
-                                                      ? Icons.done_all
-                                                      : Icons.done,
-                                                  size: 16,
-                                                  color: isRead
-                                                      ? AppColors.secondaryTeal
-                                                      : Colors.grey,
-                                                ),
-                                              ],
-                                            ),
-                                          ],
+
                                         ],
                                       ],
                                     ),
@@ -4685,6 +4674,39 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildMessageStatusIcon(
+    ChatMessage message, {
+    required bool isMe,
+    required bool isRead,
+  }) {
+    final isPending = message.id.isEmpty ||
+        message.id.startsWith('temp_') ||
+        message.id.startsWith('pending') ||
+        message.id.startsWith('local_');
+
+    if (isPending) {
+      return Icon(
+        Icons.access_time_rounded,
+        size: 11,
+        color: isMe ? Colors.white60 : Colors.grey[400],
+      );
+    }
+
+    if (isRead) {
+      return const Icon(
+        Icons.done_all_rounded,
+        size: 15,
+        color: Color(0xFF38BDF8), // WhatsApp Cyan/Blue Double Tick (Seen/Read)
+      );
+    }
+
+    return Icon(
+      Icons.done_rounded,
+      size: 15,
+      color: isMe ? Colors.white70 : Colors.grey[400], // Sent single tick
     );
   }
 }

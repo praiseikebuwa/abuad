@@ -344,7 +344,6 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
     }
 
     final repo = ref.read(storyRepositoryProvider);
-    final container = ref.container;
 
     // Capture all UI state before popping
     final selectedMedia = _selectedMedia;
@@ -421,8 +420,6 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
         reshareAuthorName: resharedStory?.userName,
         reshareStoryId: resharedStory?.id,
       );
-
-      container.invalidate(activeStoriesProvider);
 
       messenger.showSnackBar(
         const SnackBar(

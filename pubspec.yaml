@@ -45,6 +45,7 @@ dependencies:
   flutter_markdown: ^0.7.1
   video_player: ^2.8.2
   image_picker: ^1.2.1
+  file_picker: ^8.1.7
   salomon_bottom_bar: ^3.3.2
   flutter_animate: ^4.5.0
   uuid: ^4.3.3
@@ -91,6 +92,7 @@ dependencies:
   visibility_detector: ^0.4.0+2
   flutter_cache_manager: ^3.4.1
   glassmorphism: ^3.0.0
+  archive: ^4.0.2
 
 dev_dependencies:
   flutter_test:

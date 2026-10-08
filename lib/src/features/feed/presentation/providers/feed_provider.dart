@@ -233,6 +233,32 @@ final optimisticLikeProvider =
       OptimisticLikeNotifier.new,
     );
 
+class OptimisticSaveNotifier extends Notifier<Map<String, bool>> {
+  @override
+  Map<String, bool> build() => {};
+
+  bool? get(String postId) => state[postId];
+
+  void toggle(String postId, bool currentValue) {
+    state = {...state, postId: !currentValue};
+  }
+
+  void confirm(String postId) {
+    final updated = Map<String, bool>.from(state);
+    updated.remove(postId);
+    state = updated;
+  }
+
+  void revert(String postId, bool originalValue) {
+    state = {...state, postId: originalValue};
+  }
+}
+
+final optimisticSaveProvider =
+    NotifierProvider<OptimisticSaveNotifier, Map<String, bool>>(
+      OptimisticSaveNotifier.new,
+    );
+
 // ──────────────────────────────────────────────────────────────────────────────
 // FEATURE 2: "Not Interested" / Muted hashtags
 // ──────────────────────────────────────────────────────────────────────────────
@@ -385,6 +411,7 @@ class PaginatedFeedNotifier extends AsyncNotifier<List<Post>> {
 
   Future<List<Post>> _fetchBatch({required bool isInitial}) async {
     final feedType = ref.watch(feedTypeProvider);
+    final selectedChannel = ref.watch(feedChannelProvider);
     final hiddenPosts = ref.watch(hiddenPostsProvider);
     final mutedTags = ref.watch(mutedHashtagsProvider);
     final activeFilters = ref.watch(feedFilterProvider);
@@ -394,6 +421,7 @@ class PaginatedFeedNotifier extends AsyncNotifier<List<Post>> {
       cursor: isInitial ? null : _nextCursor,
       limit: 15,
       feedType: feedType == FeedType.following ? 'following' : 'foryou',
+      channel: feedType == FeedType.discovery ? selectedChannel : 'all',
     );
 
     _nextCursor = result.nextCursor;

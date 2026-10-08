@@ -37,6 +37,36 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
     super.dispose();
   }
 
+  PopupMenuItem<String> _buildPopupMenuItem({
+    required String value,
+    required IconData icon,
+    required String title,
+    required bool isDark,
+  }) {
+    return PopupMenuItem<String>(
+      value: value,
+      height: 42,
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: 19,
+            color: isDark ? Colors.white70 : const Color(0xFF475569),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: isDark ? Colors.white : const Color(0xFF0F172A),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final repo = ref.watch(chatRepositoryProvider);
@@ -73,32 +103,99 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                   isDark: isDark,
                   isCompact: true,
                 ),
-                const SizedBox(width: 10),
-                GestureDetector(
-                  onTap: () => context.push('/chat/user-search'),
-                  child: Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF4F46E5), Color(0xFF6366F1)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF6366F1).withValues(alpha: 0.35),
-                          blurRadius: 8,
-                          offset: const Offset(0, 3),
+                Theme(
+                  data: Theme.of(context).copyWith(
+                    popupMenuTheme: PopupMenuThemeData(
+                      color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                      surfaceTintColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        side: BorderSide(
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.08)
+                              : Colors.black.withValues(alpha: 0.06),
                         ),
-                      ],
+                      ),
+                      elevation: 10,
+                      shadowColor: Colors.black.withValues(alpha: 0.25),
                     ),
-                    child: const Icon(
-                      Icons.edit_square,
-                      color: Colors.white,
-                      size: 20,
+                  ),
+                  child: PopupMenuButton<String>(
+                    tooltip: 'More options',
+                    padding: EdgeInsets.zero,
+                    offset: const Offset(0, 48),
+                    icon: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? const Color(0xFF1E293B)
+                            : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.06)
+                              : Colors.black.withValues(alpha: 0.04),
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.more_vert_rounded,
+                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                        size: 20,
+                      ),
                     ),
+                    onSelected: (value) {
+                      switch (value) {
+                        case 'new_chat':
+                          context.push('/chat/user-search');
+                          break;
+                        case 'new_group':
+                          context.push('/chat/create-group');
+                          break;
+                        case 'new_broadcast':
+                          context.push('/chat/broadcast');
+                          break;
+                        case 'scanner':
+                          context.push('/chat/scanner');
+                          break;
+                        case 'settings':
+                          context.push('/chat/settings');
+                          break;
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      _buildPopupMenuItem(
+                        value: 'new_chat',
+                        icon: Icons.chat_bubble_outline_rounded,
+                        title: 'New Chat',
+                        isDark: isDark,
+                      ),
+                      _buildPopupMenuItem(
+                        value: 'new_group',
+                        icon: Icons.group_add_outlined,
+                        title: 'New Group',
+                        isDark: isDark,
+                      ),
+                      _buildPopupMenuItem(
+                        value: 'new_broadcast',
+                        icon: Icons.campaign_outlined,
+                        title: 'New Broadcast',
+                        isDark: isDark,
+                      ),
+                      _buildPopupMenuItem(
+                        value: 'scanner',
+                        icon: Icons.qr_code_scanner_rounded,
+                        title: 'Scan QR Code',
+                        isDark: isDark,
+                      ),
+                      const PopupMenuDivider(),
+                      _buildPopupMenuItem(
+                        value: 'settings',
+                        icon: Icons.settings_outlined,
+                        title: 'Chat Settings',
+                        isDark: isDark,
+                      ),
+                    ],
                   ),
                 ),
               ],

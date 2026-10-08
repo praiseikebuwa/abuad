@@ -19,8 +19,8 @@ final isPostLikedProvider = StreamProvider.family<bool, String>((ref, postId) {
   return ref.watch(postRepositoryProvider).watchPostLiked(postId);
 });
 
-final isPostSavedProvider = FutureProvider.family<bool, String>((ref, postId) async {
-  return ref.watch(postRepositoryProvider).isPostSaved(postId);
+final isPostSavedProvider = StreamProvider.family<bool, String>((ref, postId) {
+  return ref.watch(postRepositoryProvider).watchPostSaved(postId);
 });
 
 final postProvider = StreamProvider.family<Post?, String>((ref, postId) {
@@ -48,7 +48,7 @@ final userRepliesProvider = FutureProvider.family<List<Map<String, dynamic>>, St
 });
 
 final trendingTagsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
-  return [];
+  return ref.watch(postRepositoryProvider).getTrendingTags();
 });
 
 class PostPageResult {
@@ -366,8 +366,17 @@ class PostRepository {
     return isPostLikedSync(postId);
   }
 
+  Stream<bool> watchPostSaved(String postId) async* {
+    yield isPostSavedSync(postId);
+    await for (final cache in _postsController.stream) {
+      if (cache.containsKey(postId)) {
+        yield cache[postId]!.isSaved;
+      }
+    }
+  }
+
   bool isPostSavedSync(String postId) {
-    return _savedPostsMap[postId] ?? false;
+    return _savedPostsMap[postId] ?? _postsCache[postId]?.isSaved ?? false;
   }
 
   Future<bool> isPostSaved(String postId) async {
@@ -423,7 +432,7 @@ class PostRepository {
     final payload = {
       'content': post.content,
       'mediaUrl': post.mediaUrl,
-      'mediaUrls': post.mediaUrl.isNotEmpty ? [post.mediaUrl] : [],
+      'mediaUrls': post.allMediaUrls,
       'mediaType': post.mediaType.name,
       'channelId': post.channelId,
       'isAnonymous': post.isAnonymous,
@@ -695,26 +704,43 @@ class PostRepository {
   }
 
   Future<void> togglePostSave(String postId) async {
-    final currentSaved = _savedPostsMap[postId] ?? false;
+    final currentSaved = isPostSavedSync(postId);
     final newSaved = !currentSaved;
     _savedPostsMap[postId] = newSaved;
 
     if (_postsCache.containsKey(postId)) {
       final p = _postsCache[postId]!;
       final newCount = (p.savesCount + (newSaved ? 1 : -1)).clamp(0, 999999);
-      _postsCache[postId] = p.copyWith(savesCount: newCount);
-      _postsController.add(_postsCache);
+      _postsCache[postId] = p.copyWith(savesCount: newCount, isSaved: newSaved);
+      _postsController.add(Map<String, Post>.from(_postsCache));
+    } else {
+      _postsController.add(Map<String, Post>.from(_postsCache));
     }
 
     try {
-      await ApiClient.post('/posts/$postId/save', {});
-    } catch (_) {}
+      final res = await ApiClient.post('/posts/$postId/save', {});
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['isSaved'] != null) {
+          final bool serverSaved = data['isSaved'] == true;
+          _savedPostsMap[postId] = serverSaved;
+          if (_postsCache.containsKey(postId)) {
+            final p = _postsCache[postId]!;
+            _postsCache[postId] = p.copyWith(isSaved: serverSaved);
+            _postsController.add(Map<String, Post>.from(_postsCache));
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error toggling post save: $e');
+    }
   }
 
   Future<PostPageResult> fetchFeedPage({
     String? cursor,
     int limit = 15,
     String feedType = 'foryou',
+    String? channel,
   }) async {
     try {
       final queryParams = <String, String>{
@@ -723,6 +749,9 @@ class PostRepository {
       };
       if (cursor != null && cursor.isNotEmpty) {
         queryParams['cursor'] = cursor;
+      }
+      if (channel != null && channel.isNotEmpty && channel != 'all') {
+        queryParams['channel'] = channel;
       }
       final queryString = Uri(queryParameters: queryParams).query;
       final response = await ApiClient.get('/posts?$queryString');
@@ -925,8 +954,125 @@ class PostRepository {
     return Stream.fromFuture(getUserMedia(userId));
   }
 
-  Stream<List<Post>> watchSuggestedPosts() async* { yield []; }
-  Future<List<Post>> searchPosts(String query) async => [];
+  Future<List<Map<String, dynamic>>> getTrendingTags() async {
+    try {
+      final res = await ApiClient.get('/posts/trending-tags');
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['data'] is List) {
+          return (data['data'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching trending tags from API: $e');
+    }
+
+    // Dynamic extraction fallback from cached posts
+    final Map<String, int> counts = {};
+    for (final p in _postsCache.values) {
+      for (final tag in p.hashtags) {
+        final clean = tag.replaceAll('#', '').trim().toLowerCase();
+        if (clean.isNotEmpty) {
+          counts[clean] = (counts[clean] ?? 0) + 1 + (p.likesCount ~/ 5);
+        }
+      }
+      final matches = RegExp(r'#([a-zA-Z0-9_]+)').allMatches(p.content);
+      for (final m in matches) {
+        final clean = m.group(1)!.toLowerCase();
+        if (clean.isNotEmpty) {
+          counts[clean] = (counts[clean] ?? 0) + 1;
+        }
+      }
+    }
+
+    if (counts.isNotEmpty) {
+      final list = counts.entries.map((e) => {
+        'tag': '#${e.key}',
+        'name': e.key,
+        'count': e.value,
+      }).toList();
+      list.sort((a, b) => (b['count'] as int).compareTo(a['count'] as int));
+      return list.take(12).toList();
+    }
+
+    // Default fallback tags
+    return [
+      {'tag': '#ABUAD', 'count': 28},
+      {'tag': '#Trending', 'count': 19},
+      {'tag': '#CampusLife', 'count': 15},
+      {'tag': '#Tech', 'count': 12},
+      {'tag': '#Sports', 'count': 9},
+      {'tag': '#News', 'count': 8},
+      {'tag': '#Engineering', 'count': 6},
+    ];
+  }
+
+  Stream<List<Post>> watchSuggestedPosts() async* {
+    try {
+      final res = await ApiClient.get('/posts?limit=30');
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['data'] is List) {
+          final posts = (data['data'] as List)
+              .map((item) => Post.fromMap(item as Map<String, dynamic>))
+              .toList();
+          for (final p in posts) {
+            _postsCache[p.id] = p;
+          }
+          yield posts;
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching suggested posts: $e');
+    }
+
+    if (_postsCache.isNotEmpty) {
+      yield _postsCache.values.toList();
+    } else {
+      yield [];
+    }
+  }
+
+  Future<List<Post>> searchPosts(String query) async {
+    final cleanQuery = query.trim();
+    if (cleanQuery.isEmpty) return [];
+
+    try {
+      final encoded = Uri.encodeComponent(cleanQuery);
+      final res = await ApiClient.get('/posts/search?q=$encoded');
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['data'] is List) {
+          final posts = (data['data'] as List)
+              .map((item) => Post.fromMap(item as Map<String, dynamic>))
+              .toList();
+          for (final p in posts) {
+            _postsCache[p.id] = p;
+          }
+          return posts;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error searching posts: $e');
+    }
+
+    // Cache-based fallback search
+    final q = cleanQuery.toLowerCase();
+    final rawTag = q.replaceAll('#', '');
+    return _postsCache.values.where((p) {
+      final content = p.content.toLowerCase();
+      final author = p.authorName.toLowerCase();
+      final handle = p.authorHandle.toLowerCase();
+      final tags = p.hashtags.map((t) => t.toLowerCase()).toList();
+
+      return content.contains(q) ||
+          content.contains(rawTag) ||
+          author.contains(q) ||
+          handle.contains(q) ||
+          tags.any((t) => t.contains(q) || t.contains(rawTag));
+    }).toList();
+  }
 }
 
 

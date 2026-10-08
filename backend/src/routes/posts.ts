@@ -14,9 +14,37 @@ router.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Response) =
     const limit = Number(req.query.limit) || 15;
     const cursor = req.query.cursor ? String(req.query.cursor) : undefined;
     const feedType = req.query.feed ? String(req.query.feed).toLowerCase() : 'foryou';
+    const channel = req.query.channel ? String(req.query.channel).toLowerCase() : undefined;
     const userId = req.user?.id;
 
     const decodedCursor = decodeCursor(cursor);
+
+    let channelFilter: any = {};
+    if (channel && channel !== 'all') {
+      if (channel === 'reels') {
+        channelFilter = {
+          OR: [
+            { mediaType: 'video' },
+            { mediaType: 'VIDEO' },
+            { mediaUrl: { contains: '.mp4' } },
+            { mediaUrl: { contains: '.mov' } },
+            { mediaUrl: { contains: '.webm' } },
+            { mediaUrl: { contains: '.m3u8' } },
+            { mediaUrl: { contains: '/videos/' } },
+            { hashtags: { contains: 'reel' } },
+            { hashtags: { contains: 'video' } },
+          ],
+        };
+      } else {
+        channelFilter = {
+          OR: [
+            { channelId: { equals: channel } },
+            { hashtags: { contains: channel } },
+            { content: { contains: `#${channel}` } },
+          ],
+        };
+      }
+    }
 
     // 1. If Following feed requested
     if (feedType === 'following') {
@@ -37,6 +65,7 @@ router.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Response) =
         where: {
           authorId: { in: followedIds },
           status: 'active',
+          ...channelFilter,
           ...(decodedCursor?.createdAt ? { createdAt: { lt: new Date(decodedCursor.createdAt) } } : {}),
         },
         take: limit + 1,
@@ -81,6 +110,7 @@ router.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Response) =
     const candidatePosts = await prisma.post.findMany({
       where: {
         status: 'active',
+        ...channelFilter,
         ...(decodedCursor?.createdAt ? { createdAt: { lt: new Date(decodedCursor.createdAt) } } : {}),
       },
       take: Math.max(limit * 3, 45),
@@ -524,27 +554,150 @@ router.get('/saved', authenticateToken, async (req: AuthenticatedRequest, res: R
 });
 
 /**
- * GET /api/posts/search?q= - Search posts by content or hashtag
+ * GET /api/posts/trending-tags - Aggregated trending hashtags and campus tags
  */
-router.get('/search', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/trending-tags', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const q = String(req.query.q || '');
+    const recentPosts = await prisma.post.findMany({
+      where: { status: 'active' },
+      take: 200,
+      orderBy: { createdAt: 'desc' },
+      select: {
+        content: true,
+        hashtags: true,
+        likesCount: true,
+        commentsCount: true,
+      },
+    });
+
+    const tagCounts: { [tag: string]: number } = {};
+
+    for (const post of recentPosts) {
+      if (post.hashtags) {
+        try {
+          const parsed = JSON.parse(post.hashtags);
+          if (Array.isArray(parsed)) {
+            for (const tag of parsed) {
+              const cleaned = String(tag).trim().replace(/^#/, '');
+              if (cleaned.length > 1) {
+                const key = cleaned.toLowerCase();
+                tagCounts[key] = (tagCounts[key] || 0) + 2 + Math.floor((post.likesCount + post.commentsCount) / 3);
+              }
+            }
+          }
+        } catch (_) {
+          const parts = String(post.hashtags).split(/[,\s]+/);
+          for (const p of parts) {
+            const cleaned = p.trim().replace(/^#/, '');
+            if (cleaned.length > 1) {
+              const key = cleaned.toLowerCase();
+              tagCounts[key] = (tagCounts[key] || 0) + 1;
+            }
+          }
+        }
+      }
+
+      if (post.content) {
+        const matches = post.content.match(/#([a-zA-Z0-9_]+)/g);
+        if (matches) {
+          for (const m of matches) {
+            const cleaned = m.replace(/^#/, '');
+            if (cleaned.length > 1) {
+              const key = cleaned.toLowerCase();
+              tagCounts[key] = (tagCounts[key] || 0) + 1 + Math.floor((post.likesCount + post.commentsCount) / 5);
+            }
+          }
+        }
+      }
+    }
+
+    const defaultTags = ['ABUAD', 'Trending', 'CampusLife', 'Tech', 'Engineering', 'Law', 'Medicine', 'Sports', 'Events', 'News'];
+    for (const dt of defaultTags) {
+      const key = dt.toLowerCase();
+      if (!tagCounts[key]) {
+        tagCounts[key] = 1;
+      }
+    }
+
+    const sortedTags = Object.entries(tagCounts)
+      .map(([tag, count]) => ({
+        tag: `#${tag}`,
+        name: tag,
+        count,
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 15);
+
+    return res.json({ success: true, data: sortedTags });
+  } catch (error) {
+    console.error('Error fetching trending tags:', error);
+    return res.status(500).json({ error: 'Failed to fetch trending tags' });
+  }
+});
+
+/**
+ * GET /api/posts/search?q= - Search posts by content, hashtag, or author
+ */
+router.get('/search', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    const userId = req.user?.id;
+
+    if (!q) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const rawTag = q.replace(/^#/, '');
+    const searchConditions: any[] = [
+      { content: { contains: q } },
+      { hashtags: { contains: q } },
+      { author: { username: { contains: q } } },
+      { author: { fullName: { contains: q } } },
+    ];
+
+    if (rawTag !== q && rawTag.length > 0) {
+      searchConditions.push({ content: { contains: rawTag } });
+      searchConditions.push({ hashtags: { contains: rawTag } });
+    }
+
     const posts = await prisma.post.findMany({
       where: {
         status: 'active',
-        OR: [
-          { content: { contains: q } },
-          { hashtags: { contains: q } },
-        ],
+        OR: searchConditions,
       },
-      take: 30,
+      take: 40,
       orderBy: { createdAt: 'desc' },
       include: {
-        author: { select: { id: true, username: true, fullName: true, avatarUrl: true } },
+        author: {
+          select: {
+            id: true,
+            username: true,
+            fullName: true,
+            avatarUrl: true,
+            isVerified: true,
+            verificationType: true,
+          },
+        },
+        likes: userId ? { where: { userId }, select: { id: true } } : false,
+        savedBy: userId ? { where: { userId }, select: { id: true } } : false,
+        _count: { select: { comments: true, likes: true } },
       },
     });
-    return res.json({ success: true, data: posts });
+
+    const formatted = posts.map(p => {
+      const { likes, savedBy, _count, ...rest } = p;
+      return {
+        ...rest,
+        commentsCount: _count?.comments ?? 0,
+        likesCount: _count?.likes ?? 0,
+        isLiked: Array.isArray(likes) ? likes.length > 0 : false,
+        isSaved: Array.isArray(savedBy) ? savedBy.length > 0 : false,
+      };
+    });
+
+    return res.json({ success: true, data: formatted });
   } catch (error) {
+    console.error('Error searching posts:', error);
     return res.status(500).json({ error: 'Failed to search posts' });
   }
 });

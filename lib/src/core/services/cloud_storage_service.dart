@@ -17,6 +17,12 @@ class CloudStorageService {
     return _uploadBytes(bytes, fileName, 'image/jpeg');
   }
 
+  /// Upload a document (PDF, Word, PPT, Excel, TXT, etc.)
+  Future<String> uploadDocument(Uint8List bytes, String fileName) async {
+    final contentType = _mimeFromExtension(fileName) ?? 'application/octet-stream';
+    return _uploadBytes(bytes, fileName, contentType);
+  }
+
   /// Upload a video XFile.
   Future<String> uploadVideo(XFile file, {String? path}) async {
     return _uploadXFile(file);
@@ -60,6 +66,14 @@ class CloudStorageService {
       'mp3': 'audio/mpeg',
       'aac': 'audio/aac',
       'wav': 'audio/wav',
+      'pdf': 'application/pdf',
+      'doc': 'application/msword',
+      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'ppt': 'application/vnd.ms-powerpoint',
+      'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'xls': 'application/vnd.ms-excel',
+      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'txt': 'text/plain',
     };
     return map[ext];
   }

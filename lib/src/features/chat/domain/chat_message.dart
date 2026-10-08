@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class ChatMessage {
   final String id;
   final String senderId;
@@ -92,14 +94,31 @@ class ChatMessage {
       ts = DateTime.tryParse(rawTs) ?? DateTime.now();
     }
 
+    final readByRaw = map['read_by'] ?? map['readBy'];
+    List<String> readByList = [];
+    if (readByRaw is List) {
+      readByList = List<String>.from(readByRaw.map((e) => e.toString()));
+    } else if (readByRaw is String) {
+      try {
+        final decoded = jsonDecode(readByRaw);
+        if (decoded is List) {
+          readByList = List<String>.from(decoded.map((e) => e.toString()));
+        }
+      } catch (_) {}
+    }
+
+    final isReadVal = map['is_read'] == true ||
+        map['isRead'] == true ||
+        readByList.length > 1;
+
     return ChatMessage(
       id: map['id'] ?? '',
       senderId: map['sender_id'] ?? map['senderId'] ?? '',
       content: map['content'] ?? map['text'] ?? '',
       type: map['type'] ?? 'text',
       timestamp: ts,
-      isRead: false,
-      readBy: List<String>.from(map['read_by'] ?? []),
+      isRead: isReadVal,
+      readBy: readByList,
       imageUrl: map['image_url'] ?? map['mediaUrl'],
       imageWidth: (map['image_width'] as num?)?.toDouble(),
       imageHeight: (map['image_height'] as num?)?.toDouble(),

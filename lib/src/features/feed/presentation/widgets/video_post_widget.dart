@@ -9,6 +9,7 @@ class VideoPostWidget extends StatefulWidget {
   final String? thumbnailUrl;
   final double? defaultAspectRatio;
   final VoidCallback? onTap;
+  final VoidCallback? onOpenFullscreen;
   final bool autoPlay;
   final bool startMuted;
 
@@ -18,6 +19,7 @@ class VideoPostWidget extends StatefulWidget {
     this.thumbnailUrl,
     this.defaultAspectRatio,
     this.onTap,
+    this.onOpenFullscreen,
     this.autoPlay = true,
     this.startMuted = true,
   });
@@ -222,7 +224,17 @@ class _VideoPostWidgetState extends State<VideoPostWidget>
           aspectRatio: _aspectRatio,
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: widget.onTap ?? (_hasError ? _initializePlayer : _togglePlayback),
+            onTap: () {
+              if (_hasError) {
+                _initializePlayer();
+              } else if (widget.onTap != null) {
+                widget.onTap!();
+              } else if (widget.onOpenFullscreen != null) {
+                widget.onOpenFullscreen!();
+              } else {
+                _togglePlayback();
+              }
+            },
             child: Container(
               color: Colors.black,
               child: Stack(
@@ -265,27 +277,38 @@ class _VideoPostWidgetState extends State<VideoPostWidget>
                       ),
                     ),
 
-                  // Error State
+                  // Error State with clickable Retry button
                   if (_hasError)
                     Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.replay_circle_filled_rounded,
-                            color: Colors.white70,
-                            size: 44,
+                      child: GestureDetector(
+                        onTap: _initializePlayer,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.white24),
                           ),
-                          const SizedBox(height: 6),
-                          const Text(
-                            'Tap to retry',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.replay_circle_filled_rounded,
+                                color: Colors.white,
+                                size: 40,
+                              ),
+                              const SizedBox(height: 6),
+                              const Text(
+                                'Tap to retry',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                     ),
 
@@ -307,6 +330,33 @@ class _VideoPostWidgetState extends State<VideoPostWidget>
                             Icons.play_arrow_rounded,
                             color: Colors.white,
                             size: 36,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  // Top-Right Fullscreen / Reels Button (if provided)
+                  if (widget.onOpenFullscreen != null && _isInitialized && !_hasError)
+                    Positioned(
+                      top: 10,
+                      right: 10,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: widget.onOpenFullscreen,
+                        child: Container(
+                          padding: const EdgeInsets.all(7),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.6),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.25),
+                              width: 1,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.fullscreen_rounded,
+                            color: Colors.white,
+                            size: 19,
                           ),
                         ),
                       ),

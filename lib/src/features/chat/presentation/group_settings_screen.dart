@@ -20,7 +20,7 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
   bool _addOtherMembers = true;
   bool _approveNewMembers = true;
   bool _participantHistory = true;
-  int _activeInviteLinks = 4;
+  int _activeInviteLinks = 1;
   final int _bannedUsersCount = 0;
 
   @override
@@ -39,8 +39,12 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
       future: repo.getChannel(widget.channelId),
       builder: (context, snapshot) {
         final channel = snapshot.data;
-        final displayName = channel?.displayName ?? 'MTH 205 — Mathematics';
-        final memberCount = channel?.memberIds.isNotEmpty == true ? channel!.memberIds.length : 128;
+        final displayName = channel?.displayName?.isNotEmpty == true ? channel!.displayName! : 'Group';
+        final memberCount = channel?.memberIds.length ?? 0;
+        final adminIds = channel?.adminIds ?? [];
+        final adminNames = adminIds.map((id) => channel?.memberNames[id] ?? 'Admin').toList();
+        final adminSubtext = adminNames.isNotEmpty ? adminNames.join(', ') : 'Admins';
+
         final avatars = channel?.memberAvatars.values
                 .where((a) => a != null && a.isNotEmpty && UrlValidator.isValidUrl(a))
                 .cast<String>()
@@ -105,7 +109,10 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
                       title: 'Edit Group Info',
                       subtitle: 'Only admins can change group name, image, and description.',
                       value: _editGroupInfo,
-                      onChanged: (val) => setState(() => _editGroupInfo = val),
+                      onChanged: (val) {
+                        setState(() => _editGroupInfo = val);
+                        repo.updateGroupSettings(widget.channelId, restrictInfoUpdates: val);
+                      },
                       textPrimary: textPrimary,
                       textSecondary: textSecondary,
                       isDark: isDark,
@@ -165,7 +172,7 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
                       title: 'Invite Links',
                       value: '$_activeInviteLinks active links',
                       subtitle: 'Manage links and QR codes to join this group.',
-                      onTap: _showInviteLinksDialog,
+                      onTap: () => _showInviteLinksDialog(widget.channelId),
                       textPrimary: textPrimary,
                       textSecondary: textSecondary,
                     ),
@@ -183,9 +190,9 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
                   children: [
                     _buildNavigationRow(
                       title: 'Group Admins',
-                      value: '2 admins',
-                      subtitle: 'Liam (Class Rep), Dr. Evans (Facilitator)',
-                      onTap: _showAdminsDialog,
+                      value: '${adminIds.length} admins',
+                      subtitle: adminSubtext,
+                      onTap: () => _showAdminsDialog(channel),
                       textPrimary: textPrimary,
                       textSecondary: textSecondary,
                     ),
@@ -211,13 +218,13 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
                   children: [
                     _buildDestructiveRow(
                       title: 'Reset Invite Links',
-                      subtitle: 'Warning: subtext Invite actions join this group.',
+                      subtitle: 'Warning: Resets active invite link tokens for this group.',
                       onTap: _confirmResetInviteLinks,
                     ),
                     _buildDivider(isDark),
                     _buildDestructiveRow(
                       title: 'Delete Group History',
-                      subtitle: 'Warning: Delete Group Histories to this group.',
+                      subtitle: 'Warning: Deletes group chat history on this device.',
                       onTap: _confirmDeleteGroupHistory,
                     ),
                   ],
@@ -259,7 +266,6 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
   }) {
     return Row(
       children: [
-        // Group Avatar Cluster with Edit Badge
         Stack(
           clipBehavior: Clip.none,
           children: [
@@ -272,7 +278,7 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(34),
-                child: _buildAvatarCollage(avatars),
+                child: _buildAvatarCollage(avatars, displayName),
               ),
             ),
             Positioned(
@@ -336,7 +342,7 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
     );
   }
 
-  Widget _buildAvatarCollage(List<String> avatars) {
+  Widget _buildAvatarCollage(List<String> avatars, String displayName) {
     if (avatars.length >= 3) {
       return Stack(
         children: [
@@ -367,8 +373,11 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
         ],
       );
     }
-    return const Center(
-      child: Icon(Icons.groups_rounded, size: 36, color: Color(0xFF3B82F6)),
+    return Center(
+      child: Text(
+        displayName.isNotEmpty ? displayName[0].toUpperCase() : 'G',
+        style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Color(0xFF3B82F6)),
+      ),
     );
   }
 
@@ -647,6 +656,7 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
                 trailing: _sendMessagesPermission == 'All Members' ? const Icon(Icons.check, color: Color(0xFF3B82F6)) : null,
                 onTap: () {
                   setState(() => _sendMessagesPermission = 'All Members');
+                  ref.read(chatRepositoryProvider).updateGroupSettings(widget.channelId, restrictMessaging: false);
                   Navigator.pop(context);
                 },
               ),
@@ -655,6 +665,7 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
                 trailing: _sendMessagesPermission == 'Only Admins' ? const Icon(Icons.check, color: Color(0xFF3B82F6)) : null,
                 onTap: () {
                   setState(() => _sendMessagesPermission = 'Only Admins');
+                  ref.read(chatRepositoryProvider).updateGroupSettings(widget.channelId, restrictMessaging: true);
                   Navigator.pop(context);
                 },
               ),
@@ -666,7 +677,7 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
     );
   }
 
-  void _showInviteLinksDialog() {
+  void _showInviteLinksDialog(String channelId) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -683,9 +694,9 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
               children: [
                 Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(2)))),
                 const SizedBox(height: 16),
-                const Text('Active Invite Links', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                const Text('Active Invite Link', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                 const SizedBox(height: 4),
-                const Text('Share this link to invite students to the study group.', style: TextStyle(color: Colors.grey, fontSize: 14)),
+                const Text('Share this link to invite students to join the group.', style: TextStyle(color: Colors.grey, fontSize: 14)),
                 const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -697,10 +708,10 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
                     children: [
                       const Icon(Icons.link, color: Color(0xFF3B82F6)),
                       const SizedBox(width: 12),
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          'https://abuad.edu.ng/join/mth205-group',
-                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                          'https://abuad.edu.ng/join/$channelId',
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                         ),
                       ),
                       IconButton(
@@ -708,7 +719,7 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
                         onPressed: () {
                           Navigator.pop(context);
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Link copied to clipboard')),
+                            const SnackBar(content: Text('Invite link copied to clipboard')),
                           );
                         },
                       ),
@@ -724,7 +735,10 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
     );
   }
 
-  void _showAdminsDialog() {
+  void _showAdminsDialog(ChatChannel? channel) {
+    final adminIds = channel?.adminIds ?? [];
+    final creatorId = channel?.createdBy;
+
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -738,20 +752,35 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
               const SizedBox(height: 12),
               Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(2))),
               const SizedBox(height: 16),
-              const Text('Group Admins', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              Text('Group Admins (${adminIds.length})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
               const SizedBox(height: 12),
-              const ListTile(
-                leading: CircleAvatar(child: Text('L')),
-                title: Text('Liam (Class Rep)', style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text('Creator & Lead Admin'),
-                trailing: Chip(label: Text('Owner', style: TextStyle(fontSize: 11, color: Colors.white)), backgroundColor: Color(0xFF3B82F6)),
-              ),
-              const ListTile(
-                leading: CircleAvatar(child: Text('E')),
-                title: Text('Dr. Evans (Facilitator)', style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text('Faculty Advisor'),
-                trailing: Chip(label: Text('Admin', style: TextStyle(fontSize: 11, color: Colors.white)), backgroundColor: Color(0xFF10B981)),
-              ),
+              if (adminIds.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text('No admins assigned yet.'),
+                )
+              else
+                for (final adminId in adminIds)
+                  ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: const Color(0xFF6366F1),
+                      child: Text(
+                        (channel?.memberNames[adminId]?.isNotEmpty == true)
+                            ? channel!.memberNames[adminId]![0].toUpperCase()
+                            : 'A',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                    title: Text(
+                      channel?.memberNames[adminId] ?? 'Admin',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text(adminId == creatorId ? 'Group Creator & Admin' : 'Group Admin'),
+                    trailing: Chip(
+                      label: Text(adminId == creatorId ? 'Owner' : 'Admin', style: const TextStyle(fontSize: 11, color: Colors.white)),
+                      backgroundColor: adminId == creatorId ? const Color(0xFF3B82F6) : const Color(0xFF10B981),
+                    ),
+                  ),
               const SizedBox(height: 16),
             ],
           ),
@@ -808,7 +837,7 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Group History?'),
-        content: const Text('This will permanently delete messages and shared media for all participants. This action cannot be undone.'),
+        content: const Text('This will clear local group messages and attachments from your device.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),

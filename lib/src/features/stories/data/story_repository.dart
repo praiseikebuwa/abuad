@@ -10,7 +10,8 @@ import '../../auth/data/auth_repository.dart';
 import '../domain/story.dart';
 
 final storyRepositoryProvider = Provider<StoryRepository>((ref) {
-  return StoryRepository(ref);
+  final authRepo = ref.watch(authRepositoryProvider);
+  return StoryRepository(authRepo: authRepo);
 });
 
 final activeStoriesProvider = StreamProvider<List<Story>>((ref) {
@@ -29,28 +30,50 @@ final allStoriesGroupedProvider = Provider<AsyncValue<Map<String, List<Story>>>>
 });
 
 class StoryRepository {
-  final Ref _ref;
+  final AuthRepository authRepo;
 
-  StoryRepository(this._ref);
+  StoryRepository({required this.authRepo});
+
+  final StreamController<List<Story>> _storiesController =
+      StreamController<List<Story>>.broadcast();
+  List<Story> _cachedStories = [];
+  Timer? _pollingTimer;
 
   String? get currentUserId =>
-      _ref.read(authRepositoryProvider).currentUser?.uid ??
-      _ref.read(authRepositoryProvider).currentUserId;
+      authRepo.currentUser?.uid ?? authRepo.currentUserId;
 
-  Stream<List<Story>> watchActiveStories() async* {
+  Stream<List<Story>> watchActiveStories() {
+    fetchStories();
+
+    _pollingTimer?.cancel();
+    _pollingTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      fetchStories();
+    });
+
+    if (_cachedStories.isNotEmpty) {
+      return Stream.value(_cachedStories).concatWith([_storiesController.stream]);
+    }
+    return _storiesController.stream;
+  }
+
+  Future<List<Story>> fetchStories() async {
     try {
       final response = await ApiClient.get('/stories');
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true && data['data'] is List) {
-          yield (data['data'] as List).map((x) => Story.fromMap(x)).toList();
-          return;
+          final stories = (data['data'] as List).map((x) => Story.fromMap(x)).toList();
+          _cachedStories = stories;
+          if (!_storiesController.isClosed) {
+            _storiesController.add(stories);
+          }
+          return stories;
         }
       }
     } catch (e) {
       debugPrint('Error fetching active stories: $e');
     }
-    yield [];
+    return _cachedStories;
   }
 
   Future<void> createStory({
@@ -70,12 +93,9 @@ class StoryRepository {
     String? reshareAuthorName,
     String? reshareStoryId,
   }) async {
-    final uid = currentUserId;
+    final user = authRepo.currentUser;
+    final uid = user?.uid ?? currentUserId;
     if (uid == null) throw Exception('User not authenticated');
-
-    var user = await _ref.read(userRepositoryProvider).getUserById(uid);
-    user ??= _ref.read(authRepositoryProvider).currentUser;
-    if (user == null) throw Exception('User profile details not found');
 
     String finalContent = content;
     if (mediaFile != null) {
@@ -83,7 +103,9 @@ class StoryRepository {
         final bytes = await mediaFile.readAsBytes();
         final uploadedUrl = await ApiClient.uploadBytes(
           bytes,
-          mediaFile.name.isNotEmpty ? mediaFile.name : 'story_${DateTime.now().millisecondsSinceEpoch}.jpg',
+          mediaFile.name.isNotEmpty
+              ? mediaFile.name
+              : 'story_${DateTime.now().millisecondsSinceEpoch}.jpg',
         );
         if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
           finalContent = uploadedUrl;
@@ -131,22 +153,27 @@ class StoryRepository {
       textColor: textColor,
       fontFamily: fontFamily,
       textAlign: textAlign,
-      userName: user.displayName,
-      userAvatar: user.avatarUrl ?? '',
+      userName: user?.displayName ?? 'Student',
+      userAvatar: user?.avatarUrl ?? '',
       status: 'active',
       reshareAuthorId: reshareAuthorId,
       reshareAuthorName: reshareAuthorName,
       reshareStoryId: reshareStoryId,
     );
 
-    await ApiClient.post('/stories', story.toMap());
-    _ref.invalidate(activeStoriesProvider);
+    final res = await ApiClient.post('/stories', story.toMap());
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      final err = jsonDecode(res.body);
+      throw Exception(err['error'] ?? err['message'] ?? 'Failed to post story');
+    }
+
+    await fetchStories();
   }
 
   Future<void> markAsViewed(String storyId) async {
     try {
       await ApiClient.post('/stories/$storyId/view', {});
-      _ref.invalidate(activeStoriesProvider);
+      await fetchStories();
     } catch (e) {
       debugPrint('Error marking story viewed: $e');
     }
@@ -155,7 +182,7 @@ class StoryRepository {
   Future<void> likeStory(String storyId, {required bool isLiking}) async {
     try {
       await ApiClient.post('/stories/$storyId/like', {'isLiking': isLiking});
-      _ref.invalidate(activeStoriesProvider);
+      await fetchStories();
     } catch (e) {
       debugPrint('Error liking story: $e');
     }
@@ -164,9 +191,18 @@ class StoryRepository {
   Future<void> deleteStory(String storyId) async {
     try {
       await ApiClient.delete('/stories/$storyId');
-      _ref.invalidate(activeStoriesProvider);
+      await fetchStories();
     } catch (e) {
       debugPrint('Error deleting story: $e');
+    }
+  }
+}
+
+extension _StreamConcat<T> on Stream<T> {
+  Stream<T> concatWith(Iterable<Stream<T>> otherStreams) async* {
+    yield* this;
+    for (final s in otherStreams) {
+      yield* s;
     }
   }
 }

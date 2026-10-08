@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/services/api_client.dart';
 import '../../auth/data/auth_repository.dart';
 import '../domain/chat_channel.dart';
@@ -132,9 +133,25 @@ class ChatRepository {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true && data['data'] is List) {
-          final messages = (data['data'] as List)
+          var messages = (data['data'] as List)
               .map((x) => ChatMessage.fromMap(x))
               .toList();
+
+          // Check disappearing messages setting
+          final prefs = await SharedPreferences.getInstance();
+          final disappearing = prefs.getString('chat_disappearing_$channelId') ?? 'Off';
+          if (disappearing != 'Off') {
+            final now = DateTime.now();
+            Duration? cutoff;
+            if (disappearing == '24 Hours') cutoff = const Duration(hours: 24);
+            if (disappearing == '7 Days') cutoff = const Duration(days: 7);
+            if (disappearing == '90 Days') cutoff = const Duration(days: 90);
+            if (cutoff != null) {
+              final threshold = now.subtract(cutoff);
+              messages = messages.where((m) => m.timestamp.isAfter(threshold)).toList();
+            }
+          }
+
           if (_messageControllers.containsKey(channelId) && !_messageControllers[channelId]!.isClosed) {
             _messageControllers[channelId]!.add(messages);
           }
@@ -317,5 +334,46 @@ class ChatRepository {
   Future<void> updateGroupSettings(String channelId, {bool? restrictInfoUpdates, bool? restrictMessaging, Map<String, dynamic>? settings}) async {}
   Future<void> leaveGroup(String channelId) async {
     _fetchChannels();
+  }
+
+  Future<void> clearChannelMessages(String channelId) async {
+    try {
+      final cleanId = channelId.startsWith('channel_') ? channelId.substring(8) : channelId;
+      await ApiClient.delete('/chat/channels/$cleanId/messages');
+    } catch (e) {
+      debugPrint('Error clearing channel messages: $e');
+    }
+    if (_messageControllers.containsKey(channelId) && !_messageControllers[channelId]!.isClosed) {
+      _messageControllers[channelId]!.add([]);
+    }
+  }
+
+  Future<void> blockUser(String userId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('blocked_user_$userId', true);
+      await ApiClient.post('/users/$userId/block', {});
+    } catch (e) {
+      debugPrint('Error blocking user: $e');
+    }
+  }
+
+  Future<void> unblockUser(String userId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('blocked_user_$userId', false);
+      await ApiClient.post('/users/$userId/unblock', {});
+    } catch (e) {
+      debugPrint('Error unblocking user: $e');
+    }
+  }
+
+  Future<bool> isUserBlocked(String userId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool('blocked_user_$userId') ?? false;
+    } catch (_) {
+      return false;
+    }
   }
 }

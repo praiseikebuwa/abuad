@@ -34,7 +34,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
   }
 
   @override
@@ -197,6 +197,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
                   Tab(text: "Top"),
                   Tab(text: "Latest"),
                   Tab(text: "People"),
+                  Tab(text: "Hashtags"),
                   Tab(text: "Media"),
                 ],
               ),
@@ -320,6 +321,17 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
         _SearchResultsList(query: _query, filter: 'top'),
         _SearchResultsList(query: _query, filter: 'latest'),
         _PeopleSearchResults(query: _query),
+        _HashtagsSearchResults(
+          query: _query,
+          onSelectTag: (tag) {
+            setState(() {
+              _searchController.text = tag;
+              _query = tag;
+            });
+            ref.read(searchHistoryProvider.notifier).addQuery(tag);
+            _tabController.animateTo(0);
+          },
+        ),
         _SearchResultsList(query: _query, filter: 'media'),
       ],
     );
@@ -575,30 +587,32 @@ class _SuggestedUsersCarousel extends ConsumerWidget {
                 itemCount: users.length,
                 itemBuilder: (context, index) {
                   final user = users[index];
-                  return Container(
-                    width: 140,
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.04)
-                          : Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
+                  return GestureDetector(
+                    onTap: () => context.push('/user/${user.uid}'),
+                    child: Container(
+                      width: 140,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
                         color: isDark
-                            ? Colors.white.withValues(alpha: 0.05)
-                            : Colors.black.withValues(alpha: 0.05),
+                            ? Colors.white.withValues(alpha: 0.04)
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.05)
+                              : Colors.black.withValues(alpha: 0.05),
+                        ),
+                        boxShadow: isDark
+                            ? null
+                            : [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.03),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
                       ),
-                      boxShadow: isDark
-                          ? null
-                          : [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.03),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                    ),
                     child: Consumer(
                       builder: (context, ref, child) {
                         final isFollowing =
@@ -711,11 +725,12 @@ class _SuggestedUsersCarousel extends ConsumerWidget {
                         );
                       },
                     ),
-                  );
-                },
-              );
-            },
-          ),
+                  ),
+                );
+              },
+            );
+          },
+        ),
         ),
       ],
     );
@@ -1135,6 +1150,110 @@ class _PeopleSearchResults extends ConsumerWidget {
           },
         );
       },
+    );
+  }
+}
+
+class _HashtagsSearchResults extends ConsumerWidget {
+  final String query;
+  final Function(String tag) onSelectTag;
+
+  const _HashtagsSearchResults({
+    required this.query,
+    required this.onSelectTag,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final trendingTagsAsync = ref.watch(trendingTagsProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return trendingTagsAsync.when(
+      data: (allTags) {
+        final cleanQuery = query.toLowerCase().replaceAll('#', '').trim();
+        final List<Map<String, dynamic>> tags;
+        if (cleanQuery.isEmpty) {
+          tags = allTags;
+        } else {
+          final filtered = allTags.where((t) {
+            final tag = (t['tag'] ?? t['name'] ?? '').toString().toLowerCase();
+            return tag.contains(cleanQuery);
+          }).toList();
+
+          if (filtered.isEmpty) {
+            tags = [
+              {
+                'tag': '#$cleanQuery',
+                'name': cleanQuery,
+                'count': 1,
+              }
+            ];
+          } else {
+            tags = filtered;
+          }
+        }
+
+        if (tags.isEmpty) {
+          return _NoResultsView(query: query);
+        }
+
+        return ListView.separated(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          itemCount: tags.length,
+          separatorBuilder: (context, index) => Divider(
+            height: 1,
+            color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
+          ),
+          itemBuilder: (context, index) {
+            final item = tags[index];
+            final rawTag = (item['tag'] ?? item['name'] ?? '').toString();
+            final hashtag = rawTag.startsWith('#') ? rawTag : '#$rawTag';
+            final count = item['count'] is int ? item['count'] as int : 1;
+
+            return ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              leading: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppColors.secondaryTeal.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.tag_rounded,
+                  color: AppColors.secondaryTeal,
+                  size: 24,
+                ),
+              ),
+              title: Text(
+                hashtag,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                ),
+              ),
+              subtitle: Text(
+                count == 1 ? '1 post' : '$count posts',
+                style: TextStyle(
+                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  fontSize: 12,
+                ),
+              ),
+              trailing: const Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 14,
+                color: Colors.grey,
+              ),
+              onTap: () {
+                HapticFeedback.lightImpact();
+                onSelectTag(hashtag);
+              },
+            );
+          },
+        );
+      },
+      loading: () => const _SearchSkeleton(),
+      error: (err, stack) => _NoResultsView(query: query),
     );
   }
 }

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:abuad/src/features/auth/data/auth_repository.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../user/data/user_repository.dart';
 import '../data/chat_repository.dart';
 import '../../../core/theme/app_colors.dart';
 
@@ -56,15 +56,15 @@ class _QRScannerScreenState extends ConsumerState<QRScannerScreen> {
       // Try to fetch the user to verify it's a valid ID
       final user = await userRepo.getUser(parsedUserId);
       if (user != null && mounted) {
-        final currentUser = ref.read(currentUserProvider).value;
-        if (currentUser == null) throw Exception('Profile not found');
+        final authRepo = ref.read(authRepositoryProvider);
+        final currentUser = authRepo.currentUser ?? ref.read(currentUserProvider).value;
 
         final channelId = await chatRepo.createOrGetChannel(
           user.uid,
           otherUserName: user.displayName,
           otherUserAvatar: user.avatarUrl,
-          currentUserName: currentUser.displayName,
-          currentUserAvatar: currentUser.avatarUrl,
+          currentUserName: currentUser?.displayName,
+          currentUserAvatar: currentUser?.avatarUrl,
         );
 
         if (mounted) {

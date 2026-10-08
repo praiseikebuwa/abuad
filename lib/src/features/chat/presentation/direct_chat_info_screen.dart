@@ -2,10 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:photo_view/photo_view.dart';
 import '../data/chat_repository.dart';
 import '../domain/chat_channel.dart';
+import '../domain/chat_message.dart';
 import '../../user/data/user_repository.dart';
 import '../../../core/utils/url_validator.dart';
+import '../../feed/presentation/widgets/document_viewer_screen.dart';
 
 class DirectChatInfoScreen extends ConsumerStatefulWidget {
   final String channelId;
@@ -26,8 +31,92 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
   String _notificationSetting = 'On / Custom';
   String _disappearingMessages = 'Off';
   String _chatTheme = 'Indigo';
+  bool _isUserBlocked = false;
 
   final List<String> _themeOptions = ['Indigo', 'Teal', 'Blue', 'Purple', 'Rose', 'Emerald'];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final muted = prefs.getBool('chat_muted_${widget.channelId}') ?? false;
+      final notif = prefs.getString('chat_notifications_${widget.channelId}') ?? (muted ? 'Muted' : 'On / Custom');
+      final disappearing = prefs.getString('chat_disappearing_${widget.channelId}') ?? 'Off';
+      final theme = prefs.getString('chat_theme_${widget.channelId}') ?? 'Indigo';
+
+      if (mounted) {
+        setState(() {
+          _isMuted = muted;
+          _notificationSetting = notif;
+          _disappearingMessages = disappearing;
+          _chatTheme = theme;
+        });
+      }
+
+      if (widget.otherUserId != null && widget.otherUserId!.isNotEmpty) {
+        final blocked = prefs.getBool('blocked_user_${widget.otherUserId}') ?? false;
+        if (mounted) {
+          setState(() {
+            _isUserBlocked = blocked;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading chat info settings: $e');
+    }
+  }
+
+  Future<void> _saveNotificationSetting(String setting, bool isMuted) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('chat_notifications_${widget.channelId}', setting);
+    await prefs.setBool('chat_muted_${widget.channelId}', isMuted);
+    setState(() {
+      _notificationSetting = setting;
+      _isMuted = isMuted;
+    });
+  }
+
+  Future<void> _saveDisappearingSetting(String opt) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('chat_disappearing_${widget.channelId}', opt);
+    setState(() {
+      _disappearingMessages = opt;
+    });
+  }
+
+  Future<void> _saveThemeSetting(String themeName) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('chat_theme_${widget.channelId}', themeName);
+    setState(() {
+      _chatTheme = themeName;
+    });
+  }
+
+  Future<void> _toggleBlockUser(String targetUserId, String displayName) async {
+    final repo = ref.read(chatRepositoryProvider);
+    if (_isUserBlocked) {
+      await repo.unblockUser(targetUserId);
+      setState(() => _isUserBlocked = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$displayName has been unblocked.')),
+        );
+      }
+    } else {
+      await repo.blockUser(targetUserId);
+      setState(() => _isUserBlocked = true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$displayName has been blocked.')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,8 +135,7 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
       builder: (context, snapshot) {
         final channel = snapshot.data;
         final currentUserId = repo.currentUserId;
-        
-        // Find other user ID
+
         final targetUserId = widget.otherUserId ??
             (channel?.memberIds.firstWhere(
                   (id) => id != currentUserId,
@@ -61,18 +149,18 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
         final displayName = otherUser?.displayName ??
             (channel?.displayName != null && channel?.displayName != 'Direct Message'
                 ? channel!.displayName!
-                : (channel?.memberNames[targetUserId] ?? 'Aria Park'));
+                : (channel?.memberNames[targetUserId] ?? 'User'));
 
         final handle = otherUser?.handle.isNotEmpty == true
             ? otherUser!.handle.replaceAll('@', '')
-            : 'aria_park';
+            : 'user';
 
         final subtitle = otherUser?.department != null && otherUser!.department!.isNotEmpty
             ? '@$handle • ${otherUser.department}'
-            : '@$handle • 3rd Year Biology Major';
+            : '@$handle';
 
         final avatarUrl = otherUser?.avatarUrl ?? channel?.memberAvatars[targetUserId] ?? channel?.displayAvatarUrl;
-        final isOnline = otherUser?.status == 'online' || true;
+        final isOnline = otherUser?.status == 'online';
 
         return Scaffold(
           backgroundColor: backgroundColor,
@@ -103,7 +191,7 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
                   } else if (val == 'clear') {
                     _confirmClearChat();
                   } else if (val == 'block') {
-                    _confirmBlockUser(displayName);
+                    _toggleBlockUser(targetUserId, displayName);
                   }
                 },
                 itemBuilder: (context) => [
@@ -131,9 +219,16 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
                     value: 'block',
                     child: Row(
                       children: [
-                        const Icon(Icons.block_rounded, size: 20, color: Colors.red),
+                        Icon(
+                          _isUserBlocked ? Icons.lock_open_rounded : Icons.block_rounded,
+                          size: 20,
+                          color: _isUserBlocked ? Colors.blue : Colors.red,
+                        ),
                         const SizedBox(width: 10),
-                        Text('Block $displayName', style: const TextStyle(color: Colors.red)),
+                        Text(
+                          _isUserBlocked ? 'Unblock $displayName' : 'Block $displayName',
+                          style: TextStyle(color: _isUserBlocked ? Colors.blue : Colors.red),
+                        ),
                       ],
                     ),
                   ),
@@ -160,7 +255,7 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
 
                 const SizedBox(height: 20),
 
-                // 4 Round Quick Action Buttons
+                // Quick Action Buttons
                 _buildActionButtonsRow(
                   buttonBg: actionButtonBg,
                   textPrimary: textPrimary,
@@ -170,8 +265,9 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
 
                 const SizedBox(height: 20),
 
-                // Shared Media Card
-                _buildSharedMediaCard(
+                // Real Interactive Shared Media Card
+                _buildRealSharedMediaCard(
+                  repo: repo,
                   cardColor: cardColor,
                   cardBorderColor: cardBorderColor,
                   textPrimary: textPrimary,
@@ -184,6 +280,7 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
                 // Chat Settings & Preferences Card
                 _buildSettingsCard(
                   displayName: displayName,
+                  targetUserId: targetUserId,
                   cardColor: cardColor,
                   cardBorderColor: cardBorderColor,
                   textPrimary: textPrimary,
@@ -193,8 +290,9 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
 
                 const SizedBox(height: 16),
 
-                // Groups in Common Card
-                _buildGroupsInCommonCard(
+                // Real Groups in Common Card
+                _buildRealGroupsInCommonCard(
+                  targetUserId: targetUserId,
                   cardColor: cardColor,
                   cardBorderColor: cardBorderColor,
                   textPrimary: textPrimary,
@@ -218,6 +316,7 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
                 // Destructive Actions Card
                 _buildDestructiveActionsCard(
                   displayName: displayName,
+                  targetUserId: targetUserId,
                   isDark: isDark,
                 ),
 
@@ -280,7 +379,6 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
                       ),
               ),
             ),
-            // Online Green Indicator Dot
             if (isOnline)
               Positioned(
                 right: 2,
@@ -335,38 +433,26 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
         _buildActionButton(
-          icon: Icons.phone_rounded,
-          label: 'Call',
-          bg: buttonBg,
-          textPrimary: textPrimary,
-          onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Calling $displayName...')),
-            );
-          },
-        ),
-        _buildActionButton(
-          icon: Icons.videocam_rounded,
-          label: 'Video',
-          bg: buttonBg,
-          textPrimary: textPrimary,
-          onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Starting video call with $displayName...')),
-            );
-          },
-        ),
-        _buildActionButton(
           icon: _isMuted ? Icons.notifications_off_rounded : Icons.notifications_rounded,
-          label: 'Mute',
+          label: _isMuted ? 'Muted' : 'Mute',
           bg: buttonBg,
           textPrimary: textPrimary,
           isActive: _isMuted,
           onTap: () {
-            setState(() => _isMuted = !_isMuted);
+            final nextMuted = !_isMuted;
+            _saveNotificationSetting(nextMuted ? 'Muted' : 'On / Custom', nextMuted);
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(_isMuted ? 'Chat muted' : 'Chat unmuted')),
+              SnackBar(content: Text(nextMuted ? 'Chat muted' : 'Chat unmuted')),
             );
+          },
+        ),
+        _buildActionButton(
+          icon: Icons.search_rounded,
+          label: 'Search',
+          bg: buttonBg,
+          textPrimary: textPrimary,
+          onTap: () {
+            Navigator.pop(context);
           },
         ),
         _buildActionButton(
@@ -430,105 +516,341 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
     );
   }
 
-  Widget _buildSharedMediaCard({
+  Widget _buildRealSharedMediaCard({
+    required ChatRepository repo,
     required Color cardColor,
     required Color cardBorderColor,
     required Color textPrimary,
     required Color textSecondary,
     required bool isDark,
   }) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cardBorderColor, width: 0.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Shared Media',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: textPrimary,
-                  ),
-                ),
-                GestureDetector(
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Opening shared media gallery...')),
-                    );
-                  },
-                  child: Row(
-                    children: [
-                      Text(
-                        'View All (28)',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF2563EB),
+    return StreamBuilder<List<ChatMessage>>(
+      stream: repo.watchMessages(widget.channelId),
+      builder: (context, snapshot) {
+        final messages = snapshot.data ?? [];
+        final mediaItems = messages.where((m) {
+          final type = m.type;
+          final content = m.content.toLowerCase();
+          return type == 'document' ||
+              type == 'image' ||
+              type == 'video' ||
+              (m.imageUrl != null && m.imageUrl!.isNotEmpty) ||
+              (m.audioUrl != null && m.audioUrl!.isNotEmpty) ||
+              content.startsWith('http') ||
+              content.contains('www.') ||
+              content.contains('.pdf') ||
+              content.contains('.docx');
+        }).toList();
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            color: cardColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: cardBorderColor, width: 0.5),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Shared Media',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: textPrimary,
+                      ),
+                    ),
+                    if (mediaItems.isNotEmpty)
+                      GestureDetector(
+                        onTap: () => _openSharedMediaGallery(mediaItems, isDark, textPrimary),
+                        child: Row(
+                          children: [
+                            Text(
+                              'View All (${mediaItems.length})',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF2563EB),
+                              ),
+                            ),
+                            const SizedBox(width: 2),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              size: 18,
+                              color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF2563EB),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(width: 2),
-                      Icon(
-                        Icons.chevron_right_rounded,
-                        size: 18,
-                        color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF2563EB),
-                      ),
-                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (mediaItems.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Text(
+                    'No shared media or documents yet',
+                    style: TextStyle(fontSize: 13, color: textSecondary),
+                  ),
+                )
+              else
+                SizedBox(
+                  height: 110,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    physics: const BouncingScrollPhysics(),
+                    itemCount: mediaItems.length,
+                    separatorBuilder: (context, index) => const SizedBox(width: 12),
+                    itemBuilder: (context, index) {
+                      final item = mediaItems[index];
+                      final isDoc = item.type == 'document' ||
+                          item.content.contains('.pdf') ||
+                          item.content.contains('.docx') ||
+                          item.content.contains('.txt');
+                      final isLink = item.content.startsWith('http') || item.content.contains('www.');
+                      final url = item.imageUrl ?? item.audioUrl ?? (isLink ? item.content : '');
+
+                      IconData icon = Icons.image_rounded;
+                      Color iconColor = const Color(0xFF10B981);
+                      String title = item.content.isNotEmpty ? item.content : 'Image';
+
+                      if (isDoc) {
+                        icon = item.content.contains('.pdf')
+                            ? Icons.picture_as_pdf_rounded
+                            : Icons.description_rounded;
+                        iconColor = item.content.contains('.pdf')
+                            ? const Color(0xFFEF4444)
+                            : const Color(0xFF2563EB);
+                        title = item.content.replaceFirst('📄 Document:', '').trim();
+                      } else if (isLink) {
+                        icon = Icons.link_rounded;
+                        iconColor = const Color(0xFF3B82F6);
+                      }
+
+                      return GestureDetector(
+                        onTap: () => _handleSharedMediaItemClick(item, url, isDoc, isLink, title),
+                        child: _buildMediaThumbnail(
+                          title: title,
+                          icon: icon,
+                          iconColor: iconColor,
+                          imageUrl: (item.type == 'image' || item.imageUrl != null) ? url : null,
+                          isDark: isDark,
+                        ),
+                      );
+                    },
                   ),
                 ),
-              ],
-            ),
+            ],
           ),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 110,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              physics: const BouncingScrollPhysics(),
-              children: [
-                _buildMediaThumbnail(
-                  title: 'biology_lab.pdf',
-                  icon: Icons.picture_as_pdf_rounded,
-                  iconColor: const Color(0xFFEF4444),
-                  isDark: isDark,
-                ),
-                const SizedBox(width: 12),
-                _buildMediaThumbnail(
-                  title: 'Art gallery photo',
-                  icon: Icons.image_rounded,
-                  iconColor: const Color(0xFF10B981),
-                  isDark: isDark,
-                ),
-                const SizedBox(width: 12),
-                _buildMediaThumbnail(
-                  title: 'zoom.us/j/...',
-                  icon: Icons.link_rounded,
-                  iconColor: const Color(0xFF3B82F6),
-                  isDark: isDark,
-                ),
-                const SizedBox(width: 12),
-                _buildMediaThumbnail(
-                  title: 'syllabus.pdf',
-                  icon: Icons.description_rounded,
-                  iconColor: const Color(0xFFF59E0B),
-                  isDark: isDark,
-                ),
-              ],
-            ),
+        );
+      },
+    );
+  }
+
+  void _handleSharedMediaItemClick(ChatMessage item, String url, bool isDoc, bool isLink, String title) {
+    if (isDoc) {
+      final docUrl = url.isNotEmpty ? url : item.content;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => DocumentViewerScreen(
+            documentUrl: docUrl,
+            title: title.isNotEmpty ? title : 'Document',
           ),
-        ],
+        ),
+      );
+    } else if (isLink) {
+      final uri = Uri.parse(url.startsWith('http') ? url : 'https://$url');
+      canLaunchUrl(uri).then((can) {
+        if (can) launchUrl(uri, mode: LaunchMode.externalApplication);
+      });
+    } else if (url.isNotEmpty) {
+      // Full screen image preview dialog
+      showDialog(
+        context: context,
+        builder: (context) => Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: EdgeInsets.zero,
+          child: Stack(
+            children: [
+              PhotoView(
+                imageProvider: NetworkImage(url),
+                minScale: PhotoViewComputedScale.contained,
+                maxScale: PhotoViewComputedScale.covered * 3,
+              ),
+              Positioned(
+                top: 40,
+                right: 20,
+                child: IconButton(
+                  icon: const Icon(Icons.close_rounded, color: Colors.white, size: 30),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+  }
+
+  void _openSharedMediaGallery(List<ChatMessage> mediaItems, bool isDark, Color textPrimary) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.85,
+          maxChildSize: 0.95,
+          minChildSize: 0.5,
+          expand: false,
+          builder: (context, scrollController) {
+            return DefaultTabController(
+              length: 3,
+              child: Column(
+                children: [
+                  const SizedBox(height: 12),
+                  Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(2))),
+                  const SizedBox(height: 16),
+                  Text('Shared Media Gallery', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: textPrimary)),
+                  const SizedBox(height: 12),
+                  TabBar(
+                    labelColor: const Color(0xFF3B82F6),
+                    unselectedLabelColor: isDark ? Colors.white60 : Colors.grey[600],
+                    indicatorColor: const Color(0xFF3B82F6),
+                    tabs: const [
+                      Tab(text: 'Media'),
+                      Tab(text: 'Documents'),
+                      Tab(text: 'Links'),
+                    ],
+                  ),
+                  Expanded(
+                    child: TabBarView(
+                      children: [
+                        // Media Tab
+                        _buildGalleryGrid(
+                          items: mediaItems.where((m) => m.type == 'image' || m.imageUrl != null || m.type == 'video').toList(),
+                          isDark: isDark,
+                        ),
+                        // Docs Tab
+                        _buildGalleryDocsList(
+                          items: mediaItems.where((m) => m.type == 'document' || m.content.contains('.pdf') || m.content.contains('.docx')).toList(),
+                          isDark: isDark,
+                          textPrimary: textPrimary,
+                        ),
+                        // Links Tab
+                        _buildGalleryLinksList(
+                          items: mediaItems.where((m) => m.content.startsWith('http') || m.content.contains('www.')).toList(),
+                          isDark: isDark,
+                          textPrimary: textPrimary,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildGalleryGrid({required List<ChatMessage> items, required bool isDark}) {
+    if (items.isEmpty) {
+      return const Center(child: Text('No media items shared yet'));
+    }
+    return GridView.builder(
+      padding: const EdgeInsets.all(16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+      ),
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final item = items[index];
+        final url = item.imageUrl ?? item.audioUrl ?? '';
+        return GestureDetector(
+          onTap: () => _handleSharedMediaItemClick(item, url, false, false, 'Media'),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: url.isNotEmpty
+                ? CachedNetworkImage(imageUrl: url, fit: BoxFit.cover)
+                : Container(color: isDark ? Colors.white10 : Colors.grey[200], child: const Icon(Icons.image_rounded)),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildGalleryDocsList({required List<ChatMessage> items, required bool isDark, required Color textPrimary}) {
+    if (items.isEmpty) {
+      return const Center(child: Text('No documents shared yet'));
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final item = items[index];
+        final docUrl = item.imageUrl ?? item.audioUrl ?? item.content;
+        final title = item.content.replaceFirst('📄 Document:', '').trim();
+        final isPdf = title.contains('.pdf');
+
+        return ListTile(
+          leading: Icon(
+            isPdf ? Icons.picture_as_pdf_rounded : Icons.description_rounded,
+            color: isPdf ? const Color(0xFFEF4444) : const Color(0xFF2563EB),
+            size: 32,
+          ),
+          title: Text(title.isNotEmpty ? title : 'Document', style: TextStyle(fontWeight: FontWeight.bold, color: textPrimary)),
+          subtitle: Text(item.timestamp.toString().split('.')[0], style: const TextStyle(fontSize: 12)),
+          onTap: () {
+            Navigator.pop(context);
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => DocumentViewerScreen(documentUrl: docUrl, title: title),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildGalleryLinksList({required List<ChatMessage> items, required bool isDark, required Color textPrimary}) {
+    if (items.isEmpty) {
+      return const Center(child: Text('No links shared yet'));
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final item = items[index];
+        final url = item.content;
+        return ListTile(
+          leading: const Icon(Icons.link_rounded, color: Color(0xFF3B82F6), size: 30),
+          title: Text(url, style: TextStyle(fontWeight: FontWeight.w600, color: textPrimary), maxLines: 2, overflow: TextOverflow.ellipsis),
+          onTap: () {
+            final uri = Uri.parse(url.startsWith('http') ? url : 'https://$url');
+            canLaunchUrl(uri).then((can) {
+              if (can) launchUrl(uri, mode: LaunchMode.externalApplication);
+            });
+          },
+        );
+      },
     );
   }
 
@@ -536,6 +858,7 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
     required String title,
     required IconData icon,
     required Color iconColor,
+    String? imageUrl,
     required bool isDark,
   }) {
     return Column(
@@ -553,8 +876,11 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
               width: 0.5,
             ),
           ),
-          child: Center(
-            child: Icon(icon, size: 30, color: iconColor),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: imageUrl != null && imageUrl.isNotEmpty && UrlValidator.isValidUrl(imageUrl)
+                ? CachedNetworkImage(imageUrl: imageUrl, fit: BoxFit.cover)
+                : Center(child: Icon(icon, size: 30, color: iconColor)),
           ),
         ),
         const SizedBox(height: 6),
@@ -579,6 +905,7 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
 
   Widget _buildSettingsCard({
     required String displayName,
+    required String targetUserId,
     required Color cardColor,
     required Color cardBorderColor,
     required Color textPrimary,
@@ -629,29 +956,34 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
           ),
           _buildDivider(isDark),
 
-          // Block Option
+          // Block / Unblock Option
           _buildSettingsTile(
-            leadingIcon: Icons.error_rounded,
-            iconColor: const Color(0xFFDC2626),
-            title: 'Block $displayName',
-            value: 'warn/danger',
-            isDestructive: true,
-            onTap: () => _confirmBlockUser(displayName),
-            textPrimary: const Color(0xFFDC2626),
-            textSecondary: const Color(0xFFDC2626),
+            leadingIcon: _isUserBlocked ? Icons.lock_open_rounded : Icons.error_rounded,
+            iconColor: _isUserBlocked ? const Color(0xFF2563EB) : const Color(0xFFDC2626),
+            title: _isUserBlocked ? 'Unblock $displayName' : 'Block $displayName',
+            value: _isUserBlocked ? 'Blocked' : 'Active',
+            isDestructive: !_isUserBlocked,
+            onTap: () => _toggleBlockUser(targetUserId, displayName),
+            textPrimary: _isUserBlocked ? const Color(0xFF2563EB) : const Color(0xFFDC2626),
+            textSecondary: _isUserBlocked ? const Color(0xFF2563EB) : const Color(0xFFDC2626),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildGroupsInCommonCard({
+  Widget _buildRealGroupsInCommonCard({
+    required String targetUserId,
     required Color cardColor,
     required Color cardBorderColor,
     required Color textPrimary,
     required Color textSecondary,
     required bool isDark,
   }) {
+    final channelsAsync = ref.watch(chatChannelsProvider);
+    final allChannels = channelsAsync.value ?? [];
+    final commonGroups = allChannels.where((c) => c.type == 'group' && c.memberIds.contains(targetUserId)).toList();
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -663,7 +995,7 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Groups in Common (3)',
+            'Groups in Common (${commonGroups.length})',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,
@@ -671,72 +1003,60 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
             ),
           ),
           const SizedBox(height: 14),
-          _buildGroupInCommonItem(
-            name: 'MTH 205 — Mathematics',
-            membersCount: '128 Members',
-            color: const Color(0xFF059669),
-            icon: Icons.calculate_rounded,
-            textPrimary: textPrimary,
-            textSecondary: textSecondary,
-            onTap: () {},
-          ),
-          const SizedBox(height: 12),
-          _buildGroupInCommonItem(
-            name: 'Biology Study Group',
-            membersCount: '14 Members',
-            color: const Color(0xFF2563EB),
-            icon: Icons.biotech_rounded,
-            textPrimary: textPrimary,
-            textSecondary: textSecondary,
-            onTap: () {},
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildGroupInCommonItem({
-    required String name,
-    required String membersCount,
-    required Color color,
-    required IconData icon,
-    required Color textPrimary,
-    required Color textSecondary,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: color,
-            child: Icon(icon, color: Colors.white, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: textPrimary,
+          if (commonGroups.isEmpty)
+            Text(
+              'No groups in common',
+              style: TextStyle(fontSize: 13, color: textSecondary),
+            )
+          else
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: commonGroups.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                final group = commonGroups[index];
+                return InkWell(
+                  onTap: () => context.push('/chat/${group.id}'),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 20,
+                        backgroundColor: const Color(0xFF059669),
+                        child: Text(
+                          group.displayName?.isNotEmpty == true ? group.displayName![0].toUpperCase() : 'G',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              group.displayName ?? 'Group',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${group.memberIds.length} Members',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  membersCount,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: textSecondary,
-                  ),
-                ),
-              ],
+                );
+              },
             ),
-          ),
         ],
       ),
     );
@@ -819,6 +1139,7 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
 
   Widget _buildDestructiveActionsCard({
     required String displayName,
+    required String targetUserId,
     required bool isDark,
   }) {
     return Container(
@@ -852,18 +1173,18 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
           ),
           _buildDivider(isDark),
           InkWell(
-            onTap: () => _confirmBlockUser(displayName),
+            onTap: () => _toggleBlockUser(targetUserId, displayName),
             borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'Block $displayName',
-                  style: const TextStyle(
+                  _isUserBlocked ? 'Unblock $displayName' : 'Block $displayName',
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFFDC2626),
+                    color: _isUserBlocked ? const Color(0xFF2563EB) : const Color(0xFFDC2626),
                   ),
                 ),
               ),
@@ -953,7 +1274,7 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
                 title: const Text('All Messages'),
                 trailing: _notificationSetting == 'On / Custom' ? const Icon(Icons.check, color: Color(0xFF3B82F6)) : null,
                 onTap: () {
-                  setState(() => _notificationSetting = 'On / Custom');
+                  _saveNotificationSetting('On / Custom', false);
                   Navigator.pop(context);
                 },
               ),
@@ -961,10 +1282,7 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
                 title: const Text('Mute Always'),
                 trailing: _notificationSetting == 'Muted' ? const Icon(Icons.check, color: Color(0xFF3B82F6)) : null,
                 onTap: () {
-                  setState(() {
-                    _notificationSetting = 'Muted';
-                    _isMuted = true;
-                  });
+                  _saveNotificationSetting('Muted', true);
                   Navigator.pop(context);
                 },
               ),
@@ -997,7 +1315,7 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
                   title: Text(opt),
                   trailing: _disappearingMessages == opt ? const Icon(Icons.check, color: Color(0xFF3B82F6)) : null,
                   onTap: () {
-                    setState(() => _disappearingMessages = opt);
+                    _saveDisappearingSetting(opt);
                     Navigator.pop(context);
                   },
                 ),
@@ -1030,7 +1348,7 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
                   title: Text(themeName),
                   trailing: _chatTheme == themeName ? const Icon(Icons.check, color: Color(0xFF3B82F6)) : null,
                   onTap: () {
-                    setState(() => _chatTheme = themeName);
+                    _saveThemeSetting(themeName);
                     Navigator.pop(context);
                   },
                 ),
@@ -1047,47 +1365,24 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Clear Chat History?'),
-        content: const Text('Messages will be removed from your device. Other participants will still be able to see them.'),
+        content: const Text('Messages will be removed from your chat history.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Chat history cleared.')),
-              );
+              await ref.read(chatRepositoryProvider).clearChannelMessages(widget.channelId);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Chat history cleared.')),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
             child: const Text('Clear'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _confirmBlockUser(String displayName) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Block $displayName?'),
-        content: Text('Blocked contacts will no longer be able to call you or send you messages.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('$displayName has been blocked.')),
-              );
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-            child: const Text('Block'),
           ),
         ],
       ),

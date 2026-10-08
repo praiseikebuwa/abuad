@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../domain/post.dart' as domain;
 import 'widgets/post_card.dart';
+import 'widgets/people_you_may_know_carousel.dart';
 import 'widgets/feed_loading_skeleton.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'providers/feed_provider.dart';
@@ -420,15 +421,39 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                         }
                       }
 
-                      if (posts.isEmpty) {
+                      // Filter by selected channel/category in discovery mode
+                      List<domain.Post> channelPosts = posts;
+                      if (feedType == FeedType.discovery && selectedChannel != 'all') {
+                        if (selectedChannel == 'reels') {
+                          channelPosts = posts.where((p) =>
+                            p.mediaType == domain.MediaType.video ||
+                            p.mediaUrl.toLowerCase().contains('.mp4') ||
+                            p.mediaUrl.toLowerCase().contains('.mov') ||
+                            p.mediaUrl.toLowerCase().contains('.webm') ||
+                            p.mediaUrl.toLowerCase().contains('/videos/') ||
+                            p.hashtags.any((h) => h.toLowerCase().contains('reel') || h.toLowerCase().contains('video'))
+                          ).toList();
+                        } else {
+                          channelPosts = posts.where((p) {
+                            final ch = selectedChannel.toLowerCase();
+                            return p.channelId.toLowerCase() == ch ||
+                                p.hashtags.any((h) => h.toLowerCase().contains(ch)) ||
+                                p.content.toLowerCase().contains('#$ch');
+                          }).toList();
+                        }
+                      }
+
+                      if (channelPosts.isEmpty) {
                         return Center(
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(
-                                feedType == FeedType.following
-                                    ? Icons.people_outline
-                                    : Icons.feed_outlined,
+                                selectedChannel == 'reels'
+                                    ? Icons.movie_outlined
+                                    : (feedType == FeedType.following
+                                        ? Icons.people_outline
+                                        : Icons.feed_outlined),
                                 size: 64,
                                 color: isDark
                                     ? Colors.grey[700]
@@ -436,11 +461,13 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                               ),
                               const SizedBox(height: 16),
                               Text(
-                                feedType == FeedType.following
-                                    ? 'No posts from people you follow'
-                                    : (selectedChannel == 'all'
-                                          ? 'No posts yet'
-                                          : 'No posts in this channel'),
+                                selectedChannel == 'reels'
+                                    ? 'No video reels yet'
+                                    : (feedType == FeedType.following
+                                        ? 'No posts from people you follow'
+                                        : (selectedChannel == 'all'
+                                            ? 'No posts yet'
+                                            : 'No posts in $selectedChannel')),
                                 style: TextStyle(
                                   color: isDark
                                       ? Colors.grey[400]
@@ -450,17 +477,37 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                                 ),
                               ),
                               const SizedBox(height: 8),
-                              Text(
-                                feedType == FeedType.following
-                                    ? 'Follow more students to see their updates here!'
-                                    : 'Be the first to post!',
-                                style: TextStyle(
-                                  color: isDark
-                                      ? Colors.grey[600]
-                                      : Colors.grey[500],
-                                  fontSize: 14,
+                              if (selectedChannel == 'reels') ...[
+                                const Text(
+                                  'Explore immersive full-screen campus videos & reels',
+                                  style: TextStyle(color: Colors.grey, fontSize: 13),
                                 ),
-                              ),
+                                const SizedBox(height: 16),
+                                ElevatedButton.icon(
+                                  onPressed: () => context.push('/reels'),
+                                  icon: const Icon(Icons.play_circle_fill_rounded),
+                                  label: const Text('Open Reels Viewer'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.pinkAccent,
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                  ),
+                                ),
+                              ] else ...[
+                                Text(
+                                  feedType == FeedType.following
+                                      ? 'Follow more students to see their updates here!'
+                                      : 'Be the first to post in this channel!',
+                                  style: TextStyle(
+                                    color: isDark
+                                        ? Colors.grey[600]
+                                        : Colors.grey[500],
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
                               if (feedType == FeedType.following)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 24),
@@ -494,7 +541,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                           injectAtIndex: 0,
                         ),
                       ];
-                      final displayPosts = injectSystemPosts(posts, injections);
+                      final displayPosts = injectSystemPosts(channelPosts, injections);
 
                       final isLoadingMore = ref.watch(isLoadingMoreProvider);
 
@@ -542,39 +589,53 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                                 }
 
                                 final post = displayPosts[index];
-                                if (post.authorId == '__system__') {
-                                  return _InjectedEventCard(post: post);
+                                final showPeopleCarousel = index == 2 || (index > 2 && index % 10 == 2);
+
+                                final postWidget = post.authorId == '__system__'
+                                    ? _InjectedEventCard(post: post)
+                                    : PostCard(
+                                        post: post,
+                                        onVideoTap: () {
+                                          final videoPosts = displayPosts
+                                              .where(
+                                                (p) =>
+                                                    p.mediaType ==
+                                                        domain.MediaType.video ||
+                                                    p.mediaUrl.toLowerCase().contains('.mp4') ||
+                                                    p.mediaUrl.toLowerCase().contains('.mov') ||
+                                                    p.mediaUrl.toLowerCase().contains('.webm') ||
+                                                    p.mediaUrl.toLowerCase().contains('.m3u8') ||
+                                                    p.id == post.id,
+                                              )
+                                              .toList();
+                                          final videoIndex = videoPosts.indexWhere(
+                                            (p) => p.id == post.id,
+                                          );
+                                          context.push(
+                                            '/reels',
+                                            extra: {
+                                              'videos': videoPosts.isNotEmpty
+                                                  ? videoPosts
+                                                  : [post],
+                                              'initialIndex':
+                                                  videoIndex >= 0 ? videoIndex : 0,
+                                            },
+                                          );
+                                        },
+                                      );
+
+                                if (showPeopleCarousel) {
+                                  return Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      postWidget,
+                                      const PeopleYouMayKnowCarousel(),
+                                    ],
+                                  );
                                 }
-                                return PostCard(
-                                  post: post,
-                                  onVideoTap: () {
-                                    final videoPosts = displayPosts
-                                        .where(
-                                          (p) =>
-                                              p.mediaType ==
-                                                  domain.MediaType.video ||
-                                              p.mediaUrl.toLowerCase().contains('.mp4') ||
-                                              p.mediaUrl.toLowerCase().contains('.mov') ||
-                                              p.mediaUrl.toLowerCase().contains('.webm') ||
-                                              p.mediaUrl.toLowerCase().contains('.m3u8') ||
-                                              p.id == post.id,
-                                        )
-                                        .toList();
-                                    final videoIndex = videoPosts.indexWhere(
-                                      (p) => p.id == post.id,
-                                    );
-                                    context.push(
-                                      '/reels',
-                                      extra: {
-                                        'videos': videoPosts.isNotEmpty
-                                            ? videoPosts
-                                            : [post],
-                                        'initialIndex':
-                                            videoIndex >= 0 ? videoIndex : 0,
-                                      },
-                                    );
-                                  },
-                                );
+
+                                return postWidget;
                               },
                             ),
                           ),
@@ -827,6 +888,7 @@ class _TabItem extends ConsumerWidget {
 
     return GestureDetector(
       onTap: () {
+        HapticFeedback.selectionClick();
         ref.read(feedChannelProvider.notifier).setChannel(id);
       },
       behavior: HitTestBehavior.opaque,

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../feed/data/post_repository.dart';
 import '../../feed/domain/post.dart' as domain;
@@ -823,36 +824,33 @@ class _ProfileHeader extends ConsumerWidget {
                   const SizedBox(height: 12),
                 ],
 
-                // College/Location
-                if (user.college != null && user.college!.isNotEmpty) ...[
+                // College/Department
+                if ((user.college != null && user.college!.isNotEmpty) ||
+                    (user.department != null && user.department!.isNotEmpty)) ...[
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Icon(
                         Icons.school_outlined,
                         size: 16,
-                        color: isDark ? Colors.grey[600] : Colors.grey[500],
+                        color: isDark ? Colors.grey[500] : Colors.grey[600],
                       ),
-                      const SizedBox(width: 4),
-                      Text(
-                        user.college!,
-                        style: TextStyle(
-                          color: isDark ? Colors.grey[500] : Colors.grey[600],
-                          fontSize: 14,
-                        ),
-                      ),
-                      if (user.department != null &&
-                          user.department!.isNotEmpty) ...[
-                        const SizedBox(width: 8),
-                        const Text("•", style: TextStyle(color: Colors.grey)),
-                        const SizedBox(width: 8),
-                        Text(
-                          user.department!,
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          (user.college != null && user.college!.isNotEmpty)
+                              ? (user.department != null && user.department!.isNotEmpty
+                                  ? '${user.college!} • ${user.department!}'
+                                  : user.college!)
+                              : user.department!,
                           style: TextStyle(
-                            color: isDark ? Colors.grey[500] : Colors.grey[600],
-                            fontSize: 14,
+                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            fontSize: 13.5,
                           ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ],
+                      ),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -1352,12 +1350,23 @@ class _StatItem extends StatelessWidget {
     required this.isDark,
   });
 
+  String _formatCount(int count) {
+    if (count >= 1000000) {
+      return '${(count / 1000000).toStringAsFixed(1).replaceAll('.0', '')}M';
+    } else if (count >= 10000) {
+      return '${(count / 1000).toStringAsFixed(1).replaceAll('.0', '')}k';
+    } else if (count >= 1000) {
+      return NumberFormat('#,###').format(count);
+    }
+    return '$count';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
         Text(
-          '$count',
+          _formatCount(count),
           style: TextStyle(
             fontWeight: FontWeight.w700,
             fontSize: 15,

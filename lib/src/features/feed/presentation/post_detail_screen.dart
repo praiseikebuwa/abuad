@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter/cupertino.dart';
@@ -16,15 +17,17 @@ import '../domain/post.dart' as domain;
 import 'widgets/poll_widget.dart';
 import 'widgets/animated_like_button.dart';
 import 'widgets/video_post_widget.dart';
-import 'package:flutter/gestures.dart';
 import '../../../core/widgets/verification_badge.dart';
 
 import '../domain/report.dart';
 import 'widgets/report_bottom_sheet.dart';
 import '../../../core/theme/app_colors.dart';
 import 'widgets/link_preview_card.dart';
+import 'widgets/post_media_carousel.dart';
+import 'widgets/document_preview_card.dart';
 import 'providers/feed_provider.dart';
 import '../../../shared/widgets/formatted_comment_content.dart';
+import '../../../shared/widgets/abuad_markdown.dart';
 // import '../../chat/presentation/widgets/attachment_preview.dart';
 
 class PostDetailScreen extends ConsumerStatefulWidget {
@@ -264,109 +267,178 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
   }
 
   void _showPostMenu(
-    BuildContext context,
+    BuildContext parentContext,
     domain.Post post,
     PostRepository repo,
   ) {
     final currentUserId = repo.currentUserId;
     final isOwnPost = post.authorId == currentUserId;
 
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (isOwnPost)
-              ListTile(
-                leading: const Icon(Icons.delete, color: Colors.red),
-                title: const Text(
-                  'Delete Post',
-                  style: TextStyle(color: Colors.red),
-                ),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final confirmed = await showDialog<bool>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('Delete Post'),
-                      content: const Text(
-                        'Are you sure you want to delete this post? This action cannot be undone.',
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, false),
-                          child: const Text('Cancel'),
-                        ),
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, true),
-                          style: TextButton.styleFrom(
-                            foregroundColor: Colors.red,
-                          ),
-                          child: const Text('Delete'),
-                        ),
-                      ],
-                    ),
-                  );
+    final isDark = Theme.of(parentContext).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final textPrimary = isDark ? Colors.white : const Color(0xFF0F172A);
 
-                  if (confirmed == true && mounted) {
-                    try {
-                      await repo.deletePost(post.id);
-                      if (mounted) {
-                        Navigator.pop(context); // Go back to feed
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Post deleted')),
-                        );
-                      }
-                    } catch (e) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(
-                          context,
-                        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+    showModalBottomSheet(
+      context: parentContext,
+      backgroundColor: Colors.transparent,
+      builder: (modalCtx) => SafeArea(
+        child: Container(
+          margin: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 20,
+                offset: const Offset(0, -4),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              // Drag Handle
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF475569) : const Color(0xFFCBD5E1),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (isOwnPost)
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(CupertinoIcons.trash, color: Colors.red, size: 20),
+                  ),
+                  title: const Text(
+                    'Delete Post',
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                    ),
+                  ),
+                  onTap: () async {
+                    Navigator.pop(modalCtx);
+                    final confirmed = await showDialog<bool>(
+                      context: parentContext,
+                      builder: (dialogCtx) => AlertDialog(
+                        title: const Text('Delete Post'),
+                        content: const Text(
+                          'Are you sure you want to delete this post? This action cannot be undone.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(dialogCtx, false),
+                            child: const Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(dialogCtx, true),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.red,
+                            ),
+                            child: const Text('Delete'),
+                          ),
+                        ],
+                      ),
+                    );
+
+                    if (confirmed == true && mounted) {
+                      try {
+                        await repo.deletePost(post.id);
+                        if (mounted) {
+                          Navigator.pop(context); // Go back to feed
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Post deleted successfully')),
+                          );
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text('Error: $e')));
+                        }
                       }
                     }
-                  }
+                  },
+                ),
+              Consumer(
+                builder: (context, ref, child) {
+                  final isSavedAsync = ref.watch(isPostSavedProvider(post.id));
+                  final isSaved = isSavedAsync.value ?? false;
+                  return ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: (isSaved ? const Color(0xFFFFB800) : const Color(0xFF6366F1))
+                            .withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        isSaved ? CupertinoIcons.bookmark_fill : CupertinoIcons.bookmark,
+                        color: isSaved ? const Color(0xFFFFB800) : const Color(0xFF6366F1),
+                        size: 20,
+                      ),
+                    ),
+                    title: Text(
+                      isSaved ? 'Unsave Post' : 'Save Post',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                        color: textPrimary,
+                      ),
+                    ),
+                    onTap: () {
+                      Navigator.pop(modalCtx);
+                      ref.read(postRepositoryProvider).togglePostSave(post.id);
+                    },
+                  );
                 },
               ),
-            Consumer(
-              builder: (context, ref, child) {
-                final isSavedAsync = ref.watch(isPostSavedProvider(post.id));
-                final isSaved = isSavedAsync.value ?? false;
-                return ListTile(
-                  leading: Icon(
-                    isSaved ? Icons.bookmark : Icons.bookmark_border,
-                    color: isSaved ? AppColors.secondaryTeal : null,
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
                   ),
-                  title: Text(isSaved ? 'Unsave Post' : 'Save Post'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    ref.read(userRepositoryProvider).togglePostSave(post.id);
-                  },
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.report_outlined),
-              title: const Text('Report Post'),
-              onTap: () {
-                Navigator.pop(context);
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (context) => ReportBottomSheet(
-                    targetId: post.id,
-                    type: ReportType.post,
+                  child: const Icon(CupertinoIcons.flag, color: Colors.amber, size: 20),
+                ),
+                title: Text(
+                  'Report Post',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                    color: textPrimary,
                   ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.cancel),
-              title: const Text('Cancel'),
-              onTap: () => Navigator.pop(context),
-            ),
-          ],
+                ),
+                onTap: () {
+                  Navigator.pop(modalCtx);
+                  showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    backgroundColor: Colors.transparent,
+                    builder: (context) => ReportBottomSheet(
+                      targetId: post.id,
+                      type: ReportType.post,
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );
@@ -569,9 +641,11 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
             IconButton(
               icon: const Icon(CupertinoIcons.arrowshape_turn_up_right),
               onPressed: () {
-                Share.share(
-                  'Check out this post on Abuad life: https://abuadapp.web.app/post/$postId',
-                  subject: 'Check out this post on ABUAD',
+                SharePlus.instance.share(
+                  ShareParams(
+                    text: 'Check out this post on Abuad life: https://abuadapp.web.app/post/$postId',
+                    subject: 'Check out this post on ABUAD',
+                  ),
                 );
               },
             ),
@@ -632,13 +706,25 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                 (e) => e.name == displayMediaTypeStr,
                 orElse: () => domain.MediaType.none,
               );
-            } else if (isPureRepost && displayMediaUrl.isNotEmpty) {
-              if (displayMediaUrl.endsWith('.mp4')) {
+            }
+            if (displayMediaUrl.isNotEmpty) {
+              final lower = displayMediaUrl.toLowerCase();
+              if (lower.contains('.mp4') || lower.contains('.mov') || lower.contains('.webm') || lower.contains('.m3u8')) {
                 displayMediaType = domain.MediaType.video;
-              } else if (displayMediaUrl.contains('giphy') ||
-                  displayMediaUrl.endsWith('.gif')) {
+              } else if (lower.contains('giphy') || lower.endsWith('.gif')) {
                 displayMediaType = domain.MediaType.gif;
-              } else {
+              } else if (lower.endsWith('.pdf') ||
+                  lower.endsWith('.doc') ||
+                  lower.endsWith('.docx') ||
+                  lower.endsWith('.ppt') ||
+                  lower.endsWith('.pptx') ||
+                  lower.endsWith('.xls') ||
+                  lower.endsWith('.xlsx') ||
+                  lower.endsWith('.txt') ||
+                  displayMediaTypeStr == 'document' ||
+                  post.mediaType == domain.MediaType.document) {
+                displayMediaType = domain.MediaType.document;
+              } else if (displayMediaType == domain.MediaType.none) {
                 displayMediaType = domain.MediaType.image;
               }
             }
@@ -801,51 +887,44 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                               ],
 
                               // Post Media
-                              if (displayMediaUrl.isNotEmpty) ...[
+                              if (displayMediaUrl.isNotEmpty || post.allMediaUrls.isNotEmpty) ...[
                                 const SizedBox(height: 16),
-                                displayMediaType == domain.MediaType.video
-                                    ? VideoPostWidget(
-                                        videoUrl: displayMediaUrl,
-                                        onTap: () {
-                                          context.push(
-                                            '/reels',
-                                            extra: {
-                                              'videos': [post],
-                                              'initialIndex': 0,
-                                            },
-                                          );
+                                if (displayMediaType == domain.MediaType.video)
+                                  VideoPostWidget(
+                                    videoUrl: displayMediaUrl,
+                                    onTap: () {
+                                      context.push(
+                                        '/reels',
+                                        extra: {
+                                          'videos': [post],
+                                          'initialIndex': 0,
                                         },
-                                      )
-                                    : Hero(
-                                        tag: 'post_media_${post.id}',
-                                        child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(
-                                            16,
-                                          ),
-                                          child:
-                                              (displayMediaUrl.isNotEmpty &&
-                                                  UrlValidator.isValidUrl(
-                                                    displayMediaUrl,
-                                                  ))
-                                              ? CachedNetworkImage(
-                                                  imageUrl: displayMediaUrl,
-                                                  width: double.infinity,
-                                                  fit: BoxFit.cover,
-                                                  placeholder: (context, url) =>
-                                                      Container(
-                                                        height: 300,
-                                                        color: Colors.grey[100],
-                                                        child: const Center(
-                                                          child:
-                                                              CircularProgressIndicator(),
-                                                        ),
-                                                      ),
-                                                  errorWidget: (_, _, _) =>
-                                                      const SizedBox(),
-                                                )
-                                              : const SizedBox(),
-                                        ),
-                                      ),
+                                      );
+                                    },
+                                    onOpenFullscreen: () {
+                                      context.push(
+                                        '/reels',
+                                        extra: {
+                                          'videos': [post],
+                                          'initialIndex': 0,
+                                        },
+                                      );
+                                    },
+                                  )
+                                else if (displayMediaType == domain.MediaType.document)
+                                  DocumentPreviewCard(
+                                    documentUrl: displayMediaUrl,
+                                    fileName: (post.mediaAltText != null && post.mediaAltText!.isNotEmpty)
+                                        ? post.mediaAltText
+                                        : null,
+                                  )
+                                else
+                                  PostMediaCarousel(
+                                    imageUrls: post.allMediaUrls.isNotEmpty
+                                        ? post.allMediaUrls
+                                        : [displayMediaUrl],
+                                    postId: post.id,
+                                  ),
                               ],
 
                               // Poll
@@ -878,7 +957,8 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                               // Stats Row
                               if (post.repostCount > 0 ||
                                   post.likesCount > 0 ||
-                                  post.commentsCount > 0) ...[
+                                  post.commentsCount > 0 ||
+                                  post.savesCount > 0) ...[
                                 Padding(
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 4.0,
@@ -899,10 +979,17 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                         ),
                                         const SizedBox(width: 20),
                                       ],
-                                      if (post.likesCount > 0)
+                                      if (post.likesCount > 0) ...[
                                         _StatText(
                                           count: post.likesCount,
                                           label: 'Likes',
+                                        ),
+                                        const SizedBox(width: 20),
+                                      ],
+                                      if (post.savesCount > 0)
+                                        _StatText(
+                                          count: post.savesCount,
+                                          label: post.savesCount == 1 ? 'Save' : 'Saves',
                                         ),
                                     ],
                                   ),
@@ -944,11 +1031,14 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                   ),
                                   Consumer(
                                     builder: (context, ref, child) {
-                                      final isSavedAsync = ref.watch(
+                                      final optimisticSaveMap = ref.watch(optimisticSaveProvider);
+                                      final apiSaved = ref.watch(
                                         isPostSavedProvider(post.id),
-                                      );
-                                      final isSaved =
-                                          isSavedAsync.value ?? false;
+                                      ).value ?? post.isSaved;
+                                      final isSaved = optimisticSaveMap.containsKey(post.id)
+                                          ? optimisticSaveMap[post.id]!
+                                          : apiSaved;
+                                      const goldColor = Color(0xFFFFB800);
 
                                       return IconButton(
                                         icon: Icon(
@@ -956,13 +1046,18 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                               ? CupertinoIcons.bookmark_solid
                                               : CupertinoIcons.bookmark,
                                           color: isSaved
-                                              ? AppColors.secondaryTeal
+                                              ? goldColor
                                               : (isDark ? Colors.grey[500] : Colors.grey[600]),
                                         ),
-                                        onPressed: () {
-                                          ref
-                                              .read(userRepositoryProvider)
-                                              .togglePostSave(post.id);
+                                        onPressed: () async {
+                                          HapticFeedback.lightImpact();
+                                          ref.read(optimisticSaveProvider.notifier).toggle(post.id, apiSaved);
+                                          try {
+                                            await ref.read(postRepositoryProvider).togglePostSave(post.id);
+                                            ref.read(optimisticSaveProvider.notifier).confirm(post.id);
+                                          } catch (_) {
+                                            ref.read(optimisticSaveProvider.notifier).revert(post.id, apiSaved);
+                                          }
                                         },
                                       );
                                     },
@@ -970,8 +1065,10 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                   IconButton(
                                     icon: const Icon(CupertinoIcons.share),
                                     onPressed: () {
-                                      Share.share(
-                                        '${post.authorName} (@${post.authorHandle}): ${post.content}\n\nSent from Abuad life',
+                                      SharePlus.instance.share(
+                                        ShareParams(
+                                          text: '${post.authorName} (@${post.authorHandle}): ${post.content}\n\nSent from Abuad life',
+                                        ),
                                       );
                                     },
                                     color: isDark ? Colors.grey[500] : Colors.grey[600],
@@ -1262,77 +1359,14 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     ThemeData theme,
     WidgetRef ref,
   ) {
-    final words = text.split(' ');
-    final List<TextSpan> spans = [];
-
-    for (var i = 0; i < words.length; i++) {
-      final word = words[i];
-      final isLast = i == words.length - 1;
-
-      if (word.startsWith('#')) {
-        final tag = word.substring(1);
-        spans.add(
-          TextSpan(
-            text: word,
-            style: const TextStyle(
-              color: Colors.blue,
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
-            ),
-            recognizer: TapGestureRecognizer()
-              ..onTap = () {
-                context.push('/hashtag/$tag');
-              },
-          ),
-        );
-      } else if (word.startsWith('@')) {
-        final handle = word.substring(1);
-        spans.add(
-          TextSpan(
-            text: word,
-            style: const TextStyle(
-              color: Colors.blue,
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
-            ),
-            recognizer: TapGestureRecognizer()
-              ..onTap = () async {
-                final user = await ref
-                    .read(userRepositoryProvider)
-                    .getUserByHandle(handle);
-                if (context.mounted) {
-                  if (user != null) {
-                    context.push('/user/${user.uid}');
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('User not found')),
-                    );
-                  }
-                }
-              },
-          ),
-        );
-      } else {
-        spans.add(
-          TextSpan(
-            text: word,
-            style: TextStyle(
-              color: theme.textTheme.bodyMedium?.color ?? Colors.black,
-              fontSize: 18,
-            ),
-          ),
-        );
-      }
-
-      if (!isLast) {
-        spans.add(const TextSpan(text: ' ', style: TextStyle(fontSize: 18)));
-      }
-    }
-
-    return RichText(
-      text: TextSpan(
-        style: const TextStyle(fontSize: 18, height: 1.4),
-        children: spans,
+    if (text.isEmpty) return const SizedBox.shrink();
+    final isDark = theme.brightness == Brightness.dark;
+    return AbuadMarkdownContent(
+      content: text,
+      textStyle: TextStyle(
+        fontSize: 18,
+        height: 1.4,
+        color: theme.textTheme.bodyLarge?.color ?? (isDark ? Colors.white : Colors.black87),
       ),
     );
   }

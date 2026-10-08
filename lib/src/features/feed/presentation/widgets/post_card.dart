@@ -2,7 +2,6 @@ import 'package:abuad/src/shared/widgets/user_avatar.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:timeago/timeago.dart' as timeago;
@@ -23,8 +22,11 @@ import '../../domain/report.dart';
 import 'report_bottom_sheet.dart';
 import 'full_screen_image_view.dart';
 import 'full_screen_video_view.dart';
+import 'post_media_carousel.dart';
 import '../../../../shared/widgets/share_sheet.dart';
+import '../../../../shared/widgets/abuad_markdown.dart';
 import 'link_preview_card.dart';
+import 'document_preview_card.dart';
 
 class PostCard extends ConsumerStatefulWidget {
   final domain.Post post;
@@ -142,6 +144,17 @@ class _PostCardState extends ConsumerState<PostCard> {
           lowerUrl.endsWith('.gif') ||
           displayMediaTypeStr == 'gif') {
         displayMediaType = domain.MediaType.gif;
+      } else if (lowerUrl.endsWith('.pdf') ||
+          lowerUrl.endsWith('.doc') ||
+          lowerUrl.endsWith('.docx') ||
+          lowerUrl.endsWith('.ppt') ||
+          lowerUrl.endsWith('.pptx') ||
+          lowerUrl.endsWith('.xls') ||
+          lowerUrl.endsWith('.xlsx') ||
+          lowerUrl.endsWith('.txt') ||
+          displayMediaTypeStr == 'document' ||
+          post.mediaType == domain.MediaType.document) {
+        displayMediaType = domain.MediaType.document;
       } else if (displayMediaType == domain.MediaType.none) {
         displayMediaType = domain.MediaType.image;
       }
@@ -496,6 +509,7 @@ class _PostCardState extends ConsumerState<PostCard> {
                                 alignment: Alignment.bottomCenter,
                                 children: [
                                   VideoPostWidget(
+                                    videoUrl: displayMediaUrl,
                                     onTap: () {
                                       if (widget.onVideoTap != null) {
                                         widget.onVideoTap!();
@@ -509,14 +523,24 @@ class _PostCardState extends ConsumerState<PostCard> {
                                         );
                                       }
                                     },
-                                    videoUrl: displayMediaUrl,
+                                    onOpenFullscreen: () {
+                                      if (widget.onVideoTap != null) {
+                                        widget.onVideoTap!();
+                                      } else {
+                                        context.push(
+                                          '/reels',
+                                          extra: {
+                                            'videos': [post],
+                                            'initialIndex': 0,
+                                          },
+                                        );
+                                      }
+                                    },
                                   ),
                                   if (_showVideoCaption)
-                                    IgnorePointer(
-                                      child: _buildVideoCaption(
-                                        videoCaption,
-                                        isDark,
-                                      ),
+                                    _buildVideoCaption(
+                                      videoCaption,
+                                      isDark,
                                     ),
                                   if (locationText != null)
                                     Positioned(
@@ -560,151 +584,20 @@ class _PostCardState extends ConsumerState<PostCard> {
                                     ),
                                 ],
                               )
+                            else if (displayMediaType == domain.MediaType.document)
+                              DocumentPreviewCard(
+                                documentUrl: displayMediaUrl,
+                                fileName: (post.mediaAltText != null && post.mediaAltText!.isNotEmpty)
+                                    ? post.mediaAltText
+                                    : null,
+                              )
                             else
-                              GestureDetector(
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => FullScreenImageView(
-                                        imageUrl: displayMediaUrl,
-                                        heroTag: 'post_media_${post.id}',
-                                      ),
-                                    ),
-                                  );
-                                },
-                                child: Stack(
-                                  children: [
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(16),
-                                      child: ConstrainedBox(
-                                        constraints: const BoxConstraints(
-                                          maxHeight: 380,
-                                          minHeight: 180,
-                                        ),
-                                        child: SizedBox(
-                                          width: double.infinity,
-                                          child: Hero(
-                                            tag: 'post_media_${post.id}',
-                                            child: (displayMediaUrl.isNotEmpty &&
-                                                    UrlValidator.isValidUrl(displayMediaUrl))
-                                                ? CachedNetworkImage(
-                                                    imageUrl: displayMediaUrl,
-                                                    width: double.infinity,
-                                                    fit: BoxFit.cover,
-                                                    placeholder: (context, url) => Container(
-                                                      height: 220,
-                                                      decoration: BoxDecoration(
-                                                        color: isDark
-                                                            ? const Color(0xFF1E293B)
-                                                            : const Color(0xFFE2E8F0),
-                                                      ),
-                                                      child: Center(
-                                                        child: SizedBox(
-                                                          width: 28,
-                                                          height: 28,
-                                                          child: CircularProgressIndicator(
-                                                            strokeWidth: 2,
-                                                            color: Theme.of(context).colorScheme.secondary,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    errorWidget: (context, url, error) => Container(
-                                                      height: 220,
-                                                      decoration: BoxDecoration(
-                                                        gradient: isDark
-                                                            ? const LinearGradient(
-                                                                colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
-                                                                begin: Alignment.topLeft,
-                                                                end: Alignment.bottomRight,
-                                                              )
-                                                            : const LinearGradient(
-                                                                colors: [Color(0xFFE2E8F0), Color(0xFFCBD5E1)],
-                                                                begin: Alignment.topLeft,
-                                                                end: Alignment.bottomRight,
-                                                              ),
-                                                      ),
-                                                      child: Center(
-                                                        child: Column(
-                                                          mainAxisAlignment: MainAxisAlignment.center,
-                                                          children: [
-                                                            Icon(
-                                                              Icons.photo_library_outlined,
-                                                              color: isDark ? Colors.white38 : Colors.black38,
-                                                              size: 36,
-                                                            ),
-                                                            const SizedBox(height: 6),
-                                                            Text(
-                                                              'Image preview',
-                                                              style: TextStyle(
-                                                                color: isDark ? Colors.white54 : Colors.black54,
-                                                                fontSize: 12,
-                                                                fontWeight: FontWeight.w500,
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  )
-                                                : Container(
-                                                    height: 220,
-                                                    decoration: BoxDecoration(
-                                                      color: isDark ? Colors.grey[900] : Colors.grey[200],
-                                                    ),
-                                                    child: Center(
-                                                      child: Icon(
-                                                        Icons.photo_library_outlined,
-                                                        color: isDark ? Colors.white38 : Colors.black38,
-                                                        size: 36,
-                                                      ),
-                                                    ),
-                                                  ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    if (locationText != null)
-                                      Positioned(
-                                        left: 12,
-                                        bottom: 12,
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 6,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Colors.black.withValues(
-                                              alpha: 0.65,
-                                            ),
-                                            borderRadius: BorderRadius.circular(
-                                              20,
-                                            ),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              const Icon(
-                                                CupertinoIcons.location_fill,
-                                                size: 14,
-                                                color: Colors.white,
-                                              ),
-                                              const SizedBox(width: 4),
-                                              Text(
-                                                locationText,
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 13,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
+                              PostMediaCarousel(
+                                imageUrls: post.allMediaUrls.isNotEmpty
+                                    ? post.allMediaUrls
+                                    : (displayMediaUrl.isNotEmpty ? [displayMediaUrl] : []),
+                                postId: post.id,
+                                locationText: locationText,
                               ),
                             const SizedBox(height: 12),
                           ],
@@ -770,16 +663,30 @@ class _PostCardState extends ConsumerState<PostCard> {
                               // 4. Bookmark / Save Button (Far Right)
                               Consumer(
                                 builder: (context, ref, child) {
-                                  final isSavedAsync = ref.watch(isPostSavedProvider(post.id));
-                                  final isSaved = isSavedAsync.value ?? false;
+                                  final optimisticSaveMap = ref.watch(optimisticSaveProvider);
+                                  final apiSaved = ref.watch(isPostSavedProvider(post.id)).value ?? livePost.isSaved;
+                                  final isSaved = optimisticSaveMap.containsKey(post.id)
+                                      ? optimisticSaveMap[post.id]!
+                                      : apiSaved;
+                                  final optimisticSaveCount = optimisticSaveMap.containsKey(post.id)
+                                      ? (livePost.savesCount + (optimisticSaveMap[post.id]! ? (apiSaved ? 0 : 1) : (apiSaved ? -1 : 0)))
+                                      : livePost.savesCount;
+                                  const goldColor = Color(0xFFFFB800);
                                   return _ActionButton(
                                     icon: isSaved ? CupertinoIcons.bookmark_solid : CupertinoIcons.bookmark,
-                                    count: livePost.savesCount > 0 ? livePost.savesCount : null,
+                                    count: optimisticSaveCount > 0 ? optimisticSaveCount : (isSaved ? 1 : null),
                                     color: isSaved
-                                        ? AppColors.secondaryTeal
+                                        ? goldColor
                                         : (isDark ? Colors.grey[500]! : Colors.grey[600]!),
-                                    onTap: () {
-                                      ref.read(userRepositoryProvider).togglePostSave(post.id);
+                                    onTap: () async {
+                                      HapticFeedback.lightImpact();
+                                      ref.read(optimisticSaveProvider.notifier).toggle(post.id, apiSaved);
+                                      try {
+                                        await ref.read(postRepositoryProvider).togglePostSave(post.id);
+                                        ref.read(optimisticSaveProvider.notifier).confirm(post.id);
+                                      } catch (_) {
+                                        ref.read(optimisticSaveProvider.notifier).revert(post.id, apiSaved);
+                                      }
                                     },
                                   );
                                 },
@@ -823,19 +730,21 @@ class _PostCardState extends ConsumerState<PostCard> {
       left: 0,
       right: 0,
       bottom: 0,
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: const Color.fromRGBO(0, 0, 0, 0.55),
-          borderRadius: const BorderRadius.vertical(
-            bottom: Radius.circular(12),
+      child: IgnorePointer(
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: const Color.fromRGBO(0, 0, 0, 0.55),
+            borderRadius: const BorderRadius.vertical(
+              bottom: Radius.circular(12),
+            ),
           ),
-        ),
-        child: Text(
-          text,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(color: Colors.white, fontSize: 12),
+          child: Text(
+            text,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: Colors.white, fontSize: 12),
+          ),
         ),
       ),
     );
@@ -914,12 +823,12 @@ class _PostCardState extends ConsumerState<PostCard> {
                     return ListTile(
                       leading: Icon(
                         isSaved ? CupertinoIcons.bookmark_solid : CupertinoIcons.bookmark,
-                        color: isSaved ? AppColors.secondaryTeal : null,
+                        color: isSaved ? const Color(0xFFFFB800) : null,
                       ),
                       title: Text(isSaved ? 'Unsave Post' : 'Save Post'),
                       onTap: () {
                         Navigator.pop(context);
-                        ref.read(userRepositoryProvider).togglePostSave(post.id);
+                        ref.read(postRepositoryProvider).togglePostSave(post.id);
                       },
                     );
                   },
@@ -1260,76 +1169,13 @@ class _PostCardState extends ConsumerState<PostCard> {
     WidgetRef ref,
   ) {
     if (text.isEmpty) return const SizedBox.shrink();
-
-    final List<TextSpan> spans = [];
-    // Regex to match mentions, hashtags, or normal text
-    final pattern = RegExp(r"(@[\w]+|#[\w]+|[^\s@#]+|\s+)");
-    final matches = pattern.allMatches(text);
-
-    for (final match in matches) {
-      final part = match.group(0)!;
-
-      if (part.startsWith('#')) {
-        final tag = part.substring(1);
-        spans.add(
-          TextSpan(
-            text: part,
-            style: const TextStyle(
-              color: AppColors.secondaryTeal,
-              fontWeight: FontWeight.bold,
-            ),
-            recognizer: TapGestureRecognizer()
-              ..onTap = () {
-                context.push('/hashtag/$tag');
-              },
-          ),
-        );
-      } else if (part.startsWith('@')) {
-        final handle = part.substring(1);
-        spans.add(
-          TextSpan(
-            text: part,
-            style: const TextStyle(
-              color: AppColors.secondaryTeal,
-              fontWeight: FontWeight.bold,
-            ),
-            recognizer: TapGestureRecognizer()
-              ..onTap = () async {
-                final user = await ref
-                    .read(userRepositoryProvider)
-                    .getUserByHandle(handle);
-                if (context.mounted) {
-                  if (user != null) {
-                    context.push('/user/${user.uid}');
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('User not found')),
-                    );
-                  }
-                }
-              },
-          ),
-        );
-      } else {
-        spans.add(
-          TextSpan(
-            text: part,
-            style: TextStyle(
-              color: theme.textTheme.bodyMedium?.color ?? Colors.black,
-            ),
-          ),
-        );
-      }
-    }
-
-    return RichText(
-      text: TextSpan(
-        style: TextStyle(
-          fontSize: 16,
-          height: 1.35,
-          color: theme.textTheme.bodyLarge?.color,
-        ),
-        children: spans,
+    final isDark = theme.brightness == Brightness.dark;
+    return AbuadMarkdownContent(
+      content: text,
+      textStyle: TextStyle(
+        fontSize: 16,
+        height: 1.38,
+        color: theme.textTheme.bodyLarge?.color ?? (isDark ? Colors.white : Colors.black87),
       ),
     );
   }

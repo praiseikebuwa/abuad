@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../data/chat_repository.dart';
 import '../domain/chat_channel.dart';
+import '../domain/chat_message.dart';
 import '../../../core/utils/url_validator.dart';
 import 'group_settings_screen.dart';
 
@@ -35,14 +36,34 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
     return FutureBuilder<ChatChannel?>(
       future: repo.getChannel(widget.channelId),
       builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Scaffold(
+            backgroundColor: backgroundColor,
+            body: const Center(child: CircularProgressIndicator()),
+          );
+        }
+
         final channel = snapshot.data;
-        final displayName = channel?.displayName ?? 'MTH 205 — Mathematics';
-        final memberCount = channel?.memberIds.isNotEmpty == true ? channel!.memberIds.length : 128;
-        final avatars = channel?.memberAvatars.values
-                .where((a) => a != null && a.isNotEmpty && UrlValidator.isValidUrl(a))
-                .cast<String>()
-                .toList() ??
-            [];
+        if (channel == null) {
+          return Scaffold(
+            backgroundColor: backgroundColor,
+            appBar: AppBar(backgroundColor: backgroundColor, elevation: 0),
+            body: Center(
+              child: Text('Group not found', style: TextStyle(color: textPrimary, fontSize: 16)),
+            ),
+          );
+        }
+
+        final displayName = channel.displayName?.isNotEmpty == true ? channel.displayName! : 'Group';
+        final memberCount = channel.memberIds.length;
+        final createdByName = channel.createdBy != null
+            ? (channel.memberNames[channel.createdBy] ?? 'Admin')
+            : 'Admin';
+
+        final avatars = channel.memberAvatars.values
+            .where((a) => a != null && a.isNotEmpty && UrlValidator.isValidUrl(a))
+            .cast<String>()
+            .toList();
 
         return Scaffold(
           backgroundColor: backgroundColor,
@@ -126,6 +147,7 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
                 _buildProfileHeader(
                   displayName: displayName,
                   memberCount: memberCount,
+                  createdByName: createdByName,
                   avatars: avatars,
                   textPrimary: textPrimary,
                   textSecondary: textSecondary,
@@ -141,6 +163,8 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
 
                 // Description Card
                 _buildDescriptionCard(
+                  displayName: displayName,
+                  createdByName: createdByName,
                   cardColor: cardColor,
                   cardBorderColor: cardBorderColor,
                   textPrimary: textPrimary,
@@ -150,8 +174,9 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
 
                 const SizedBox(height: 16),
 
-                // Media, Docs & Links Card
-                _buildMediaDocsLinksCard(
+                // Media, Docs & Links Card (Live Messages)
+                _buildRealMediaDocsLinksCard(
+                  repo: repo,
                   cardColor: cardColor,
                   cardBorderColor: cardBorderColor,
                   textPrimary: textPrimary,
@@ -172,9 +197,8 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
 
                 const SizedBox(height: 16),
 
-                // Members Card
-                _buildMembersCard(
-                  memberCount: memberCount,
+                // Real Dynamic Members Card
+                _buildRealMembersCard(
                   channel: channel,
                   cardColor: cardColor,
                   cardBorderColor: cardBorderColor,
@@ -200,6 +224,7 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
   Widget _buildProfileHeader({
     required String displayName,
     required int memberCount,
+    required String createdByName,
     required List<String> avatars,
     required Color textPrimary,
     required Color textSecondary,
@@ -207,7 +232,6 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
   }) {
     return Column(
       children: [
-        // Avatar Cluster with subject book badge
         Stack(
           clipBehavior: Clip.none,
           children: [
@@ -220,10 +244,9 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(43),
-                child: _buildAvatarCollage(avatars),
+                child: _buildAvatarCollage(avatars, displayName),
               ),
             ),
-            // Subject / Book Badge
             Positioned(
               right: -4,
               bottom: -4,
@@ -262,7 +285,7 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
         ),
         const SizedBox(height: 4),
         Text(
-          '$memberCount Members • Created by Liam (Class Rep)',
+          '$memberCount Members • Created by $createdByName',
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 14,
@@ -274,7 +297,7 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
     );
   }
 
-  Widget _buildAvatarCollage(List<String> avatars) {
+  Widget _buildAvatarCollage(List<String> avatars, String displayName) {
     if (avatars.length >= 3) {
       return Stack(
         children: [
@@ -305,8 +328,11 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
         ],
       );
     }
-    return const Center(
-      child: Icon(Icons.groups_rounded, size: 48, color: Color(0xFF3B82F6)),
+    return Center(
+      child: Text(
+        displayName.isNotEmpty ? displayName[0].toUpperCase() : 'G',
+        style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFF3B82F6)),
+      ),
     );
   }
 
@@ -314,28 +340,6 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        _buildActionButton(
-          icon: Icons.phone_rounded,
-          label: 'Call',
-          bg: buttonBg,
-          textPrimary: textPrimary,
-          onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Starting group voice call...')),
-            );
-          },
-        ),
-        _buildActionButton(
-          icon: Icons.videocam_rounded,
-          label: 'Video',
-          bg: buttonBg,
-          textPrimary: textPrimary,
-          onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Starting group video call...')),
-            );
-          },
-        ),
         _buildActionButton(
           icon: _isMuted ? Icons.notifications_off_rounded : Icons.notifications_rounded,
           label: 'Mute',
@@ -356,6 +360,17 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
           textPrimary: textPrimary,
           onTap: () {
             Navigator.pop(context);
+          },
+        ),
+        _buildActionButton(
+          icon: Icons.share_rounded,
+          label: 'Share Link',
+          bg: buttonBg,
+          textPrimary: textPrimary,
+          onTap: () {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Group invite link copied')),
+            );
           },
         ),
       ],
@@ -405,6 +420,8 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
   }
 
   Widget _buildDescriptionCard({
+    required String displayName,
+    required String createdByName,
     required Color cardColor,
     required Color cardBorderColor,
     required Color textPrimary,
@@ -432,7 +449,7 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
           ),
           const SizedBox(height: 6),
           Text(
-            'Official study group for MTH 205 (Mathematical Methods I). Share assignment updates, lecture notes, and study session details here. Keep it constructive! 📚 📐',
+            'Official group for $displayName. Share updates, discussions, resources, and announcements here.',
             style: TextStyle(
               fontSize: 14,
               color: textSecondary,
@@ -446,7 +463,7 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  'Pinned announcement by Liam',
+                  'Created by $createdByName',
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -461,105 +478,125 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
     );
   }
 
-  Widget _buildMediaDocsLinksCard({
+  Widget _buildRealMediaDocsLinksCard({
+    required ChatRepository repo,
     required Color cardColor,
     required Color cardBorderColor,
     required Color textPrimary,
     required Color textSecondary,
     required bool isDark,
   }) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cardBorderColor, width: 0.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Media, Docs & Links',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: textPrimary,
+    return StreamBuilder<List<ChatMessage>>(
+      stream: repo.watchMessages(widget.channelId),
+      builder: (context, snapshot) {
+        final messages = snapshot.data ?? [];
+        final mediaItems = messages.where((m) {
+          final type = m.type;
+          final content = m.content.toLowerCase();
+          return type == 'document' ||
+              type == 'image' ||
+              type == 'video' ||
+              (m.imageUrl != null && m.imageUrl!.isNotEmpty) ||
+              content.startsWith('http') ||
+              content.contains('www.') ||
+              content.contains('.pdf');
+        }).toList();
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            color: cardColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: cardBorderColor, width: 0.5),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Media, Docs & Links',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: textPrimary,
+                      ),
+                    ),
+                    if (mediaItems.isNotEmpty)
+                      Row(
+                        children: [
+                          Text(
+                            'View All (${mediaItems.length})',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF2563EB),
+                            ),
+                          ),
+                          const SizedBox(width: 2),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            size: 18,
+                            color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF2563EB),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (mediaItems.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Text(
+                    'No shared media or documents yet',
+                    style: TextStyle(fontSize: 13, color: textSecondary),
+                  ),
+                )
+              else
+                SizedBox(
+                  height: 110,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    physics: const BouncingScrollPhysics(),
+                    itemCount: mediaItems.length,
+                    separatorBuilder: (context, index) => const SizedBox(width: 12),
+                    itemBuilder: (context, index) {
+                      final item = mediaItems[index];
+                      final isPdf = item.type == 'document' || item.content.contains('.pdf');
+                      final isLink = item.content.startsWith('http') || item.content.contains('www.');
+
+                      IconData icon = Icons.image_rounded;
+                      Color iconColor = const Color(0xFF10B981);
+                      String title = item.content.isNotEmpty ? item.content : 'Image';
+
+                      if (isPdf) {
+                        icon = Icons.picture_as_pdf_rounded;
+                        iconColor = const Color(0xFFEF4444);
+                        title = item.content.replaceFirst('📄 Document:', '').trim();
+                      } else if (isLink) {
+                        icon = Icons.link_rounded;
+                        iconColor = const Color(0xFF3B82F6);
+                      }
+
+                      return _buildMediaThumbnail(
+                        title: title,
+                        icon: icon,
+                        iconColor: iconColor,
+                        isDark: isDark,
+                      );
+                    },
                   ),
                 ),
-                GestureDetector(
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Opening all shared media gallery...')),
-                    );
-                  },
-                  child: Row(
-                    children: [
-                      Text(
-                        'View All (42)',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF2563EB),
-                        ),
-                      ),
-                      const SizedBox(width: 2),
-                      Icon(
-                        Icons.chevron_right_rounded,
-                        size: 18,
-                        color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF2563EB),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+            ],
           ),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 110,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              physics: const BouncingScrollPhysics(),
-              children: [
-                _buildMediaThumbnail(
-                  title: 'MTH205_Lec4...',
-                  icon: Icons.picture_as_pdf_rounded,
-                  iconColor: const Color(0xFFEF4444),
-                  isDark: isDark,
-                ),
-                const SizedBox(width: 12),
-                _buildMediaThumbnail(
-                  title: 'handwritten\ncalculations photo',
-                  icon: Icons.image_rounded,
-                  iconColor: const Color(0xFF10B981),
-                  isDark: isDark,
-                ),
-                const SizedBox(width: 12),
-                _buildMediaThumbnail(
-                  title: 'zoom.us/j/...',
-                  icon: Icons.link_rounded,
-                  iconColor: const Color(0xFF3B82F6),
-                  isDark: isDark,
-                ),
-                const SizedBox(width: 12),
-                _buildMediaThumbnail(
-                  title: 'syllabus.pdf',
-                  icon: Icons.description_rounded,
-                  iconColor: const Color(0xFFF59E0B),
-                  isDark: isDark,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -698,15 +735,16 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
     );
   }
 
-  Widget _buildMembersCard({
-    required int memberCount,
-    required ChatChannel? channel,
+  Widget _buildRealMembersCard({
+    required ChatChannel channel,
     required Color cardColor,
     required Color cardBorderColor,
     required Color textPrimary,
     required Color textSecondary,
     required bool isDark,
   }) {
+    final memberIds = channel.memberIds;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -721,7 +759,7 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Members ($memberCount)',
+                'Members (${memberIds.length})',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
@@ -748,54 +786,80 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          // 2-Column Grid or List of Members matching Screenshot 1
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Column 1
-              Expanded(
-                child: Column(
+
+          // Real Member List
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: memberIds.length,
+            separatorBuilder: (context, index) => Divider(
+              height: 1,
+              thickness: 0.5,
+              indent: 52,
+              color: isDark ? Colors.white10 : const Color(0xFFF1F5F9),
+            ),
+            itemBuilder: (context, index) {
+              final uid = memberIds[index];
+              final name = channel.memberNames[uid] ?? 'Member';
+              final avatar = channel.memberAvatars[uid];
+              final isAdmin = channel.adminIds.contains(uid);
+              final isOwner = uid == channel.createdBy;
+
+              String? roleBadge;
+              if (isOwner) {
+                roleBadge = 'Owner';
+              } else if (isAdmin) {
+                roleBadge = 'Admin';
+              }
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
                   children: [
-                    _buildMemberRowItem(
-                      name: 'Liam (Class Rep)',
-                      role: 'Admin',
-                      textPrimary: textPrimary,
-                      textSecondary: textSecondary,
-                      isDark: isDark,
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundColor: const Color(0xFF6366F1),
+                      backgroundImage: avatar != null && avatar.isNotEmpty && UrlValidator.isValidUrl(avatar)
+                          ? CachedNetworkImageProvider(avatar)
+                          : null,
+                      child: avatar == null || avatar.isEmpty
+                          ? Text(
+                              name.isNotEmpty ? name[0].toUpperCase() : '?',
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                            )
+                          : null,
                     ),
-                    const SizedBox(height: 14),
-                    _buildMemberRowItem(
-                      name: 'David Okafor',
-                      textPrimary: textPrimary,
-                      textSecondary: textSecondary,
-                      isDark: isDark,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: textPrimary,
+                            ),
+                          ),
+                          if (roleBadge != null) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              roleBadge,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF6366F1),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 12),
-              // Column 2
-              Expanded(
-                child: Column(
-                  children: [
-                    _buildMemberRowItem(
-                      name: 'Priya Sharma',
-                      textPrimary: textPrimary,
-                      textSecondary: textSecondary,
-                      isDark: isDark,
-                    ),
-                    const SizedBox(height: 14),
-                    _buildMemberRowItem(
-                      name: 'Sarah Johnson',
-                      isOnline: true,
-                      textPrimary: textPrimary,
-                      textSecondary: textSecondary,
-                      isDark: isDark,
-                    ),
-                  ],
-                ),
-              ),
-            ],
+              );
+            },
           ),
         ],
       ),
@@ -832,76 +896,6 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildMemberRowItem({
-    required String name,
-    String? role,
-    bool isOnline = false,
-    required Color textPrimary,
-    required Color textSecondary,
-    required bool isDark,
-  }) {
-    return Row(
-      children: [
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: const Color(0xFF6366F1),
-              child: Text(
-                name.isNotEmpty ? name[0].toUpperCase() : '?',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-              ),
-            ),
-            if (isOnline)
-              Positioned(
-                right: 0,
-                bottom: 0,
-                child: Container(
-                  width: 9,
-                  height: 9,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF22C55E),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: isDark ? const Color(0xFF1E293B) : Colors.white, width: 1.5),
-                  ),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: textPrimary,
-                ),
-              ),
-              if (role != null) ...[
-                const SizedBox(height: 1),
-                Text(
-                  role,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF64748B),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ],
     );
   }
 

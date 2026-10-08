@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-enum MediaType { none, image, video, gif }
+enum MediaType { none, image, video, gif, document }
 
 class Post {
   final String id;
@@ -19,6 +19,7 @@ class Post {
   final int sharesCount;
   final int savesCount;
   final bool isLiked;
+  final bool isSaved;
   final String channelId;
   final bool isVerified;
   final String verificationType;
@@ -36,6 +37,7 @@ class Post {
   final DateTime? scheduledAt;
   final String? mediaAltText;
   final String? linkUrl;
+  final List<String> mediaUrls;
 
   Post({
     required this.id,
@@ -46,6 +48,7 @@ class Post {
     required this.content,
     this.mediaUrl = '',
     this.mediaType = MediaType.none,
+    this.mediaUrls = const [],
     required this.timestamp,
     this.likesCount = 0,
     this.commentsCount = 0,
@@ -54,6 +57,7 @@ class Post {
     this.sharesCount = 0,
     this.savesCount = 0,
     this.isLiked = false,
+    this.isSaved = false,
     this.channelId = 'general',
     this.isVerified = false,
     this.verificationType = 'none',
@@ -73,6 +77,12 @@ class Post {
     this.linkUrl,
   });
 
+  List<String> get allMediaUrls {
+    if (mediaUrls.isNotEmpty) return mediaUrls;
+    if (mediaUrl.isNotEmpty) return [mediaUrl];
+    return const [];
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -83,6 +93,8 @@ class Post {
       'content': content,
       'media_url': mediaUrl,
       'media_type': mediaType.name,
+      'media_urls': mediaUrls.isNotEmpty ? mediaUrls : (mediaUrl.isNotEmpty ? [mediaUrl] : []),
+      'mediaUrls': mediaUrls.isNotEmpty ? mediaUrls : (mediaUrl.isNotEmpty ? [mediaUrl] : []),
       'channel_id': channelId,
       'likes_count': likesCount,
       'comments_count': commentsCount,
@@ -90,6 +102,8 @@ class Post {
       'views_count': viewsCount,
       'shares_count': sharesCount,
       'saves_count': savesCount,
+      'is_liked': isLiked,
+      'is_saved': isSaved,
       'poll_data': pollData,
       'repost_data': repostData,
       'created_at': timestamp.toIso8601String(),
@@ -131,6 +145,15 @@ class Post {
         mType = MediaType.video;
       } else if (lower.contains('giphy') || lower.endsWith('.gif')) {
         mType = MediaType.gif;
+      } else if (lower.endsWith('.pdf') ||
+          lower.endsWith('.doc') ||
+          lower.endsWith('.docx') ||
+          lower.endsWith('.ppt') ||
+          lower.endsWith('.pptx') ||
+          lower.endsWith('.xls') ||
+          lower.endsWith('.xlsx') ||
+          lower.endsWith('.txt')) {
+        mType = MediaType.document;
       } else if (mType == MediaType.none) {
         mType = MediaType.image;
       }
@@ -177,6 +200,11 @@ class Post {
     final String rawHandle = map['author_handle'] ?? map['author']?['username'] ?? 'anon';
     final String handle = rawHandle.startsWith('@') ? rawHandle : '@$rawHandle';
 
+    List<String> mUrls = parseStringList(map['media_urls'] ?? map['mediaUrls']);
+    if (mUrls.isEmpty && mUrl.isNotEmpty) {
+      mUrls = [mUrl];
+    }
+
     return Post(
       id: postId,
       authorId: map['author_id'] ?? map['authorId'] ?? map['author']?['id'] ?? '',
@@ -194,7 +222,8 @@ class Post {
           .toLowerCase(),
       isAnonymous: map['is_anonymous'] ?? map['isAnonymous'] ?? false,
       content: map['content'] ?? '',
-      mediaUrl: mUrl,
+      mediaUrl: mUrl.isNotEmpty ? mUrl : (mUrls.isNotEmpty ? mUrls.first : ''),
+      mediaUrls: mUrls,
       mediaType: mType,
       timestamp: parseTime(map['created_at'] ?? map['createdAt']),
       likesCount: parseInt(map['likes_count'] ?? map['likesCount'] ?? map['_count']?['likes']),
@@ -204,6 +233,7 @@ class Post {
       sharesCount: parseInt(map['shares_count'] ?? map['sharesCount']),
       savesCount: parseInt(map['saves_count'] ?? map['savesCount']),
       isLiked: map['is_liked'] ?? map['isLiked'] ?? false,
+      isSaved: map['is_saved'] ?? map['isSaved'] ?? false,
       channelId: (map['channel_id'] == 'public' || map['channelId'] == 'public')
           ? 'general'
           : (map['channel_id'] ?? map['channelId'] ?? 'general'),
@@ -231,6 +261,7 @@ class Post {
     String? authorAvatarUrl,
     String? content,
     String? mediaUrl,
+    List<String>? mediaUrls,
     MediaType? mediaType,
     DateTime? timestamp,
     int? likesCount,
@@ -240,6 +271,7 @@ class Post {
     int? sharesCount,
     int? savesCount,
     bool? isLiked,
+    bool? isSaved,
     String? channelId,
     bool? isVerified,
     String? verificationType,
@@ -265,6 +297,7 @@ class Post {
       authorAvatarUrl: authorAvatarUrl ?? this.authorAvatarUrl,
       content: content ?? this.content,
       mediaUrl: mediaUrl ?? this.mediaUrl,
+      mediaUrls: mediaUrls ?? this.mediaUrls,
       mediaType: mediaType ?? this.mediaType,
       timestamp: timestamp ?? this.timestamp,
       likesCount: likesCount ?? this.likesCount,
@@ -274,6 +307,7 @@ class Post {
       sharesCount: sharesCount ?? this.sharesCount,
       savesCount: savesCount ?? this.savesCount,
       isLiked: isLiked ?? this.isLiked,
+      isSaved: isSaved ?? this.isSaved,
       channelId: channelId ?? this.channelId,
       isVerified: isVerified ?? this.isVerified,
       verificationType: verificationType ?? this.verificationType,

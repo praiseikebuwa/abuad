@@ -1,7 +1,7 @@
 import 'dart:async';
-
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
@@ -19,6 +19,7 @@ import 'reel_comment_sheet.dart';
 import '../../../../shared/widgets/user_avatar.dart';
 import '../../../../core/utils/url_validator.dart';
 import '../../../../core/widgets/verification_badge.dart';
+import '../../../../shared/widgets/abuad_markdown.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 /// TikTok-style reel page used inside the vertical Reels viewer.
@@ -327,40 +328,6 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
   void _openProfileByUserId(String userId) {
     if (!mounted || userId.isEmpty) return;
     context.push('/user/$userId');
-  }
-
-  Future<void> _openProfileByHandle(String handle) async {
-    final cleanHandle = handle.startsWith('@') ? handle.substring(1) : handle;
-    if (cleanHandle.isEmpty) return;
-    try {
-      final user = await ref
-          .read(userRepositoryProvider)
-          .getUserByHandle(cleanHandle);
-      if (!mounted) return;
-      if (user != null) {
-        context.push('/user/${user.uid}');
-      } else {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('User @$cleanHandle not found')));
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not open @$cleanHandle: $e')),
-      );
-    }
-  }
-
-  void _openHashtag(String hashtag) {
-    if (!mounted) return;
-    final cleanTag = hashtag.startsWith('#') ? hashtag.substring(1) : hashtag;
-    if (cleanTag.isEmpty) return;
-    context.push('/hashtag/$cleanTag');
-  }
-
-  String _normalizeToken(String token) {
-    return token.replaceAll(RegExp(r'^[^\w#@]+|[^\w]+$'), '');
   }
 
   void _handleHorizontalDragEnd(DragEndDetails details, domain.Post post) {
@@ -732,7 +699,6 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
     final authorHandle = post.authorHandle.isNotEmpty
         ? post.authorHandle
         : post.authorName;
-    final List<String> words = post.content.split(RegExp(r'\s+'));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -768,82 +734,26 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
           crossFadeState: _isCaptionExpanded
               ? CrossFadeState.showSecond
               : CrossFadeState.showFirst,
-          firstChild: RichText(
+          firstChild: AbuadMarkdownContent(
+            content: post.content,
             maxLines: 3,
             overflow: TextOverflow.ellipsis,
-            text: TextSpan(
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 15,
-                height: 1.3,
-                shadows: [Shadow(color: Colors.black54, blurRadius: 2)],
-              ),
-              children: words.map((word) {
-                final normalized = _normalizeToken(word);
-                final isTag =
-                    normalized.startsWith('#') && normalized.length > 1;
-                final isMention =
-                    normalized.startsWith('@') && normalized.length > 1;
-                return TextSpan(
-                  text: '$word ',
-                  style: TextStyle(
-                    color: (isTag || isMention)
-                        ? AppColors.secondaryTeal
-                        : Colors.white,
-                    fontWeight: (isTag || isMention)
-                        ? FontWeight.w600
-                        : FontWeight.normal,
-                  ),
-                  recognizer: (isTag || isMention)
-                      ? (TapGestureRecognizer()
-                          ..onTap = () {
-                            if (isTag) {
-                              _openHashtag(normalized);
-                            } else {
-                              _openProfileByHandle(normalized);
-                            }
-                          })
-                      : null,
-                );
-              }).toList(),
+            linkColor: AppColors.secondaryTeal,
+            textStyle: const TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              height: 1.3,
+              shadows: [Shadow(color: Colors.black54, blurRadius: 2)],
             ),
           ),
-          secondChild: RichText(
-            text: TextSpan(
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 15,
-                height: 1.3,
-                shadows: [Shadow(color: Colors.black54, blurRadius: 2)],
-              ),
-              children: words.map((word) {
-                final normalized = _normalizeToken(word);
-                final isTag =
-                    normalized.startsWith('#') && normalized.length > 1;
-                final isMention =
-                    normalized.startsWith('@') && normalized.length > 1;
-                return TextSpan(
-                  text: '$word ',
-                  style: TextStyle(
-                    color: (isTag || isMention)
-                        ? AppColors.secondaryTeal
-                        : Colors.white,
-                    fontWeight: (isTag || isMention)
-                        ? FontWeight.w600
-                        : FontWeight.normal,
-                  ),
-                  recognizer: (isTag || isMention)
-                      ? (TapGestureRecognizer()
-                          ..onTap = () {
-                            if (isTag) {
-                              _openHashtag(normalized);
-                            } else {
-                              _openProfileByHandle(normalized);
-                            }
-                          })
-                      : null,
-                );
-              }).toList(),
+          secondChild: AbuadMarkdownContent(
+            content: post.content,
+            linkColor: AppColors.secondaryTeal,
+            textStyle: const TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              height: 1.3,
+              shadows: [Shadow(color: Colors.black54, blurRadius: 2)],
             ),
           ),
         ),
@@ -949,7 +859,7 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
 
         // Comment
         _ActionIconButton(
-          icon: Icons.chat_bubble_rounded,
+          icon: CupertinoIcons.chat_bubble_fill,
           label: _formatNumber(post.commentsCount),
           onTap: () => _openComments(post),
         ),
@@ -957,19 +867,30 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
         // Save
         Consumer(
           builder: (context, ref, child) {
-            final isSaved =
-                ref.watch(isPostSavedProvider(post.id)).value ?? false;
+            final optimisticSaveMap = ref.watch(optimisticSaveProvider);
+            final apiSaved =
+                ref.watch(isPostSavedProvider(post.id)).value ?? post.isSaved;
+            final isSaved = optimisticSaveMap.containsKey(post.id)
+                ? optimisticSaveMap[post.id]!
+                : apiSaved;
+            final optimisticSaveCount = optimisticSaveMap.containsKey(post.id)
+                ? (post.savesCount + (optimisticSaveMap[post.id]! ? (apiSaved ? 0 : 1) : (apiSaved ? -1 : 0)))
+                : post.savesCount;
+            const goldColor = Color(0xFFFFB800);
+
             return _ActionIconButton(
-              icon: Icons.bookmark_rounded,
-              iconColor: isSaved ? const Color(0xFFFFD700) : Colors.white,
-              label: _formatNumber(post.savesCount),
+              icon: isSaved ? CupertinoIcons.bookmark_fill : CupertinoIcons.bookmark,
+              iconColor: isSaved ? goldColor : Colors.white,
+              labelColor: isSaved ? goldColor : Colors.white,
+              label: _formatNumber(optimisticSaveCount),
               onTap: () async {
+                HapticFeedback.lightImpact();
+                ref.read(optimisticSaveProvider.notifier).toggle(post.id, apiSaved);
                 try {
-                  await ref
-                      .read(userRepositoryProvider)
-                      .togglePostSave(post.id);
-                  ref.invalidate(isPostSavedProvider(post.id));
+                  await ref.read(postRepositoryProvider).togglePostSave(post.id);
+                  ref.read(optimisticSaveProvider.notifier).confirm(post.id);
                 } catch (e) {
+                  ref.read(optimisticSaveProvider.notifier).revert(post.id, apiSaved);
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text('Error saving post: $e')),
@@ -983,7 +904,7 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
 
         // Share
         _ActionIconButton(
-          icon: Icons.reply_rounded,
+          icon: CupertinoIcons.share,
           scaleX: -1.0, // Mirrored for TikTok share arrow look
           label: _formatNumber(post.sharesCount),
           onTap: () {
@@ -1001,6 +922,7 @@ class _ActionIconButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   final Color iconColor;
+  final Color? labelColor;
   final double scaleX;
 
   const _ActionIconButton({
@@ -1008,6 +930,7 @@ class _ActionIconButton extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.iconColor = Colors.white,
+    this.labelColor,
     this.scaleX = 1.0,
   });
 
@@ -1021,7 +944,7 @@ class _ActionIconButton extends StatelessWidget {
             onTap: onTap,
             child: Transform(
               alignment: Alignment.center,
-              transform: Matrix4.identity()..scale(scaleX, 1.0),
+              transform: Matrix4.diagonal3Values(scaleX, 1.0, 1.0),
               child: Icon(
                 icon,
                 color: iconColor,
@@ -1033,11 +956,11 @@ class _ActionIconButton extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             label,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: labelColor ?? Colors.white,
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              shadows: [Shadow(color: Colors.black45, blurRadius: 2)],
+              shadows: const [Shadow(color: Colors.black45, blurRadius: 2)],
             ),
           ),
         ],

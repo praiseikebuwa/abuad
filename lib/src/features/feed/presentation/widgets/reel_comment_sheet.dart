@@ -1,17 +1,16 @@
-import 'package:abuad/src/features/auth/data/auth_repository.dart';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timeago/timeago.dart' as timeago;
-import 'package:glassmorphism/glassmorphism.dart';
 
 import '../../domain/post.dart';
 import '../../data/post_repository.dart';
 import '../../../../core/widgets/verification_badge.dart';
-import '../../../../core/theme/app_colors.dart';
 import '../../../../shared/widgets/user_avatar.dart';
 import '../../../../shared/widgets/formatted_comment_content.dart';
-import 'dart:ui';
-import 'dart:math' as math;
+import '../../../auth/data/auth_repository.dart';
+import '../../../user/data/user_repository.dart';
 
 class ReelCommentSheet extends ConsumerStatefulWidget {
   final Post post;
@@ -28,9 +27,24 @@ class _ReelCommentSheetState extends ConsumerState<ReelCommentSheet> {
   bool _isPosting = false;
   String? _replyingToCommentId;
   String? _replyingToName;
+  bool _hasInputText = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _commentController.addListener(_onTextChanged);
+  }
+
+  void _onTextChanged() {
+    final hasText = _commentController.text.trim().isNotEmpty;
+    if (hasText != _hasInputText) {
+      setState(() => _hasInputText = hasText);
+    }
+  }
 
   @override
   void dispose() {
+    _commentController.removeListener(_onTextChanged);
     _commentController.dispose();
     _inputFocusNode.dispose();
     super.dispose();
@@ -57,9 +71,12 @@ class _ReelCommentSheetState extends ConsumerState<ReelCommentSheet> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error posting comment: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
       }
     } finally {
       if (mounted) {
@@ -91,258 +108,380 @@ class _ReelCommentSheetState extends ConsumerState<ReelCommentSheet> {
     final commentsStream = repo.watchComments(widget.post.id);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final currentUser = ref.watch(currentUserProvider).value;
+
+    final sheetBg = isDark ? const Color(0xFF0F172A) : Colors.white;
+    final textPrimary = isDark ? Colors.white : const Color(0xFF0F172A);
+    final textSecondary = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+    final cardBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9);
+    final borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
 
     return Container(
-      height: MediaQuery.of(context).size.height * 0.7,
+      height: MediaQuery.of(context).size.height * 0.75,
       decoration: BoxDecoration(
-        color: isDark
-            ? Colors.black.withValues(alpha: 0.8)
-            : Colors.white.withValues(alpha: 0.9),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Stack(
-        children: [
-          // Blur effect
-          Positioned.fill(
-            child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(20),
-              ),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                child: Container(color: Colors.transparent),
-              ),
-            ),
+        color: sheetBg,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 25,
+            offset: const Offset(0, -5),
           ),
-          SafeArea(
-            top: false,
-            child: Column(
-              children: [
-                // Header
-                Container(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.grey[600],
-                          borderRadius: BorderRadius.circular(2),
-                        ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            // Drag Handle & Header
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 8, 8),
+              child: Column(
+                children: [
+                  Center(
+                    child: Container(
+                      width: 38,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF475569) : const Color(0xFFCBD5E1),
+                        borderRadius: BorderRadius.circular(2),
                       ),
-                      const SizedBox(height: 12),
-                      Text(
-                        '${widget.post.commentsCount} comments',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const SizedBox(width: 32), // Balance for close button
+                      StreamBuilder<List<Map<String, dynamic>>>(
+                        stream: commentsStream,
+                        builder: (context, snapshot) {
+                          final count = snapshot.hasData
+                              ? snapshot.data!.length
+                              : widget.post.commentsCount;
+                          return Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'Comments',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: textPrimary,
+                                ),
+                              ),
+                              if (count > 0) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isDark
+                                        ? const Color(0xFF334155)
+                                        : const Color(0xFFE2E8F0),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    '$count',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: textPrimary,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          );
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(CupertinoIcons.xmark, size: 20),
+                        color: textSecondary,
+                        onPressed: () => Navigator.pop(context),
                       ),
                     ],
                   ),
-                ),
-                const Divider(height: 1),
-                // Comments List
-                Expanded(
-                  child: StreamBuilder<List<Map<String, dynamic>>>(
-                    stream: commentsStream,
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
+                ],
+              ),
+            ),
+            Divider(height: 1, color: borderColor),
+
+            // Comments List
+            Expanded(
+              child: StreamBuilder<List<Map<String, dynamic>>>(
+                stream: commentsStream,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    );
+                  }
+                  final rawComments = snapshot.data ?? [];
+
+                  int getVerificationWeight(dynamic type) {
+                    final clean = (type ?? '').toString().trim().toLowerCase();
+                    switch (clean) {
+                      case 'gold':
+                        return 3;
+                      case 'violet':
+                        return 2;
+                      case 'blue':
+                      case 'true':
+                        return 1;
+                      default:
+                        return 0;
+                    }
+                  }
+
+                  // Deduplicate comments
+                  final seenIds = <String>{};
+                  final dedupedList = <Map<String, dynamic>>[];
+                  for (final c in rawComments) {
+                    final id = (c['id'] ?? '').toString();
+                    if (id.isNotEmpty && !seenIds.contains(id)) {
+                      seenIds.add(id);
+                      dedupedList.add(c);
+                    }
+                  }
+
+                  final comments = List<Map<String, dynamic>>.from(dedupedList)
+                    ..sort((a, b) {
+                      final vTypeA = a['authorVerificationType'] ??
+                          a['author_verification_type'] ??
+                          (a['author']?['verificationType'] ??
+                              (a['author']?['isVerified'] == true
+                                  ? 'blue'
+                                  : 'none'));
+                      final vTypeB = b['authorVerificationType'] ??
+                          b['author_verification_type'] ??
+                          (b['author']?['verificationType'] ??
+                              (b['author']?['isVerified'] == true
+                                  ? 'blue'
+                                  : 'none'));
+
+                      final weightA = getVerificationWeight(vTypeA);
+                      final weightB = getVerificationWeight(vTypeB);
+
+                      if (weightA != weightB) {
+                        return weightB.compareTo(weightA);
                       }
-                      final rawComments = snapshot.data ?? [];
+                      final tsA = (a['timestamp'] is int) ? a['timestamp'] as int : 0;
+                      final tsB = (b['timestamp'] is int) ? b['timestamp'] as int : 0;
+                      return tsB.compareTo(tsA);
+                    });
 
-                      int getVerificationWeight(dynamic type) {
-                        final clean = (type ?? '').toString().trim().toLowerCase();
-                        switch (clean) {
-                          case 'gold':
-                            return 3;
-                          case 'violet':
-                            return 2;
-                          case 'blue':
-                          case 'true':
-                            return 1;
-                          default:
-                            return 0;
-                        }
-                      }
-
-                      // Deduplicate comments
-                      final seenIds = <String>{};
-                      final dedupedList = <Map<String, dynamic>>[];
-                      for (final c in rawComments) {
-                        final id = (c['id'] ?? '').toString();
-                        if (id.isNotEmpty && !seenIds.contains(id)) {
-                          seenIds.add(id);
-                          dedupedList.add(c);
-                        }
-                      }
-
-                      final comments = List<Map<String, dynamic>>.from(dedupedList)
-                        ..sort((a, b) {
-                          final vTypeA = a['authorVerificationType'] ?? a['author_verification_type'] ?? (a['author']?['verificationType'] ?? (a['author']?['isVerified'] == true ? 'blue' : 'none'));
-                          final vTypeB = b['authorVerificationType'] ?? b['author_verification_type'] ?? (b['author']?['verificationType'] ?? (b['author']?['isVerified'] == true ? 'blue' : 'none'));
-
-                          final weightA = getVerificationWeight(vTypeA);
-                          final weightB = getVerificationWeight(vTypeB);
-
-                          if (weightA != weightB) {
-                            return weightB.compareTo(weightA); // Gold > Violet > Blue > None pinned at TOP
-                          }
-                          final tsA = (a['timestamp'] is int) ? a['timestamp'] as int : 0;
-                          final tsB = (b['timestamp'] is int) ? b['timestamp'] as int : 0;
-                          return tsB.compareTo(tsA);
-                        });
-                      if (comments.isEmpty) {
-                        return Center(
-                          child: Text(
-                            'No comments yet',
-                            style: TextStyle(color: Colors.grey[500]),
+                  if (comments.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            CupertinoIcons.chat_bubble_2,
+                            size: 48,
+                            color: isDark ? Colors.white24 : Colors.grey[400],
                           ),
-                        );
-                      }
-                      return ListView.builder(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                        itemCount: comments.length,
-                        itemBuilder: (context, index) {
-                          final comment = comments[index];
-                          return _CommentTile(
-                            postId: widget.post.id,
-                            comment: comment,
-                            onReplyTap: () => _setReplyTarget(
-                              comment['id']?.toString() ?? '',
-                              comment['userName']?.toString() ?? 'Student',
+                          const SizedBox(height: 12),
+                          Text(
+                            'No comments yet',
+                            style: TextStyle(
+                              color: textPrimary,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
                             ),
-                          );
-                        },
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Be the first to share your thoughts!',
+                            style: TextStyle(
+                              color: textSecondary,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  return ListView.builder(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    itemCount: comments.length,
+                    itemBuilder: (context, index) {
+                      final comment = comments[index];
+                      return _CommentTile(
+                        postId: widget.post.id,
+                        comment: comment,
+                        isDark: isDark,
+                        onReplyTap: () => _setReplyTarget(
+                          comment['id']?.toString() ?? '',
+                          comment['userName']?.toString() ?? 'Student',
+                        ),
                       );
                     },
-                  ),
-                ),
-                // Input field
-                Padding(
-                  padding: EdgeInsets.only(
-                    bottom:
-                        math.max(
-                          MediaQuery.of(context).viewInsets.bottom,
-                          MediaQuery.of(context).padding.bottom,
-                        ) +
-                        16,
-                    left: 16,
-                    right: 16,
-                    top: 8,
-                  ),
-                  child: Row(
+                  );
+                },
+              ),
+            ),
+
+            // Input Bar
+            Container(
+              padding: EdgeInsets.only(
+                bottom: math.max(
+                      MediaQuery.of(context).viewInsets.bottom,
+                      MediaQuery.of(context).padding.bottom,
+                    ) +
+                    10,
+                left: 14,
+                right: 14,
+                top: 8,
+              ),
+              decoration: BoxDecoration(
+                color: sheetBg,
+                border: Border(top: BorderSide(color: borderColor, width: 0.5)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Replying to banner
+                  if (_replyingToCommentId != null)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: borderColor),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            CupertinoIcons.reply,
+                            size: 14,
+                            color: const Color(0xFF6366F1),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'Replying to ${_replyingToName ?? "comment"}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: textPrimary,
+                              ),
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: _clearReplyTarget,
+                            child: Icon(
+                              CupertinoIcons.clear_circled_solid,
+                              size: 16,
+                              color: textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  // Input row with user avatar and rounded pill field
+                  Row(
                     children: [
+                      UserAvatar(
+                        userId: currentUser?.uid ?? '',
+                        avatarUrl: currentUser?.avatarUrl,
+                        displayName: currentUser?.displayName ?? 'You',
+                        radius: 18,
+                      ),
+                      const SizedBox(width: 10),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (_replyingToCommentId != null)
-                              Container(
-                                margin: const EdgeInsets.only(bottom: 8),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 8,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: isDark
-                                      ? Colors.grey[800]
-                                      : Colors.grey[200],
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        'Replying to ${_replyingToName ?? "comment"}',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: isDark
-                                              ? Colors.grey[300]
-                                              : Colors.grey[700],
-                                        ),
-                                      ),
-                                    ),
-                                    GestureDetector(
-                                      onTap: _clearReplyTarget,
-                                      child: const Icon(Icons.close, size: 16),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            GlassmorphicContainer(
-                              width: double.infinity,
-                              height: 50,
-                              borderRadius: 25,
-                              blur: 20,
-                              alignment: Alignment.center,
-                              border: 1,
-                              linearGradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
-                                  isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.02),
-                                ],
-                                stops: const [0.1, 1],
-                              ),
-                              borderGradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  isDark ? Colors.white.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.1),
-                                  isDark ? Colors.white.withValues(alpha: 0.0) : Colors.black.withValues(alpha: 0.0),
-                                ],
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: cardBg,
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(color: borderColor),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
                                 child: TextField(
                                   controller: _commentController,
                                   focusNode: _inputFocusNode,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: textPrimary,
+                                  ),
                                   decoration: InputDecoration(
                                     hintText: _replyingToCommentId != null
-                                        ? 'Add reply...'
-                                        : 'Add comment...',
+                                        ? 'Reply to ${_replyingToName ?? "comment"}...'
+                                        : 'Add a comment...',
+                                    hintStyle: TextStyle(
+                                      fontSize: 14,
+                                      color: isDark ? Colors.white38 : Colors.grey[500],
+                                    ),
                                     border: InputBorder.none,
-                                    hintStyle: const TextStyle(fontSize: 14),
-                                    contentPadding: const EdgeInsets.only(bottom: 2),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 10,
+                                    ),
                                   ),
-                                  maxLines: 1,
+                                  maxLines: 4,
+                                  minLines: 1,
+                                  textCapitalization: TextCapitalization.sentences,
                                 ),
                               ),
-                            ),
-                          ],
+                              Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: InkWell(
+                                  onTap: (_hasInputText && !_isPosting)
+                                      ? _postComment
+                                      : null,
+                                  borderRadius: BorderRadius.circular(20),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: _hasInputText
+                                          ? const Color(0xFF6366F1)
+                                          : Colors.transparent,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: _isPosting
+                                        ? const SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : Icon(
+                                            CupertinoIcons.arrow_up,
+                                            size: 18,
+                                            color: _hasInputText
+                                                ? Colors.white
+                                                : textSecondary.withValues(alpha: 0.5),
+                                          ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        onPressed: _isPosting ? null : _postComment,
-                        icon: _isPosting
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(
-                                Icons.send,
-                                color: AppColors.secondaryTeal,
-                              ),
                       ),
                     ],
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -351,11 +490,13 @@ class _ReelCommentSheetState extends ConsumerState<ReelCommentSheet> {
 class _CommentTile extends ConsumerWidget {
   final String postId;
   final Map<String, dynamic> comment;
+  final bool isDark;
   final VoidCallback onReplyTap;
 
   const _CommentTile({
     required this.postId,
     required this.comment,
+    required this.isDark,
     required this.onReplyTap,
   });
 
@@ -377,6 +518,9 @@ class _CommentTile extends ConsumerWidget {
     final timestamp = DateTime.fromMillisecondsSinceEpoch(tsInt);
     final isVerified = comment['authorIsVerified'] == true;
     final verificationType = (comment['authorVerificationType'] ?? 'none').toString();
+
+    final textPrimary = isDark ? Colors.white : const Color(0xFF0F172A);
+    final textSecondary = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
 
     return StreamBuilder<AppUser?>(
       stream: authorId.isNotEmpty
@@ -409,28 +553,39 @@ class _CommentTile extends ConsumerWidget {
                   children: [
                     Row(
                       children: [
-                        Text(
-                          effectiveName,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                            color: Colors.grey,
+                        Flexible(
+                          child: Text(
+                            effectiveName,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: textPrimary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         if (isVerified || (user?.isVerified == true)) ...[
                           const SizedBox(width: 4),
-                          VerificationBadge(type: effectiveVerification, size: 12),
+                          VerificationBadge(type: effectiveVerification, size: 13),
                         ],
                         const SizedBox(width: 8),
                         Text(
                           timeago.format(timestamp, locale: 'en_short'),
-                          style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                          style: TextStyle(color: textSecondary, fontSize: 11),
                         ),
                       ],
                     ),
                     const SizedBox(height: 4),
-                    FormattedCommentContent(content: content, textStyle: const TextStyle(fontSize: 14)),
-                    const SizedBox(height: 8),
+                    FormattedCommentContent(
+                      content: content,
+                      textStyle: TextStyle(
+                        fontSize: 14,
+                        color: textPrimary,
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
                     Row(
                       children: [
                         GestureDetector(
@@ -440,36 +595,45 @@ class _CommentTile extends ConsumerWidget {
                           child: Row(
                             children: [
                               Icon(
-                                isLiked ? Icons.favorite : Icons.favorite_border,
-                                size: 16,
-                                color: isLiked ? Colors.red : Colors.grey[600],
+                                isLiked ? CupertinoIcons.heart_fill : CupertinoIcons.heart,
+                                size: 15,
+                                color: isLiked ? Colors.redAccent : textSecondary,
                               ),
                               if (likesCount > 0) ...[
                                 const SizedBox(width: 4),
                                 Text(
                                   '$likesCount',
                                   style: TextStyle(
-                                    color: isLiked ? Colors.red : Colors.grey[600],
+                                    color: isLiked ? Colors.redAccent : textSecondary,
                                     fontSize: 12,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ],
                             ],
                           ),
                         ),
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 18),
                         GestureDetector(
                           onTap: onReplyTap,
                           child: Text(
                             'Reply',
-                            style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                            style: TextStyle(
+                              color: textSecondary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                         if (replyCount > 0) ...[
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 14),
                           Text(
-                            '$replyCount replies',
-                            style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                            '$replyCount ${replyCount == 1 ? 'reply' : 'replies'}',
+                            style: TextStyle(
+                              color: const Color(0xFF6366F1),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ],
                       ],
@@ -482,35 +646,53 @@ class _CommentTile extends ConsumerWidget {
                           builder: (context, snapshot) {
                             final replies = snapshot.data ?? const [];
                             if (replies.isEmpty) return const SizedBox.shrink();
-                            return Column(
-                              children: replies.map((reply) {
-                                final replyName = (reply['authorName'] ?? reply['userName'] ?? 'Student').toString();
-                                final replyContent = (reply['content'] ?? '').toString();
-                                return Padding(
-                                  padding: const EdgeInsets.only(
-                                    left: 8,
-                                    bottom: 6,
+                            return Container(
+                              margin: const EdgeInsets.only(top: 4),
+                              padding: const EdgeInsets.only(left: 10),
+                              decoration: BoxDecoration(
+                                border: Border(
+                                  left: BorderSide(
+                                    color: isDark
+                                        ? const Color(0xFF334155)
+                                        : const Color(0xFFE2E8F0),
+                                    width: 1.5,
                                   ),
-                                  child: Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        '$replyName: ',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 12,
+                                ),
+                              ),
+                              child: Column(
+                                children: replies.map((reply) {
+                                  final replyName = (reply['authorName'] ??
+                                          reply['userName'] ??
+                                          'Student')
+                                      .toString();
+                                  final replyContent = (reply['content'] ?? '').toString();
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 6),
+                                    child: Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          '$replyName: ',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 12,
+                                            color: textPrimary,
+                                          ),
                                         ),
-                                      ),
-                                      Expanded(
-                                        child: FormattedCommentContent(
-                                          content: replyContent,
-                                          textStyle: const TextStyle(fontSize: 12),
+                                        Expanded(
+                                          child: FormattedCommentContent(
+                                            content: replyContent,
+                                            textStyle: TextStyle(
+                                              fontSize: 12,
+                                              color: textPrimary,
+                                            ),
+                                          ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }).toList(),
+                                      ],
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
                             );
                           },
                         ),

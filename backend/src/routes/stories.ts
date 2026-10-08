@@ -123,7 +123,7 @@ router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Respo
  */
 router.post('/:id/view', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const userId = req.user!.id;
 
     const story = await prisma.story.findUnique({ where: { id } });
@@ -158,7 +158,7 @@ router.post('/:id/view', authenticateToken, async (req: AuthenticatedRequest, re
  */
 router.post('/:id/like', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const userId = req.user!.id;
     const { isLiking } = req.body;
 
@@ -203,7 +203,7 @@ router.post('/:id/like', authenticateToken, async (req: AuthenticatedRequest, re
  */
 router.delete('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const userId = req.user!.id;
 
     const story = await prisma.story.findUnique({ where: { id } });

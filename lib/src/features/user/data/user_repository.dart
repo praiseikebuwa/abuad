@@ -41,6 +41,8 @@ class AppUser {
   final double? latitude;
   final double? longitude;
 
+  String get username => handle;
+
   AppUser({
     required this.uid,
     required this.displayName,
@@ -191,6 +193,58 @@ class AppUser {
   }
 }
 
+class SuggestedUser {
+  final AppUser user;
+  final String reason;
+  final int mutualCount;
+  final int score;
+
+  const SuggestedUser({
+    required this.user,
+    this.reason = 'Suggested for you',
+    this.mutualCount = 0,
+    this.score = 0,
+  });
+
+  factory SuggestedUser.fromMap(Map<String, dynamic> map) {
+    return SuggestedUser(
+      user: AppUser.fromMap(map),
+      reason: map['reason'] ?? 'Suggested for you',
+      mutualCount: map['mutualCount'] ?? 0,
+      score: map['score'] ?? 0,
+    );
+  }
+}
+
+class PeopleYouMayKnowNotifier extends AsyncNotifier<List<SuggestedUser>> {
+  @override
+  Future<List<SuggestedUser>> build() async {
+    final repo = ref.watch(userRepositoryProvider);
+    return repo.getPeopleYouMayKnow();
+  }
+
+  void dismissUser(String userId) {
+    state = state.whenData(
+      (users) => users.where((u) => u.user.uid != userId).toList(),
+    );
+  }
+
+  void removeUser(String userId) => dismissUser(userId);
+
+  Future<void> refresh() async {
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() async {
+      final repo = ref.read(userRepositoryProvider);
+      return repo.getPeopleYouMayKnow();
+    });
+  }
+}
+
+final peopleYouMayKnowProvider =
+    AsyncNotifierProvider<PeopleYouMayKnowNotifier, List<SuggestedUser>>(
+  PeopleYouMayKnowNotifier.new,
+);
+
 final userRepositoryProvider = Provider<UserRepository>((ref) {
   return UserRepository();
 });
@@ -324,8 +378,18 @@ class UserRepository {
   Future<AppUser?> getUser(String uid) => getUserById(uid);
 
   Future<AppUser?> getUserByHandle(String handle) async {
-    final users = await searchUsers(handle);
-    if (users.isNotEmpty) return users.first;
+    final clean = handle.toLowerCase().replaceAll('@', '').trim();
+    if (clean == 'ai' || clean == 'abuad_ai' || clean == 'ai_bot') {
+      return getUserById('abuad_ai');
+    }
+    final users = await searchUsers(clean);
+    if (users.isNotEmpty) {
+      final exactMatch = users.firstWhere(
+        (u) => u.handle.toLowerCase() == clean,
+        orElse: () => users.first,
+      );
+      return exactMatch;
+    }
     return null;
   }
 
@@ -447,7 +511,7 @@ class UserRepository {
 
     try {
       final res = await ApiClient.post('/users/$targetUserId/follow', {});
-      if (res.statusCode != 200) {
+      if (res.statusCode != 200 && res.statusCode != 201) {
         debugPrint('Follow endpoint status: ${res.statusCode}');
       }
     } catch (e) {
@@ -471,7 +535,7 @@ class UserRepository {
 
     try {
       final res = await ApiClient.delete('/users/$targetUserId/follow');
-      if (res.statusCode != 200) {
+      if (res.statusCode != 200 && res.statusCode != 204) {
         debugPrint('Unfollow endpoint status: ${res.statusCode}');
       }
     } catch (e) {
@@ -481,13 +545,62 @@ class UserRepository {
 
   Future<void> blockUser(String targetUserId) async {}
   Future<void> unblockUser(String targetUserId) async {}
+
+  Future<List<SuggestedUser>> getPeopleYouMayKnow() async {
+    try {
+      final response = await ApiClient.get('/users/people-you-may-know');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] is List) {
+          final list = (data['data'] as List)
+              .map((x) => SuggestedUser.fromMap(x))
+              .toList();
+          for (final su in list) {
+            _userCache[su.user.uid] = su.user;
+          }
+          return list;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching people you may know: $e');
+    }
+    return [];
+  }
   Future<void> togglePostSave(String postId) async {
     await ApiClient.post('/posts/$postId/save', {});
   }
   Future<void> muteUser(String targetUserId) async {}
   Future<void> updateUserLocation(double lat, double lng) async {}
-  Stream<List<AppUser>> watchPopularUsers() async* { yield []; }
-  Stream<List<AppUser>> watchSearchUsers(String query) async* { yield await searchUsers(query); }
+  Stream<List<AppUser>> watchPopularUsers() async* {
+    try {
+      final suggestions = await getPeopleYouMayKnow();
+      if (suggestions.isNotEmpty) {
+        yield suggestions.map((s) => s.user).toList();
+        return;
+      }
+      final response = await ApiClient.get('/users');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] is List) {
+          final users = (data['data'] as List)
+              .map((x) => AppUser.fromMap(x))
+              .toList();
+          for (final u in users) {
+            _userCache[u.uid] = u;
+          }
+          yield users;
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error watching popular users: $e');
+    }
+    if (_userCache.isNotEmpty) {
+      yield _userCache.values.toList();
+    } else {
+      yield [];
+    }
+  }
 
   Stream<List<Post>> watchUserPosts(String userId) async* {
     try {

@@ -91,6 +91,8 @@ function formatMessage(msg: any) {
   try { savedBy = typeof msg.savedBy === 'string' ? JSON.parse(msg.savedBy || '[]') : (msg.savedBy || []); } catch {}
   try { readBy = typeof msg.readBy === 'string' ? JSON.parse(msg.readBy || '[]') : (msg.readBy || []); } catch {}
 
+  const isRead = readBy.length > 1;
+
   return {
     ...msg,
     senderId: msg.senderId,
@@ -106,6 +108,8 @@ function formatMessage(msg: any) {
     saved_by: savedBy,
     readBy,
     read_by: readBy,
+    isRead,
+    is_read: isRead,
     timestamp: msg.createdAt,
     created_at: msg.createdAt,
   };

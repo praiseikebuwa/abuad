@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -689,18 +690,37 @@ class _ChatSettingsScreenState extends ConsumerState<ChatSettingsScreen> {
           end: Alignment.bottomRight,
         ),
       );
-    } else if (_wallpaperPath != null && File(_wallpaperPath!).existsSync()) {
-      bgDecoration = BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        image: DecorationImage(
-          image: FileImage(File(_wallpaperPath!)),
-          fit: BoxFit.cover,
-          colorFilter: ColorFilter.mode(
-            Colors.black.withValues(alpha: _wallpaperDim),
-            BlendMode.darken,
+    } else if (_wallpaperPath != null) {
+      if (kIsWeb) {
+        bgDecoration = BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          image: DecorationImage(
+            image: NetworkImage(_wallpaperPath!),
+            fit: BoxFit.cover,
+            colorFilter: ColorFilter.mode(
+              Colors.black.withValues(alpha: _wallpaperDim),
+              BlendMode.darken,
+            ),
           ),
-        ),
-      );
+        );
+      } else if (File(_wallpaperPath!).existsSync()) {
+        bgDecoration = BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          image: DecorationImage(
+            image: FileImage(File(_wallpaperPath!)),
+            fit: BoxFit.cover,
+            colorFilter: ColorFilter.mode(
+              Colors.black.withValues(alpha: _wallpaperDim),
+              BlendMode.darken,
+            ),
+          ),
+        );
+      } else {
+        bgDecoration = BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+        );
+      }
     } else {
       bgDecoration = BoxDecoration(
         borderRadius: BorderRadius.circular(20),

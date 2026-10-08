@@ -393,6 +393,23 @@ Reply as ABUAD AI:`;
       }
     });
 
+    // Mark prior messages in this channel as read by ABUAD AI
+    const priorUnread = await prisma.chatMessage.findMany({
+      where: { channelId, senderId: { not: aiUser.id } },
+      select: { id: true, readBy: true }
+    });
+    for (const msg of priorUnread) {
+      let rb: string[] = [];
+      try { rb = JSON.parse(msg.readBy || '[]'); } catch {}
+      if (!rb.includes(aiUser.id)) {
+        rb.push(aiUser.id);
+        await prisma.chatMessage.update({
+          where: { id: msg.id },
+          data: { readBy: JSON.stringify(rb) }
+        });
+      }
+    }
+
     return createdMsg;
   } catch (err) {
     console.error('Error in triggerAiDirectChatReply:', err);
@@ -514,7 +531,7 @@ Requirements:
   const pool = PEXELS_CAMPUS_IMAGE_COLLECTIONS[theme] || PEXELS_CAMPUS_IMAGE_COLLECTIONS.general;
   const mediaUrl = pool[Math.floor(Math.random() * pool.length)];
 
-  let content = `💡 **ABUAD AI Daily Campus Byte**\n\nNeed quick summaries, code debugging, or study tips? You can tag **@ai** on any post or comment or chat with me directly in DMs!\n\nKeep striving for excellence, ABUADites! 🚀📚 #ABUAD #CampusTech #StudyTips #ABUADAI`;
+  let content = `💡 **ABUAD AI Daily Campus Byte**\n\nNeed quick summaries, code debugging, or study tips? You can tag @ai on any post or comment or chat with me directly in DMs!\n\nKeep striving for excellence, ABUADites! 🚀📚 #ABUAD #CampusTech #StudyTips #ABUADAI`;
   let channelId = 'general';
   let hashtags = JSON.stringify(['ABUAD', 'CampusTech', 'StudyTips', 'ABUADAI']);
 
