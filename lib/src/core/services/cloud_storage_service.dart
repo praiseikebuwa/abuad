@@ -37,8 +37,12 @@ class CloudStorageService {
 
   Future<String> _uploadXFile(XFile file) async {
     final bytes = await file.readAsBytes();
-    final contentType = _mimeFromExtension(file.name) ?? 'image/jpeg';
-    final url = await ApiClient.uploadBytes(bytes, file.name, contentType: contentType);
+    String fileName = file.name;
+    if (fileName.isEmpty || !fileName.contains('.')) {
+      fileName = 'upload_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    }
+    final contentType = _mimeFromExtension(fileName) ?? 'image/jpeg';
+    final url = await ApiClient.uploadBytes(bytes, fileName, contentType: contentType);
     if (url == null || url.isEmpty || url == _placeholder) {
       throw Exception('Failed to upload file to Cloudflare R2 storage');
     }

@@ -28,7 +28,10 @@ class AuthRepository {
 
   AppUser? get currentUser => _currentUser;
   String? get currentUserId => _currentUser?.uid;
-  Stream<AppUser?> get authStateChanges => _controller.stream;
+  Stream<AppUser?> get authStateChanges async* {
+    yield _currentUser;
+    yield* _controller.stream;
+  }
 
   Future<void> init() async {
     try {

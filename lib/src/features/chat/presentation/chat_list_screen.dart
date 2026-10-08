@@ -1,8 +1,10 @@
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../data/chat_repository.dart';
@@ -583,135 +585,380 @@ class _SnapchatListItem extends ConsumerWidget {
       );
     }
 
-    return InkWell(
-      onTap: () => context.push('/chat/${channel.id}'),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // Avatar Column
-            _buildListAvatar(displayAvatar, displayName, isOnline, isGroup),
-            const SizedBox(width: 14),
+    final isArchived = channel.archivedBy.contains(currentUserId);
 
-            // Content Column
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Row 1: Title & Pin/Mute
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          displayName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? Colors.white : const Color(0xFF0F172A),
-                            letterSpacing: -0.2,
+    return Slidable(
+      key: ValueKey('slidable_${channel.id}'),
+      startActionPane: ActionPane(
+        motion: const DrawerMotion(),
+        extentRatio: 0.50,
+        children: [
+          SlidableAction(
+            onPressed: (context) async {
+              HapticFeedback.mediumImpact();
+              await ref.read(chatRepositoryProvider).togglePinChannel(channel.id);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(isPinned ? 'Chat unpinned' : 'Chat pinned to top 📌'),
+                    duration: const Duration(seconds: 2),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            },
+            backgroundColor: isPinned ? const Color(0xFF64748B) : const Color(0xFF2563EB),
+            foregroundColor: Colors.white,
+            icon: isPinned ? Icons.push_pin_outlined : Icons.push_pin_rounded,
+            label: isPinned ? 'Unpin' : 'Pin',
+          ),
+          SlidableAction(
+            onPressed: (context) async {
+              HapticFeedback.lightImpact();
+              await ref.read(chatRepositoryProvider).markChannelAsRead(channel.id);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(isUnread ? 'Marked as read' : 'Marked as unread'),
+                    duration: const Duration(seconds: 2),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            },
+            backgroundColor: isUnread ? const Color(0xFF10B981) : const Color(0xFF6366F1),
+            foregroundColor: Colors.white,
+            icon: isUnread ? Icons.mark_chat_read_rounded : Icons.mark_chat_unread_rounded,
+            label: isUnread ? 'Read' : 'Unread',
+          ),
+        ],
+      ),
+      endActionPane: ActionPane(
+        motion: const DrawerMotion(),
+        extentRatio: 0.50,
+        children: [
+          SlidableAction(
+            onPressed: (context) async {
+              HapticFeedback.lightImpact();
+              await ref.read(chatRepositoryProvider).toggleArchiveChannel(channel.id);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(isArchived ? 'Chat unarchived' : 'Chat archived 📁'),
+                    duration: const Duration(seconds: 2),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            },
+            backgroundColor: const Color(0xFF8B5CF6),
+            foregroundColor: Colors.white,
+            icon: isArchived ? Icons.unarchive_rounded : Icons.archive_rounded,
+            label: isArchived ? 'Unarchive' : 'Archive',
+          ),
+          SlidableAction(
+            onPressed: (context) {
+              _showDeleteConfirmation(context, ref, displayName);
+            },
+            backgroundColor: const Color(0xFFEF4444),
+            foregroundColor: Colors.white,
+            icon: Icons.delete_outline_rounded,
+            label: 'Delete',
+          ),
+        ],
+      ),
+      child: InkWell(
+        onTap: () => context.push('/chat/${channel.id}'),
+        onLongPress: () => _showQuickActionsBottomSheet(context, ref, displayName, isPinned, isArchived, isUnread),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Avatar Column
+              _buildListAvatar(displayAvatar, displayName, isOnline, isGroup),
+              const SizedBox(width: 14),
+
+              // Content Column
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Row 1: Title & Pin/Mute
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? Colors.white : const Color(0xFF0F172A),
+                              letterSpacing: -0.2,
+                            ),
                           ),
+                        ),
+                        if (isOnline && !isGroup) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF22C55E),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ],
+                        if (isPinned) ...[
+                          const SizedBox(width: 6),
+                          Icon(
+                            Icons.push_pin_rounded,
+                            size: 14,
+                            color: isDark ? Colors.white54 : Colors.grey[500],
+                          ),
+                        ],
+                        if (isMuted) ...[
+                          const SizedBox(width: 6),
+                          Icon(
+                            Icons.volume_off_rounded,
+                            size: 14,
+                            color: isDark ? Colors.white38 : Colors.grey[400],
+                          ),
+                        ],
+                      ],
+                    ),
+
+                    // Row 2: Member count (if group)
+                    if (isGroup) ...[
+                      const SizedBox(height: 1.5),
+                      Text(
+                        '${channel.memberIds.isNotEmpty ? channel.memberIds.length : 128} members',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark ? Colors.white38 : Colors.grey[500],
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
-                      if (isOnline && !isGroup) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF22C55E),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ],
-                      if (isPinned) ...[
-                        const SizedBox(width: 6),
-                        Icon(
-                          Icons.push_pin_rounded,
-                          size: 14,
-                          color: isDark ? Colors.white54 : Colors.grey[500],
-                        ),
-                      ],
-                      if (isMuted) ...[
-                        const SizedBox(width: 6),
-                        Icon(
-                          Icons.volume_off_rounded,
-                          size: 14,
-                          color: isDark ? Colors.white38 : Colors.grey[400],
-                        ),
-                      ],
                     ],
-                  ),
 
-                  // Row 2: Member count (if group)
-                  if (isGroup) ...[
-                    const SizedBox(height: 1.5),
+                    const SizedBox(height: 2.5),
+
+                    // Row 3: Message preview
+                    buildMessagePreview(),
+                  ],
+                ),
+              ),
+
+              const SizedBox(width: 10),
+
+              // Trailing Column: Timestamp & Badge / Checkmark
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    formatTime(channel.lastMessageTime),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: isUnread ? FontWeight.w600 : FontWeight.normal,
+                      color: isUnread
+                          ? const Color(0xFF3B49DF)
+                          : (isDark ? Colors.white38 : Colors.grey[400]),
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  if (isUnread)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2563EB),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      constraints: const BoxConstraints(minWidth: 20),
+                      child: Text(
+                        unreadCount > 99 ? '99+' : '$unreadCount',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    )
+                  else
+                    Icon(
+                      Icons.done_all_rounded,
+                      size: 16,
+                      color: isDark ? Colors.white38 : Colors.grey[400],
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showDeleteConfirmation(BuildContext context, WidgetRef ref, String displayName) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          'Delete Conversation',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: isDark ? Colors.white : const Color(0xFF0F172A),
+          ),
+        ),
+        content: Text(
+          'Are you sure you want to delete this chat with "$displayName"? All messages will be permanently removed.',
+          style: TextStyle(
+            color: isDark ? Colors.white70 : const Color(0xFF475569),
+            fontSize: 14,
+          ),
+        ),
+        actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(
+              'Cancel',
+              style: TextStyle(
+                color: isDark ? Colors.white60 : Colors.grey[600],
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await ref.read(chatRepositoryProvider).deleteChannel(channel.id);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Chat with $displayName deleted'),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Delete', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showQuickActionsBottomSheet(
+    BuildContext context,
+    WidgetRef ref,
+    String displayName,
+    bool isPinned,
+    bool isArchived,
+    bool isUnread,
+  ) {
+    HapticFeedback.mediumImpact();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white24 : Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                child: Row(
+                  children: [
                     Text(
-                      '${channel.memberIds.isNotEmpty ? channel.memberIds.length : 128} members',
+                      displayName,
                       style: TextStyle(
-                        fontSize: 13,
-                        color: isDark ? Colors.white38 : Colors.grey[500],
-                        fontWeight: FontWeight.w500,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white : const Color(0xFF0F172A),
                       ),
                     ),
                   ],
-
-                  const SizedBox(height: 2.5),
-
-                  // Row 3: Message preview
-                  buildMessagePreview(),
-                ],
-              ),
-            ),
-
-            const SizedBox(width: 10),
-
-            // Trailing Column: Timestamp & Badge / Checkmark
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  formatTime(channel.lastMessageTime),
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: isUnread ? FontWeight.w600 : FontWeight.normal,
-                    color: isUnread
-                        ? const Color(0xFF3B49DF)
-                        : (isDark ? Colors.white38 : Colors.grey[400]),
-                  ),
                 ),
-                const SizedBox(height: 5),
-                if (isUnread)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF2563EB),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    constraints: const BoxConstraints(minWidth: 20),
-                    child: Text(
-                      unreadCount > 99 ? '99+' : '$unreadCount',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  )
-                else
-                  Icon(
-                    Icons.done_all_rounded,
-                    size: 16,
-                    color: isDark ? Colors.white38 : Colors.grey[400],
-                  ),
-              ],
-            ),
-          ],
+              ),
+              const Divider(height: 16),
+              ListTile(
+                leading: Icon(
+                  isPinned ? Icons.push_pin_outlined : Icons.push_pin_rounded,
+                  color: isDark ? Colors.white70 : const Color(0xFF475569),
+                ),
+                title: Text(
+                  isPinned ? 'Unpin Chat' : 'Pin to Top',
+                  style: TextStyle(color: isDark ? Colors.white : const Color(0xFF0F172A)),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  ref.read(chatRepositoryProvider).togglePinChannel(channel.id);
+                },
+              ),
+              ListTile(
+                leading: Icon(
+                  isUnread ? Icons.mark_chat_read_rounded : Icons.mark_chat_unread_rounded,
+                  color: isDark ? Colors.white70 : const Color(0xFF475569),
+                ),
+                title: Text(
+                  isUnread ? 'Mark as Read' : 'Mark as Unread',
+                  style: TextStyle(color: isDark ? Colors.white : const Color(0xFF0F172A)),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  ref.read(chatRepositoryProvider).markChannelAsRead(channel.id);
+                },
+              ),
+              ListTile(
+                leading: Icon(
+                  isArchived ? Icons.unarchive_rounded : Icons.archive_rounded,
+                  color: isDark ? Colors.white70 : const Color(0xFF475569),
+                ),
+                title: Text(
+                  isArchived ? 'Unarchive Chat' : 'Archive Chat',
+                  style: TextStyle(color: isDark ? Colors.white : const Color(0xFF0F172A)),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  ref.read(chatRepositoryProvider).toggleArchiveChannel(channel.id);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444)),
+                title: const Text('Delete Chat', style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.w600)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showDeleteConfirmation(context, ref, displayName);
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );

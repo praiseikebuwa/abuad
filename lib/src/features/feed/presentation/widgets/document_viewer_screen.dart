@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -6,6 +7,7 @@ import 'package:archive/archive.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:flutter_document_viewer/flutter_document_viewer.dart';
 import 'web_iframe_helper.dart';
 
 class DocxContentBlock {
@@ -58,7 +60,7 @@ class DocumentViewerScreen extends StatefulWidget {
   State<DocumentViewerScreen> createState() => _DocumentViewerScreenState();
 }
 
-class _DocumentViewerScreenState extends State<DocumentViewerScreen> with SingleTickerProviderStateMixin {
+class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
   bool _isLoading = true;
   String? _errorMessage;
 
@@ -75,14 +77,16 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> with Single
   bool _showSearch = false;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
-  TabController? _tabController;
 
-  // Active view tab: 0 = Document Reader, 1 = Embedded Web Frame
+  // Active view tab: 0 = Document Reader / Native Preview, 1 = Web Live Preview
   int _activeViewMode = 0;
+  bool _useGoogleViewer = false;
+  late final FlutterDocumentViewerController _docViewerController;
 
   @override
   void initState() {
     super.initState();
+    _docViewerController = FlutterDocumentViewerController();
     _detectFileType();
     _loadDocumentContent();
   }
@@ -90,7 +94,7 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> with Single
   @override
   void dispose() {
     _searchController.dispose();
-    _tabController?.dispose();
+    _docViewerController.dispose();
     super.dispose();
   }
 
@@ -174,7 +178,7 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> with Single
 
   void _detectFileType() {
     final ext = _extension.toLowerCase();
-    _activeViewMode = 0; // Default to Document Reader mode on screen
+    _activeViewMode = 0;
     if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'].contains(ext)) {
       _isImage = true;
     } else if (ext == 'pdf') {
@@ -182,6 +186,39 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> with Single
     } else if (['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx'].contains(ext)) {
       _isOfficeDoc = true;
     }
+  }
+
+  Future<Uint8List?> _fetchDocumentBytes() async {
+    final targetUrl = _resolvedDocumentUrl;
+
+    // 1. Direct fetch attempt
+    try {
+      final response = await http.get(Uri.parse(targetUrl)).timeout(const Duration(seconds: 6));
+      if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
+        return response.bodyBytes;
+      }
+    } catch (_) {}
+
+    // 2. Backend CORS proxy attempt (renders R2 objects with full CORS headers)
+    try {
+      final proxyUrl = 'https://abuad-backend-elfz.onrender.com/api/media/proxy?url=${Uri.encodeComponent(targetUrl)}';
+      final response = await http.get(Uri.parse(proxyUrl)).timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
+        return response.bodyBytes;
+      }
+    } catch (_) {}
+
+    // 3. Fallback to original URL if different
+    if (widget.documentUrl != targetUrl) {
+      try {
+        final response = await http.get(Uri.parse(widget.documentUrl)).timeout(const Duration(seconds: 6));
+        if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
+          return response.bodyBytes;
+        }
+      } catch (_) {}
+    }
+
+    return null;
   }
 
   Future<void> _loadDocumentContent() async {
@@ -196,41 +233,33 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> with Single
         return;
       }
 
-      final response = await http.get(Uri.parse(widget.documentUrl)).timeout(
-        const Duration(seconds: 15),
-      );
-
-      if (response.statusCode != 200) {
-        throw Exception('Server returned status code ${response.statusCode}');
-      }
-
-      final ext = _extension.toLowerCase();
-
-      if (ext == 'docx') {
-        final parsed = _parseDocxBytes(response.bodyBytes);
-        setState(() {
-          _docxResult = parsed;
-          _rawTextContent = parsed.rawText;
-          _isLoading = false;
-        });
-      } else if (['txt', 'md', 'json', 'csv', 'log', 'dart', 'js', 'py', 'html', 'xml'].contains(ext) ||
-          !_isPdf && !_isOfficeDoc) {
-        final text = utf8.decode(response.bodyBytes, allowMalformed: true);
-        setState(() {
-          _rawTextContent = text;
-          _isLoading = false;
-        });
-      } else {
-        // PDF or PPT/XLS where we rely on embedded web preview / fallback
-        setState(() {
-          _isLoading = false;
-        });
+      final bytes = await _fetchDocumentBytes();
+      if (bytes != null && bytes.isNotEmpty) {
+        final ext = _extension.toLowerCase();
+        if (ext == 'docx') {
+          final parsed = _parseDocxBytes(bytes);
+          if (parsed.blocks.isNotEmpty) {
+            setState(() {
+              _docxResult = parsed;
+              _rawTextContent = parsed.rawText;
+              _activeViewMode = 0;
+            });
+          }
+        } else if (['txt', 'md', 'json', 'csv', 'log', 'dart', 'js', 'py', 'html', 'xml'].contains(ext) ||
+            (!_isPdf && !_isOfficeDoc)) {
+          final text = utf8.decode(bytes, allowMalformed: true);
+          setState(() {
+            _rawTextContent = text;
+            _activeViewMode = 0;
+          });
+        }
       }
     } catch (e) {
+      debugPrint('Direct content fetch notice: $e');
+    } finally {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = e.toString();
         });
       }
     }
@@ -338,9 +367,23 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> with Single
         .replaceAll(RegExp(r'<[^>]*>'), '');
   }
 
+  String get _resolvedDocumentUrl {
+    var url = widget.documentUrl;
+    url = url
+        .replaceAll('http://localhost:5000', 'https://abuad-backend-elfz.onrender.com')
+        .replaceAll('https://localhost:5000', 'https://abuad-backend-elfz.onrender.com')
+        .replaceAll('http://127.0.0.1:5000', 'https://abuad-backend-elfz.onrender.com')
+        .replaceAll('http://10.0.2.2:5000', 'https://abuad-backend-elfz.onrender.com');
+
+    if (url.startsWith('/')) {
+      url = 'https://abuad-backend-elfz.onrender.com$url';
+    }
+    return url;
+  }
+
   Future<void> _openExternal() async {
     try {
-      final uri = Uri.parse(widget.documentUrl);
+      final uri = Uri.parse(_resolvedDocumentUrl);
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       }
@@ -353,17 +396,25 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> with Single
     }
   }
 
-  String get _googleEmbedUrl {
-    final url = widget.documentUrl;
+  String _getEmbedViewerUrl({bool forceGoogle = false}) {
+    final url = _resolvedDocumentUrl;
     final isLocal = url.contains('localhost') ||
         url.contains('127.0.0.1') ||
         url.contains('192.168.') ||
         url.contains('0.0.0.0') ||
         url.startsWith('blob:');
 
-    if (_isPdf || isLocal) {
+    if (isLocal) {
       return url;
     }
+
+    final ext = _extension.toLowerCase();
+    if (!forceGoogle && ['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx'].contains(ext)) {
+      // Microsoft Office Online Viewer
+      return 'https://view.officeapps.live.com/op/embed.aspx?src=${Uri.encodeComponent(url)}';
+    }
+
+    // Google Docs Viewer
     return 'https://docs.google.com/gview?url=${Uri.encodeComponent(url)}&embedded=true';
   }
 
@@ -372,6 +423,9 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> with Single
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final color = _themeColor;
     final fileName = _cleanFileName;
+
+    final hasReadableText = (_docxResult != null && _docxResult!.blocks.isNotEmpty) ||
+        (_rawTextContent != null && _rawTextContent!.isNotEmpty);
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
@@ -415,7 +469,7 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> with Single
           ],
         ),
         actions: [
-          if (_docxResult != null || _rawTextContent != null) ...[
+          if (hasReadableText) ...[
             IconButton(
               tooltip: 'Search Document',
               icon: Icon(
@@ -445,6 +499,20 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> with Single
               },
             ),
           ],
+          if (kIsWeb && (_isOfficeDoc || _isPdf))
+            IconButton(
+              tooltip: _useGoogleViewer ? 'Switch to Office Viewer' : 'Switch to Google Docs Viewer',
+              icon: Icon(
+                _useGoogleViewer ? Icons.business_rounded : Icons.g_mobiledata_rounded,
+                color: color,
+                size: 24,
+              ),
+              onPressed: () {
+                setState(() {
+                  _useGoogleViewer = !_useGoogleViewer;
+                });
+              },
+            ),
           IconButton(
             tooltip: 'Share',
             icon: const Icon(Icons.share_rounded),
@@ -458,7 +526,7 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> with Single
             },
           ),
           IconButton(
-            tooltip: 'Download',
+            tooltip: 'Download / Save',
             icon: const Icon(Icons.download_rounded),
             onPressed: _openExternal,
           ),
@@ -470,8 +538,8 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> with Single
           if (_showSearch) _buildSearchBar(isDark, color),
           if (_showControls) _buildFontSizeControls(isDark, color),
 
-          // View mode switcher tab (Document Reader vs Embedded Web Preview)
-          if ((_isPdf || _isOfficeDoc) && !_isLoading && _errorMessage == null)
+          // View mode switcher tab (if text parsed view is available)
+          if (hasReadableText && (_isOfficeDoc || _isPdf))
             _buildViewModeTabBar(isDark, color),
 
           // Main Content Area
@@ -480,9 +548,7 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> with Single
                 ? _buildLoadingState(color)
                 : _errorMessage != null
                     ? _buildErrorState(isDark, color)
-                    : _activeViewMode == 1
-                        ? buildWebIframeWidget(_googleEmbedUrl, color)
-                        : _buildDocumentBody(isDark, color),
+                    : _buildDocumentBody(isDark, color),
           ),
         ],
       ),
@@ -608,7 +674,7 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> with Single
                               ),
                               const SizedBox(width: 6),
                               Text(
-                                'Document Reader',
+                                'Reader View',
                                 style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
@@ -640,7 +706,7 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> with Single
                               ),
                               const SizedBox(width: 6),
                               Text(
-                                'Embedded Web View',
+                                'Live Embed',
                                 style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
@@ -693,7 +759,7 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> with Single
             ),
             const SizedBox(height: 8),
             Text(
-              'Tap below to open or view this document via external application.',
+              'Tap below to open or view this document.',
               textAlign: TextAlign.center,
               style: TextStyle(color: isDark ? Colors.white60 : Colors.grey[600]),
             ),
@@ -721,7 +787,7 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> with Single
         maxScale: 4.0,
         child: Center(
           child: Image.network(
-            widget.documentUrl,
+            _resolvedDocumentUrl,
             fit: BoxFit.contain,
             loadingBuilder: (context, child, loadingProgress) {
               if (loadingProgress == null) return child;
@@ -740,16 +806,26 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> with Single
       );
     }
 
-    if (_docxResult != null && _docxResult!.blocks.isNotEmpty) {
+    if (_docxResult != null && _docxResult!.blocks.isNotEmpty && _activeViewMode == 0) {
       return _buildDocxPaperView(isDark, color);
     }
 
-    if (_rawTextContent != null && _rawTextContent!.isNotEmpty) {
+    if (_rawTextContent != null && _rawTextContent!.isNotEmpty && _activeViewMode == 0) {
       return _buildRawTextView(isDark, color);
     }
 
-    // Default fallback for PDF or office document preview card
-    return _buildFallbackPreviewCard(isDark, color);
+    // On Web, embed the Microsoft Office or Google Docs Viewer iframe
+    if (kIsWeb) {
+      final embedUrl = _getEmbedViewerUrl(forceGoogle: _useGoogleViewer);
+      return buildWebIframeWidget(embedUrl, color);
+    }
+
+    // Mobile / Desktop native document viewer
+    return FlutterDocumentViewer(
+      url: widget.documentUrl,
+      controller: _docViewerController,
+      showControls: true,
+    );
   }
 
   Widget _buildDocxPaperView(bool isDark, Color color) {
@@ -957,91 +1033,6 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> with Single
     );
   }
 
-  Widget _buildFallbackPreviewCard(bool isDark, Color color) {
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(32),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: isDark
-                      ? [color.withValues(alpha: 0.2), const Color(0xFF1E293B)]
-                      : [color.withValues(alpha: 0.1), Colors.white],
-                ),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: color.withValues(alpha: 0.3), width: 1.5),
-              ),
-              child: Column(
-                children: [
-                  Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      color: color,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: color.withValues(alpha: 0.4),
-                          blurRadius: 16,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
-                    ),
-                    child: Icon(_iconData, color: Colors.white, size: 44),
-                  ),
-                  const SizedBox(height: 20),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: color.withValues(alpha: 0.4)),
-                    ),
-                    child: Text(
-                      '$_extension DOCUMENT',
-                      style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    _cleanFileName,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : const Color(0xFF0F172A),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: () => setState(() => _activeViewMode = 1),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: color,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        icon: const Icon(Icons.visibility_rounded, size: 18),
-                        label: const Text('View Embedded Document'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildBottomActions(bool isDark, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -1069,14 +1060,14 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> with Single
             ),
             const SizedBox(width: 10),
             IconButton.filledTonal(
-              tooltip: 'Copy Text',
+              tooltip: 'Copy Text / Link',
               icon: const Icon(Icons.copy_rounded, size: 20),
               onPressed: () {
                 final textToCopy = _rawTextContent ?? widget.documentUrl;
                 Clipboard.setData(ClipboardData(text: textToCopy));
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Document text copied to clipboard!'),
+                    content: Text('Document link copied to clipboard!'),
                     duration: Duration(seconds: 2),
                   ),
                 );

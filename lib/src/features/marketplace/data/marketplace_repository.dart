@@ -64,6 +64,20 @@ class MarketplaceItem {
       return DateTime.now();
     }
 
+    List<String> parseImages(dynamic raw) {
+      if (raw is List) return raw.map((e) => e.toString()).toList();
+      if (raw is String && raw.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(raw);
+          if (decoded is List) return decoded.map((e) => e.toString()).toList();
+          return [raw];
+        } catch (_) {
+          return [raw];
+        }
+      }
+      return [];
+    }
+
     return MarketplaceItem(
       id: map['id'] ?? '',
       title: map['title'] ?? '',
@@ -72,9 +86,7 @@ class MarketplaceItem {
       category: map['category'] ?? 'books',
       sellerId: map['seller_id'] ?? map['sellerId'] ?? '',
       sellerName: map['seller_name'] ?? map['seller']?['fullName'] ?? '',
-      images: List<String>.from(
-        map['images'] ?? (map['image_url'] != null ? [map['image_url']] : []),
-      ),
+      images: parseImages(map['images'] ?? map['image_url']),
       status: map['status'] ?? 'available',
       createdAt: parseTime(map['created_at'] ?? map['createdAt']),
       isBoosted: map['is_boosted'] ?? false,
@@ -131,7 +143,16 @@ class MarketplaceRepository {
   }
 
   Future<void> addItem(MarketplaceItem item) async {
-    await ApiClient.post('/marketplace', item.toMap());
+    final response = await ApiClient.post('/marketplace', item.toMap());
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      try {
+        final body = jsonDecode(response.body);
+        throw Exception(body['error'] ?? 'Failed to create marketplace item (${response.statusCode})');
+      } catch (e) {
+        if (e is Exception) rethrow;
+        throw Exception('Failed to create marketplace item (status: ${response.statusCode})');
+      }
+    }
   }
 
   Future<void> boostItem(String itemId) async {}

@@ -6,8 +6,8 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../core/services/firebase_storage_service.dart';
-import '../../user/data/user_repository.dart';
+import '../../../core/services/cloud_storage_service.dart';
+import '../../auth/data/auth_repository.dart';
 import '../data/marketplace_repository.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../shared/presentation/unified_image_editor.dart';
@@ -29,7 +29,7 @@ class _AddMarketplaceItemScreenState
   String _selectedCategory = 'books';
   String _selectedCondition = 'Good';
   String _selectedLocation = 'Main Gate';
-  final List<File> _imageFiles = [];
+  final List<XFile> _imageFiles = [];
   bool _isLoading = false;
   bool _isGeneratingMagic = false;
 
@@ -71,7 +71,7 @@ class _AddMarketplaceItemScreenState
 
     if (pickedFiles.isNotEmpty) {
       setState(() {
-        _imageFiles.addAll(pickedFiles.map((f) => File(f.path)));
+        _imageFiles.addAll(pickedFiles);
       });
     }
   }
@@ -84,10 +84,11 @@ class _AddMarketplaceItemScreenState
 
   Future<void> _editImage(int index) async {
     final file = _imageFiles[index];
-    final edited = await UnifiedImageEditor.open(context, file: file);
+    if (kIsWeb) return;
+    final edited = await UnifiedImageEditor.open(context, file: File(file.path));
     if (edited != null && mounted) {
       setState(() {
-        _imageFiles[index] = File(edited.path);
+        _imageFiles[index] = edited;
       });
       _showGlimpsePreview();
     }
@@ -281,17 +282,22 @@ class _AddMarketplaceItemScreenState
     setState(() => _isLoading = true);
 
     try {
-      final user = ref.read(currentUserProvider).value;
+      final authRepo = ref.read(authRepositoryProvider);
+      var user = authRepo.currentUser ?? ref.read(currentUserProvider).value;
+      if (user == null) {
+        await authRepo.init();
+        user = authRepo.currentUser ?? ref.read(currentUserProvider).value;
+      }
       if (user == null) throw Exception('You must be logged in');
 
       // 1. Upload Images
-      final storage = FirebaseStorageService();
+      final storage = CloudStorageService();
       final List<String> imageUrls = [];
 
       for (var file in _imageFiles) {
         final String imageId = const Uuid().v4();
         final url = await storage.uploadImage(
-          XFile(file.path),
+          file,
           path: 'marketplace/${user.uid}/$imageId',
         );
         imageUrls.add(url);
@@ -313,7 +319,7 @@ class _AddMarketplaceItemScreenState
         status: 'available',
       );
 
-      // 3. Save to Firestore
+      // 3. Save to backend
       await ref.read(marketplaceRepositoryProvider).addItem(item);
 
       if (mounted) {
@@ -583,7 +589,7 @@ class _AddMarketplaceItemScreenState
             borderRadius: BorderRadius.circular(20),
             child: kIsWeb
                 ? Image.network(_imageFiles[index].path, fit: BoxFit.cover)
-                : Image.file(_imageFiles[index], fit: BoxFit.cover),
+                : Image.file(File(_imageFiles[index].path), fit: BoxFit.cover),
           ),
           Positioned(
             top: 8,

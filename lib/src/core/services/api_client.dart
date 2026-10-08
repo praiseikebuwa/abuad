@@ -1,30 +1,31 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http_parser/http_parser.dart';
 
 class ApiClient {
-  /// Change to your production domain in release builds.
-  static String baseUrl = kIsWeb
-      ? 'http://localhost:5000/api'
-      : Platform.isAndroid
-          ? 'http://10.0.2.2:5000/api'   // Android emulator host
-          : 'http://localhost:5000/api';
+  /// Base URL for the ABUAD backend API (Cloudflare R2 & Express server).
+  static String baseUrl = 'https://abuad-backend-elfz.onrender.com/api';
 
   static String? _accessToken;
   static String? _refreshToken;
 
-
-  static Future<void> setTokens({String? accessToken, String? refreshToken}) async {
+  static Future<void> setTokens({
+    String? accessToken,
+    String? refreshToken,
+  }) async {
     if (accessToken != null) _accessToken = accessToken;
     if (refreshToken != null) _refreshToken = refreshToken;
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      if (accessToken != null) await prefs.setString('accessToken', accessToken);
-      if (refreshToken != null) await prefs.setString('refreshToken', refreshToken);
+      if (accessToken != null) {
+        await prefs.setString('accessToken', accessToken);
+      }
+      if (refreshToken != null) {
+        await prefs.setString('refreshToken', refreshToken);
+      }
     } catch (_) {}
   }
 
@@ -58,18 +59,20 @@ class ApiClient {
   }
 
   static Map<String, String> _getAuthHeader() {
-    return {
-      if (_accessToken != null) 'Authorization': 'Bearer $_accessToken',
-    };
+    return {if (_accessToken != null) 'Authorization': 'Bearer $_accessToken'};
   }
 
   // ── Basic CRUD ────────────────────────────────────────────────────────────
 
-  static Future<http.Response> _sendWithRetry(Future<http.Response> Function() requestFn) async {
+  static Future<http.Response> _sendWithRetry(
+    Future<http.Response> Function() requestFn,
+  ) async {
     await ensureTokensLoaded();
     var response = await requestFn();
     if (response.statusCode == 401) {
-      debugPrint('🔑 Access token expired (401). Attempting automatic token refresh...');
+      debugPrint(
+        '🔑 Access token expired (401). Attempting automatic token refresh...',
+      );
       final refreshed = await refreshToken();
       if (refreshed) {
         debugPrint('✅ Token refresh successful. Retrying request...');
@@ -82,45 +85,70 @@ class ApiClient {
   }
 
   static Future<http.Response> get(String endpoint) async {
-    return _sendWithRetry(() => http.get(Uri.parse('$baseUrl$endpoint'), headers: _getHeaders()));
+    return _sendWithRetry(
+      () => http.get(Uri.parse('$baseUrl$endpoint'), headers: _getHeaders()),
+    );
   }
 
-  static Future<http.Response> post(String endpoint, Map<String, dynamic> body) async {
-    return _sendWithRetry(() => http.post(
-      Uri.parse('$baseUrl$endpoint'),
-      headers: _getHeaders(),
-      body: jsonEncode(body),
-    ));
+  static Future<http.Response> post(
+    String endpoint,
+    Map<String, dynamic> body,
+  ) async {
+    return _sendWithRetry(
+      () => http.post(
+        Uri.parse('$baseUrl$endpoint'),
+        headers: _getHeaders(),
+        body: jsonEncode(body),
+      ),
+    );
   }
 
-  static Future<http.Response> put(String endpoint, Map<String, dynamic> body) async {
-    return _sendWithRetry(() => http.put(
-      Uri.parse('$baseUrl$endpoint'),
-      headers: _getHeaders(),
-      body: jsonEncode(body),
-    ));
+  static Future<http.Response> put(
+    String endpoint,
+    Map<String, dynamic> body,
+  ) async {
+    return _sendWithRetry(
+      () => http.put(
+        Uri.parse('$baseUrl$endpoint'),
+        headers: _getHeaders(),
+        body: jsonEncode(body),
+      ),
+    );
   }
 
-  static Future<http.Response> patch(String endpoint, Map<String, dynamic> body) async {
-    return _sendWithRetry(() => http.patch(
-      Uri.parse('$baseUrl$endpoint'),
-      headers: _getHeaders(),
-      body: jsonEncode(body),
-    ));
+  static Future<http.Response> patch(
+    String endpoint,
+    Map<String, dynamic> body,
+  ) async {
+    return _sendWithRetry(
+      () => http.patch(
+        Uri.parse('$baseUrl$endpoint'),
+        headers: _getHeaders(),
+        body: jsonEncode(body),
+      ),
+    );
   }
 
-  static Future<http.Response> delete(String endpoint, [Map<String, dynamic>? body]) async {
-    return _sendWithRetry(() => http.delete(
-      Uri.parse('$baseUrl$endpoint'),
-      headers: _getHeaders(),
-      body: body != null ? jsonEncode(body) : null,
-    ));
+  static Future<http.Response> delete(
+    String endpoint, [
+    Map<String, dynamic>? body,
+  ]) async {
+    return _sendWithRetry(
+      () => http.delete(
+        Uri.parse('$baseUrl$endpoint'),
+        headers: _getHeaders(),
+        body: body != null ? jsonEncode(body) : null,
+      ),
+    );
   }
 
   // ── Multipart file upload ─────────────────────────────────────────────────
 
   /// Upload a single file via multipart/form-data to /api/media/upload
-  static Future<String?> uploadFile(String filePath, {String fieldName = 'file'}) async {
+  static Future<String?> uploadFile(
+    String filePath, {
+    String fieldName = 'file',
+  }) async {
     try {
       Future<http.Response> doUpload() async {
         final request = http.MultipartRequest(
@@ -128,7 +156,9 @@ class ApiClient {
           Uri.parse('$baseUrl/media/upload'),
         );
         request.headers.addAll(_getAuthHeader());
-        request.files.add(await http.MultipartFile.fromPath(fieldName, filePath));
+        request.files.add(
+          await http.MultipartFile.fromPath(fieldName, filePath),
+        );
 
         final streamed = await request.send();
         return http.Response.fromStream(streamed);
@@ -138,9 +168,13 @@ class ApiClient {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        if (data['success'] == true) return data['data']['publicUrl'] as String?;
+        if (data['success'] == true) {
+          return data['data']['publicUrl'] as String?;
+        }
       } else {
-        debugPrint('ApiClient.uploadFile failed: status ${response.statusCode}, body ${response.body}');
+        debugPrint(
+          'ApiClient.uploadFile failed: status ${response.statusCode}, body ${response.body}',
+        );
       }
     } catch (e) {
       debugPrint('ApiClient.uploadFile error: $e');
@@ -156,6 +190,15 @@ class ApiClient {
     String fieldName = 'file',
   }) async {
     try {
+      if (bytes.isEmpty) {
+        debugPrint('ApiClient.uploadBytes failed: bytes are empty');
+        return null;
+      }
+
+      final safeFilename = filename.isNotEmpty && filename.contains('.')
+          ? filename
+          : 'upload_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
       Future<http.Response> doUpload() async {
         final request = http.MultipartRequest(
           'POST',
@@ -166,14 +209,18 @@ class ApiClient {
         MediaType? parsedType;
         try {
           parsedType = MediaType.parse(contentType);
-        } catch (_) {}
+        } catch (_) {
+          parsedType = MediaType('image', 'jpeg');
+        }
 
-        request.files.add(http.MultipartFile.fromBytes(
-          fieldName,
-          bytes,
-          filename: filename,
-          contentType: parsedType,
-        ));
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            fieldName,
+            bytes,
+            filename: safeFilename,
+            contentType: parsedType,
+          ),
+        );
 
         final streamed = await request.send();
         return http.Response.fromStream(streamed);
@@ -183,9 +230,13 @@ class ApiClient {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        if (data['success'] == true) return data['data']['publicUrl'] as String?;
+        if (data['success'] == true) {
+          return data['data']['publicUrl'] as String?;
+        }
       } else {
-        debugPrint('ApiClient.uploadBytes failed: status ${response.statusCode}, body ${response.body}');
+        debugPrint(
+          'ApiClient.uploadBytes failed: status ${response.statusCode}, body ${response.body}',
+        );
       }
     } catch (e) {
       debugPrint('ApiClient.uploadBytes error: $e');

@@ -229,7 +229,13 @@ class ChatRepository {
   }
 
   Future<void> markChannelAsRead(String channelId) async {
-    _fetchChannels();
+    try {
+      final cleanId = channelId.startsWith('channel_') ? channelId.substring(8) : channelId;
+      await ApiClient.post('/chat/channels/$cleanId/read', {});
+      _fetchChannels();
+    } catch (e) {
+      debugPrint('Error marking channel as read: $e');
+    }
   }
 
   Future<void> markAllAsRead() async {
@@ -237,6 +243,10 @@ class ChatRepository {
   }
 
   Future<void> markMessagesAsRead(String channelId) async {
+    try {
+      final cleanId = channelId.startsWith('channel_') ? channelId.substring(8) : channelId;
+      await ApiClient.post('/chat/channels/$cleanId/read', {});
+    } catch (_) {}
     _fetchMessages(channelId);
   }
 
@@ -244,7 +254,8 @@ class ChatRepository {
 
   Future<void> togglePinChannel(String channelId, [dynamic arg2]) async {
     try {
-      await ApiClient.post('/chat/channels/$channelId/pin', {});
+      final cleanId = channelId.startsWith('channel_') ? channelId.substring(8) : channelId;
+      await ApiClient.post('/chat/channels/$cleanId/pin', {});
       _fetchChannels();
     } catch (e) {
       debugPrint('Error toggling pin: $e');
@@ -252,7 +263,23 @@ class ChatRepository {
   }
 
   Future<void> toggleArchiveChannel(String channelId, [dynamic arg2]) async {
-    _fetchChannels();
+    try {
+      final cleanId = channelId.startsWith('channel_') ? channelId.substring(8) : channelId;
+      await ApiClient.post('/chat/channels/$cleanId/archive', {});
+      _fetchChannels();
+    } catch (e) {
+      debugPrint('Error toggling archive: $e');
+    }
+  }
+
+  Future<void> deleteChannel(String channelId) async {
+    try {
+      final cleanId = channelId.startsWith('channel_') ? channelId.substring(8) : channelId;
+      await ApiClient.delete('/chat/channels/$cleanId');
+      _fetchChannels();
+    } catch (e) {
+      debugPrint('Error deleting channel: $e');
+    }
   }
 
   Future<void> editMessage(String channelId, String messageId, String newText) async {

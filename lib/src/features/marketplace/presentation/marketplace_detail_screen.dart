@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../data/marketplace_repository.dart';
 import '../../chat/data/chat_repository.dart';
+import '../../auth/data/auth_repository.dart';
 import '../../user/data/user_repository.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/verification_badge.dart';
@@ -325,7 +326,12 @@ class MarketplaceDetailScreen extends ConsumerWidget {
     try {
       final chatRepo = ref.read(chatRepositoryProvider);
       final userRepo = ref.read(userRepositoryProvider);
-      final currentUser = ref.read(currentUserProvider).value;
+      final authRepo = ref.read(authRepositoryProvider);
+      var currentUser = authRepo.currentUser ?? ref.read(currentUserProvider).value;
+      if (currentUser == null) {
+        await authRepo.init();
+        currentUser = authRepo.currentUser ?? ref.read(currentUserProvider).value;
+      }
 
       if (currentUser == null) {
         ScaffoldMessenger.of(

@@ -6,30 +6,3 @@ services:
     rootDir: backend
     buildCommand: npm install && npm run build
     startCommand: npm start
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: PORT
-        value: 10000
-      - key: JWT_ACCESS_SECRET
-        generateValue: true
-      - key: JWT_REFRESH_SECRET
-        generateValue: true
-      - key: JWT_ACCESS_EXPIRES_IN
-        value: 15m
-      - key: JWT_REFRESH_EXPIRES_IN
-        value: 7d
-      - key: CLOUDFLARE_ACCOUNT_ID
-        value: 3ac64fbb902bb08eb55d0c1d2516e411
-      - key: CLOUDFLARE_R2_ACCESS_KEY_ID
-        value: 918ebf911f1b6ba6a4e6e306a3a97235
-      - key: CLOUDFLARE_R2_SECRET_ACCESS_KEY
-        value: 5bf1bcc4fd7af8fa799152b11d449a2f68ba3dc6e3d7a4b302299eedeb90b40b
-      - key: CLOUDFLARE_R2_BUCKET_NAME
-        value: abuad
-      - key: CLOUDFLARE_R2_PUBLIC_DOMAIN
-        value: https://pub-0014553a7b194df8b2d31efb7c6f4921.r2.dev
-      - key: CLOUDFLARE_AI_API_TOKEN
-        value: cfat_PRNtGEEwkiF240VbSOZV5JKKzjeIpFT0OC1MT91ka8bdfcaa
-      - key: CLOUDFLARE_AI_MODEL
-        value: "@cf/meta/llama-3.1-8b-instruct"
