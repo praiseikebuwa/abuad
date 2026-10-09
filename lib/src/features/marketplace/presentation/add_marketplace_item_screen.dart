@@ -210,6 +210,7 @@ class _AddMarketplaceItemScreenState
                 onPressed: () => Navigator.pop(context),
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.secondaryTeal,
+                  foregroundColor: Colors.white,
                   minimumSize: const Size(double.infinity, 50),
                 ),
                 child: const Text('Back to Editing'),
@@ -479,7 +480,7 @@ class _AddMarketplaceItemScreenState
                                   backgroundColor: Colors.white.withValues(alpha: 0.05),
                                   selectedBackgroundColor: AppColors.secondaryTeal,
                                   foregroundColor: Colors.white,
-                                  selectedForegroundColor: Colors.black,
+                                  selectedForegroundColor: Colors.white,
                                   side: BorderSide.none,
                                 ),
                                 segments: _conditions.map((c) => ButtonSegment(value: c, label: Text(c, style: const TextStyle(fontSize: 10)))).toList(),
@@ -533,7 +534,7 @@ class _AddMarketplaceItemScreenState
                         onPressed: _submitItem,
                         style: FilledButton.styleFrom(
                           backgroundColor: AppColors.secondaryTeal,
-                          foregroundColor: Colors.black,
+                          foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 20),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         ),

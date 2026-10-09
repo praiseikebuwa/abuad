@@ -553,7 +553,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                         ClipRRect(
                           borderRadius: BorderRadius.circular(8),
                           child: CachedNetworkImage(
-                            imageUrl: originalPost.mediaUrl,
+                            imageUrl: UrlValidator.formatImageUrl(originalPost.mediaUrl),
                             height: 60,
                             width: 60,
                             fit: BoxFit.cover,
@@ -1442,14 +1442,17 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
               const SizedBox(height: 8),
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: (UrlValidator.isValidUrl(mediaUrl))
-                    ? CachedNetworkImage(
-                        imageUrl: mediaUrl,
-                        height: 150,
-                        width: double.infinity,
-                        fit: BoxFit.cover,
-                      )
-                    : const SizedBox(),
+                child: (() {
+                  final formattedMedia = UrlValidator.formatImageUrl(mediaUrl);
+                  return (formattedMedia.isNotEmpty && UrlValidator.isValidUrl(formattedMedia))
+                      ? CachedNetworkImage(
+                          imageUrl: formattedMedia,
+                          height: 150,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                        )
+                      : const SizedBox();
+                })(),
               ),
             ],
           ],

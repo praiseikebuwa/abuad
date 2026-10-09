@@ -41,7 +41,10 @@ class UrlValidator {
 
   static String formatImageUrl(String? url) {
     if (url == null || url.trim().isEmpty) return '';
-    final trimmed = url.trim();
+    var trimmed = url.trim();
+    if (trimmed.startsWith('http://') && !trimmed.contains('localhost') && !trimmed.contains('127.0.0.1')) {
+      trimmed = 'https://${trimmed.substring(7)}';
+    }
     if (kIsWeb && (trimmed.contains('r2.dev/') || trimmed.contains('cloudflarestorage.com/'))) {
       final base = ApiClient.baseUrl;
       return '$base/media/proxy?url=${Uri.encodeComponent(trimmed)}';

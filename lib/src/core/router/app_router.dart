@@ -595,7 +595,23 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                     parentNavigatorKey: rootNavigatorKey,
                     builder: (context, state) {
                       final channelId = state.pathParameters['channelId']!;
-                      return ChatScreen(channelId: channelId);
+                      final extra = state.extra;
+                      MarketplaceItem? initialProduct;
+                      String? initialText;
+                      if (extra is MarketplaceItem) {
+                        initialProduct = extra;
+                        initialText = 'Hi, I\'m interested in your "${extra.title}" (₦${extra.price.toStringAsFixed(0)}). Is this still available?';
+                      } else if (extra is Map<String, dynamic>) {
+                        initialProduct = extra['initialProduct'] as MarketplaceItem?;
+                        initialText = extra['initialText'] as String?;
+                      } else if (extra is String) {
+                        initialText = extra;
+                      }
+                      return ChatScreen(
+                        channelId: channelId,
+                        initialProduct: initialProduct,
+                        initialText: initialText,
+                      );
                     },
                     routes: [
                       GoRoute(

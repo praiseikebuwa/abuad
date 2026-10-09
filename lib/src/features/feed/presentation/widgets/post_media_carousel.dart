@@ -14,8 +14,8 @@ class PostMediaCarousel extends StatefulWidget {
     super.key,
     required this.imageUrls,
     required this.postId,
-    this.maxHeight = 380,
-    this.minHeight = 200,
+    this.maxHeight = 650,
+    this.minHeight = 120,
     this.locationText,
   });
 
@@ -47,7 +47,8 @@ class _PostMediaCarouselState extends State<PostMediaCarousel> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (urls.length == 1) {
-      final singleUrl = urls.first;
+      final rawUrl = urls.first;
+      final singleUrl = UrlValidator.formatImageUrl(rawUrl);
       return GestureDetector(
         onTap: () {
           Navigator.push(
@@ -74,15 +75,24 @@ class _PostMediaCarouselState extends State<PostMediaCarousel> {
                   width: double.infinity,
                   child: Hero(
                     tag: 'post_media_${widget.postId}_0',
-                    child: UrlValidator.isValidUrl(singleUrl)
+                    child: (singleUrl.isNotEmpty && UrlValidator.isValidUrl(singleUrl))
                         ? CachedNetworkImage(
                             imageUrl: singleUrl,
                             width: double.infinity,
-                            fit: BoxFit.cover,
-                            placeholder: (context, url) => _buildPlaceholder(context, isDark),
-                            errorWidget: (context, url, error) => _buildErrorWidget(context, isDark),
+                            fit: BoxFit.fitWidth,
+                            placeholder: (context, url) => AspectRatio(
+                              aspectRatio: 4 / 5,
+                              child: _buildPlaceholder(context, isDark),
+                            ),
+                            errorWidget: (context, url, error) => AspectRatio(
+                              aspectRatio: 16 / 9,
+                              child: _buildErrorWidget(context, isDark),
+                            ),
                           )
-                        : _buildErrorWidget(context, isDark),
+                        : AspectRatio(
+                            aspectRatio: 16 / 9,
+                            child: _buildErrorWidget(context, isDark),
+                          ),
                   ),
                 ),
               ),
@@ -103,9 +113,8 @@ class _PostMediaCarouselState extends State<PostMediaCarousel> {
               maxHeight: widget.maxHeight,
               minHeight: widget.minHeight,
             ),
-            child: SizedBox(
-              width: double.infinity,
-              height: 300,
+            child: AspectRatio(
+              aspectRatio: 4 / 5,
               child: PageView.builder(
                 controller: _pageController,
                 physics: const BouncingScrollPhysics(),
@@ -116,7 +125,8 @@ class _PostMediaCarouselState extends State<PostMediaCarousel> {
                   });
                 },
                 itemBuilder: (context, index) {
-                  final url = urls[index];
+                  final rawUrl = urls[index];
+                  final url = UrlValidator.formatImageUrl(rawUrl);
                   return GestureDetector(
                     onTap: () {
                       Navigator.push(
@@ -132,10 +142,11 @@ class _PostMediaCarouselState extends State<PostMediaCarousel> {
                     },
                     child: Hero(
                       tag: index == 0 ? 'post_media_${widget.postId}_0' : 'post_media_${widget.postId}_$index',
-                      child: UrlValidator.isValidUrl(url)
+                      child: (url.isNotEmpty && UrlValidator.isValidUrl(url))
                           ? CachedNetworkImage(
                               imageUrl: url,
                               width: double.infinity,
+                              height: double.infinity,
                               fit: BoxFit.cover,
                               placeholder: (context, url) => _buildPlaceholder(context, isDark),
                               errorWidget: (context, url, error) => _buildErrorWidget(context, isDark),

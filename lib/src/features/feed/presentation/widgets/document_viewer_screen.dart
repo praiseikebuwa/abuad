@@ -8,6 +8,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter_document_viewer/flutter_document_viewer.dart';
+import '../../../../core/services/api_client.dart';
 import 'web_iframe_helper.dart';
 
 class DocxContentBlock {
@@ -104,7 +105,9 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
     }
     try {
       final uri = Uri.parse(widget.documentUrl);
-      final segment = uri.pathSegments.isNotEmpty ? uri.pathSegments.last : 'document';
+      final segment = uri.pathSegments.isNotEmpty
+          ? uri.pathSegments.last
+          : 'document';
       final parts = segment.split('-');
       if (parts.length > 1 && int.tryParse(parts[0]) != null) {
         return parts.sublist(1).join('-');
@@ -193,7 +196,9 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
 
     // 1. Direct fetch attempt
     try {
-      final response = await http.get(Uri.parse(targetUrl)).timeout(const Duration(seconds: 6));
+      final response = await http
+          .get(Uri.parse(targetUrl))
+          .timeout(const Duration(seconds: 6));
       if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
         return response.bodyBytes;
       }
@@ -201,8 +206,11 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
 
     // 2. Backend CORS proxy attempt (renders R2 objects with full CORS headers)
     try {
-      final proxyUrl = 'https://abuad-backend-elfz.onrender.com/api/media/proxy?url=${Uri.encodeComponent(targetUrl)}';
-      final response = await http.get(Uri.parse(proxyUrl)).timeout(const Duration(seconds: 10));
+      final proxyUrl =
+          '${ApiClient.baseUrl}/media/proxy?url=${Uri.encodeComponent(targetUrl)}';
+      final response = await http
+          .get(Uri.parse(proxyUrl))
+          .timeout(const Duration(seconds: 10));
       if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
         return response.bodyBytes;
       }
@@ -211,7 +219,9 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
     // 3. Fallback to original URL if different
     if (widget.documentUrl != targetUrl) {
       try {
-        final response = await http.get(Uri.parse(widget.documentUrl)).timeout(const Duration(seconds: 6));
+        final response = await http
+            .get(Uri.parse(widget.documentUrl))
+            .timeout(const Duration(seconds: 6));
         if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
           return response.bodyBytes;
         }
@@ -245,7 +255,18 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
               _activeViewMode = 0;
             });
           }
-        } else if (['txt', 'md', 'json', 'csv', 'log', 'dart', 'js', 'py', 'html', 'xml'].contains(ext) ||
+        } else if ([
+              'txt',
+              'md',
+              'json',
+              'csv',
+              'log',
+              'dart',
+              'js',
+              'py',
+              'html',
+              'xml',
+            ].contains(ext) ||
             (!_isPdf && !_isOfficeDoc)) {
           final text = utf8.decode(bytes, allowMalformed: true);
           setState(() {
@@ -270,10 +291,18 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
       final archive = ZipDecoder().decodeBytes(bytes);
       final docFile = archive.findFile('word/document.xml');
       if (docFile == null) {
-        return DocxParseResult(blocks: [], rawText: '', wordCount: 0, readingTimeMinutes: 0);
+        return DocxParseResult(
+          blocks: [],
+          rawText: '',
+          wordCount: 0,
+          readingTimeMinutes: 0,
+        );
       }
 
-      final xmlContent = utf8.decode(docFile.content as List<int>, allowMalformed: true);
+      final xmlContent = utf8.decode(
+        docFile.content as List<int>,
+        allowMalformed: true,
+      );
       final blocks = <DocxContentBlock>[];
       final fullTextBuffer = StringBuffer();
 
@@ -308,7 +337,9 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
           }
 
           if (rows.isNotEmpty) {
-            blocks.add(DocxContentBlock(text: '', isTable: true, tableData: rows));
+            blocks.add(
+              DocxContentBlock(text: '', isTable: true, tableData: rows),
+            );
           }
         } else if (tagType == 'w:p') {
           final textRegex = RegExp(r'<w:t[^>]*>(.*?)</w:t>', dotAll: true);
@@ -322,7 +353,8 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
 
           fullTextBuffer.writeln(pText);
 
-          final isHeading = innerXml.contains('Heading1') ||
+          final isHeading =
+              innerXml.contains('Heading1') ||
               innerXml.contains('Heading2') ||
               innerXml.contains('Heading3') ||
               innerXml.contains('Title');
@@ -331,19 +363,25 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
           if (innerXml.contains('Heading2')) headingLevel = 2;
           if (innerXml.contains('Heading3')) headingLevel = 3;
 
-          final isList = innerXml.contains('w:numPr') || innerXml.contains('w:ilvl');
+          final isList =
+              innerXml.contains('w:numPr') || innerXml.contains('w:ilvl');
 
-          blocks.add(DocxContentBlock(
-            text: pText,
-            isHeading: isHeading,
-            headingLevel: headingLevel,
-            isListItem: isList,
-          ));
+          blocks.add(
+            DocxContentBlock(
+              text: pText,
+              isHeading: isHeading,
+              headingLevel: headingLevel,
+              isListItem: isList,
+            ),
+          );
         }
       }
 
       final rawText = fullTextBuffer.toString();
-      final words = rawText.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+      final words = rawText
+          .split(RegExp(r'\s+'))
+          .where((w) => w.isNotEmpty)
+          .length;
       final readingTime = (words / 200).ceil();
 
       return DocxParseResult(
@@ -353,7 +391,12 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
         readingTimeMinutes: readingTime < 1 ? 1 : readingTime,
       );
     } catch (_) {
-      return DocxParseResult(blocks: [], rawText: '', wordCount: 0, readingTimeMinutes: 0);
+      return DocxParseResult(
+        blocks: [],
+        rawText: '',
+        wordCount: 0,
+        readingTimeMinutes: 0,
+      );
     }
   }
 
@@ -369,14 +412,15 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
 
   String get _resolvedDocumentUrl {
     var url = widget.documentUrl;
+    final serverHost = ApiClient.baseUrl.replaceAll(RegExp(r'/api/?$'), '');
     url = url
-        .replaceAll('http://localhost:5000', 'https://abuad-backend-elfz.onrender.com')
-        .replaceAll('https://localhost:5000', 'https://abuad-backend-elfz.onrender.com')
-        .replaceAll('http://127.0.0.1:5000', 'https://abuad-backend-elfz.onrender.com')
-        .replaceAll('http://10.0.2.2:5000', 'https://abuad-backend-elfz.onrender.com');
+        .replaceAll('http://localhost:5000', serverHost)
+        .replaceAll('https://localhost:5000', serverHost)
+        .replaceAll('http://127.0.0.1:5000', serverHost)
+        .replaceAll('http://10.0.2.2:5000', serverHost);
 
     if (url.startsWith('/')) {
-      url = 'https://abuad-backend-elfz.onrender.com$url';
+      url = '$serverHost$url';
     }
     return url;
   }
@@ -389,16 +433,17 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not open file: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not open file: $e')));
       }
     }
   }
 
   String _getEmbedViewerUrl({bool forceGoogle = false}) {
     final url = _resolvedDocumentUrl;
-    final isLocal = url.contains('localhost') ||
+    final isLocal =
+        url.contains('localhost') ||
         url.contains('127.0.0.1') ||
         url.contains('192.168.') ||
         url.contains('0.0.0.0') ||
@@ -409,7 +454,8 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
     }
 
     final ext = _extension.toLowerCase();
-    if (!forceGoogle && ['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx'].contains(ext)) {
+    if (!forceGoogle &&
+        ['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx'].contains(ext)) {
       // Microsoft Office Online Viewer
       return 'https://view.officeapps.live.com/op/embed.aspx?src=${Uri.encodeComponent(url)}';
     }
@@ -424,11 +470,14 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
     final color = _themeColor;
     final fileName = _cleanFileName;
 
-    final hasReadableText = (_docxResult != null && _docxResult!.blocks.isNotEmpty) ||
+    final hasReadableText =
+        (_docxResult != null && _docxResult!.blocks.isNotEmpty) ||
         (_rawTextContent != null && _rawTextContent!.isNotEmpty);
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+      backgroundColor: isDark
+          ? const Color(0xFF0F172A)
+          : const Color(0xFFF1F5F9),
       appBar: AppBar(
         elevation: 0,
         backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
@@ -451,7 +500,10 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
                 children: [
                   Text(
                     fileName,
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -501,9 +553,13 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
           ],
           if (kIsWeb && (_isOfficeDoc || _isPdf))
             IconButton(
-              tooltip: _useGoogleViewer ? 'Switch to Office Viewer' : 'Switch to Google Docs Viewer',
+              tooltip: _useGoogleViewer
+                  ? 'Switch to Office Viewer'
+                  : 'Switch to Google Docs Viewer',
               icon: Icon(
-                _useGoogleViewer ? Icons.business_rounded : Icons.g_mobiledata_rounded,
+                _useGoogleViewer
+                    ? Icons.business_rounded
+                    : Icons.g_mobiledata_rounded,
                 color: color,
                 size: 24,
               ),
@@ -547,8 +603,8 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
             child: _isLoading
                 ? _buildLoadingState(color)
                 : _errorMessage != null
-                    ? _buildErrorState(isDark, color)
-                    : _buildDocumentBody(isDark, color),
+                ? _buildErrorState(isDark, color)
+                : _buildDocumentBody(isDark, color),
           ),
         ],
       ),
@@ -569,7 +625,9 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
               style: TextStyle(color: isDark ? Colors.white : Colors.black87),
               decoration: InputDecoration(
                 hintText: 'Search text in document...',
-                hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.black38),
+                hintStyle: TextStyle(
+                  color: isDark ? Colors.white38 : Colors.black38,
+                ),
                 prefixIcon: Icon(Icons.search_rounded, color: color, size: 20),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
@@ -582,9 +640,14 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
                         },
                       )
                     : null,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
                 filled: true,
-                fillColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                fillColor: isDark
+                    ? const Color(0xFF0F172A)
+                    : const Color(0xFFF8FAFC),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -608,9 +671,15 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       child: Row(
         children: [
-          const Text('Text Size:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+          const Text(
+            'Text Size:',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(width: 12),
-          Text('${_fontSize.toInt()}pt', style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+          Text(
+            '${_fontSize.toInt()}pt',
+            style: TextStyle(color: color, fontWeight: FontWeight.bold),
+          ),
           Expanded(
             child: Slider(
               value: _fontSize,
@@ -626,13 +695,17 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
           IconButton(
             icon: const Icon(Icons.text_decrease_rounded, size: 18),
             onPressed: _fontSize > 12
-                ? () => setState(() => _fontSize = (_fontSize - 2).clamp(12.0, 28.0))
+                ? () => setState(
+                    () => _fontSize = (_fontSize - 2).clamp(12.0, 28.0),
+                  )
                 : null,
           ),
           IconButton(
             icon: const Icon(Icons.text_increase_rounded, size: 20),
             onPressed: _fontSize < 28
-                ? () => setState(() => _fontSize = (_fontSize + 2).clamp(12.0, 28.0))
+                ? () => setState(
+                    () => _fontSize = (_fontSize + 2).clamp(12.0, 28.0),
+                  )
                 : null,
           ),
         ],
@@ -650,7 +723,9 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
             child: Container(
               height: 38,
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                color: isDark
+                    ? const Color(0xFF0F172A)
+                    : const Color(0xFFF1F5F9),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
@@ -660,7 +735,9 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
                       onTap: () => setState(() => _activeViewMode = 0),
                       child: Container(
                         decoration: BoxDecoration(
-                          color: _activeViewMode == 0 ? color : Colors.transparent,
+                          color: _activeViewMode == 0
+                              ? color
+                              : Colors.transparent,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Center(
@@ -670,7 +747,11 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
                               Icon(
                                 Icons.article_rounded,
                                 size: 16,
-                                color: _activeViewMode == 0 ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                                color: _activeViewMode == 0
+                                    ? Colors.white
+                                    : (isDark
+                                          ? Colors.white70
+                                          : Colors.black87),
                               ),
                               const SizedBox(width: 6),
                               Text(
@@ -678,7 +759,11 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
                                 style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
-                                  color: _activeViewMode == 0 ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                                  color: _activeViewMode == 0
+                                      ? Colors.white
+                                      : (isDark
+                                            ? Colors.white70
+                                            : Colors.black87),
                                 ),
                               ),
                             ],
@@ -692,7 +777,9 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
                       onTap: () => setState(() => _activeViewMode = 1),
                       child: Container(
                         decoration: BoxDecoration(
-                          color: _activeViewMode == 1 ? color : Colors.transparent,
+                          color: _activeViewMode == 1
+                              ? color
+                              : Colors.transparent,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Center(
@@ -702,7 +789,11 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
                               Icon(
                                 Icons.web_rounded,
                                 size: 16,
-                                color: _activeViewMode == 1 ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                                color: _activeViewMode == 1
+                                    ? Colors.white
+                                    : (isDark
+                                          ? Colors.white70
+                                          : Colors.black87),
                               ),
                               const SizedBox(width: 6),
                               Text(
@@ -710,7 +801,11 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
                                 style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
-                                  color: _activeViewMode == 1 ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                                  color: _activeViewMode == 1
+                                      ? Colors.white
+                                      : (isDark
+                                            ? Colors.white70
+                                            : Colors.black87),
                                 ),
                               ),
                             ],
@@ -751,7 +846,11 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.description_outlined, size: 64, color: color.withValues(alpha: 0.5)),
+            Icon(
+              Icons.description_outlined,
+              size: 64,
+              color: color.withValues(alpha: 0.5),
+            ),
             const SizedBox(height: 16),
             const Text(
               'Document Ready for Viewing',
@@ -761,7 +860,9 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
             Text(
               'Tap below to open or view this document.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: isDark ? Colors.white60 : Colors.grey[600]),
+              style: TextStyle(
+                color: isDark ? Colors.white60 : Colors.grey[600],
+              ),
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
@@ -769,8 +870,13 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: color,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 14,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
               icon: const Icon(Icons.open_in_new_rounded),
               label: const Text('Open File Directly'),
@@ -806,11 +912,15 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
       );
     }
 
-    if (_docxResult != null && _docxResult!.blocks.isNotEmpty && _activeViewMode == 0) {
+    if (_docxResult != null &&
+        _docxResult!.blocks.isNotEmpty &&
+        _activeViewMode == 0) {
       return _buildDocxPaperView(isDark, color);
     }
 
-    if (_rawTextContent != null && _rawTextContent!.isNotEmpty && _activeViewMode == 0) {
+    if (_rawTextContent != null &&
+        _rawTextContent!.isNotEmpty &&
+        _activeViewMode == 0) {
       return _buildRawTextView(isDark, color);
     }
 
@@ -869,7 +979,10 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
                     children: [
                       Text(
                         _cleanFileName,
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -910,7 +1023,9 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
                       child: Container(
                         margin: const EdgeInsets.symmetric(vertical: 12),
                         decoration: BoxDecoration(
-                          border: Border.all(color: isDark ? Colors.white24 : Colors.grey[300]!),
+                          border: Border.all(
+                            color: isDark ? Colors.white24 : Colors.grey[300]!,
+                          ),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Table(
@@ -926,7 +1041,9 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
                                     cell,
                                     style: TextStyle(
                                       fontSize: _fontSize - 2,
-                                      color: isDark ? Colors.white70 : Colors.black87,
+                                      color: isDark
+                                          ? Colors.white70
+                                          : Colors.black87,
                                     ),
                                   ),
                                 );
@@ -939,7 +1056,8 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
                   }
 
                   final text = block.text;
-                  final matchesSearch = search.isNotEmpty && text.toLowerCase().contains(search);
+                  final matchesSearch =
+                      search.isNotEmpty && text.toLowerCase().contains(search);
 
                   if (block.isHeading) {
                     return TextSpan(
@@ -951,7 +1069,9 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
                         color: matchesSearch
                             ? Colors.amber[400]
                             : (isDark ? Colors.white : const Color(0xFF0F172A)),
-                        backgroundColor: matchesSearch ? Colors.amber.withValues(alpha: 0.3) : null,
+                        backgroundColor: matchesSearch
+                            ? Colors.amber.withValues(alpha: 0.3)
+                            : null,
                       ),
                     );
                   }
@@ -964,8 +1084,12 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
                         height: 1.6,
                         color: matchesSearch
                             ? Colors.amber[400]
-                            : (isDark ? Colors.white.withValues(alpha: 0.9) : const Color(0xFF334155)),
-                        backgroundColor: matchesSearch ? Colors.amber.withValues(alpha: 0.3) : null,
+                            : (isDark
+                                  ? Colors.white.withValues(alpha: 0.9)
+                                  : const Color(0xFF334155)),
+                        backgroundColor: matchesSearch
+                            ? Colors.amber.withValues(alpha: 0.3)
+                            : null,
                       ),
                     );
                   }
@@ -977,8 +1101,12 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
                       height: 1.65,
                       color: matchesSearch
                           ? Colors.amber[400]
-                          : (isDark ? Colors.white.withValues(alpha: 0.8) : const Color(0xFF334155)),
-                      backgroundColor: matchesSearch ? Colors.amber.withValues(alpha: 0.3) : null,
+                          : (isDark
+                                ? Colors.white.withValues(alpha: 0.8)
+                                : const Color(0xFF334155)),
+                      backgroundColor: matchesSearch
+                          ? Colors.amber.withValues(alpha: 0.3)
+                          : null,
                     ),
                   );
                 }).toList(),
@@ -1006,9 +1134,9 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
           child: MarkdownBody(
             data: text,
             selectable: true,
-            styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
-              p: TextStyle(fontSize: _fontSize, height: 1.6),
-            ),
+            styleSheet: MarkdownStyleSheet.fromTheme(
+              Theme.of(context),
+            ).copyWith(p: TextStyle(fontSize: _fontSize, height: 1.6)),
           ),
         ),
       );
@@ -1052,10 +1180,15 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
                   backgroundColor: color,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 icon: const Icon(Icons.download_rounded, size: 20),
-                label: const Text('Download / Save File', style: TextStyle(fontWeight: FontWeight.bold)),
+                label: const Text(
+                  'Download / Save File',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
               ),
             ),
             const SizedBox(width: 10),

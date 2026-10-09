@@ -727,12 +727,12 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
             children: [
               // Image background
               Positioned.fill(
-                child:
-                    (item.imageUrl != null &&
-                        UrlValidator.isValidUrl(item.imageUrl))
-                    ? CachedNetworkImage(
-                        imageUrl: item.imageUrl!,
-                        fit: BoxFit.cover,
+                child: (() {
+                  final formattedUrl = UrlValidator.formatImageUrl(item.imageUrl);
+                  return (formattedUrl.isNotEmpty && UrlValidator.isValidUrl(formattedUrl))
+                      ? CachedNetworkImage(
+                          imageUrl: formattedUrl,
+                          fit: BoxFit.cover,
                         placeholder: (context, url) => Container(
                           color: Colors.white.withValues(alpha: 0.05),
                           child: const Center(
@@ -755,7 +755,8 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
                           size: 48,
                           color: Colors.white24,
                         ),
-                      ),
+                      );
+                })(),
               ),
               // Gradient Overlay
               Positioned.fill(
@@ -893,12 +894,12 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
                   ),
                   child: AspectRatio(
                     aspectRatio: 1,
-                    child:
-                        (item.imageUrl != null &&
-                            UrlValidator.isValidUrl(item.imageUrl))
-                        ? CachedNetworkImage(
-                            imageUrl: item.imageUrl!,
-                            fit: BoxFit.cover,
+                    child: (() {
+                      final formattedUrl = UrlValidator.formatImageUrl(item.imageUrl);
+                      return (formattedUrl.isNotEmpty && UrlValidator.isValidUrl(formattedUrl))
+                          ? CachedNetworkImage(
+                              imageUrl: formattedUrl,
+                              fit: BoxFit.cover,
                             placeholder: (context, url) => Container(
                               color: Colors.white10,
                               child: const Center(
@@ -927,7 +928,8 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
                                 color: Colors.white24,
                               ),
                             ),
-                          ),
+                          );
+                    })(),
                   ),
                 ),
                 if (isBoosted || limitedLabel != null)

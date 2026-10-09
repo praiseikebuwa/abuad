@@ -19,7 +19,6 @@ import '../../../core/services/cloud_storage_service.dart';
 import '../domain/post.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../../core/providers/shared_preferences_provider.dart';
-import '../../../core/router/app_router.dart';
 import '../../../core/utils/url_validator.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import 'widgets/link_preview_card.dart';
@@ -50,6 +49,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   PlatformFile? _selectedDocument;
 
   bool _isPosting = false;
+  String _uploadStatusMessage = '';
   bool _isAnonymous = false;
   String _channelId = 'general';
   String _visibility = 'everyone'; // 'everyone', 'followers'
@@ -859,11 +859,13 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   }
 
   void _submitPost() async {
-    if (!_canPost) return;
+    if (!_canPost || _isPosting) return;
 
-    setState(() => _isPosting = true);
+    setState(() {
+      _isPosting = true;
+      _uploadStatusMessage = 'Preparing post...';
+    });
 
-    final messenger = ScaffoldMessenger.of(rootNavigatorKey.currentContext!);
     final authRepo = ref.read(authRepositoryProvider);
     final user = authRepo.currentUser;
     if (user == null) {
@@ -876,7 +878,6 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     final storage = CloudStorageService();
     final container = ref.container;
 
-    // Capture all UI state before popping
     final content = _contentController.text.trim();
     final linkUrl = _detectedLinkUrl;
     final channelId = _channelId;
@@ -894,135 +895,154 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     final latitude = _latitude;
     final longitude = _longitude;
 
-    // Pop immediately
-    context.pop();
+    try {
+      final appUser = await userRepo.getUserById(user.uid);
 
-    messenger.showSnackBar(
-      const SnackBar(
-        content: Text('📤 Uploading post...'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+      String mediaUrl = '';
+      List<String> mediaUrls = [];
+      MediaType mediaType = MediaType.none;
 
-    // Background process
-    () async {
-      try {
-        final appUser = await userRepo.getUserById(user.uid);
-
-        String mediaUrl = '';
-        List<String> mediaUrls = [];
-        MediaType mediaType = MediaType.none;
-
-        if (selectedImages.isNotEmpty) {
-          final uploadFutures = selectedImages.map(
-            (img) => storage.uploadImage(
-              img,
-              path: 'post_images/${user.uid}/',
-            ),
+      if (selectedImages.isNotEmpty) {
+        final List<String> uploadedUrls = [];
+        for (int i = 0; i < selectedImages.length; i++) {
+          final img = selectedImages[i];
+          if (mounted) {
+            setState(() {
+              _uploadStatusMessage = 'Uploading photo ${i + 1} of ${selectedImages.length}...';
+            });
+          }
+          final url = await storage.uploadImage(
+            img,
+            path: 'post_images/${user.uid}/',
           );
-          final results = await Future.wait(uploadFutures);
-          mediaUrls = results.where((r) => r.isNotEmpty).toList();
-          mediaUrl = mediaUrls.isNotEmpty ? mediaUrls.first : '';
-          mediaType = MediaType.image;
-        } else if (selectedVideo != null) {
-          mediaUrl = await storage.uploadVideo(
-            selectedVideo,
-            path: 'post_videos/${user.uid}/',
-          );
-          mediaType = MediaType.video;
-        } else if (selectedDocument != null) {
-          final docBytes = selectedDocument.bytes ??
-              (selectedDocument.path != null
-                  ? await File(selectedDocument.path!).readAsBytes()
-                  : null);
-          if (docBytes != null) {
-            mediaUrl = await storage.uploadDocument(
-              docBytes,
-              selectedDocument.name,
-            );
-            mediaType = MediaType.document;
+          if (url.isNotEmpty) {
+            uploadedUrls.add(url);
           }
         }
-
-        Map<String, dynamic>? pollData;
-        if (showPollCreator) {
-          final optionsStrings = pollOptionsText
-              .where((t) => t.isNotEmpty)
-              .toList();
-          if (optionsStrings.length >= 2) {
-            int days = 1;
-            if (pollDuration.contains('3')) days = 3;
-            if (pollDuration.contains('7')) days = 7;
-
-            pollData = {
-              'options': optionsStrings,
-              'votes': List<int>.filled(optionsStrings.length, 0),
-              'voters': <String, int>{},
-              'ends_at': DateTime.now()
-                  .add(Duration(days: days))
-                  .toIso8601String(),
-            };
-          }
+        mediaUrls = uploadedUrls;
+        mediaUrl = mediaUrls.isNotEmpty ? mediaUrls.first : '';
+        mediaType = MediaType.image;
+      } else if (selectedVideo != null) {
+        if (mounted) {
+          setState(() {
+            _uploadStatusMessage = 'Uploading video...';
+          });
         }
-
-        final post = Post(
-          id: const Uuid().v4(),
-          authorId: user.uid,
-          authorName: isAnonymous
-              ? 'Anonymous'
-              : (appUser?.displayName ?? 'Anonymous'),
-          authorHandle: isAnonymous ? '@hidden' : (appUser?.handle ?? '@anon'),
-          authorAvatarUrl: isAnonymous ? null : appUser?.avatarUrl,
-          content: content,
-          mediaUrl: mediaUrl,
-          mediaUrls: mediaUrls,
-          mediaType: mediaType,
-          timestamp: DateTime.now(),
-          channelId: channelId,
-          isVerified: isAnonymous ? false : (appUser?.isVerified ?? false),
-          verificationType: isAnonymous
-              ? 'none'
-              : (appUser?.verificationType ?? 'none'),
-          isAnonymous: isAnonymous,
-          pollData: pollData,
-          hashtags: RegExp(
-            r"#(\w+)",
-          ).allMatches(content).map((m) => m.group(1)!.toLowerCase()).toList(),
-          mentions: RegExp(
-            r"@(\w+)",
-          ).allMatches(content).map((m) => m.group(1)!).toList(),
-          visibility: visibility,
-          latitude: latitude,
-          longitude: longitude,
-          locationName: _address,
-          replyPermission: replyPermission,
-          scheduledAt: scheduledAt,
-          mediaAltText: selectedDocument != null ? selectedDocument.name : mediaAltText,
-          linkUrl: linkUrl,
+        mediaUrl = await storage.uploadVideo(
+          selectedVideo,
+          path: 'post_videos/${user.uid}/',
         );
+        mediaType = MediaType.video;
+      } else if (selectedDocument != null) {
+        if (mounted) {
+          setState(() {
+            _uploadStatusMessage = 'Uploading document...';
+          });
+        }
+        final docBytes = selectedDocument.bytes ??
+            (selectedDocument.path != null
+                ? await File(selectedDocument.path!).readAsBytes()
+                : null);
+        if (docBytes != null) {
+          mediaUrl = await storage.uploadDocument(
+            docBytes,
+            selectedDocument.name,
+          );
+          mediaType = MediaType.document;
+        }
+      }
 
-        await postRepo.addPost(post);
-        container.invalidate(paginatedFeedProvider);
-        messenger.showSnackBar(
+      if (mounted) {
+        setState(() {
+          _uploadStatusMessage = 'Publishing post...';
+        });
+      }
+
+      Map<String, dynamic>? pollData;
+      if (showPollCreator) {
+        final optionsStrings = pollOptionsText
+            .where((t) => t.isNotEmpty)
+            .toList();
+        if (optionsStrings.length >= 2) {
+          int days = 1;
+          if (pollDuration.contains('3')) days = 3;
+          if (pollDuration.contains('7')) days = 7;
+
+          pollData = {
+            'options': optionsStrings,
+            'votes': List<int>.filled(optionsStrings.length, 0),
+            'voters': <String, int>{},
+            'ends_at': DateTime.now()
+                .add(Duration(days: days))
+                .toIso8601String(),
+          };
+        }
+      }
+
+      final post = Post(
+        id: const Uuid().v4(),
+        authorId: user.uid,
+        authorName: isAnonymous
+            ? 'Anonymous'
+            : (appUser?.displayName ?? 'Anonymous'),
+        authorHandle: isAnonymous ? '@hidden' : (appUser?.handle ?? '@anon'),
+        authorAvatarUrl: isAnonymous ? null : appUser?.avatarUrl,
+        content: content,
+        mediaUrl: mediaUrl,
+        mediaUrls: mediaUrls,
+        mediaType: mediaType,
+        timestamp: DateTime.now(),
+        channelId: channelId,
+        isVerified: isAnonymous ? false : (appUser?.isVerified ?? false),
+        verificationType: isAnonymous
+            ? 'none'
+            : (appUser?.verificationType ?? 'none'),
+        isAnonymous: isAnonymous,
+        pollData: pollData,
+        hashtags: RegExp(
+          r"#(\w+)",
+        ).allMatches(content).map((m) => m.group(1)!.toLowerCase()).toList(),
+        mentions: RegExp(
+          r"@(\w+)",
+        ).allMatches(content).map((m) => m.group(1)!).toList(),
+        visibility: visibility,
+        latitude: latitude,
+        longitude: longitude,
+        locationName: _address,
+        replyPermission: replyPermission,
+        scheduledAt: scheduledAt,
+        mediaAltText: selectedDocument != null ? selectedDocument.name : mediaAltText,
+        linkUrl: linkUrl,
+      );
+
+      await postRepo.addPost(post);
+      container.invalidate(paginatedFeedProvider);
+
+      if (mounted) {
+        context.pop();
+        ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Post shared!'),
+            content: Text('🎉 Post shared!'),
             backgroundColor: Colors.green,
-          ),
-        );
-      } catch (e) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text('❌ Failed to upload post: $e'),
-            backgroundColor: Colors.red,
-            action: SnackBarAction(
-              label: 'Retry',
-              textColor: Colors.white,
-              onPressed: () {},
-            ),
+            duration: Duration(seconds: 3),
           ),
         );
       }
-    }();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isPosting = false;
+          _uploadStatusMessage = '';
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Failed to upload post: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    }
   }
 
   String get _audiencePillLabel {
@@ -1112,7 +1132,30 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       ),
       body: Column(
         children: [
-          if (_isPosting) const LinearProgressIndicator(minHeight: 2),
+          if (_isPosting) ...[
+            const LinearProgressIndicator(minHeight: 3),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+              color: AppColors.secondaryTeal.withValues(alpha: 0.12),
+              child: Row(
+                children: [
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _uploadStatusMessage.isNotEmpty ? _uploadStatusMessage : 'Uploading post...',
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           // 2. Main Compose Area (Borderless Canvas)
           Expanded(
             child: SingleChildScrollView(

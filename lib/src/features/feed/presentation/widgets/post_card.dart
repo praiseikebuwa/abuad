@@ -470,25 +470,26 @@ class _PostCardState extends ConsumerState<PostCard> {
                                             ?.isNotEmpty ??
                                         false) ...[
                                       const SizedBox(height: 10),
-                                      (post.repostData!['media_url'] != null &&
-                                              UrlValidator.isValidUrl(
-                                                post.repostData!['media_url'],
-                                              ))
-                                          ? CachedNetworkImage(
-                                              imageUrl:
-                                                  post.repostData!['media_url'],
-                                              height: 160,
-                                              width: double.infinity,
-                                              fit: BoxFit.cover,
-                                            )
-                                          : Container(
-                                              height: 160,
-                                              width: double.infinity,
-                                              color: isDark
-                                                  ? Colors.grey[900]
-                                                  : Colors.grey[200],
-                                              child: const Icon(Icons.image),
-                                            ),
+                                      (() {
+                                        final rawMedia = post.repostData!['media_url'] as String?;
+                                        final formattedMedia = UrlValidator.formatImageUrl(rawMedia);
+                                        return (formattedMedia.isNotEmpty &&
+                                                UrlValidator.isValidUrl(formattedMedia))
+                                            ? CachedNetworkImage(
+                                                imageUrl: formattedMedia,
+                                                height: 160,
+                                                width: double.infinity,
+                                                fit: BoxFit.cover,
+                                              )
+                                            : Container(
+                                                height: 160,
+                                                width: double.infinity,
+                                                color: isDark
+                                                    ? Colors.grey[900]
+                                                    : Colors.grey[200],
+                                                child: const Icon(Icons.image),
+                                              );
+                                      })(),
                                     ],
                                   ],
                                 ),

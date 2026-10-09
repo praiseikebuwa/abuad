@@ -128,7 +128,10 @@ class MarketplaceRepository {
     String sortBy = 'newest',
   }) async* {
     try {
-      final response = await ApiClient.get('/marketplace');
+      final queryParam = (category != null && category.isNotEmpty && category.toLowerCase() != 'all')
+          ? '?category=$category'
+          : '';
+      final response = await ApiClient.get('/marketplace$queryParam');
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true && data['data'] is List) {

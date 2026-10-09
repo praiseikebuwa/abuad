@@ -6,7 +6,10 @@ import 'package:http_parser/http_parser.dart';
 
 class ApiClient {
   /// Base URL for the ABUAD backend API (Cloudflare R2 & Express server).
-  static String baseUrl = 'https://abuad-backend-elfz.onrender.com/api';
+  static String baseUrl = const String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://abuad-backend-elfz.onrender.com/api',
+  );
 
   static String? _accessToken;
   static String? _refreshToken;

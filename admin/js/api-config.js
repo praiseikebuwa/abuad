@@ -2,7 +2,7 @@
  * REST API & Native JWT Configuration for Admin Portal
  * Replaces Firebase SDK & Firestore calls with backend REST endpoints
  */
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = 'http://abuad-backend-elfz.onrender.com/api';
 
 class ApiClientAdmin {
   static getAccessToken() {
@@ -71,7 +71,7 @@ class ApiClientAdmin {
         this.setTokens(data.data.accessToken, data.data.refreshToken);
         return true;
       }
-    } catch (e) {}
+    } catch (e) { }
     this.clearTokens();
     return false;
   }
@@ -81,7 +81,7 @@ class ApiClientAdmin {
 window.auth = {
   currentUser: null,
   onAuthStateChangedListeners: [],
-  
+
   onAuthStateChanged(callback) {
     this.onAuthStateChangedListeners.push(callback);
     const storedUser = localStorage.getItem('currentUser');
@@ -116,7 +116,7 @@ window.auth = {
   async signOut() {
     try {
       await ApiClientAdmin.fetch('/auth/logout', { method: 'POST' });
-    } catch (e) {}
+    } catch (e) { }
     ApiClientAdmin.clearTokens();
     this.currentUser = null;
     this.onAuthStateChangedListeners.forEach(cb => cb(null));
@@ -172,7 +172,7 @@ class QueryMock {
           empty: true,
           size: 0,
           docs: [],
-          forEach() {},
+          forEach() { },
           docChanges() { return []; }
         };
       }
@@ -200,7 +200,7 @@ class QueryMock {
         empty: true,
         size: 0,
         docs: [],
-        forEach() {},
+        forEach() { },
         docChanges() { return []; }
       };
     }
@@ -214,7 +214,7 @@ class QueryMock {
       .catch(err => {
         if (typeof errorCb === 'function') errorCb(err);
       });
-    return () => {};
+    return () => { };
   }
 
   async add(data) {
@@ -274,7 +274,7 @@ class QueryMock {
           .catch(err => {
             if (typeof errorCb === 'function') errorCb(err);
           });
-        return () => {};
+        return () => { };
       }
     };
   }
@@ -287,10 +287,10 @@ window.db = {
   },
   batch() {
     return {
-      update(docRef, data) {},
-      set(docRef, data) {},
-      delete(docRef) {},
-      async commit() {}
+      update(docRef, data) { },
+      set(docRef, data) { },
+      delete(docRef) { },
+      async commit() { }
     };
   }
 };

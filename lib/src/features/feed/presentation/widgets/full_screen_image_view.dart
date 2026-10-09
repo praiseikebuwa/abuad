@@ -133,9 +133,10 @@ class _FullScreenImageViewState extends State<FullScreenImageView> {
           PhotoViewGallery.builder(
             scrollPhysics: const BouncingScrollPhysics(),
             builder: (BuildContext context, int index) {
-              final url = _urls[index];
+              final rawUrl = _urls[index];
+              final url = UrlValidator.formatImageUrl(rawUrl);
               return PhotoViewGalleryPageOptions(
-                imageProvider: UrlValidator.isValidUrl(url)
+                imageProvider: (url.isNotEmpty && UrlValidator.isValidUrl(url))
                     ? CachedNetworkImageProvider(url)
                     : null,
                 initialScale: PhotoViewComputedScale.contained,

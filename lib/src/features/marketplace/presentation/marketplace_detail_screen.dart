@@ -5,7 +5,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../data/marketplace_repository.dart';
 import '../../chat/data/chat_repository.dart';
 import '../../auth/data/auth_repository.dart';
-import '../../user/data/user_repository.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/verification_badge.dart';
 import '../../../core/utils/url_validator.dart';
@@ -38,10 +37,12 @@ class MarketplaceDetailScreen extends ConsumerWidget {
                         PageView.builder(
                           itemCount: item.images.length,
                           itemBuilder: (context, index) {
-                            return (item.images[index].isNotEmpty &&
-                                    UrlValidator.isValidUrl(item.images[index]))
+                            final rawUrl = item.images[index];
+                            final formattedUrl = UrlValidator.formatImageUrl(rawUrl);
+                            return (formattedUrl.isNotEmpty &&
+                                    UrlValidator.isValidUrl(formattedUrl))
                                 ? CachedNetworkImage(
-                                    imageUrl: item.images[index],
+                                    imageUrl: formattedUrl,
                                     fit: BoxFit.cover,
                                     width: double.infinity,
                                     placeholder: (context, url) => Container(
@@ -85,19 +86,22 @@ class MarketplaceDetailScreen extends ConsumerWidget {
                       ],
                     )
                   : (item.imageUrl != null
-                        ? (UrlValidator.isValidUrl(item.imageUrl)
-                            ? CachedNetworkImage(
-                                imageUrl: item.imageUrl!,
-                                fit: BoxFit.cover,
-                              )
-                            : Container(
-                                color: Colors.grey[200],
-                                child: const Icon(
-                                  Icons.image,
-                                  size: 64,
-                                  color: Colors.grey,
-                                ),
-                              ))
+                        ? (() {
+                            final formattedUrl = UrlValidator.formatImageUrl(item.imageUrl);
+                            return (formattedUrl.isNotEmpty && UrlValidator.isValidUrl(formattedUrl))
+                                ? CachedNetworkImage(
+                                    imageUrl: formattedUrl,
+                                    fit: BoxFit.cover,
+                                  )
+                                : Container(
+                                    color: Colors.grey[200],
+                                    child: const Icon(
+                                      Icons.image,
+                                      size: 64,
+                                      color: Colors.grey,
+                                    ),
+                                  );
+                          })()
                         : Container(
                             color: Colors.grey[200],
                             child: const Icon(
@@ -292,30 +296,32 @@ class MarketplaceDetailScreen extends ConsumerWidget {
                 onPressed: () => _handleDelete(context, ref),
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.error,
+                  foregroundColor: Colors.white,
                   minimumSize: const Size(double.infinity, 54),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-                icon: const Icon(Icons.delete_outline),
+                icon: const Icon(Icons.delete_outline, color: Colors.white),
                 label: const Text(
                   'Delete Listing',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                 ),
               )
             : FilledButton.icon(
                 onPressed: () => _handleChat(context, ref),
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.secondaryTeal,
+                  foregroundColor: Colors.white,
                   minimumSize: const Size(double.infinity, 54),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-                icon: const Icon(Icons.chat_bubble_outline),
+                icon: const Icon(Icons.chat_bubble_outline, color: Colors.white),
                 label: const Text(
                   'Chat with Seller',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                 ),
               ),
       ),
@@ -330,6 +336,7 @@ class MarketplaceDetailScreen extends ConsumerWidget {
       var currentUser = authRepo.currentUser ?? ref.read(currentUserProvider).value;
       if (currentUser == null) {
         await authRepo.init();
+        if (!context.mounted) return;
         currentUser = authRepo.currentUser ?? ref.read(currentUserProvider).value;
       }
 
@@ -367,7 +374,7 @@ class MarketplaceDetailScreen extends ConsumerWidget {
 
       if (context.mounted) {
         Navigator.pop(context); // Pop loading
-        context.push('/chat/$channelId');
+        context.push('/chat/$channelId', extra: item);
       }
     } catch (e) {
       if (context.mounted) {
@@ -394,7 +401,10 @@ class MarketplaceDetailScreen extends ConsumerWidget {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+            ),
             child: const Text('Delete'),
           ),
         ],

@@ -32,10 +32,19 @@ import '../../camera/presentation/camera_screen.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import './widgets/shared_post_preview.dart';
 import '../../../core/services/media_saver.dart';
+import '../../marketplace/data/marketplace_repository.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String channelId;
-  const ChatScreen({super.key, required this.channelId});
+  final String? initialText;
+  final MarketplaceItem? initialProduct;
+
+  const ChatScreen({
+    super.key,
+    required this.channelId,
+    this.initialText,
+    this.initialProduct,
+  });
 
   @override
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
@@ -49,6 +58,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _isTyping = false;
   ChatMessage? _replyingTo;
   ChatMessage? _editingMessage;
+  MarketplaceItem? _inquiryProduct;
   String? _mentionQuery;
   List<AppUser> _userSuggestions = [];
   String? _wallpaperPath;
@@ -96,10 +106,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    _inquiryProduct = widget.initialProduct;
+    if (widget.initialText != null && widget.initialText!.isNotEmpty) {
+      _messageController.text = widget.initialText!;
+      _hasText = true;
+    }
     // Mark messages as read when screen loads
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(chatRepositoryProvider).markMessagesAsRead(widget.channelId);
       _loadSettings();
+      if (_hasText) {
+        _messageFocusNode.requestFocus();
+      }
     });
   }
 
@@ -860,6 +878,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     setState(() {
       _replyingTo = null;
       _editingMessage = null;
+      _inquiryProduct = null;
+      _hasText = false;
     });
     _isTyping = false;
     _typingTimer?.cancel();
