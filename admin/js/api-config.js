@@ -2,7 +2,7 @@
  * REST API & Native JWT Configuration for Admin Portal
  * Replaces Firebase SDK & Firestore calls with backend REST endpoints
  */
-const API_BASE_URL = 'http://abuad-backend-elfz.onrender.com/api';
+const API_BASE_URL = 'https://abuad-backend-elfz.onrender.com/api';
 
 class ApiClientAdmin {
   static getAccessToken() {
