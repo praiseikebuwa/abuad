@@ -8,7 +8,7 @@ class ApiClient {
   /// Base URL for the ABUAD backend API (Cloudflare R2 & Express server).
   static String baseUrl = const String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://abuad-backend-elfz.onrender.com/api',
+    defaultValue: 'http://46.101.214.112:5000/api',
   );
 
   static String? _accessToken;

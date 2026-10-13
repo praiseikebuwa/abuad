@@ -1,0 +1,45 @@
+# 1. Clone your backend from GitHub
+cd ~
+git clone https://github.com/praiseikebuwa/abuad.git
+cd abuad/backend
+
+# 2. Create the production .env file with your Neon PostgreSQL & Cloudflare credentials
+cat << 'EOF' > .env
+PORT=5000
+NODE_ENV=production
+DATABASE_URL="postgresql://neondb_owner:npg_RJqCfg6hibl8@ep-snowy-water-b5xasgwi-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require"
+
+JWT_ACCESS_SECRET="super-secret-access-token-key-abuad-2026"
+JWT_REFRESH_SECRET="super-secret-refresh-token-key-abuad-2026"
+JWT_ACCESS_EXPIRES_IN="15m"
+JWT_REFRESH_EXPIRES_IN="7d"
+
+CLOUDFLARE_ACCOUNT_ID="3ac64fbb902bb08eb55d0c1d2516e411"
+CLOUDFLARE_R2_ACCESS_KEY_ID="918ebf911f1b6ba6a4e6e306a3a97235"
+CLOUDFLARE_R2_SECRET_ACCESS_KEY="5bf1bcc4fd7af8fa799152b11d449a2f68ba3dc6e3d7a4b302299eedeb90b40b"
+CLOUDFLARE_R2_BUCKET_NAME="abuad"
+CLOUDFLARE_R2_PUBLIC_DOMAIN="https://pub-0014553a7b194df8b2d31efb7c6f4921.r2.dev"
+
+CLOUDFLARE_AI_API_TOKEN="cfat_PRNtGEEwkiF240VbSOZV5JKKzjeIpFT0OC1MT91ka8bdfcaa"
+CLOUDFLARE_AI_MODEL="@cf/meta/llama-3.1-8b-instruct"
+EOF
+
+# 3. Install packages & generate Prisma client
+npm install
+
+# 4. Push all tables (Users, Posts, Stories, Chat, Marketplace) directly into Neon Postgres
+npx prisma db push
+
+# 5. Seed the default admin account into Neon
+npm run db:seed
+
+# 6. Build the TypeScript backend
+npm run build
+
+# 7. Start the server with PM2 so it runs 24/7
+pm2 start dist/index.js --name "abuad-backend"
+pm2 save
+pm2 startup
+
+# 8. Allow port 5000 through the firewall
+ufw allow 5000/tcp

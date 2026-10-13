@@ -1,6 +1,6 @@
 # abuad
 
-A new Flutter project.
+Abuad campus app for student.
 
 ## Getting Started
 
