@@ -1,4 +1,7 @@
-<!DOCTYPE html><html><head>
+<!DOCTYPE html>
+<html>
+
+<head>
   <!--
     If you are serving your web app in a path other than the root, change the
     href value below to reflect the base path you are serving from.
@@ -16,7 +19,7 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="Abuad campus app for student.">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -29,33 +32,33 @@
 
   <title>abuad</title>
   <link rel="manifest" href="manifest.json">
-  
-  
+
+
   <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   <style id="splash-screen-style">
     html {
       height: 100%
@@ -65,7 +68,7 @@
       margin: 0;
       min-height: 100%;
       background-color: #ffddb2;
-          background-size: 100% 100%;
+      background-size: 100% 100%;
     }
 
     .center {
@@ -78,19 +81,22 @@
     }
 
     .contain {
-      display:block;
-      width:100%; height:100%;
+      display: block;
+      width: 100%;
+      height: 100%;
       object-fit: contain;
     }
 
     .stretch {
-      display:block;
-      width:100%; height:100%;
+      display: block;
+      width: 100%;
+      height: 100%;
     }
 
     .cover {
-      display:block;
-      width:100%; height:100%;
+      display: block;
+      width: 100%;
+      height: 100%;
       object-fit: cover;
     }
 
@@ -290,8 +296,15 @@
     }
 
     @keyframes pwaSlideUp {
-      from { transform: translateX(-50%) translateY(30px); opacity: 0; }
-      to { transform: translateX(-50%) translateY(0); opacity: 1; }
+      from {
+        transform: translateX(-50%) translateY(30px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateX(-50%) translateY(0);
+        opacity: 1;
+      }
     }
   </style>
   <script id="splash-screen-script">
@@ -302,11 +315,16 @@
     }
   </script>
 </head>
+
 <body>
   <picture id="splash">
-      <source srcset="splash/img/light-1x.png 1x, splash/img/light-2x.png 2x, splash/img/light-3x.png 3x, splash/img/light-4x.png 4x" media="(prefers-color-scheme: light)">
-      <source srcset="splash/img/dark-1x.png 1x, splash/img/dark-2x.png 2x, splash/img/dark-3x.png 3x, splash/img/dark-4x.png 4x" media="(prefers-color-scheme: dark)">
-      <img class="center" aria-hidden="true" src="splash/img/light-1x.png" alt="">
+    <source
+      srcset="splash/img/light-1x.png 1x, splash/img/light-2x.png 2x, splash/img/light-3x.png 3x, splash/img/light-4x.png 4x"
+      media="(prefers-color-scheme: light)">
+    <source
+      srcset="splash/img/dark-1x.png 1x, splash/img/dark-2x.png 2x, splash/img/dark-3x.png 3x, splash/img/dark-4x.png 4x"
+      media="(prefers-color-scheme: dark)">
+    <img class="center" aria-hidden="true" src="splash/img/light-1x.png" alt="">
   </picture>
 
   <!-- PWA Install Dialog Banner -->
@@ -315,13 +333,19 @@
       <img src="icons/Icon-192.png" alt="ABUAD Nest" class="pwa-app-icon" onerror="this.src='favicon.png'">
       <div class="pwa-text-content">
         <h3 id="pwa-dialog-title" class="pwa-title">Install ABUAD Nest</h3>
-        <p class="pwa-desc">Install as a web app on your device for fast access, full screen, and a native app experience.</p>
+        <p class="pwa-desc">Install as a web app on your device for fast access, full screen, and a native app
+          experience.</p>
       </div>
       <button class="pwa-close-btn" id="pwa-close-x" aria-label="Close">✕</button>
     </div>
     <div class="pwa-actions">
       <button class="pwa-btn-install" id="pwa-btn-install">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
         Install App
       </button>
       <button class="pwa-btn-continue" id="pwa-btn-continue">Continue with Web</button>
@@ -335,11 +359,13 @@
       1. Tap the <strong>Share</strong> button <span style="font-size: 16px;">⎋</span> at the bottom of Safari.<br>
       2. Scroll down and tap <strong>Add to Home Screen</strong> <span style="font-size: 14px;">➕</span>.
     </div>
-    <button id="ios-guide-close" style="background: rgba(255,255,255,0.15); border: none; color: #fff; padding: 8px 20px; border-radius: 10px; font-weight: 600; cursor: pointer;">Got it</button>
+    <button id="ios-guide-close"
+      style="background: rgba(255,255,255,0.15); border: none; color: #fff; padding: 8px 20px; border-radius: 10px; font-weight: 600; cursor: pointer;">Got
+      it</button>
   </div>
 
   <script>
-    (function() {
+    (function () {
       var deferredPrompt = null;
       var banner = document.getElementById('pwa-install-dialog');
       var btnInstall = document.getElementById('pwa-btn-install');
@@ -354,7 +380,7 @@
       function hideBanner() {
         if (!banner) return;
         banner.classList.remove('pwa-visible');
-        setTimeout(function() {
+        setTimeout(function () {
           banner.style.display = 'none';
         }, 350);
       }
@@ -365,27 +391,27 @@
         if (sessionStorage.getItem('pwa_dialog_dismissed') === 'true') return;
         if (!banner) return;
         banner.style.display = 'block';
-        setTimeout(function() {
+        setTimeout(function () {
           banner.classList.add('pwa-visible');
         }, 50);
       }
 
-      window.addEventListener('beforeinstallprompt', function(e) {
+      window.addEventListener('beforeinstallprompt', function (e) {
         e.preventDefault();
         deferredPrompt = e;
         showBanner();
       });
 
       // Also trigger banner after 2 seconds for browsers/devices
-      setTimeout(function() {
+      setTimeout(function () {
         showBanner();
       }, 2000);
 
       if (btnInstall) {
-        btnInstall.addEventListener('click', function() {
+        btnInstall.addEventListener('click', function () {
           if (deferredPrompt) {
             deferredPrompt.prompt();
-            deferredPrompt.userChoice.then(function(choiceResult) {
+            deferredPrompt.userChoice.then(function (choiceResult) {
               if (choiceResult && choiceResult.outcome === 'accepted') {
                 localStorage.setItem('pwa_already_installed', 'true');
               }
@@ -404,26 +430,26 @@
       }
 
       if (btnContinue) {
-        btnContinue.addEventListener('click', function() {
+        btnContinue.addEventListener('click', function () {
           sessionStorage.setItem('pwa_dialog_dismissed', 'true');
           hideBanner();
         });
       }
 
       if (btnClose) {
-        btnClose.addEventListener('click', function() {
+        btnClose.addEventListener('click', function () {
           sessionStorage.setItem('pwa_dialog_dismissed', 'true');
           hideBanner();
         });
       }
 
       if (iosClose) {
-        iosClose.addEventListener('click', function() {
+        iosClose.addEventListener('click', function () {
           if (iosGuide) iosGuide.classList.remove('visible');
         });
       }
 
-      window.addEventListener('appinstalled', function() {
+      window.addEventListener('appinstalled', function () {
         localStorage.setItem('pwa_already_installed', 'true');
         hideBanner();
       });
@@ -431,4 +457,6 @@
   </script>
 
   <script src="flutter_bootstrap.js" async=""></script>
-</body></html>
+</body>
+
+</html>
