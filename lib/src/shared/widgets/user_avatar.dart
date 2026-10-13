@@ -251,9 +251,12 @@ class UserAvatar extends ConsumerWidget {
   }
 
   Widget _buildAvatar(BuildContext context, {bool internalTap = false}) {
-    final hasValidUrl = avatarUrl != null &&
-        avatarUrl!.isNotEmpty &&
-        UrlValidator.isValidUrl(avatarUrl);
+    final formattedUrl = (avatarUrl != null && avatarUrl!.isNotEmpty)
+        ? UrlValidator.formatImageUrl(avatarUrl)
+        : null;
+    final hasValidUrl = formattedUrl != null &&
+        formattedUrl.isNotEmpty &&
+        UrlValidator.isValidUrl(formattedUrl);
 
     final fallbackText = Text(
       (displayName != null && displayName!.isNotEmpty)
@@ -272,7 +275,7 @@ class UserAvatar extends ConsumerWidget {
       child: hasValidUrl
           ? ClipOval(
               child: CachedNetworkImage(
-                imageUrl: avatarUrl!,
+                imageUrl: formattedUrl,
                 width: radius * 2,
                 height: radius * 2,
                 fit: BoxFit.cover,

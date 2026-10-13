@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:visibility_detector/visibility_detector.dart';
+import '../../../../core/utils/url_validator.dart';
 
 class VideoPostWidget extends StatefulWidget {
   final String videoUrl;
@@ -86,8 +87,9 @@ class _VideoPostWidgetState extends State<VideoPostWidget>
 
     VideoPlayerController? controller;
     try {
+      final effectiveUrl = UrlValidator.formatImageUrl(widget.videoUrl);
       controller = VideoPlayerController.networkUrl(
-        Uri.parse(widget.videoUrl),
+        Uri.parse(effectiveUrl),
         videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
       );
       await controller.initialize();
@@ -406,9 +408,12 @@ class _VideoPostWidgetState extends State<VideoPostWidget>
   }
 
   Widget _buildPlaceholder() {
-    if (widget.thumbnailUrl != null && widget.thumbnailUrl!.isNotEmpty) {
+    final effectiveThumb = (widget.thumbnailUrl != null && widget.thumbnailUrl!.isNotEmpty)
+        ? UrlValidator.formatImageUrl(widget.thumbnailUrl)
+        : '';
+    if (effectiveThumb.isNotEmpty) {
       return CachedNetworkImage(
-        imageUrl: widget.thumbnailUrl!,
+        imageUrl: effectiveThumb,
         fit: BoxFit.cover,
         width: double.infinity,
         height: double.infinity,

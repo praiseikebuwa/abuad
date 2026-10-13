@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/api_client.dart';
+import '../../../core/utils/url_validator.dart';
 
 class MarketplaceItem {
   final String id;
@@ -65,17 +66,25 @@ class MarketplaceItem {
     }
 
     List<String> parseImages(dynamic raw) {
-      if (raw is List) return raw.map((e) => e.toString()).toList();
-      if (raw is String && raw.isNotEmpty) {
+      List<String> rawList = [];
+      if (raw is List) {
+        rawList = raw.map((e) => e.toString()).toList();
+      } else if (raw is String && raw.isNotEmpty) {
         try {
           final decoded = jsonDecode(raw);
-          if (decoded is List) return decoded.map((e) => e.toString()).toList();
-          return [raw];
+          if (decoded is List) {
+            rawList = decoded.map((e) => e.toString()).toList();
+          } else {
+            rawList = [raw];
+          }
         } catch (_) {
-          return [raw];
+          rawList = [raw];
         }
       }
-      return [];
+      return rawList
+          .map((url) => UrlValidator.formatImageUrl(url))
+          .where((url) => url.isNotEmpty)
+          .toList();
     }
 
     return MarketplaceItem(

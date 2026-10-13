@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/api_client.dart';
+import '../../../core/utils/url_validator.dart';
 import '../../feed/domain/post.dart';
 export '../../auth/data/auth_repository.dart' show currentUserProvider, currentUserIdProvider;
 
@@ -90,8 +91,16 @@ class AppUser {
       displayName: map['fullName'] ?? map['displayName'] ?? 'User',
       email: map['email'] ?? '',
       handle: map['username'] ?? map['handle'] ?? 'user',
-      avatarUrl: map['avatarUrl'] ?? map['avatar_url'] ?? map['photoUrl'] ?? map['photo_url'] ?? map['profilePicture'],
-      bannerUrl: map['bannerUrl'] ?? map['banner_url'] ?? map['coverUrl'] ?? map['cover_url'],
+      avatarUrl: (() {
+        final raw = map['avatarUrl'] ?? map['avatar_url'] ?? map['photoUrl'] ?? map['photo_url'] ?? map['profilePicture'];
+        final formatted = UrlValidator.formatImageUrl(raw);
+        return formatted.isNotEmpty ? formatted : null;
+      })(),
+      bannerUrl: (() {
+        final raw = map['bannerUrl'] ?? map['banner_url'] ?? map['coverUrl'] ?? map['cover_url'];
+        final formatted = UrlValidator.formatImageUrl(raw);
+        return formatted.isNotEmpty ? formatted : null;
+      })(),
       bio: map['bio'],
       isVerified: map['isVerified'] ?? map['is_verified'] ?? false,
       verificationType: map['verificationType'] ?? map['verification_type'] ?? 'none',

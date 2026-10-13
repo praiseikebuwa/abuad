@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../../../core/utils/url_validator.dart';
 
 class Story {
   final String id;
@@ -165,7 +166,7 @@ class Story {
           authorMap?['id'] ??
           authorMap?['_id'] ??
           '',
-      content: map['content'] ?? map['mediaUrl'] ?? map['media_url'] ?? '',
+      content: UrlValidator.formatImageUrl(map['content'] ?? map['mediaUrl'] ?? map['media_url']),
       type: map['type'] ?? map['mediaType'] ?? 'image',
       caption: map['caption'],
       createdAt: parseTime(map['created_at'] ?? map['createdAt']),
@@ -185,10 +186,12 @@ class Story {
           authorMap?['fullName'] ??
           authorMap?['username'] ??
           '',
-      userAvatar: map['user_avatar'] ??
-          map['userAvatar'] ??
-          authorMap?['avatarUrl'] ??
-          '',
+      userAvatar: UrlValidator.formatImageUrl(
+        map['user_avatar'] ??
+            map['userAvatar'] ??
+            authorMap?['avatarUrl'] ??
+            '',
+      ),
       reshareAuthorId: map['reshare_author_id'] ?? map['reshareAuthorId'],
       reshareAuthorName: map['reshare_author_name'] ?? map['reshareAuthorName'],
       reshareStoryId: map['reshare_story_id'] ?? map['reshareStoryId'],

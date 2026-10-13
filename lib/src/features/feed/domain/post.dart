@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../../../core/utils/url_validator.dart';
 
 enum MediaType { none, image, video, gif, document }
 
@@ -200,17 +201,23 @@ class Post {
     final String rawHandle = map['author_handle'] ?? map['author']?['username'] ?? 'anon';
     final String handle = rawHandle.startsWith('@') ? rawHandle : '@$rawHandle';
 
-    List<String> mUrls = parseStringList(map['media_urls'] ?? map['mediaUrls']);
-    if (mUrls.isEmpty && mUrl.isNotEmpty) {
-      mUrls = [mUrl];
+    final formattedMUrl = UrlValidator.formatImageUrl(mUrl);
+    List<String> mUrls = parseStringList(map['media_urls'] ?? map['mediaUrls'])
+        .map((u) => UrlValidator.formatImageUrl(u))
+        .where((u) => u.isNotEmpty)
+        .toList();
+    if (mUrls.isEmpty && formattedMUrl.isNotEmpty) {
+      mUrls = [formattedMUrl];
     }
+    final rawAvatar = map['author_avatar_url'] ?? map['author']?['avatarUrl'];
+    final formattedAvatarUrl = UrlValidator.formatImageUrl(rawAvatar);
 
     return Post(
       id: postId,
       authorId: map['author_id'] ?? map['authorId'] ?? map['author']?['id'] ?? '',
       authorName: map['author_name'] ?? map['author']?['fullName'] ?? map['author']?['username'] ?? 'Anonymous',
       authorHandle: handle,
-      authorAvatarUrl: map['author_avatar_url'] ?? map['author']?['avatarUrl'],
+      authorAvatarUrl: formattedAvatarUrl.isNotEmpty ? formattedAvatarUrl : null,
       isVerified: map['is_verified'] ?? map['isVerified'] ?? map['author']?['isVerified'] ?? false,
       verificationType: (map['verification_type'] ??
               map['verificationType'] ??
@@ -222,7 +229,7 @@ class Post {
           .toLowerCase(),
       isAnonymous: map['is_anonymous'] ?? map['isAnonymous'] ?? false,
       content: map['content'] ?? '',
-      mediaUrl: mUrl.isNotEmpty ? mUrl : (mUrls.isNotEmpty ? mUrls.first : ''),
+      mediaUrl: formattedMUrl.isNotEmpty ? formattedMUrl : (mUrls.isNotEmpty ? mUrls.first : ''),
       mediaUrls: mUrls,
       mediaType: mType,
       timestamp: parseTime(map['created_at'] ?? map['createdAt']),

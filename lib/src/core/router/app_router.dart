@@ -44,7 +44,6 @@ import '../../features/stories/presentation/story_viewer_screen.dart';
 import '../../features/chat/presentation/qr_scanner_screen.dart';
 import '../../features/chat/presentation/broadcast_search_screen.dart';
 import '../../features/chat/presentation/broadcast_message_screen.dart';
-import '../../features/settings/presentation/app_icon_screen.dart';
 import '../../features/settings/presentation/support_screens.dart';
 import '../../features/settings/presentation/legal_screen.dart';
 import '../../features/ai/presentation/ai_screen.dart';
@@ -276,15 +275,6 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           child: const SettingsScreen(),
         ),
         routes: [
-          GoRoute(
-            path: 'app-icon',
-            parentNavigatorKey: rootNavigatorKey,
-            pageBuilder: (context, state) => buildPageWithAnimation(
-              context: context,
-              state: state,
-              child: const AppIconScreen(),
-            ),
-          ),
           GoRoute(
             path: 'help',
             parentNavigatorKey: rootNavigatorKey,

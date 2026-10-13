@@ -1,6 +1,3 @@
-import 'package:flutter/foundation.dart';
-import '../services/api_client.dart';
-
 class UrlValidator {
   /// Returns true if the [url] is a well-formed absolute URL with a host (authority).
   static bool isValidUrl(String? url) {
@@ -39,16 +36,24 @@ class UrlValidator {
     return isValidUrl(withScheme) ? withScheme : null;
   }
 
+  static const String r2PublicBase = 'https://pub-0014553a7b194df8b2d31efb7c6f4921.r2.dev';
+
   static String formatImageUrl(String? url) {
     if (url == null || url.trim().isEmpty) return '';
     var trimmed = url.trim();
+
+    // If it points to any uploaded asset (from localhost:5000, Render, or relative path),
+    // map it directly to Cloudflare R2 public CDN with CORS enabled
+    final uploadIndex = trimmed.indexOf('uploads/');
+    if (uploadIndex != -1) {
+      return '$r2PublicBase/${trimmed.substring(uploadIndex)}';
+    }
+
+    // Upgrade insecure http:// to https:// to prevent browser Mixed Content errors on Web
     if (trimmed.startsWith('http://') && !trimmed.contains('localhost') && !trimmed.contains('127.0.0.1')) {
       trimmed = 'https://${trimmed.substring(7)}';
     }
-    if (kIsWeb && (trimmed.contains('r2.dev/') || trimmed.contains('cloudflarestorage.com/'))) {
-      final base = ApiClient.baseUrl;
-      return '$base/media/proxy?url=${Uri.encodeComponent(trimmed)}';
-    }
+
     return trimmed;
   }
 }
