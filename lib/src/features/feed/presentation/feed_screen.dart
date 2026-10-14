@@ -448,36 +448,81 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(
-                                selectedChannel == 'reels'
-                                    ? Icons.movie_outlined
-                                    : (feedType == FeedType.following
-                                        ? Icons.people_outline
-                                        : Icons.feed_outlined),
-                                size: 64,
-                                color: isDark
-                                    ? Colors.grey[700]
-                                    : Colors.grey[300],
-                              ),
+                              if (selectedChannel == 'confessions')
+                                Container(
+                                  padding: const EdgeInsets.all(20),
+                                  decoration: BoxDecoration(
+                                    color: Colors.deepPurple.withValues(alpha: 0.15),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.purpleAccent.withValues(alpha: 0.4), width: 2),
+                                  ),
+                                  child: const Text('🎭', style: TextStyle(fontSize: 48)),
+                                )
+                              else
+                                Icon(
+                                  selectedChannel == 'reels'
+                                      ? Icons.movie_outlined
+                                      : (feedType == FeedType.following
+                                          ? Icons.people_outline
+                                          : Icons.feed_outlined),
+                                  size: 64,
+                                  color: isDark
+                                      ? Colors.grey[700]
+                                      : Colors.grey[300],
+                                ),
                               const SizedBox(height: 16),
                               Text(
-                                selectedChannel == 'reels'
-                                    ? 'No video reels yet'
-                                    : (feedType == FeedType.following
-                                        ? 'No posts from people you follow'
-                                        : (selectedChannel == 'all'
-                                            ? 'No posts yet'
-                                            : 'No posts in $selectedChannel')),
+                                selectedChannel == 'confessions'
+                                    ? 'No Confessions Yet'
+                                    : (selectedChannel == 'reels'
+                                        ? 'No video reels yet'
+                                        : (feedType == FeedType.following
+                                            ? 'No posts from people you follow'
+                                            : (selectedChannel == 'all'
+                                                ? 'No posts yet'
+                                                : 'No posts in $selectedChannel'))),
                                 style: TextStyle(
                                   color: isDark
-                                      ? Colors.grey[400]
-                                      : Colors.grey[600],
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w600,
+                                      ? Colors.white
+                                      : Colors.black87,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
                               const SizedBox(height: 8),
-                              if (selectedChannel == 'reels') ...[
+                              if (selectedChannel == 'confessions') ...[
+                                const Text(
+                                  '100% Anonymous • Share your secrets, campus crushes & raw thoughts.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: Colors.purpleAccent, fontSize: 13, fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Your identity is completely hidden from all other students.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(height: 20),
+                                ElevatedButton.icon(
+                                  onPressed: () {
+                                    context.push('/create-post', extra: {'channelId': 'confessions'});
+                                  },
+                                  icon: const Text('🎭', style: TextStyle(fontSize: 16)),
+                                  label: const Text('Write Secret Confession', style: TextStyle(fontWeight: FontWeight.bold)),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.deepPurpleAccent,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(24),
+                                    ),
+                                    elevation: 6,
+                                  ),
+                                ),
+                              ] else if (selectedChannel == 'reels') ...[
                                 const Text(
                                   'Explore immersive full-screen campus videos & reels',
                                   style: TextStyle(color: Colors.grey, fontSize: 13),

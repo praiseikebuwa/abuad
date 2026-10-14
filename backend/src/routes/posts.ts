@@ -6,6 +6,26 @@ import { getUserInterestProfile, scorePost, encodeCursor, decodeCursor } from '.
 
 const router = Router();
 
+function sanitizePost(post: any, userRole?: string) {
+  if (!post) return post;
+  const isAnon = post.isAnonymous === true || post.channelId === 'confessions';
+  if (!isAnon || userRole === 'ADMIN') {
+    return post;
+  }
+  return {
+    ...post,
+    authorId: 'anonymous',
+    author: {
+      id: 'anonymous',
+      username: 'anonymous',
+      fullName: 'Anonymous Student',
+      avatarUrl: null,
+      isVerified: false,
+      verificationType: 'none',
+    },
+  };
+}
+
 /**
  * GET /api/posts - Discovery / For You Feed with Personalized Ranking & Cursor Pagination
  */
@@ -88,13 +108,13 @@ router.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Response) =
 
       const formatted = resultPosts.map(p => {
         const { likes, savedBy, _count, ...rest } = p;
-        return {
+        return sanitizePost({
           ...rest,
           commentsCount: _count.comments,
           likesCount: _count.likes,
           isLiked: likes.length > 0,
           isSaved: savedBy.length > 0,
-        };
+        }, req.user?.role);
       });
 
       const lastPost = formatted[formatted.length - 1];
@@ -142,13 +162,13 @@ router.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Response) =
 
     const formatted = selected.map(p => {
       const { likes, savedBy, _count, ...rest } = p;
-      return {
+      return sanitizePost({
         ...rest,
         commentsCount: _count.comments,
         likesCount: _count.likes,
         isLiked: likes.length > 0,
         isSaved: savedBy.length > 0,
-      };
+      }, req.user?.role);
     });
 
     const lastPost = formatted[formatted.length - 1];
@@ -752,6 +772,8 @@ router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Respo
       return res.status(400).json({ error: checkMod.reason });
     }
 
+    const effectiveIsAnonymous = isAnonymous === true || channelId === 'confessions';
+
     const post = await prisma.post.create({
       data: {
         authorId: req.user!.id,
@@ -763,7 +785,7 @@ router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Respo
         mentions: JSON.stringify(mentions || []),
         visibility: visibility || 'everyone',
         channelId: channelId || 'general',
-        isAnonymous: isAnonymous || false,
+        isAnonymous: effectiveIsAnonymous,
         replyPermission: replyPermission || 'everyone',
         pollData: pollData ? JSON.stringify(pollData) : null,
       },
@@ -778,8 +800,53 @@ router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Respo
       triggerAiPostReply(post.id, post.content, post.mediaUrl, post.author.fullName || post.author.username);
     }
 
-    // Notify followers about the new post (if not anonymous)
-    if (!post.isAnonymous) {
+    // 1. Notify tagged / mentioned students (supports anonymous confession tagging!)
+    const mentionedUsernames: string[] = [];
+    if (Array.isArray(mentions)) {
+      for (const m of mentions) {
+        if (typeof m === 'string') mentionedUsernames.push(m.replace(/^@/, '').toLowerCase().trim());
+      }
+    }
+    const regexMatches = (content || '').match(/@([a-zA-Z0-9_]+)/g);
+    if (regexMatches) {
+      for (const m of regexMatches) {
+        const u = m.replace(/^@/, '').toLowerCase().trim();
+        if (!mentionedUsernames.includes(u)) mentionedUsernames.push(u);
+      }
+    }
+
+    if (mentionedUsernames.length > 0) {
+      const mentionedUsers = await prisma.user.findMany({
+        where: {
+          username: { in: mentionedUsernames, mode: 'insensitive' },
+        },
+        select: { id: true, username: true },
+      });
+
+      const validRecipients = mentionedUsers.filter(u => u.id !== req.user!.id);
+      if (validRecipients.length > 0) {
+        const preview = (content || '').trim();
+        const snippet = preview.length > 60 ? preview.slice(0, 57) + '...' : preview;
+
+        const notifData = validRecipients.map(u => ({
+          userId: u.id,
+          senderId: effectiveIsAnonymous ? null : req.user!.id,
+          title: effectiveIsAnonymous ? 'Secret Confession 🎭' : 'Mentioned in a Post 💬',
+          body: effectiveIsAnonymous
+            ? `Someone secretly tagged you in Confessions: "${snippet}"`
+            : `${post.author.fullName || post.author.username} mentioned you: "${snippet}"`,
+          type: effectiveIsAnonymous ? 'confessionMention' : 'postMention',
+          relatedId: post.id,
+        }));
+
+        await (prisma.notification.createMany as any)({
+          data: notifData,
+        }).catch((err: any) => console.error('Failed to notify mentioned users:', err));
+      }
+    }
+
+    // 2. Notify followers about the new post (only if NOT anonymous)
+    if (!effectiveIsAnonymous) {
       const followers = await prisma.follower.findMany({
         where: { followedId: req.user!.id },
         select: { followerId: true },
@@ -804,9 +871,47 @@ router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Respo
       }
     }
 
-    return res.status(201).json({ success: true, data: post });
+    return res.status(201).json({ success: true, data: sanitizePost(post, req.user?.role) });
   } catch (error) {
     return res.status(500).json({ error: 'Failed to create post' });
+  }
+});
+
+/**
+ * GET /api/posts/:id - Get single post by ID
+ */
+router.get('/:id', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const postId = String(req.params.id);
+    const userId = req.user?.id;
+    const post = await prisma.post.findUnique({
+      where: { id: postId },
+      include: {
+        author: {
+          select: { id: true, username: true, fullName: true, avatarUrl: true, isVerified: true, verificationType: true },
+        },
+        likes: userId ? { where: { userId }, select: { id: true } } : false,
+        savedBy: userId ? { where: { userId }, select: { id: true } } : false,
+        _count: { select: { comments: true, likes: true } },
+      },
+    });
+
+    if (!post) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    const { likes, savedBy, _count, ...rest } = post as any;
+    const formatted = {
+      ...rest,
+      commentsCount: _count?.comments ?? 0,
+      likesCount: _count?.likes ?? 0,
+      isLiked: Array.isArray(likes) && likes.length > 0,
+      isSaved: Array.isArray(savedBy) && savedBy.length > 0,
+    };
+
+    return res.json({ success: true, data: sanitizePost(formatted, req.user?.role) });
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to fetch post' });
   }
 });
 

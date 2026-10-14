@@ -730,7 +730,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                 : post.verificationType;
             final displayIsAnonymous = isPureRepost
                 ? (post.repostData!['is_anonymous'] == true)
-                : post.isAnonymous;
+                : (post.isAnonymous || post.channelId == 'confessions');
 
             // Media Type Enum Conversion
             domain.MediaType displayMediaType = post.mediaType;
@@ -833,17 +833,28 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
 
                                   return Row(
                                     children: [
-                                      UserAvatar(
-                                        userId: post.authorId,
-                                        avatarUrl: displayIsAnonymous
-                                            ? null
-                                            : effectiveAvatarUrl,
-                                        displayName: displayIsAnonymous
-                                            ? '?'
-                                            : effectiveAuthorName,
-                                        radius: 24,
-                                        showStoryRing: !displayIsAnonymous,
-                                      ),
+                                      if (displayIsAnonymous)
+                                        Container(
+                                          width: 48,
+                                          height: 48,
+                                          decoration: const BoxDecoration(
+                                            color: Color(0xFF6B21A8),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          alignment: Alignment.center,
+                                          child: const Text(
+                                            '🎭',
+                                            style: TextStyle(fontSize: 24),
+                                          ),
+                                        )
+                                      else
+                                        UserAvatar(
+                                          userId: post.authorId,
+                                          avatarUrl: effectiveAvatarUrl,
+                                          displayName: effectiveAuthorName,
+                                          radius: 24,
+                                          showStoryRing: true,
+                                        ),
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: Column(
@@ -861,6 +872,28 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                                     fontSize: 16,
                                                   ),
                                                 ),
+                                                if (displayIsAnonymous) ...[
+                                                  const SizedBox(width: 6),
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(
+                                                      horizontal: 6,
+                                                      vertical: 2,
+                                                    ),
+                                                    decoration: BoxDecoration(
+                                                      color: const Color(0xFF6B21A8)
+                                                          .withValues(alpha: 0.15),
+                                                      borderRadius: BorderRadius.circular(6),
+                                                    ),
+                                                    child: const Text(
+                                                      '🎭 Confession',
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        fontWeight: FontWeight.bold,
+                                                        color: Color(0xFF8B5CF6),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
                                                 if (effectiveIsVerified &&
                                                     !displayIsAnonymous) ...[
                                                   const SizedBox(width: 4),
@@ -878,6 +911,17 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                                 style: TextStyle(
                                                   color: Colors.grey[600],
                                                   fontSize: 14,
+                                                ),
+                                              )
+                                            else if (currentUser?.isAdmin == true &&
+                                                post.authorHandle.isNotEmpty &&
+                                                post.authorHandle != 'anonymous')
+                                              Text(
+                                                '🛡️ Admin reveal: @${post.authorHandle}',
+                                                style: const TextStyle(
+                                                  color: Color(0xFF8B5CF6),
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w600,
                                                 ),
                                               ),
                                           ],

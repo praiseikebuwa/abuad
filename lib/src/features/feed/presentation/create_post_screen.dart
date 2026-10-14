@@ -94,13 +94,14 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   // Drafts
   List<Map<String, dynamic>> _savedDrafts = [];
 
-  final String _giphyApiKey = 'DnmoJ3pdO49O9K45y8zYwe7sZdDNuXOx';
-
   @override
   void initState() {
     super.initState();
     if (widget.initialChannelId != null) {
       _channelId = widget.initialChannelId!;
+      if (_channelId == 'confessions') {
+        _isAnonymous = true;
+      }
     }
     _contentController.addListener(_updateState);
     _loadDrafts();
@@ -1214,13 +1215,27 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // User Avatar top-left
+                  // User Avatar top-left
                   Builder(
                     builder: (context) {
+                      final isConfession = _isAnonymous || _channelId == 'confessions';
                       final user = currentUserAsync.value ?? ref.watch(authRepositoryProvider).currentUser;
+                      if (isConfession) {
+                        return Container(
+                          width: 40,
+                          height: 40,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF6B21A8),
+                            shape: BoxShape.circle,
+                          ),
+                          alignment: Alignment.center,
+                          child: const Text('🎭', style: TextStyle(fontSize: 20)),
+                        );
+                      }
                       return UserAvatar(
                         userId: user?.uid ?? '',
-                        avatarUrl: _isAnonymous ? null : user?.avatarUrl,
-                        displayName: _isAnonymous ? '?' : (user?.displayName ?? user?.handle ?? 'U'),
+                        avatarUrl: user?.avatarUrl,
+                        displayName: user?.displayName ?? user?.handle ?? 'U',
                         radius: 20,
                         showStoryRing: false,
                       );
@@ -1232,37 +1247,100 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Audience Scope Pill: ONLY [ Everyone ▾ ] next to avatar
-                        GestureDetector(
-                          onTap: _showAudienceScopePicker,
-                          child: Container(
-                            margin: const EdgeInsets.only(top: 2, bottom: 8),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.transparent,
-                              border: Border.all(
-                                color: isDark ? Colors.white24 : Colors.grey[400]!,
+                        // Audience Scope Pill & Anonymous Badge
+                        Row(
+                          children: [
+                            GestureDetector(
+                              onTap: _showAudienceScopePicker,
+                              child: Container(
+                                margin: const EdgeInsets.only(top: 2, bottom: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.transparent,
+                                  border: Border.all(
+                                    color: isDark ? Colors.white24 : Colors.grey[400]!,
+                                  ),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      _audiencePillLabel,
+                                      style: TextStyle(
+                                        color: isDark ? Colors.white70 : Colors.grey[800],
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            if (_isAnonymous || _channelId == 'confessions') ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                margin: const EdgeInsets.only(top: 2, bottom: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF6B21A8).withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.4),
+                                  ),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text('🎭', style: TextStyle(fontSize: 12)),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'Anonymous',
+                                      style: TextStyle(
+                                        color: Color(0xFF8B5CF6),
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+
+                        // Confessions safety banner
+                        if (_isAnonymous || _channelId == 'confessions')
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF6B21A8).withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: const Color(0xFF8B5CF6).withValues(alpha: 0.3),
+                              ),
                             ),
                             child: Row(
-                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text(
-                                  _audiencePillLabel,
-                                  style: TextStyle(
-                                    color: isDark ? Colors.white70 : Colors.grey[800],
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 13,
+                                const Text('🎭', style: TextStyle(fontSize: 16)),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Posting to Confessions is 100% anonymous to students. Tap @ to tag someone secretly!',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: isDark ? const Color(0xFFD8B4FE) : const Color(0xFF6B21A8),
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                        ),
 
                         // Borderless Text Input Canvas or Live Preview
                         if (_isPreviewMode)
@@ -1909,6 +1987,22 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                     onTap: _schedulePost,
                     isActive: _scheduledAt != null,
                   ),
+                  _ToolbarIcon(
+                    icon: Icons.alternate_email_rounded,
+                    onTap: _openSecretTagStudentSheet,
+                  ),
+                  _ToolbarIcon(
+                    icon: Icons.masks_rounded,
+                    onTap: () {
+                      setState(() {
+                        _isAnonymous = !_isAnonymous;
+                        if (!_isAnonymous && _channelId == 'confessions') {
+                          _channelId = 'general';
+                        }
+                      });
+                    },
+                    isActive: _isAnonymous || _channelId == 'confessions',
+                  ),
 
                   const Spacer(),
 
@@ -2347,6 +2441,34 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       ),
     );
   }
+
+  void _openSecretTagStudentSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => _SecretTagStudentSheet(
+        onSelected: (user) {
+          final currentText = _contentController.text;
+          final newText = currentText.isEmpty || currentText.endsWith(' ')
+              ? '$currentText@${user.handle} '
+              : '$currentText @${user.handle} ';
+          _contentController.text = newText;
+          _contentController.selection = TextSelection.collapsed(offset: newText.length);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Tagged @${user.handle} secretly 🎭'),
+              duration: const Duration(seconds: 2),
+              backgroundColor: const Color(0xFF6B21A8),
+            ),
+          );
+        },
+      ),
+    );
+  }
 }
 
 class _ToolbarIcon extends StatelessWidget {
@@ -2388,3 +2510,176 @@ class _ToolbarIcon extends StatelessWidget {
     );
   }
 }
+
+class _SecretTagStudentSheet extends ConsumerStatefulWidget {
+  final ValueChanged<AppUser> onSelected;
+
+  const _SecretTagStudentSheet({required this.onSelected});
+
+  @override
+  ConsumerState<_SecretTagStudentSheet> createState() => _SecretTagStudentSheetState();
+}
+
+class _SecretTagStudentSheetState extends ConsumerState<_SecretTagStudentSheet> {
+  final _searchController = TextEditingController();
+  List<AppUser> _results = [];
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _performSearch('');
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _performSearch(String query) async {
+    setState(() => _isLoading = true);
+    try {
+      final users = await ref.read(userRepositoryProvider).searchUsers(query);
+      if (mounted) {
+        setState(() {
+          _results = users;
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Container(
+        height: 480,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Column(
+          children: [
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: isDark ? Colors.grey[700] : Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6B21A8).withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Text('🎭', style: TextStyle(fontSize: 16)),
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Tag Someone Secretly',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        'They will be notified without knowing who posted',
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _searchController,
+              autofocus: true,
+              onChanged: _performSearch,
+              decoration: InputDecoration(
+                hintText: 'Search by student name or @handle...',
+                prefixIcon: const Icon(Icons.search),
+                filled: true,
+                fillColor: isDark ? const Color(0xFF1E2530) : const Color(0xFFF1F5F9),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _results.isEmpty
+                      ? Center(
+                          child: Text(
+                            _searchController.text.isEmpty
+                                ? 'Type a name or handle to search students'
+                                : 'No students found',
+                            style: const TextStyle(color: Colors.grey),
+                          ),
+                        )
+                      : ListView.separated(
+                          itemCount: _results.length,
+                          separatorBuilder: (context, index) => const Divider(height: 1),
+                          itemBuilder: (context, index) {
+                            final user = _results[index];
+                            return ListTile(
+                              leading: UserAvatar(
+                                userId: user.uid,
+                                avatarUrl: user.avatarUrl,
+                                displayName: user.displayName,
+                                radius: 18,
+                              ),
+                              title: Text(
+                                user.displayName,
+                                style: const TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                              subtitle: Text(
+                                '@${user.handle}${user.department != null ? ' • ${user.department}' : ''}',
+                                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                              ),
+                              trailing: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF6B21A8).withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Text(
+                                  'Tag',
+                                  style: TextStyle(
+                                    color: Color(0xFF8B5CF6),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                              onTap: () {
+                                Navigator.pop(context);
+                                widget.onSelected(user);
+                              },
+                            );
+                          },
+                        ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+

@@ -36,32 +36,37 @@ export async function sendMail(to: string, subject: string, html: string, text?:
   // Option 1: Brevo v3 HTTP API (if BREVO_API_KEY is provided)
   const brevoApiKey = process.env.BREVO_API_KEY;
   if (brevoApiKey) {
-    const fromStr = FROM();
-    const match = fromStr.match(/^(.*)<(.*)>$/);
-    const senderName = match ? match[1].trim() : 'ABUAD App';
-    const senderEmail = match ? match[2].trim() : fromStr.trim();
+    try {
+      const fromStr = FROM();
+      const match = fromStr.match(/^(.*)<(.*)>$/);
+      const senderName = match ? match[1].trim() : 'ABUAD App';
+      const senderEmail = match ? match[2].trim() : fromStr.trim();
 
-    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
-      method: 'POST',
-      headers: {
-        'api-key': brevoApiKey,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({
-        sender: { name: senderName, email: senderEmail },
-        to: [{ email: to }],
-        subject,
-        htmlContent: html,
-        textContent: text || '',
-      }),
-    });
+      const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'api-key': brevoApiKey,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          sender: { name: senderName, email: senderEmail },
+          to: [{ email: to }],
+          subject,
+          htmlContent: html,
+          textContent: text || '',
+        }),
+      });
 
-    if (!response.ok) {
-      const errBody = await response.text();
-      throw new Error(`Brevo API Error (${response.status}): ${errBody}`);
+      if (response.ok) {
+        return await response.json();
+      } else {
+        const errBody = await response.text();
+        console.warn(`[emailService] Brevo HTTP API failed (${response.status}): ${errBody}. Falling back to SMTP...`);
+      }
+    } catch (apiErr) {
+      console.warn(`[emailService] Brevo HTTP API exception: ${apiErr}. Falling back to SMTP...`);
     }
-    return response.json();
   }
 
   // Option 2: SMTP via Nodemailer

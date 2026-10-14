@@ -204,6 +204,36 @@ class ApiClient {
           ? filename
           : 'upload_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
+      // 1. Attempt high-speed direct upload to Cloudflare R2 via presigned URL
+      // This bypasses Nginx payload size limits and prevents "Failed to fetch" on large videos/media
+      try {
+        final presignedRes = await post('/media/presigned-url', {
+          'filename': safeFilename,
+          'contentType': contentType,
+        });
+
+        if (presignedRes.statusCode == 200) {
+          final pData = jsonDecode(presignedRes.body);
+          if (pData['success'] == true && pData['data'] != null) {
+            final uploadUrl = pData['data']['uploadUrl'] as String?;
+            final publicUrl = pData['data']['publicUrl'] as String?;
+            if (uploadUrl != null && publicUrl != null) {
+              final putRes = await http.put(
+                Uri.parse(uploadUrl),
+                headers: {'Content-Type': contentType},
+                body: bytes,
+              );
+              if (putRes.statusCode >= 200 && putRes.statusCode < 300) {
+                return publicUrl;
+              }
+            }
+          }
+        }
+      } catch (presignedErr) {
+        debugPrint('Presigned upload failed, falling back to direct multipart: $presignedErr');
+      }
+
+      // 2. Fallback to backend multipart upload route
       Future<http.Response> doUpload() async {
         final request = http.MultipartRequest(
           'POST',

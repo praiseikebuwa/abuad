@@ -117,8 +117,8 @@ class _PostCardState extends ConsumerState<PostCard> {
         ? (post.repostData!['verification_type'] ?? 'none')
         : post.verificationType;
     final displayIsAnonymous = isPureRepost
-        ? (post.repostData!['is_anonymous'] == true)
-        : post.isAnonymous;
+        ? (post.repostData!['is_anonymous'] == true || post.channelId == 'confessions')
+        : (post.isAnonymous || post.channelId == 'confessions');
 
     final videoCaption = (post.mediaAltText?.trim().isNotEmpty ?? false)
         ? post.mediaAltText!.trim()
@@ -223,12 +223,14 @@ class _PostCardState extends ConsumerState<PostCard> {
                   children: [
                     // Left Column: Avatar (Displayed Author)
                     UserAvatar(
-                      userId: authorIdToWatch ?? '',
+                      userId: displayIsAnonymous ? '' : (authorIdToWatch ?? ''),
                       avatarUrl: displayIsAnonymous ? null : effectiveAvatarUrl,
+                      displayName: displayIsAnonymous ? '🎭' : effectiveAuthorName,
                       radius: 22,
                       showStoryRing: !displayIsAnonymous,
+                      enableDefaultTap: !displayIsAnonymous,
                       backgroundColor: displayIsAnonymous
-                          ? (isDark ? Colors.grey[700] : Colors.grey[800])
+                          ? const Color(0xFF6B21A8) // Sleek deep purple for confessions
                           : (isDark ? Colors.grey[800] : Colors.grey[200]),
                       onTap: displayIsAnonymous
                           ? () {} // No-op for anonymous
@@ -262,6 +264,65 @@ class _PostCardState extends ConsumerState<PostCard> {
                                         ),
                                       ),
                                     ),
+                                    if (displayIsAnonymous) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.deepPurple.withValues(alpha: 0.2),
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: Border.all(color: Colors.purpleAccent.withValues(alpha: 0.4)),
+                                        ),
+                                        child: const Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text('🎭', style: TextStyle(fontSize: 10)),
+                                            SizedBox(width: 3),
+                                            Text(
+                                              'Confession',
+                                              style: TextStyle(
+                                                color: Colors.purpleAccent,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 10,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      // Admin-only reveal badge
+                                      Consumer(
+                                        builder: (context, ref, _) {
+                                          final currentUser = ref.watch(currentUserProvider).value;
+                                          if (currentUser?.isAdmin == true &&
+                                              effectiveAuthorName.isNotEmpty &&
+                                              effectiveAuthorName != 'Anonymous Student') {
+                                            return Padding(
+                                              padding: const EdgeInsets.only(left: 6),
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.red.withValues(alpha: 0.15),
+                                                  borderRadius: BorderRadius.circular(6),
+                                                  border: Border.all(color: Colors.redAccent.withValues(alpha: 0.5)),
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    const Icon(Icons.shield_outlined, size: 10, color: Colors.redAccent),
+                                                    const SizedBox(width: 2),
+                                                    Text(
+                                                      'Admin: @$effectiveAuthorName',
+                                                      style: const TextStyle(fontSize: 9, color: Colors.redAccent, fontWeight: FontWeight.bold),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                          return const SizedBox.shrink();
+                                        },
+                                      ),
+                                    ],
                                     if (effectiveIsVerified && !displayIsAnonymous) ...[
                                       const SizedBox(width: 4),
                                       VerificationBadge(
@@ -281,7 +342,7 @@ class _PostCardState extends ConsumerState<PostCard> {
                                       builder: (context, ref, child) {
                                         final currentUserId = ref.watch(authRepositoryProvider).currentUser?.uid ??
                                             ref.watch(currentUserProvider).value?.uid;
-                                        if ((currentUserId != null && currentUserId == post.authorId) || post.isAnonymous) {
+                                        if ((currentUserId != null && currentUserId == post.authorId) || displayIsAnonymous) {
                                           return const SizedBox.shrink();
                                         }
                                         final isFollowingAsync = ref.watch(

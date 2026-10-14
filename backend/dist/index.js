@@ -29,8 +29,9 @@ app.use((0, cors_1.default)({
     origin: true,
     credentials: true,
 }));
-app.use(express_1.default.json());
-app.use(express_1.default.urlencoded({ extended: true }));
+app.options('*', (0, cors_1.default)());
+app.use(express_1.default.json({ limit: '100mb' }));
+app.use(express_1.default.urlencoded({ extended: true, limit: '100mb' }));
 app.use((0, cookie_parser_1.default)());
 // Health check endpoint
 app.get('/health', (req, res) => {
