@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../camera/presentation/camera_screen.dart';
 import '../../../core/theme/app_colors.dart';
@@ -21,6 +22,7 @@ import '../../auth/data/auth_repository.dart';
 import '../../../core/providers/shared_preferences_provider.dart';
 import '../../../core/utils/url_validator.dart';
 import '../../../shared/widgets/user_avatar.dart';
+import '../../../shared/widgets/abuad_markdown.dart';
 import 'widgets/link_preview_card.dart';
 import 'widgets/document_preview_card.dart';
 
@@ -53,6 +55,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   bool _isAnonymous = false;
   String _channelId = 'general';
   String _visibility = 'everyone'; // 'everyone', 'followers'
+  bool _isPreviewMode = false;
 
   // Tagging State
   String? _mentionQuery;
@@ -1108,6 +1111,53 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
+          // Live Markdown Preview / Edit Toggle Chip
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: InkWell(
+                onTap: () {
+                  FocusScope.of(context).unfocus();
+                  setState(() => _isPreviewMode = !_isPreviewMode);
+                },
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: _isPreviewMode
+                        ? AppColors.primaryInk.withValues(alpha: 0.15)
+                        : (isDark ? Colors.white10 : Colors.grey[200]),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: _isPreviewMode
+                          ? AppColors.primaryInk
+                          : Colors.transparent,
+                      width: 1.2,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _isPreviewMode ? Icons.edit_note_rounded : Icons.visibility_outlined,
+                        size: 16,
+                        color: _isPreviewMode ? AppColors.primaryInk : (isDark ? Colors.white70 : Colors.black87),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _isPreviewMode ? 'Edit' : 'Preview',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.bold,
+                          color: _isPreviewMode ? AppColors.primaryInk : (isDark ? Colors.white70 : Colors.black87),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
           // Drafts secondary action button on top-right
           TextButton(
             onPressed: _showDraftsSheet,
@@ -1214,32 +1264,90 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                           ),
                         ),
 
-                        // Borderless Text Input Canvas
-                        CompositedTransformTarget(
-                          link: _layerLink,
-                          child: TextField(
-                            controller: _contentController,
-                            autofocus: true,
-                            maxLines: null,
-                            decoration: InputDecoration(
-                              hintText: "What is happening?!",
-                              border: InputBorder.none,
-                              enabledBorder: InputBorder.none,
-                              focusedBorder: InputBorder.none,
-                              hintStyle: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w400,
-                                color: isDark ? Colors.grey[600] : Colors.grey[400],
+                        // Borderless Text Input Canvas or Live Preview
+                        if (_isPreviewMode)
+                          Container(
+                            width: double.infinity,
+                            margin: const EdgeInsets.symmetric(vertical: 8),
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: isDark ? const Color(0xFF1E2530) : const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
                               ),
-                              contentPadding: const EdgeInsets.symmetric(vertical: 8),
                             ),
-                            style: TextStyle(
-                              fontSize: 19,
-                              height: 1.35,
-                              color: isDark ? Colors.white : Colors.black87,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primaryInk.withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: const Text(
+                                        'LIVE MARKDOWN PREVIEW',
+                                        style: TextStyle(
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 0.6,
+                                          color: AppColors.primaryInk,
+                                        ),
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    Text(
+                                      '${_contentController.text.length} chars',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: isDark ? Colors.white38 : Colors.grey[500],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                AbuadMarkdownContent(
+                                  content: _contentController.text.isEmpty
+                                      ? '*No content written yet. Switch to **Edit** mode to start formatting!*'
+                                      : _contentController.text,
+                                  textStyle: TextStyle(
+                                    fontSize: 17,
+                                    height: 1.4,
+                                    color: isDark ? Colors.white : Colors.black87,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          CompositedTransformTarget(
+                            link: _layerLink,
+                            child: TextField(
+                              controller: _contentController,
+                              autofocus: true,
+                              maxLines: null,
+                              decoration: InputDecoration(
+                                hintText: "What is happening?!",
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                hintStyle: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w400,
+                                  color: isDark ? Colors.grey[600] : Colors.grey[400],
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                              ),
+                              style: TextStyle(
+                                fontSize: 19,
+                                height: 1.35,
+                                color: isDark ? Colors.white : Colors.black87,
+                              ),
                             ),
                           ),
-                        ),
 
                         // Link preview
                         if (_detectedLinkUrl != null)
@@ -1756,6 +1864,9 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
               ],
             ),
           ),
+          // 3.5 Markdown Quick-Action Formatting Toolbar (active in Edit mode)
+          if (!_isPreviewMode)
+            _buildMarkdownFormattingToolbar(isDark),
 
           // 4. Bottom Action Bar (Streamlined & Accessible)
           SafeArea(
@@ -1895,6 +2006,343 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
             shape: BoxShape.circle,
           ),
           child: const Icon(Icons.close, color: Colors.white, size: 18),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMarkdownFormattingToolbar(bool isDark) {
+    return Container(
+      height: 38,
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF141A24) : const Color(0xFFF1F5F9),
+        border: Border(
+          top: BorderSide(
+            color: isDark ? const Color(0xFF1E2530) : Colors.grey[300]!,
+            width: 0.8,
+          ),
+        ),
+      ),
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        children: [
+          _buildMarkdownChip(
+            label: 'B',
+            isBold: true,
+            tooltip: 'Bold (**text**)',
+            onTap: () => _wrapSelection(prefix: '**', suffix: '**', placeholder: 'bold'),
+            isDark: isDark,
+          ),
+          _buildMarkdownChip(
+            label: 'I',
+            isItalic: true,
+            tooltip: 'Italic (*text*)',
+            onTap: () => _wrapSelection(prefix: '*', suffix: '*', placeholder: 'italic'),
+            isDark: isDark,
+          ),
+          _buildMarkdownChip(
+            icon: Icons.link_rounded,
+            tooltip: 'Link [title](url)',
+            onTap: _showLinkInputDialog,
+            isDark: isDark,
+          ),
+          _buildMarkdownChip(
+            icon: Icons.copy_rounded,
+            tooltip: 'Copy Chip [copy:text]',
+            onTap: () => _wrapSelection(prefix: '[copy:', suffix: ']', placeholder: 'code'),
+            isDark: isDark,
+          ),
+          _buildMarkdownChip(
+            label: '</>',
+            isMono: true,
+            tooltip: 'Inline Code (`code`)',
+            onTap: () => _wrapSelection(prefix: '`', suffix: '`', placeholder: 'code'),
+            isDark: isDark,
+          ),
+          _buildMarkdownChip(
+            icon: Icons.lightbulb_outline_rounded,
+            tooltip: 'Callout (> [!NOTE])',
+            onTap: _showCalloutPicker,
+            isDark: isDark,
+          ),
+          _buildMarkdownChip(
+            icon: Icons.check_box_outlined,
+            tooltip: 'Task Checklist (- [ ])',
+            onTap: () => _insertAtLineStart('- [ ] '),
+            isDark: isDark,
+          ),
+          _buildMarkdownChip(
+            icon: Icons.visibility_off_outlined,
+            tooltip: 'Spoiler (||text||)',
+            onTap: () => _wrapSelection(prefix: '||', suffix: '||', placeholder: 'spoiler'),
+            isDark: isDark,
+          ),
+          _buildMarkdownChip(
+            label: '@',
+            tooltip: 'Mention user',
+            onTap: () => _insertText('@'),
+            isDark: isDark,
+          ),
+          _buildMarkdownChip(
+            label: '#',
+            tooltip: 'Hashtag',
+            onTap: () => _insertText('#'),
+            isDark: isDark,
+          ),
+          _buildMarkdownChip(
+            icon: Icons.format_quote_rounded,
+            tooltip: 'Quote (> text)',
+            onTap: () => _insertAtLineStart('> '),
+            isDark: isDark,
+          ),
+          _buildMarkdownChip(
+            icon: Icons.format_list_bulleted_rounded,
+            tooltip: 'Bullet list (- item)',
+            onTap: () => _insertAtLineStart('- '),
+            isDark: isDark,
+          ),
+          _buildMarkdownChip(
+            icon: Icons.format_list_numbered_rounded,
+            tooltip: 'Numbered list (1. item)',
+            onTap: () => _insertAtLineStart('1. '),
+            isDark: isDark,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMarkdownChip({
+    String? label,
+    IconData? icon,
+    bool isBold = false,
+    bool isItalic = false,
+    bool isMono = false,
+    required String tooltip,
+    required VoidCallback onTap,
+    required bool isDark,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E2530) : Colors.white,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.08),
+            ),
+          ),
+          alignment: Alignment.center,
+          child: icon != null
+              ? Icon(
+                  icon,
+                  size: 15,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                )
+              : Text(
+                  label!,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: isBold ? FontWeight.w900 : FontWeight.w600,
+                    fontStyle: isItalic ? FontStyle.italic : FontStyle.normal,
+                    fontFamily: isMono ? 'monospace' : null,
+                    color: isDark ? Colors.white70 : Colors.black87,
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+
+  void _wrapSelection({
+    required String prefix,
+    required String suffix,
+    String placeholder = '',
+  }) {
+    final text = _contentController.text;
+    final selection = _contentController.selection;
+
+    if (!selection.isValid || selection.isCollapsed) {
+      final insertPos = selection.isValid ? selection.baseOffset : text.length;
+      final snippet = '$prefix$placeholder$suffix';
+      final newText = text.replaceRange(insertPos, insertPos, snippet);
+      _contentController.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection(
+          baseOffset: insertPos + prefix.length,
+          extentOffset: insertPos + prefix.length + placeholder.length,
+        ),
+      );
+    } else {
+      final selectedText = text.substring(selection.start, selection.end);
+      final replacement = '$prefix$selectedText$suffix';
+      final newText = text.replaceRange(selection.start, selection.end, replacement);
+      _contentController.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection(
+          baseOffset: selection.start + prefix.length,
+          extentOffset: selection.start + prefix.length + selectedText.length,
+        ),
+      );
+    }
+  }
+
+  void _insertAtLineStart(String prefix) {
+    final text = _contentController.text;
+    final selection = _contentController.selection;
+    final pos = selection.isValid ? selection.baseOffset : text.length;
+
+    int lineStart = text.lastIndexOf('\n', pos - 1);
+    if (lineStart == -1) {
+      lineStart = 0;
+    } else {
+      lineStart += 1;
+    }
+
+    final newText = text.replaceRange(lineStart, lineStart, prefix);
+    final newPos = pos + prefix.length;
+    _contentController.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: newPos),
+    );
+  }
+
+  void _insertText(String snippet) {
+    final text = _contentController.text;
+    final selection = _contentController.selection;
+    final pos = selection.isValid ? selection.baseOffset : text.length;
+    final newText = text.replaceRange(pos, pos, snippet);
+    _contentController.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: pos + snippet.length),
+    );
+  }
+
+  void _showLinkInputDialog() {
+    final selection = _contentController.selection;
+    final text = _contentController.text;
+    String initialLabel = '';
+    if (selection.isValid && !selection.isCollapsed) {
+      initialLabel = text.substring(selection.start, selection.end);
+    }
+
+    final labelCtrl = TextEditingController(text: initialLabel);
+    final urlCtrl = TextEditingController(text: 'https://');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.link_rounded, color: AppColors.primaryInk),
+            SizedBox(width: 8),
+            Text('Insert Link', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: labelCtrl,
+              decoration: InputDecoration(
+                labelText: 'Link Text',
+                hintText: 'e.g. Course Portal',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: urlCtrl,
+              keyboardType: TextInputType.url,
+              decoration: InputDecoration(
+                labelText: 'URL',
+                hintText: 'https://...',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final label = labelCtrl.text.trim().isEmpty ? 'link' : labelCtrl.text.trim();
+              final url = urlCtrl.text.trim();
+              if (url.isNotEmpty) {
+                Navigator.pop(ctx);
+                final linkMarkdown = '[$label]($url)';
+                if (selection.isValid && !selection.isCollapsed) {
+                  final newText = text.replaceRange(selection.start, selection.end, linkMarkdown);
+                  _contentController.value = TextEditingValue(
+                    text: newText,
+                    selection: TextSelection.collapsed(offset: selection.start + linkMarkdown.length),
+                  );
+                } else {
+                  _insertText(linkMarkdown);
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryInk,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Insert'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCalloutPicker() {
+    final callouts = [
+      {'type': 'NOTE', 'label': 'Note (Blue)', 'icon': Icons.info_outline_rounded, 'color': const Color(0xFF3B82F6)},
+      {'type': 'TIP', 'label': 'Tip (Emerald)', 'icon': Icons.lightbulb_outline_rounded, 'color': const Color(0xFF10B981)},
+      {'type': 'IMPORTANT', 'label': 'Important (Purple)', 'icon': Icons.priority_high_rounded, 'color': const Color(0xFF8B5CF6)},
+      {'type': 'WARNING', 'label': 'Warning (Amber)', 'icon': Icons.warning_amber_rounded, 'color': const Color(0xFFF59E0B)},
+      {'type': 'CAUTION', 'label': 'Caution (Red)', 'icon': Icons.gpp_bad_outlined, 'color': const Color(0xFFEF4444)},
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                child: Text(
+                  'Insert Callout / Alert Badge',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+              const Divider(),
+              ...callouts.map((c) => ListTile(
+                leading: Icon(c['icon'] as IconData, color: c['color'] as Color),
+                title: Text(c['label'] as String, style: const TextStyle(fontWeight: FontWeight.w600)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _insertAtLineStart('> [!${c['type']}] ');
+                },
+              )),
+            ],
+          ),
         ),
       ),
     );

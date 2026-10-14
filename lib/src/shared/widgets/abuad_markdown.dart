@@ -47,34 +47,80 @@ class AbuadMarkdownContent extends ConsumerWidget {
     ).merge(textStyle);
     final primaryLinkColor = linkColor ?? (isDark ? const Color(0xFF818CF8) : AppColors.primaryInk);
 
-    // Split content by multi-line code blocks and images if enabled
-    if (enableCodeBlocks || enableImages) {
-      final blocks = _parseBlocks(content);
-      if (blocks.length > 1 || blocks.first.type != _BlockType.text) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: blocks.map((block) {
-            switch (block.type) {
-              case _BlockType.code:
-                return _buildCodeBlockCard(context, block.content, block.language, isDark);
-              case _BlockType.image:
-                return _buildImageCard(context, block.content, isDark);
-              case _BlockType.quote:
-                return _buildQuoteBlock(context, block.content, defaultStyle, isDark);
-              case _BlockType.text:
-                return _buildRichText(
-                  context,
-                  ref,
-                  block.content,
-                  defaultStyle,
-                  primaryLinkColor,
-                  isDark,
-                );
-            }
-          }).toList(),
-        );
-      }
+    // Parse blocks for multiline code blocks, images, alerts, quotes, and lists
+    final blocks = _parseBlocks(content);
+    if (blocks.isEmpty) return const SizedBox.shrink();
+
+    if (blocks.length > 1 || blocks.first.type != _BlockType.text) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: blocks.map((block) {
+          switch (block.type) {
+            case _BlockType.code:
+              return _buildCodeBlockCard(context, block.content, block.language, isDark);
+            case _BlockType.image:
+              return _buildImageCard(context, block.content, isDark);
+            case _BlockType.alert:
+              return _buildAlertCard(
+                context,
+                ref,
+                block.content,
+                block.meta ?? 'NOTE',
+                defaultStyle,
+                primaryLinkColor,
+                isDark,
+              );
+            case _BlockType.quote:
+              return _buildQuoteBlock(
+                context,
+                ref,
+                block.content,
+                defaultStyle,
+                primaryLinkColor,
+                isDark,
+              );
+            case _BlockType.taskItem:
+              return _buildTaskItem(
+                context,
+                ref,
+                block.content,
+                block.isChecked ?? false,
+                defaultStyle,
+                primaryLinkColor,
+                isDark,
+              );
+            case _BlockType.bulletItem:
+              return _buildBulletItem(
+                context,
+                ref,
+                block.content,
+                defaultStyle,
+                primaryLinkColor,
+                isDark,
+              );
+            case _BlockType.numberedItem:
+              return _buildNumberedItem(
+                context,
+                ref,
+                block.meta ?? '1',
+                block.content,
+                defaultStyle,
+                primaryLinkColor,
+                isDark,
+              );
+            case _BlockType.text:
+              return _buildRichText(
+                context,
+                ref,
+                block.content,
+                defaultStyle,
+                primaryLinkColor,
+                isDark,
+              );
+          }
+        }).toList(),
+      );
     }
 
     return _buildRichText(
@@ -127,16 +173,17 @@ class AbuadMarkdownContent extends ConsumerWidget {
     // Master regex for:
     // 1. Markdown links: [Label](url)
     // 2. Explicit copy tag: [copy:content]
-    // 3. Inline code: `code`
-    // 4. Bold: **bold**
-    // 5. Italic: *italic* or _italic_
-    // 6. Strikethrough: ~~strike~~
-    // 7. Plain URLs: https://... or http://...
-    // 8. Mentions: @username
-    // 9. Hashtags: #hashtag
-    // 10. General text & whitespace
+    // 3. Spoilers: ||spoiler||
+    // 4. Inline code: `code`
+    // 5. Bold: **bold**
+    // 6. Italic: *italic* or _italic_
+    // 7. Strikethrough: ~~strike~~
+    // 8. Plain URLs: https://... or http://...
+    // 9. Mentions: @username
+    // 10. Hashtags: #hashtag
+    // 11. General text & whitespace
     final pattern = RegExp(
-      r'(\[(?:copy:)?([^\]]+)\]\((https?://[^\s\)]+)\)|\[copy:([^\]]+)\]|`([^`]+)`|\*\*([^*]+)\*\*|~~([^~]+)~~|(?:\*([^*]+)\*)|(?:_([^_]+)_)|(https?://[^\s]+)|@([a-zA-Z0-9_]+)|#([a-zA-Z0-9_]+)|[^\s\[`*~_@#h]+|\s+|.)',
+      r'(\[(?:copy:)?([^\]]+)\]\((https?://[^\s\)]+)\)|\[copy:([^\]]+)\]|\|\|([^|]+)\|\||`([^`]+)`|\*\*([^*]+)\*\*|~~([^~]+)~~|(?:\*([^*]+)\*)|(?:_([^_]+)_)|(https?://[^\s]+)|@([a-zA-Z0-9_]+)|#([a-zA-Z0-9_]+)|[^\s\[`*~_@#h|]+|\s+|.)',
       multiLine: true,
       caseSensitive: false,
     );
@@ -199,7 +246,24 @@ class AbuadMarkdownContent extends ConsumerWidget {
         continue;
       }
 
-      // 3. Inline Code: `code`
+      // 3. Spoilers: ||content||
+      final spoilerMatch = RegExp(r'^\|\|([^|]+)\|\|$').firstMatch(raw);
+      if (spoilerMatch != null) {
+        final spoilerVal = spoilerMatch.group(1)!;
+        spans.add(
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: _SpoilerChip(
+              text: spoilerVal,
+              textStyle: baseStyle,
+              isDark: isDark,
+            ),
+          ),
+        );
+        continue;
+      }
+
+      // 4. Inline Code: `code`
       final inlineCodeMatch = RegExp(r'^`([^`]+)`$').firstMatch(raw);
       if (inlineCodeMatch != null) {
         final codeVal = inlineCodeMatch.group(1)!;
@@ -513,8 +577,10 @@ class AbuadMarkdownContent extends ConsumerWidget {
 
   Widget _buildQuoteBlock(
     BuildContext context,
+    WidgetRef ref,
     String quote,
     TextStyle baseStyle,
+    Color linkColor,
     bool isDark,
   ) {
     return Container(
@@ -528,12 +594,188 @@ class AbuadMarkdownContent extends ConsumerWidget {
           ),
         ),
       ),
-      child: Text(
+      child: _buildRichText(
+        context,
+        ref,
         quote,
-        style: baseStyle.copyWith(
+        baseStyle.copyWith(
           fontStyle: FontStyle.italic,
           color: isDark ? Colors.grey[300] : Colors.grey[700],
         ),
+        linkColor,
+        isDark,
+      ),
+    );
+  }
+
+  Widget _buildAlertCard(
+    BuildContext context,
+    WidgetRef ref,
+    String content,
+    String alertType,
+    TextStyle baseStyle,
+    Color linkColor,
+    bool isDark,
+  ) {
+    final type = alertType.toUpperCase();
+    Color accent;
+    IconData icon;
+
+    switch (type) {
+      case 'TIP':
+        accent = const Color(0xFF10B981);
+        icon = Icons.lightbulb_outline_rounded;
+        break;
+      case 'IMPORTANT':
+        accent = const Color(0xFF8B5CF6);
+        icon = Icons.priority_high_rounded;
+        break;
+      case 'WARNING':
+        accent = const Color(0xFFF59E0B);
+        icon = Icons.warning_amber_rounded;
+        break;
+      case 'CAUTION':
+        accent = const Color(0xFFEF4444);
+        icon = Icons.gpp_bad_outlined;
+        break;
+      case 'NOTE':
+      default:
+        accent = const Color(0xFF3B82F6);
+        icon = Icons.info_outline_rounded;
+        break;
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: isDark ? 0.12 : 0.07),
+        borderRadius: BorderRadius.circular(10),
+        border: Border(
+          left: BorderSide(color: accent, width: 3.5),
+          top: BorderSide(color: accent.withValues(alpha: 0.15)),
+          right: BorderSide(color: accent.withValues(alpha: 0.15)),
+          bottom: BorderSide(color: accent.withValues(alpha: 0.15)),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 16, color: accent),
+              const SizedBox(width: 6),
+              Text(
+                type,
+                style: TextStyle(
+                  color: accent,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12,
+                  letterSpacing: 0.8,
+                ),
+              ),
+            ],
+          ),
+          if (content.trim().isNotEmpty) ...[
+            const SizedBox(height: 5),
+            _buildRichText(
+              context,
+              ref,
+              content.trim(),
+              baseStyle.copyWith(
+                fontSize: (baseStyle.fontSize ?? 15) * 0.94,
+                color: isDark ? Colors.grey[200] : Colors.grey[800],
+              ),
+              linkColor,
+              isDark,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTaskItem(
+    BuildContext context,
+    WidgetRef ref,
+    String text,
+    bool initialChecked,
+    TextStyle baseStyle,
+    Color linkColor,
+    bool isDark,
+  ) {
+    return _TaskItemWidget(
+      initialChecked: initialChecked,
+      text: text,
+      baseStyle: baseStyle,
+      linkColor: linkColor,
+      isDark: isDark,
+      richTextBuilder: (t) => _buildRichText(context, ref, t, baseStyle, linkColor, isDark),
+    );
+  }
+
+  Widget _buildBulletItem(
+    BuildContext context,
+    WidgetRef ref,
+    String text,
+    TextStyle baseStyle,
+    Color linkColor,
+    bool isDark,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2.5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(top: 8, right: 10, left: 4),
+            width: 5.5,
+            height: 5.5,
+            decoration: BoxDecoration(
+              color: linkColor,
+              shape: BoxShape.circle,
+            ),
+          ),
+          Expanded(
+            child: _buildRichText(context, ref, text, baseStyle, linkColor, isDark),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNumberedItem(
+    BuildContext context,
+    WidgetRef ref,
+    String number,
+    String text,
+    TextStyle baseStyle,
+    Color linkColor,
+    bool isDark,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2.5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 22,
+            margin: const EdgeInsets.only(right: 6),
+            alignment: Alignment.topRight,
+            child: Text(
+              '$number.',
+              style: baseStyle.copyWith(
+                fontWeight: FontWeight.bold,
+                color: linkColor,
+              ),
+            ),
+          ),
+          Expanded(
+            child: _buildRichText(context, ref, text, baseStyle, linkColor, isDark),
+          ),
+        ],
       ),
     );
   }
@@ -624,24 +866,26 @@ class AbuadMarkdownContent extends ConsumerWidget {
     int currentIndex = 0;
 
     // Scan for code blocks
-    final codeMatches = codeBlockRegex.allMatches(rawText);
-    for (final match in codeMatches) {
-      if (match.start > currentIndex) {
-        final textBefore = rawText.substring(currentIndex, match.start).trim();
-        if (textBefore.isNotEmpty) {
-          _appendSubBlocks(blocks, textBefore, imageRegex);
+    if (enableCodeBlocks) {
+      final codeMatches = codeBlockRegex.allMatches(rawText);
+      for (final match in codeMatches) {
+        if (match.start > currentIndex) {
+          final textBefore = rawText.substring(currentIndex, match.start);
+          if (textBefore.trim().isNotEmpty) {
+            _appendSubBlocks(blocks, textBefore, imageRegex);
+          }
         }
-      }
 
-      final lang = match.group(1)?.trim();
-      final code = match.group(2) ?? '';
-      blocks.add(_ParsedBlock(type: _BlockType.code, content: code, language: lang));
-      currentIndex = match.end;
+        final lang = match.group(1)?.trim();
+        final code = match.group(2) ?? '';
+        blocks.add(_ParsedBlock(type: _BlockType.code, content: code, language: lang));
+        currentIndex = match.end;
+      }
     }
 
     if (currentIndex < rawText.length) {
-      final remaining = rawText.substring(currentIndex).trim();
-      if (remaining.isNotEmpty) {
+      final remaining = rawText.substring(currentIndex);
+      if (remaining.trim().isNotEmpty) {
         _appendSubBlocks(blocks, remaining, imageRegex);
       }
     }
@@ -650,61 +894,311 @@ class AbuadMarkdownContent extends ConsumerWidget {
   }
 
   void _appendSubBlocks(List<_ParsedBlock> blocks, String text, RegExp imageRegex) {
-    final imageMatches = imageRegex.allMatches(text);
-    if (imageMatches.isEmpty) {
-      // Check blockquote
-      if (text.startsWith('> ') || text.contains('\n> ')) {
-        final lines = text.split('\n');
-        final buffer = StringBuffer();
-        for (final line in lines) {
-          if (line.trim().startsWith('>')) {
-            if (buffer.isNotEmpty) {
-              blocks.add(_ParsedBlock(type: _BlockType.text, content: buffer.toString().trim()));
-              buffer.clear();
-            }
-            blocks.add(_ParsedBlock(type: _BlockType.quote, content: line.replaceFirst(RegExp(r'^\s*>\s*'), '')));
-          } else {
-            buffer.writeln(line);
+    if (enableImages) {
+      final imageMatches = imageRegex.allMatches(text);
+      if (imageMatches.isNotEmpty) {
+        int cur = 0;
+        for (final m in imageMatches) {
+          if (m.start > cur) {
+            final t = text.substring(cur, m.start);
+            if (t.trim().isNotEmpty) _parseLinesIntoBlocks(blocks, t);
           }
+          final imgUrl = m.group(2) ?? '';
+          if (imgUrl.isNotEmpty) {
+            blocks.add(_ParsedBlock(type: _BlockType.image, content: imgUrl));
+          }
+          cur = m.end;
         }
-        if (buffer.isNotEmpty && buffer.toString().trim().isNotEmpty) {
-          blocks.add(_ParsedBlock(type: _BlockType.text, content: buffer.toString().trim()));
+        if (cur < text.length) {
+          final t = text.substring(cur);
+          if (t.trim().isNotEmpty) _parseLinesIntoBlocks(blocks, t);
         }
-      } else {
-        blocks.add(_ParsedBlock(type: _BlockType.text, content: text));
+        return;
       }
-      return;
     }
 
-    int cur = 0;
-    for (final m in imageMatches) {
-      if (m.start > cur) {
-        final t = text.substring(cur, m.start).trim();
-        if (t.isNotEmpty) blocks.add(_ParsedBlock(type: _BlockType.text, content: t));
+    _parseLinesIntoBlocks(blocks, text);
+  }
+
+  void _parseLinesIntoBlocks(List<_ParsedBlock> blocks, String text) {
+    final lines = text.split('\n');
+    final buffer = StringBuffer();
+
+    void flushBuffer() {
+      final str = buffer.toString().trim();
+      if (str.isNotEmpty) {
+        blocks.add(_ParsedBlock(type: _BlockType.text, content: str));
       }
-      final imgUrl = m.group(2) ?? '';
-      if (imgUrl.isNotEmpty) {
-        blocks.add(_ParsedBlock(type: _BlockType.image, content: imgUrl));
+      buffer.clear();
+    }
+
+    int i = 0;
+    while (i < lines.length) {
+      final line = lines[i];
+      final trimmed = line.trim();
+
+      // 1. GitHub Alert callouts: > [!NOTE] or > [!TIP] etc.
+      final alertMatch = RegExp(r'^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](.*)$', caseSensitive: false).firstMatch(trimmed);
+      if (alertMatch != null) {
+        flushBuffer();
+        final alertType = alertMatch.group(1)!.toUpperCase();
+        final firstLineExtra = alertMatch.group(2)?.trim() ?? '';
+        final alertLines = <String>[];
+        if (firstLineExtra.isNotEmpty) {
+          alertLines.add(firstLineExtra);
+        }
+        i++;
+        while (i < lines.length && lines[i].trim().startsWith('>')) {
+          final nextLine = lines[i].trim().replaceFirst(RegExp(r'^>\s?'), '');
+          alertLines.add(nextLine);
+          i++;
+        }
+        blocks.add(_ParsedBlock(
+          type: _BlockType.alert,
+          content: alertLines.join('\n'),
+          meta: alertType,
+        ));
+        continue;
       }
-      cur = m.end;
+
+      // 2. Standard blockquote: > quote
+      if (trimmed.startsWith('>')) {
+        flushBuffer();
+        final quoteLines = <String>[];
+        while (i < lines.length && lines[i].trim().startsWith('>')) {
+          quoteLines.add(lines[i].trim().replaceFirst(RegExp(r'^>\s?'), ''));
+          i++;
+        }
+        blocks.add(_ParsedBlock(
+          type: _BlockType.quote,
+          content: quoteLines.join('\n'),
+        ));
+        continue;
+      }
+
+      // 3. Task checklist items: - [ ] or - [x]
+      final taskMatch = RegExp(r'^\s*-\s*\[([ xX])\]\s+(.*)$').firstMatch(line);
+      if (taskMatch != null) {
+        flushBuffer();
+        final isChecked = taskMatch.group(1)!.toLowerCase() == 'x';
+        final taskText = taskMatch.group(2)!;
+        blocks.add(_ParsedBlock(
+          type: _BlockType.taskItem,
+          content: taskText,
+          isChecked: isChecked,
+        ));
+        i++;
+        continue;
+      }
+
+      // 4. Bullet lists: - item or * item
+      final bulletMatch = RegExp(r'^\s*[-*]\s+(.*)$').firstMatch(line);
+      if (bulletMatch != null) {
+        flushBuffer();
+        blocks.add(_ParsedBlock(
+          type: _BlockType.bulletItem,
+          content: bulletMatch.group(1)!,
+        ));
+        i++;
+        continue;
+      }
+
+      // 5. Numbered lists: 1. item
+      final numMatch = RegExp(r'^\s*(\d+)\.\s+(.*)$').firstMatch(line);
+      if (numMatch != null) {
+        flushBuffer();
+        blocks.add(_ParsedBlock(
+          type: _BlockType.numberedItem,
+          content: numMatch.group(2)!,
+          meta: numMatch.group(1)!,
+        ));
+        i++;
+        continue;
+      }
+
+      // Normal text line
+      buffer.writeln(line);
+      i++;
     }
-    if (cur < text.length) {
-      final t = text.substring(cur).trim();
-      if (t.isNotEmpty) blocks.add(_ParsedBlock(type: _BlockType.text, content: t));
-    }
+
+    flushBuffer();
   }
 }
 
-enum _BlockType { text, code, image, quote }
+enum _BlockType {
+  text,
+  code,
+  image,
+  alert,
+  quote,
+  taskItem,
+  bulletItem,
+  numberedItem,
+}
 
 class _ParsedBlock {
   final _BlockType type;
   final String content;
   final String? language;
+  final String? meta;
+  final bool? isChecked;
 
   _ParsedBlock({
     required this.type,
     required this.content,
     this.language,
+    this.meta,
+    this.isChecked,
   });
+}
+
+class _SpoilerChip extends StatefulWidget {
+  final String text;
+  final TextStyle textStyle;
+  final bool isDark;
+
+  const _SpoilerChip({
+    required this.text,
+    required this.textStyle,
+    required this.isDark,
+  });
+
+  @override
+  State<_SpoilerChip> createState() => _SpoilerChipState();
+}
+
+class _SpoilerChipState extends State<_SpoilerChip> {
+  bool _revealed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    const bgDark = Color(0xFF334155);
+    const bgLight = Color(0xFFCBD5E1);
+
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        setState(() {
+          _revealed = !_revealed;
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+        decoration: BoxDecoration(
+          color: _revealed
+              ? (widget.isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9))
+              : (widget.isDark ? bgDark : bgLight),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: _revealed
+                ? (widget.isDark ? Colors.white24 : Colors.black12)
+                : Colors.transparent,
+            width: 1,
+          ),
+        ),
+        child: _revealed
+            ? Text(
+                widget.text,
+                style: widget.textStyle.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+              )
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.visibility_off_rounded,
+                    size: (widget.textStyle.fontSize ?? 14) * 0.85,
+                    color: widget.isDark ? Colors.white70 : Colors.black54,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Spoiler',
+                    style: TextStyle(
+                      fontSize: (widget.textStyle.fontSize ?? 14) * 0.85,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.3,
+                      color: widget.isDark ? Colors.white70 : Colors.black54,
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+class _TaskItemWidget extends StatefulWidget {
+  final bool initialChecked;
+  final String text;
+  final TextStyle baseStyle;
+  final Color linkColor;
+  final bool isDark;
+  final Widget Function(String text) richTextBuilder;
+
+  const _TaskItemWidget({
+    required this.initialChecked,
+    required this.text,
+    required this.baseStyle,
+    required this.linkColor,
+    required this.isDark,
+    required this.richTextBuilder,
+  });
+
+  @override
+  State<_TaskItemWidget> createState() => _TaskItemWidgetState();
+}
+
+class _TaskItemWidgetState extends State<_TaskItemWidget> {
+  late bool _checked = widget.initialChecked;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: GestureDetector(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          setState(() {
+            _checked = !_checked;
+          });
+        },
+        behavior: HitTestBehavior.opaque,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              width: 19,
+              height: 19,
+              margin: const EdgeInsets.only(top: 2, right: 9),
+              decoration: BoxDecoration(
+                color: _checked
+                    ? AppColors.primaryInk
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(5),
+                border: Border.all(
+                  color: _checked
+                      ? AppColors.primaryInk
+                      : (widget.isDark ? Colors.white38 : Colors.grey[400]!),
+                  width: 1.8,
+                ),
+              ),
+              child: _checked
+                  ? const Icon(Icons.check, size: 13, color: Colors.white)
+                  : null,
+            ),
+            Expanded(
+              child: Opacity(
+                opacity: _checked ? 0.6 : 1.0,
+                child: widget.richTextBuilder(widget.text),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

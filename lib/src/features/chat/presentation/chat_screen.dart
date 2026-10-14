@@ -33,6 +33,7 @@ import '../../../shared/widgets/user_avatar.dart';
 import './widgets/shared_post_preview.dart';
 import '../../../core/services/media_saver.dart';
 import '../../marketplace/data/marketplace_repository.dart';
+import '../../../shared/widgets/abuad_markdown.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String channelId;
@@ -1082,53 +1083,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Widget _buildRichText(String text, bool isMe, bool isDark) {
-    final List<TextSpan> spans = [];
-    final pattern = RegExp(r"(@\w+)");
-    int start = 0;
-
-    for (final match in pattern.allMatches(text)) {
-      if (match.start > start) {
-        spans.add(
-          TextSpan(
-            text: text.substring(start, match.start),
-            style: TextStyle(
-              color: isMe
-                  ? Colors.white
-                  : (isDark ? Colors.white : Colors.black87),
-              fontSize: 16,
-            ),
-          ),
-        );
-      }
-
-      spans.add(
-        TextSpan(
-          text: match.group(0),
-          style: const TextStyle(
-            color: AppColors.secondaryTeal,
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-          ),
-        ),
-      );
-      start = match.end;
-    }
-
-    if (start < text.length) {
-      spans.add(
-        TextSpan(
-          text: text.substring(start),
-          style: TextStyle(
-            color: isMe
-                ? Colors.white
-                : (isDark ? Colors.white : Colors.black87),
-            fontSize: 16,
-          ),
-        ),
-      );
-    }
-
-    return RichText(text: TextSpan(children: spans));
+    return AbuadMarkdownContent(
+      content: text,
+      textStyle: TextStyle(
+        color: isMe
+            ? Colors.white
+            : (isDark ? Colors.white : const Color(0xFF0F172A)),
+        fontSize: 15.5,
+      ),
+      linkColor: isMe ? const Color(0xFF67E8F9) : null,
+      enableCodeBlocks: true,
+      enableImages: true,
+    );
   }
 
   void _viewImage(String url) {

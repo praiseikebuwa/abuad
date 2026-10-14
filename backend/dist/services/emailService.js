@@ -14,7 +14,7 @@ const nodemailer_1 = __importDefault(require("nodemailer"));
  *   SMTP_PORT   (default: 587)
  *   SMTP_USER   Brevo SMTP login, e.g. xxxxxx@smtp-brevo.com
  *   SMTP_PASS   Brevo SMTP key (xsmtpsib-...)
- *   MAIL_FROM   Verified sender, e.g. "ABUAD App <no-reply@abuadapp.com.ng>"
+ *   MAIL_FROM   Verified sender, e.g. "ABUAD App <noreply@abuadapp.com.ng>"
  */
 let transporter = null;
 function getTransporter() {
@@ -34,7 +34,7 @@ function getTransporter() {
     });
     return transporter;
 }
-const FROM = () => process.env.MAIL_FROM || 'ABUAD App <no-reply@abuadapp.com.ng>';
+const FROM = () => process.env.MAIL_FROM || 'ABUAD App <noreply@abuadapp.com.ng>';
 async function sendMail(to, subject, html, text) {
     return getTransporter().sendMail({ from: FROM(), to, subject, html, text });
 }
