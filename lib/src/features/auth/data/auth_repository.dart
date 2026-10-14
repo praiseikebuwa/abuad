@@ -156,17 +156,38 @@ class AuthRepository {
   /// Requests a reset link by email (sent by the backend via Brevo SMTP).
   /// Returns the server's confirmation message; throws with a readable message on failure.
   Future<String> sendPasswordResetEmail(String email) async {
-    final response = await ApiClient.post('/auth/forgot-password', {'email': email});
-    Map<String, dynamic> data = {};
     try {
-      data = jsonDecode(response.body) as Map<String, dynamic>;
-    } catch (_) {}
+      final response = await ApiClient.post('/auth/forgot-password', {'email': email})
+          .timeout(const Duration(seconds: 15));
+      Map<String, dynamic> data = {};
+      try {
+        data = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {}
 
-    if (response.statusCode == 200 && data['success'] == true) {
-      return (data['message'] as String?) ??
-          'If an account exists for that email, a reset link has been sent.';
+      if (response.statusCode == 200 && data['success'] == true) {
+        return (data['message'] as String?) ??
+            'If an account exists for that email, a reset link has been sent.';
+      }
+
+      final errorMsg = data['error'] ?? data['details'] ?? data['message'];
+      if (errorMsg != null && errorMsg.toString().isNotEmpty) {
+        throw Exception(errorMsg.toString());
+      }
+
+      if (response.statusCode == 504 || response.statusCode == 502) {
+        throw Exception('The email service is taking longer than expected. Please try again shortly.');
+      }
+
+      throw Exception('Could not send reset email (code ${response.statusCode}). Please try again.');
+    } on TimeoutException {
+      throw Exception('Request timed out. Please check your internet connection and try again.');
+    } catch (e) {
+      final str = e.toString().replaceFirst('Exception: ', '');
+      if (str.contains('Client load failed') || str.contains('XMLHttpRequest error') || str.contains('SocketException')) {
+        throw Exception('Unable to connect to the authentication server. Please check your network connection.');
+      }
+      throw Exception(str);
     }
-    throw Exception(data['error'] ?? 'Could not send reset email. Please try again.');
   }
 }
 

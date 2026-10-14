@@ -18,6 +18,7 @@ import '../../../core/services/firebase_storage_service.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import '../../feed/data/bookmark_folders_service.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   final String? userId; // If null, shows current user
@@ -2134,6 +2135,8 @@ class _UserSavedPostsList extends ConsumerStatefulWidget {
 
 class _UserSavedPostsListState extends ConsumerState<_UserSavedPostsList>
     with AutomaticKeepAliveClientMixin {
+  String _selectedFolderId = 'all';
+
   @override
   bool get wantKeepAlive => true;
 
@@ -2141,6 +2144,7 @@ class _UserSavedPostsListState extends ConsumerState<_UserSavedPostsList>
   Widget build(BuildContext context) {
     super.build(context);
     final savedPostsAsync = ref.watch(savedPostsProvider(widget.userId));
+    final folders = ref.watch(bookmarkFoldersProvider);
 
     return savedPostsAsync.when(
       data: (savedPosts) {
@@ -2152,17 +2156,26 @@ class _UserSavedPostsListState extends ConsumerState<_UserSavedPostsList>
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
-                    Icons.bookmark_border,
+                    Icons.bookmark_border_rounded,
                     size: 64,
                     color: widget.isDark ? Colors.grey[700] : Colors.grey[300],
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    "No saved posts",
+                    "No saved posts yet",
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
-                      color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
+                      color: widget.isDark ? Colors.grey[400] : Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    "Tap the bookmark icon on any post to save it for later and organize into folders.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: widget.isDark ? Colors.grey[600] : Colors.grey[500],
                     ),
                   ),
                 ],
@@ -2171,17 +2184,165 @@ class _UserSavedPostsListState extends ConsumerState<_UserSavedPostsList>
           );
         }
 
-        return ListView.separated(
-          padding: EdgeInsets.zero,
-          itemCount: savedPosts.length,
-          separatorBuilder: (context, index) => Divider(
-            height: 1,
-            color: widget.isDark ? Colors.grey[900] : Colors.grey[200],
-          ),
-          itemBuilder: (context, index) {
-            final post = savedPosts[index];
-            return PostCard(post: post);
-          },
+        // Filter posts according to selected folder
+        final List<domain.Post> displayedPosts;
+        if (_selectedFolderId == 'all') {
+          displayedPosts = savedPosts;
+        } else {
+          final targetFolder = folders.firstWhere(
+            (f) => f.id == _selectedFolderId,
+            orElse: () => BookmarkFolder(id: '', name: '', emoji: '', postIds: {}),
+          );
+          displayedPosts = savedPosts.where((p) => targetFolder.postIds.contains(p.id)).toList();
+        }
+
+        return Column(
+          children: [
+            // Top Collections / Folders Bar
+            Container(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: widget.isDark ? Colors.white10 : Colors.black12,
+                    width: 0.5,
+                  ),
+                ),
+              ),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    // 'All' Filter Chip
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: FilterChip(
+                        selected: _selectedFolderId == 'all',
+                        avatar: const Text('📁', style: TextStyle(fontSize: 14)),
+                        label: Text('All (${savedPosts.length})'),
+                        selectedColor: AppColors.secondaryTeal.withValues(alpha: 0.2),
+                        checkmarkColor: AppColors.secondaryTeal,
+                        labelStyle: TextStyle(
+                          color: _selectedFolderId == 'all'
+                              ? AppColors.secondaryTeal
+                              : (widget.isDark ? Colors.white70 : Colors.black87),
+                          fontWeight: _selectedFolderId == 'all' ? FontWeight.bold : FontWeight.w500,
+                          fontSize: 13,
+                        ),
+                        side: BorderSide(
+                          color: _selectedFolderId == 'all'
+                              ? AppColors.secondaryTeal
+                              : (widget.isDark ? Colors.white12 : Colors.black12),
+                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        onSelected: (_) {
+                          HapticFeedback.selectionClick();
+                          setState(() => _selectedFolderId = 'all');
+                        },
+                      ),
+                    ),
+
+                    // Folders Chips
+                    ...folders.map((folder) {
+                      final isSelected = _selectedFolderId == folder.id;
+                      final count = savedPosts.where((p) => folder.postIds.contains(p.id)).length;
+
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: FilterChip(
+                          selected: isSelected,
+                          avatar: Text(folder.emoji, style: const TextStyle(fontSize: 14)),
+                          label: Text('${folder.name} ($count)'),
+                          selectedColor: AppColors.secondaryTeal.withValues(alpha: 0.2),
+                          checkmarkColor: AppColors.secondaryTeal,
+                          labelStyle: TextStyle(
+                            color: isSelected
+                                ? AppColors.secondaryTeal
+                                : (widget.isDark ? Colors.white70 : Colors.black87),
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                            fontSize: 13,
+                          ),
+                          side: BorderSide(
+                            color: isSelected
+                                ? AppColors.secondaryTeal
+                                : (widget.isDark ? Colors.white12 : Colors.black12),
+                          ),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                          onSelected: (_) {
+                            HapticFeedback.selectionClick();
+                            setState(() => _selectedFolderId = folder.id);
+                          },
+                        ),
+                      );
+                    }),
+
+                    // + New Folder Button
+                    ActionChip(
+                      avatar: const Icon(Icons.add_rounded, size: 16, color: AppColors.secondaryTeal),
+                      label: const Text('New Folder', style: TextStyle(color: AppColors.secondaryTeal, fontSize: 13)),
+                      side: BorderSide(color: AppColors.secondaryTeal.withValues(alpha: 0.4)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      backgroundColor: Colors.transparent,
+                      onPressed: () {
+                        HapticFeedback.lightImpact();
+                        _showCreateFolderDialog();
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Posts List or Folder Empty State
+            Expanded(
+              child: displayedPosts.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32.0),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.folder_open_rounded,
+                              size: 48,
+                              color: widget.isDark ? Colors.grey[700] : Colors.grey[300],
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              "No posts in this collection yet",
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: widget.isDark ? Colors.grey[400] : Colors.grey[600],
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              "Tap and hold the bookmark icon on any post to add it here.",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: widget.isDark ? Colors.grey[600] : Colors.grey[500],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: EdgeInsets.zero,
+                      itemCount: displayedPosts.length,
+                      separatorBuilder: (context, index) => Divider(
+                        height: 1,
+                        color: widget.isDark ? Colors.grey[900] : Colors.grey[200],
+                      ),
+                      itemBuilder: (context, index) {
+                        final post = displayedPosts[index];
+                        return PostCard(post: post);
+                      },
+                    ),
+            ),
+          ],
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -2190,4 +2351,78 @@ class _UserSavedPostsListState extends ConsumerState<_UserSavedPostsList>
       ),
     );
   }
+
+  void _showCreateFolderDialog() {
+    final controller = TextEditingController();
+    String emoji = '📁';
+    final emojis = ['📁', '📚', '🎟️', '🛍️', '😂', '⭐', '💡', '🔥', '🎵', '💻', '🎨'];
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('Create New Collection', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: emojis.map((e) {
+                    final isSel = emoji == e;
+                    return GestureDetector(
+                      onTap: () => setDialogState(() => emoji = e),
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: isSel ? AppColors.secondaryTeal.withValues(alpha: 0.2) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(10),
+                          border: isSel ? Border.all(color: AppColors.secondaryTeal) : null,
+                        ),
+                        child: Text(e, style: const TextStyle(fontSize: 22)),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                decoration: InputDecoration(
+                  hintText: 'Collection name (e.g. Internships)',
+                  filled: true,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogCtx).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final name = controller.text.trim();
+                if (name.isNotEmpty) {
+                  ref.read(bookmarkFoldersProvider.notifier).createFolder(name, emoji: emoji);
+                  Navigator.of(dialogCtx).pop();
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.secondaryTeal,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('Create'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
+

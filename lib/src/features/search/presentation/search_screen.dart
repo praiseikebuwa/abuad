@@ -30,6 +30,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
   final _searchController = TextEditingController();
   late TabController _tabController;
   String _query = '';
+  bool _hasSubmitted = false;
 
   @override
   void initState() {
@@ -75,11 +76,13 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
               children: [
                 _buildSearchHeader(isDark),
 
-                // Content View (Discover or Search Results)
+                // Content View (Discover, Autocomplete suggestions, or Full Search Results)
                 Expanded(
                   child: _query.isEmpty
                       ? _buildDiscoverView(isDark)
-                      : _buildSearchResultsView(isDark),
+                      : (_hasSubmitted
+                          ? _buildSearchResultsView(isDark)
+                          : _buildAutocompleteSuggestionsView(isDark)),
                 ),
               ],
             ),
@@ -131,48 +134,62 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
                         ),
                       ),
                       child: TextField(
-                  controller: _searchController,
-                  onChanged: (value) => setState(() => _query = value),
-                  onSubmitted: (value) {
-                    if (value.isNotEmpty) {
-                      ref.read(searchHistoryProvider.notifier).addQuery(value.trim());
-                    }
-                  },
-                  style: const TextStyle(fontSize: 16),
-                  decoration: InputDecoration(
-                    hintText: 'Search Nest, people, groups...',
-                    hintStyle: TextStyle(
-                      color: isDark ? Colors.grey[400] : Colors.grey[600],
-                      fontSize: 15,
+                        controller: _searchController,
+                        onChanged: (value) {
+                          setState(() {
+                            _query = value;
+                            _hasSubmitted = false;
+                          });
+                          if (value.startsWith('@') && _tabController.index != 2) {
+                            _tabController.animateTo(2);
+                          } else if (value.startsWith('#') && _tabController.index != 3) {
+                            _tabController.animateTo(3);
+                          }
+                        },
+                        onSubmitted: (value) {
+                          if (value.isNotEmpty) {
+                            ref.read(searchHistoryProvider.notifier).addQuery(value.trim());
+                            setState(() => _hasSubmitted = true);
+                          }
+                        },
+                        style: const TextStyle(fontSize: 16),
+                        decoration: InputDecoration(
+                          hintText: 'Search Nest, people, groups...',
+                          hintStyle: TextStyle(
+                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            fontSize: 15,
+                          ),
+                          prefixIcon: Icon(
+                            Icons.search_rounded,
+                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            size: 22,
+                          ),
+                          suffixIcon: _query.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.cancel_rounded, size: 20),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    setState(() {
+                                      _query = '';
+                                      _hasSubmitted = false;
+                                    });
+                                  },
+                                )
+                              : null,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                        ),
+                      ),
                     ),
-                    prefixIcon: Icon(
-                      Icons.search_rounded,
-                      color: isDark ? Colors.grey[400] : Colors.grey[600],
-                      size: 22,
-                    ),
-                    suffixIcon: _query.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.cancel_rounded, size: 20),
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() => _query = '');
-                            },
-                          )
-                        : null,
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
                   ),
                 ),
               ),
-            ),
+            ],
           ),
-        ),
-      ],
-    ),
 
-          // Categorized Search Tabs (Shown only when searching)
-          if (_query.isNotEmpty) ...[
+          // Categorized Search Tabs (Shown only when searching and submitted)
+          if (_query.isNotEmpty && _hasSubmitted) ...[
             const SizedBox(height: 8),
             Theme(
               data: Theme.of(context).copyWith(
@@ -314,6 +331,339 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
     );
   }
 
+  Widget _buildAutocompleteSuggestionsView(bool isDark) {
+    final cleanQuery = _query.trim().toLowerCase();
+    final searchHistory = ref.watch(searchHistoryProvider);
+    final matchingHistory = searchHistory
+        .where((h) => h.toLowerCase().contains(cleanQuery) && h.toLowerCase() != cleanQuery)
+        .take(3)
+        .toList();
+
+    final trendingTagsAsync = ref.watch(trendingTagsProvider);
+    final rawTagQuery = cleanQuery.replaceAll('#', '');
+    final matchingTags = (trendingTagsAsync.value ?? [])
+        .where((t) => (t['tag'] as String).toLowerCase().contains(rawTagQuery))
+        .take(4)
+        .toList();
+
+    final userRepo = ref.watch(userRepositoryProvider);
+    final cleanUserQuery = cleanQuery.replaceAll('@', '');
+
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      children: [
+        // 1. Direct Search Action Tile
+        Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: AppColors.secondaryTeal.withValues(alpha: 0.3),
+              width: 1,
+            ),
+          ),
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.secondaryTeal.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.search_rounded,
+                color: AppColors.secondaryTeal,
+                size: 20,
+              ),
+            ),
+            title: RichText(
+              text: TextSpan(
+                style: TextStyle(
+                  fontSize: 15,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+                children: [
+                  const TextSpan(text: 'Search Nest for '),
+                  TextSpan(
+                    text: '"$_query"',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.secondaryTeal,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            trailing: const Icon(
+              Icons.arrow_forward_ios_rounded,
+              size: 14,
+              color: Colors.grey,
+            ),
+            onTap: () {
+              HapticFeedback.lightImpact();
+              ref.read(searchHistoryProvider.notifier).addQuery(_query.trim());
+              setState(() => _hasSubmitted = true);
+            },
+          ),
+        ),
+
+        // 2. Matching Hashtags Section
+        if (matchingTags.isNotEmpty || cleanQuery.startsWith('#')) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 6),
+            child: Row(
+              children: [
+                const Icon(Icons.tag_rounded, size: 16, color: AppColors.secondaryTeal),
+                const SizedBox(width: 6),
+                Text(
+                  'HASHTAGS',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.02),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              children: [
+                // If user typed a custom hashtag not in top list, allow navigating to it directly
+                if (cleanQuery.startsWith('#') &&
+                    cleanQuery.length > 1 &&
+                    !matchingTags.any((t) => (t['tag'] as String).toLowerCase() == rawTagQuery)) ...[
+                  ListTile(
+                    leading: const CircleAvatar(
+                      radius: 16,
+                      backgroundColor: Colors.transparent,
+                      child: Icon(Icons.tag_rounded, color: AppColors.secondaryTeal, size: 20),
+                    ),
+                    title: Text(
+                      '#$rawTagQuery',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    subtitle: const Text('Explore hashtag hub', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    trailing: const Icon(Icons.north_east_rounded, size: 16, color: Colors.grey),
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      ref.read(searchHistoryProvider.notifier).addQuery('#$rawTagQuery');
+                      context.push('/hashtag/$rawTagQuery');
+                    },
+                  ),
+                  const Divider(height: 1, indent: 56),
+                ],
+                ...matchingTags.map((t) {
+                  final tag = (t['tag'] as String).replaceAll('#', '');
+                  final count = t['count'] as int? ?? 1;
+                  return ListTile(
+                    dense: true,
+                    leading: const CircleAvatar(
+                      radius: 16,
+                      backgroundColor: Colors.transparent,
+                      child: Icon(Icons.tag_rounded, color: AppColors.secondaryTeal, size: 18),
+                    ),
+                    title: Text(
+                      '#$tag',
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                    subtitle: Text('$count posts on campus', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                    trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 12, color: Colors.grey),
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      ref.read(searchHistoryProvider.notifier).addQuery('#$tag');
+                      context.push('/hashtag/$tag');
+                    },
+                  );
+                }),
+              ],
+            ),
+          ),
+        ],
+
+        // 3. Matching Accounts Section (Live instant suggestion)
+        if (cleanUserQuery.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 6),
+            child: Row(
+              children: [
+                const Icon(Icons.person_search_rounded, size: 16, color: AppColors.secondaryTeal),
+                const SizedBox(width: 6),
+                Text(
+                  'ACCOUNTS',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          FutureBuilder<List<AppUser>>(
+            future: userRepo.searchUsers(cleanUserQuery),
+            builder: (context, snapshot) {
+              final users = (snapshot.data ?? []).take(3).toList();
+              if (users.isEmpty) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  );
+                }
+                return const SizedBox.shrink();
+              }
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.02),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  children: users.map((user) {
+                    final handle = user.handle.isNotEmpty ? user.handle : user.displayName;
+                    return ListTile(
+                      leading: UserAvatar(
+                        userId: user.uid,
+                        avatarUrl: user.avatarUrl,
+                        radius: 18,
+                      ),
+                      title: Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              user.displayName,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (user.isVerified) ...[
+                            const SizedBox(width: 4),
+                            VerificationBadge(type: user.verificationType, size: 14),
+                          ],
+                        ],
+                      ),
+                      subtitle: Text(
+                        '@$handle',
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 12, color: Colors.grey),
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        context.push('/user/${user.uid}');
+                      },
+                    );
+                  }).toList(),
+                ),
+              );
+            },
+          ),
+        ],
+
+        // 4. Matching Recent Searches
+        if (matchingHistory.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 6),
+            child: Row(
+              children: [
+                const Icon(Icons.history_rounded, size: 16, color: Colors.grey),
+                const SizedBox(width: 6),
+                Text(
+                  'RECENT MATCHES',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.02),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              children: matchingHistory.map((item) {
+                return ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.history_rounded, size: 18, color: Colors.grey),
+                  title: Text(item, style: const TextStyle(fontSize: 14)),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.north_west_rounded, size: 16, color: Colors.grey),
+                    tooltip: 'Put into search',
+                    onPressed: () {
+                      _searchController.text = item;
+                      setState(() => _query = item);
+                    },
+                  ),
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    _searchController.text = item;
+                    setState(() {
+                      _query = item;
+                      _hasSubmitted = true;
+                    });
+                  },
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+
+        // 5. Full search CTA Button
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: OutlinedButton.icon(
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              ref.read(searchHistoryProvider.notifier).addQuery(_query.trim());
+              setState(() => _hasSubmitted = true);
+            },
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              side: BorderSide(
+                color: AppColors.secondaryTeal.withValues(alpha: 0.5),
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+            icon: const Icon(Icons.tune_rounded, size: 18, color: AppColors.secondaryTeal),
+            label: Text(
+              'See all results for "$_query"',
+              style: const TextStyle(
+                color: AppColors.secondaryTeal,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildSearchResultsView(bool isDark) {
     return TabBarView(
       controller: _tabController,
@@ -439,11 +789,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
               return InkWell(
                 onTap: () {
                   HapticFeedback.lightImpact();
-                  setState(() {
-                    _searchController.text = hashtag;
-                    _query = hashtag;
-                  });
-                  ref.read(searchHistoryProvider.notifier).addQuery(hashtag);
+                  final cleanTag = hashtag.replaceAll('#', '').trim();
+                  context.push('/hashtag/$cleanTag');
                 },
                 borderRadius: BorderRadius.circular(20),
                 child: Container(
@@ -1246,7 +1593,8 @@ class _HashtagsSearchResults extends ConsumerWidget {
               ),
               onTap: () {
                 HapticFeedback.lightImpact();
-                onSelectTag(hashtag);
+                final cleanTag = hashtag.replaceAll('#', '').trim();
+                context.push('/hashtag/$cleanTag');
               },
             );
           },

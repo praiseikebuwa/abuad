@@ -33,10 +33,12 @@ import '../../features/resources/presentation/resources_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
 import '../../features/profile/presentation/edit_profile_screen.dart';
 import '../../features/search/presentation/search_screen.dart';
+import '../../features/search/presentation/hashtag_screen.dart';
 import '../../features/marketplace/presentation/marketplace_screen.dart';
 import '../../features/marketplace/presentation/marketplace_detail_screen.dart';
 import '../../features/marketplace/data/marketplace_repository.dart';
 import '../../features/feed/presentation/reels_screen.dart';
+import '../../features/feed/presentation/audio_track_screen.dart';
 import '../../features/feed/domain/post.dart';
 import '../../features/user/presentation/user_list_screen.dart';
 import '../../features/stories/domain/story.dart';
@@ -247,6 +249,67 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           state: state,
           child: const EventsScreen(),
         ),
+      ),
+      GoRoute(
+        path: '/hashtag/:tag',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) {
+          final tag = state.pathParameters['tag'] ?? 'trending';
+          return buildPageWithAnimation(
+            context: context,
+            state: state,
+            child: HashtagScreen(tag: tag),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/audio-track',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) {
+          final extra = state.extra;
+          final String audioId;
+          final String title;
+          final String authorName;
+          final String authorHandle;
+          final String? authorAvatarUrl;
+          final String? authorId;
+
+          if (extra is Post) {
+            audioId = extra.id;
+            authorHandle = extra.authorHandle.isNotEmpty ? extra.authorHandle : extra.authorName;
+            title = 'Original audio · @$authorHandle';
+            authorName = extra.authorName;
+            authorAvatarUrl = extra.authorAvatarUrl;
+            authorId = extra.authorId;
+          } else if (extra is Map<String, dynamic>) {
+            audioId = extra['audioId'] as String? ?? 'original_audio';
+            title = extra['title'] as String? ?? 'Original audio';
+            authorName = extra['authorName'] as String? ?? 'Creator';
+            authorHandle = extra['authorHandle'] as String? ?? 'creator';
+            authorAvatarUrl = extra['authorAvatarUrl'] as String?;
+            authorId = extra['authorId'] as String?;
+          } else {
+            audioId = state.uri.queryParameters['audioId'] ?? 'original';
+            title = state.uri.queryParameters['title'] ?? 'Original audio';
+            authorName = state.uri.queryParameters['authorName'] ?? 'Creator';
+            authorHandle = state.uri.queryParameters['authorHandle'] ?? 'creator';
+            authorAvatarUrl = state.uri.queryParameters['authorAvatarUrl'];
+            authorId = state.uri.queryParameters['authorId'];
+          }
+
+          return buildPageWithAnimation(
+            context: context,
+            state: state,
+            child: AudioTrackScreen(
+              audioId: audioId,
+              title: title,
+              authorName: authorName,
+              authorHandle: authorHandle,
+              authorAvatarUrl: authorAvatarUrl,
+              authorId: authorId,
+            ),
+          );
+        },
       ),
       GoRoute(
         path: '/resources',

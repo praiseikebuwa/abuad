@@ -1,14 +1,10 @@
 import nodemailer, { Transporter } from 'nodemailer';
 
 /**
- * Brevo (Sendinblue) SMTP email service.
- *
- * Required env vars:
- *   SMTP_HOST   (default: smtp-relay.brevo.com)
- *   SMTP_PORT   (default: 587)
- *   SMTP_USER   Brevo SMTP login, e.g. xxxxxx@smtp-brevo.com
- *   SMTP_PASS   Brevo SMTP key (xsmtpsib-...)
- *   MAIL_FROM   Verified sender, e.g. "ABUAD App <noreply@abuadapp.com.ng>"
+ * Brevo (Sendinblue) email service.
+ * Supports both:
+ * 1. Brevo v3 HTTPS REST API (via BREVO_API_KEY) - port 443, immune to firewall/SMTP blocks
+ * 2. Brevo SMTP (via SMTP_USER, SMTP_PASS, SMTP_HOST, SMTP_PORT)
  */
 let transporter: Transporter | null = null;
 
@@ -21,19 +17,54 @@ function getTransporter(): Transporter {
     throw new Error('SMTP_USER / SMTP_PASS are not configured');
   }
 
-  const port = Number(process.env.SMTP_PORT || 587);
+  const port = Number(process.env.SMTP_PORT || 465);
   transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
     port,
-    secure: port === 465, // 587 uses STARTTLS
+    secure: port === 465, // Direct SSL/TLS on port 465 is faster & more reliable than 587
     auth: { user, pass },
+    connectionTimeout: 8000, // 8s connection timeout to prevent 60s Nginx 504 timeouts
+    greetingTimeout: 5000,
+    socketTimeout: 10000,
   });
   return transporter;
 }
 
-const FROM = () => process.env.MAIL_FROM || 'ABUAD App <noreply@abuadapp.com.ng>';
+const FROM = () => process.env.MAIL_FROM || 'ABUAD App <no-reply@abuadapp.com.ng>';
 
 export async function sendMail(to: string, subject: string, html: string, text?: string) {
+  // Option 1: Brevo v3 HTTP API (if BREVO_API_KEY is provided)
+  const brevoApiKey = process.env.BREVO_API_KEY;
+  if (brevoApiKey) {
+    const fromStr = FROM();
+    const match = fromStr.match(/^(.*)<(.*)>$/);
+    const senderName = match ? match[1].trim() : 'ABUAD App';
+    const senderEmail = match ? match[2].trim() : fromStr.trim();
+
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': brevoApiKey,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        sender: { name: senderName, email: senderEmail },
+        to: [{ email: to }],
+        subject,
+        htmlContent: html,
+        textContent: text || '',
+      }),
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      throw new Error(`Brevo API Error (${response.status}): ${errBody}`);
+    }
+    return response.json();
+  }
+
+  // Option 2: SMTP via Nodemailer
   return getTransporter().sendMail({ from: FROM(), to, subject, html, text });
 }
 

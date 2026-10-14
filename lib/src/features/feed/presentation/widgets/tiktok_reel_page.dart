@@ -21,6 +21,7 @@ import '../../../../core/utils/url_validator.dart';
 import '../../../../core/widgets/verification_badge.dart';
 import '../../../../shared/widgets/abuad_markdown.dart';
 import 'package:visibility_detector/visibility_detector.dart';
+import 'bookmark_folder_picker_sheet.dart';
 
 /// TikTok-style reel page used inside the vertical Reels viewer.
 class TikTokReelPage extends ConsumerStatefulWidget {
@@ -57,8 +58,10 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
   bool _completed = false;
   bool _hasTrackedWatchSession = false;
 
-  // Double-tap heart splash
+  // Double-tap heart splash & Scrubber
   final List<Offset> _doubleTapPositions = [];
+  bool _isScrubbing = false;
+  Duration _scrubPosition = Duration.zero;
 
   @override
   bool get wantKeepAlive => true;
@@ -277,6 +280,7 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
   }
 
   void _onDoubleTap(Offset position, WidgetRef ref, domain.Post post) {
+    HapticFeedback.mediumImpact();
     setState(() {
       _doubleTapPositions.add(position);
     });
@@ -560,7 +564,13 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
                       opacity: _showOverlayUi ? 1 : 0,
                       child: SafeArea(
                         top: false,
-                        child: _MusicDisc(post: livePost),
+                        child: GestureDetector(
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+                            context.push('/audio-track', extra: livePost);
+                          },
+                          child: _MusicDisc(post: livePost),
+                        ),
                       ),
                     ),
                   ),
@@ -585,18 +595,81 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
 
   Widget _buildHeartSplash(Offset position) {
     return Positioned(
-      left: position.dx - 50,
-      top: position.dy - 50,
-      child: const Icon(Icons.favorite, color: Colors.redAccent, size: 100)
-          .animate()
-          .scale(
-            duration: 300.ms,
-            curve: Curves.elasticOut,
-            begin: const Offset(0, 0),
-            end: const Offset(1, 1),
-          )
-          .fadeOut(delay: 400.ms, duration: 400.ms)
-          .moveY(begin: 0, end: -50, duration: 800.ms),
+      left: position.dx - 60,
+      top: position.dy - 60,
+      child: SizedBox(
+        width: 120,
+        height: 120,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // Central pulsing heart
+            const Icon(
+              Icons.favorite,
+              color: Color(0xFFFE2C55),
+              size: 90,
+              shadows: [
+                Shadow(color: Color(0x66FE2C55), blurRadius: 20),
+                Shadow(color: Colors.black45, blurRadius: 8),
+              ],
+            )
+                .animate()
+                .scale(
+                  duration: 350.ms,
+                  curve: Curves.elasticOut,
+                  begin: const Offset(0.2, 0.2),
+                  end: const Offset(1.2, 1.2),
+                )
+                .rotate(begin: -0.06, end: 0.06, duration: 250.ms)
+                .fadeOut(delay: 450.ms, duration: 350.ms)
+                .moveY(begin: 0, end: -60, duration: 800.ms),
+
+            // Top-left satellite heart
+            const Positioned(
+              left: 15,
+              top: 15,
+              child: Icon(Icons.favorite, color: Colors.white, size: 22),
+            )
+                .animate()
+                .scale(duration: 250.ms, curve: Curves.easeOut, begin: const Offset(0, 0), end: const Offset(1, 1))
+                .move(begin: const Offset(0, 0), end: const Offset(-25, -25), duration: 500.ms)
+                .fadeOut(delay: 300.ms, duration: 300.ms),
+
+            // Top-right satellite heart
+            const Positioned(
+              right: 15,
+              top: 15,
+              child: Icon(Icons.favorite, color: Color(0xFFFF6584), size: 24),
+            )
+                .animate()
+                .scale(duration: 250.ms, curve: Curves.easeOut, begin: const Offset(0, 0), end: const Offset(1, 1))
+                .move(begin: const Offset(0, 0), end: const Offset(25, -30), duration: 500.ms)
+                .fadeOut(delay: 350.ms, duration: 300.ms),
+
+            // Sparkle left
+            const Positioned(
+              left: 10,
+              bottom: 30,
+              child: Icon(Icons.auto_awesome, color: Colors.amberAccent, size: 16),
+            )
+                .animate()
+                .scale(duration: 200.ms, begin: const Offset(0, 0), end: const Offset(1, 1))
+                .move(begin: const Offset(0, 0), end: const Offset(-20, 10), duration: 400.ms)
+                .fadeOut(delay: 300.ms, duration: 300.ms),
+
+            // Sparkle right
+            const Positioned(
+              right: 10,
+              bottom: 30,
+              child: Icon(Icons.auto_awesome, color: Colors.amberAccent, size: 16),
+            )
+                .animate()
+                .scale(duration: 200.ms, begin: const Offset(0, 0), end: const Offset(1, 1))
+                .move(begin: const Offset(0, 0), end: const Offset(20, 10), duration: 400.ms)
+                .fadeOut(delay: 300.ms, duration: 300.ms),
+          ],
+        ),
+      ),
     );
   }
 
@@ -678,21 +751,96 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
 
   Widget _buildProgressBar() {
     if (_controller == null || !_controller!.value.isInitialized) {
-      return const SizedBox(height: 2.5);
+      return const SizedBox(height: 3);
     }
-    return SizedBox(
-      height: 12,
-      child: VideoProgressIndicator(
-        _controller!,
-        allowScrubbing: true,
-        padding: const EdgeInsets.only(top: 9.5),
-        colors: const VideoProgressColors(
-          playedColor: Color(0xFFFE2C55),
-          backgroundColor: Colors.white24,
-          bufferedColor: Colors.white38,
+
+    final totalDuration = _controller!.value.duration;
+    final currentPos = _isScrubbing ? _scrubPosition : _controller!.value.position;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      alignment: Alignment.bottomCenter,
+      children: [
+        // Floating Scrubber Time Tooltip
+        if (_isScrubbing)
+          Positioned(
+            bottom: 24,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.85),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white24, width: 0.8),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black45, blurRadius: 8),
+                ],
+              ),
+              child: Text(
+                '${_formatDuration(currentPos)} / ${_formatDuration(totalDuration)}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ).animate().scale(duration: 150.ms, curve: Curves.easeOut),
+          ),
+
+        // Interactive Scrubbing Bar
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onHorizontalDragStart: (details) {
+            final box = context.findRenderObject() as RenderBox?;
+            if (box != null && totalDuration.inMilliseconds > 0) {
+              final width = box.size.width;
+              final fraction = (details.localPosition.dx / width).clamp(0.0, 1.0);
+              final targetMs = (fraction * totalDuration.inMilliseconds).toInt();
+              setState(() {
+                _isScrubbing = true;
+                _scrubPosition = Duration(milliseconds: targetMs);
+              });
+            }
+          },
+          onHorizontalDragUpdate: (details) {
+            final box = context.findRenderObject() as RenderBox?;
+            if (box != null && totalDuration.inMilliseconds > 0) {
+              final width = box.size.width;
+              final fraction = (details.localPosition.dx / width).clamp(0.0, 1.0);
+              final targetMs = (fraction * totalDuration.inMilliseconds).toInt();
+              setState(() {
+                _scrubPosition = Duration(milliseconds: targetMs);
+              });
+              _controller?.seekTo(_scrubPosition);
+            }
+          },
+          onHorizontalDragEnd: (_) {
+            setState(() => _isScrubbing = false);
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            height: _isScrubbing ? 20 : 12,
+            padding: EdgeInsets.only(top: _isScrubbing ? 14 : 9.5),
+            child: VideoProgressIndicator(
+              _controller!,
+              allowScrubbing: true,
+              padding: EdgeInsets.zero,
+              colors: const VideoProgressColors(
+                playedColor: Color(0xFFFE2C55),
+                backgroundColor: Colors.white24,
+                bufferedColor: Colors.white38,
+              ),
+            ),
+          ),
         ),
-      ),
+      ],
     );
+  }
+
+  String _formatDuration(Duration d) {
+    final minutes = d.inMinutes;
+    final seconds = d.inSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
   Widget _buildCaptionSection(domain.Post post) {
@@ -777,22 +925,28 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
             ),
           ),
         const SizedBox(height: 12),
-        Row(
-          children: [
-            const Icon(Icons.music_note_rounded, size: 16, color: Colors.white),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Original audio · $authorHandle',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  shadows: [Shadow(color: Colors.black54, blurRadius: 2)],
+        GestureDetector(
+          onTap: () {
+            HapticFeedback.lightImpact();
+            context.push('/audio-track', extra: post);
+          },
+          child: Row(
+            children: [
+              const Icon(Icons.music_note_rounded, size: 16, color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Original audio · $authorHandle',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    shadows: [Shadow(color: Colors.black54, blurRadius: 2)],
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
-                overflow: TextOverflow.ellipsis,
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );
@@ -883,12 +1037,31 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
               iconColor: isSaved ? goldColor : Colors.white,
               labelColor: isSaved ? goldColor : Colors.white,
               label: _formatNumber(optimisticSaveCount),
+              onLongPress: () {
+                HapticFeedback.mediumImpact();
+                BookmarkFolderPickerSheet.show(context, post.id);
+              },
               onTap: () async {
                 HapticFeedback.lightImpact();
                 ref.read(optimisticSaveProvider.notifier).toggle(post.id, apiSaved);
                 try {
                   await ref.read(postRepositoryProvider).togglePostSave(post.id);
                   ref.read(optimisticSaveProvider.notifier).confirm(post.id);
+                  if (!isSaved && context.mounted) {
+                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: const Text('Saved to Bookmarks'),
+                        action: SnackBarAction(
+                          label: 'Organize',
+                          textColor: AppColors.secondaryTeal,
+                          onPressed: () => BookmarkFolderPickerSheet.show(context, post.id),
+                        ),
+                        duration: const Duration(seconds: 3),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
                 } catch (e) {
                   ref.read(optimisticSaveProvider.notifier).revert(post.id, apiSaved);
                   if (context.mounted) {
@@ -921,6 +1094,7 @@ class _ActionIconButton extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
   final Color iconColor;
   final Color? labelColor;
   final double scaleX;
@@ -929,6 +1103,7 @@ class _ActionIconButton extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
+    this.onLongPress,
     this.iconColor = Colors.white,
     this.labelColor,
     this.scaleX = 1.0,
@@ -942,6 +1117,7 @@ class _ActionIconButton extends StatelessWidget {
         children: [
           GestureDetector(
             onTap: onTap,
+            onLongPress: onLongPress,
             child: Transform(
               alignment: Alignment.center,
               transform: Matrix4.diagonal3Values(scaleX, 1.0, 1.0),

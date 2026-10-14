@@ -27,6 +27,7 @@ import '../../../../shared/widgets/share_sheet.dart';
 import '../../../../shared/widgets/abuad_markdown.dart';
 import 'link_preview_card.dart';
 import 'document_preview_card.dart';
+import 'bookmark_folder_picker_sheet.dart';
 
 class PostCard extends ConsumerStatefulWidget {
   final domain.Post post;
@@ -679,12 +680,31 @@ class _PostCardState extends ConsumerState<PostCard> {
                                     color: isSaved
                                         ? goldColor
                                         : (isDark ? Colors.grey[500]! : Colors.grey[600]!),
+                                    onLongPress: () {
+                                      HapticFeedback.mediumImpact();
+                                      BookmarkFolderPickerSheet.show(context, post.id);
+                                    },
                                     onTap: () async {
                                       HapticFeedback.lightImpact();
                                       ref.read(optimisticSaveProvider.notifier).toggle(post.id, apiSaved);
                                       try {
                                         await ref.read(postRepositoryProvider).togglePostSave(post.id);
                                         ref.read(optimisticSaveProvider.notifier).confirm(post.id);
+                                        if (!isSaved && context.mounted) {
+                                          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: const Text('Saved to Bookmarks'),
+                                              action: SnackBarAction(
+                                                label: 'Organize',
+                                                textColor: AppColors.secondaryTeal,
+                                                onPressed: () => BookmarkFolderPickerSheet.show(context, post.id),
+                                              ),
+                                              duration: const Duration(seconds: 3),
+                                              behavior: SnackBarBehavior.floating,
+                                            ),
+                                          );
+                                        }
                                       } catch (_) {
                                         ref.read(optimisticSaveProvider.notifier).revert(post.id, apiSaved);
                                       }
@@ -1344,12 +1364,14 @@ class _ActionButton extends StatelessWidget {
   final int? count;
   final Color color;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   const _ActionButton({
     required this.icon,
     required this.count,
     required this.color,
     required this.onTap,
+    this.onLongPress,
   });
 
   @override
@@ -1358,6 +1380,7 @@ class _ActionButton extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       behavior: HitTestBehavior.opaque, // Ensure tap target
       child: Padding(
         padding: const EdgeInsets.symmetric(

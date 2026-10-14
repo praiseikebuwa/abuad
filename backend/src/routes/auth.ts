@@ -297,11 +297,14 @@ router.post('/forgot-password', passwordResetLimiter, async (req: Request, res: 
     });
 
     const resetUrl = `${PUBLIC_API_URL()}/reset-password?token=${rawToken}`;
+    console.log(`🔑 [PASSWORD_RESET] Generated reset link for ${user.email}: ${resetUrl}`);
     try {
       await sendPasswordResetEmail(user.email, user.fullName, resetUrl);
-    } catch (mailError) {
+    } catch (mailError: any) {
       console.error('Password reset email failed:', mailError);
-      return res.status(502).json({ error: 'Could not send reset email. Please try again later.' });
+      return res.status(502).json({
+        error: 'Could not deliver reset email. ' + (mailError?.message || 'Please check email service configuration.'),
+      });
     }
 
     return res.json(genericResponse);
