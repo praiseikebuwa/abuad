@@ -18,6 +18,9 @@ const ai_1 = __importDefault(require("./routes/ai"));
 const media_1 = __importDefault(require("./routes/media"));
 const utilities_1 = __importDefault(require("./routes/utilities"));
 const admin_1 = __importDefault(require("./routes/admin"));
+const resetPage_1 = __importDefault(require("./routes/resetPage"));
+const http_1 = __importDefault(require("http"));
+const socket_1 = require("./realtime/socket");
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 5000;
@@ -33,6 +36,8 @@ app.use((0, cookie_parser_1.default)());
 app.get('/health', (req, res) => {
     res.json({ status: 'ok', service: 'ABUAD API Backend (JWT Native Auth)', timestamp: new Date().toISOString() });
 });
+// Public password reset page (link sent by email)
+app.use('/', resetPage_1.default);
 // API Routes
 app.use('/api/auth', auth_1.default);
 app.use('/api/users', users_1.default);
@@ -63,7 +68,9 @@ app.use((err, req, res, next) => {
     console.error('Unhandled Server Error:', err);
     res.status(500).json({ error: 'Internal Server Error', message: err.message });
 });
-app.listen(PORT, () => {
+const server = http_1.default.createServer(app);
+(0, socket_1.initSocket)(server);
+server.listen(PORT, () => {
     console.log(`🚀 ABUAD Backend Server running on http://localhost:${PORT}`);
     (0, aiBotService_1.scheduleAiAutonomousPosting)();
 });

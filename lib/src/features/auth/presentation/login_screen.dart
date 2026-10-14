@@ -29,22 +29,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
-  Future<void> _googleLogin() async {
-    setState(() => _isLoading = true);
-    try {
-      await ref.read(authRepositoryProvider).signInWithGoogle();
-    } catch (e) {
-      if (!mounted) return;
-      CustomSnackbar.show(
-        context,
-        message: AuthErrorHandler.getErrorMessage(e),
-        isError: true,
-      );
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -259,30 +243,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   label: 'Sign In',
                                   isLoading: _isLoading,
                                 ),
-                                const SizedBox(height: 20),
-
-                                // OR Divider
-                                Row(
-                                  children: [
-                                    Expanded(child: Divider(color: Colors.white.withValues(alpha: 0.15))),
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                                      child: Text(
-                                        'OR',
-                                        style: TextStyle(
-                                          color: Colors.white.withValues(alpha: 0.4),
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                    Expanded(child: Divider(color: Colors.white.withValues(alpha: 0.15))),
-                                  ],
-                                ),
-                                const SizedBox(height: 20),
-
-                                // Google Sign-In
-                                _buildGoogleButton(),
                               ],
                             ),
                           ),
@@ -442,50 +402,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  Widget _buildGoogleButton() {
-    return OutlinedButton(
-      onPressed: _isLoading ? null : _googleLogin,
-      style: OutlinedButton.styleFrom(
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-        side: BorderSide.none,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Image.asset(
-            'assets/google.png',
-            height: 24,
-            width: 24,
-            errorBuilder: (context, error, stackTrace) => const Icon(
-              Icons.g_mobiledata,
-              color: Colors.blue,
-              size: 28,
-            ),
-          ),
-          const SizedBox(width: 12),
-          const Flexible(
-            child: Text(
-              'Continue with Google',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.5,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showForgotPasswordDialog(BuildContext context) {
     final emailController = TextEditingController();
 
@@ -534,27 +450,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               FilledButton(
                 onPressed: () async {
                   final email = emailController.text.trim();
-                  if (email.isEmpty) {
-                    CustomSnackbar.show(context, message: 'Please enter your email', isError: true);
+                  if (email.isEmpty || !email.contains('@')) {
+                    CustomSnackbar.show(context, message: 'Please enter a valid email', isError: true);
                     return;
                   }
 
                   Navigator.pop(context);
 
                   try {
-                    await ref.read(authRepositoryProvider).sendPasswordResetEmail(email);
+                    final message = await ref.read(authRepositoryProvider).sendPasswordResetEmail(email);
                     if (mounted) {
                       CustomSnackbar.show(
-                        context,
-                        message: 'Password reset link sent! Check your inbox.',
+                        this.context,
+                        message: message,
                         isError: false,
                       );
                     }
                   } catch (e) {
                     if (mounted) {
                       CustomSnackbar.show(
-                        context,
-                        message: AuthErrorHandler.getErrorMessage(e),
+                        this.context,
+                        message: e.toString().replaceFirst('Exception: ', ''),
                         isError: true,
                       );
                     }

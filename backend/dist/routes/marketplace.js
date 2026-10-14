@@ -23,11 +23,12 @@ function safeParseImages(imagesRaw) {
 /**
  * GET /api/marketplace
  */
-router.get('/', auth_1.authenticateToken, async (req, res) => {
+router.get('/', auth_1.optionalAuth, async (req, res) => {
     try {
         const { category } = req.query;
+        const categoryFilter = (category && category !== 'all' && category !== 'All') ? String(category) : undefined;
         const items = await db_1.prisma.marketplaceItem.findMany({
-            where: category ? { category: String(category) } : undefined,
+            where: categoryFilter ? { category: categoryFilter } : undefined,
             orderBy: { createdAt: 'desc' },
             include: {
                 seller: {

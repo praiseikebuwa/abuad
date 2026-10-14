@@ -54,3 +54,7 @@ build
 .recode
 
 .vercel
+
+# Backend secrets
+backend/.env
+backend/node_modules/

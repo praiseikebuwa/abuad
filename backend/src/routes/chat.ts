@@ -2,6 +2,8 @@ import { Router, Response } from 'express';
 import { authenticateToken, AuthenticatedRequest } from '../middleware/auth';
 import { prisma } from '../config/db';
 import { getOrCreateAiUser, triggerAiDirectChatReply } from '../services/aiBotService';
+import { emitToChannel, emitToUsers } from '../realtime/socket';
+import { channel } from 'diagnostics_channel';
 
 const router = Router();
 
@@ -236,6 +238,7 @@ router.post('/channels', authenticateToken, async (req: AuthenticatedRequest, re
     });
 
     const formatted = await formatChannel(channel, req.user!.id);
+    emitToUsers(allMemberIds, 'channel:updated', { channelId: channel.id });
     return res.status(201).json({ success: true, data: formatted });
   } catch (error) {
     return res.status(500).json({ error: 'Failed to create channel' });
@@ -271,6 +274,7 @@ router.patch('/channels/:id', authenticateToken, async (req: AuthenticatedReques
       },
     });
     const formatted = await formatChannel(channel, req.user!.id);
+    emitToChannel(channel.id, 'channel:updated', {});
     return res.json({ success: true, data: formatted });
   } catch (error) {
     return res.status(500).json({ error: 'Failed to update channel' });
@@ -350,6 +354,7 @@ router.post('/channels/:id/read', authenticateToken, async (req: AuthenticatedRe
         });
       }
     }
+    emitToChannel(channelId, 'messages:read', { userId });
     return res.json({ success: true });
   } catch (error) {
     return res.status(500).json({ error: 'Failed to mark channel as read' });
@@ -365,6 +370,10 @@ router.delete('/channels/:id', authenticateToken, async (req: AuthenticatedReque
     const channel = await prisma.chatChannel.findUnique({ where: { id: channelId } });
     if (!channel) return res.status(404).json({ error: 'Channel not found' });
 
+    // Notify members before the channel (and its member list) is removed
+    let memberIds: string[] = [];
+    try { memberIds = JSON.parse(channel.memberIds || '[]'); } catch {}
+
     // Delete associated messages
     await prisma.chatMessage.deleteMany({
       where: { channelId },
@@ -375,6 +384,7 @@ router.delete('/channels/:id', authenticateToken, async (req: AuthenticatedReque
       where: { id: channelId },
     });
 
+    emitToUsers(memberIds, 'channel:updated', { channelId, deleted: true });
     return res.json({ success: true, message: 'Channel deleted successfully' });
   } catch (error) {
     return res.status(500).json({ error: 'Failed to delete channel' });
@@ -394,6 +404,7 @@ router.delete('/channels/:id/messages', authenticateToken, async (req: Authentic
       where: { id: channelId },
       data: { lastMessage: null, lastMessageTime: null },
     });
+    emitToChannel(channelId, 'channel:updated', { cleared: true });
     return res.json({ success: true, message: 'Messages cleared successfully' });
   } catch (error) {
     return res.status(500).json({ error: 'Failed to clear messages' });
@@ -538,6 +549,10 @@ router.post('/send', authenticateToken, async (req: AuthenticatedRequest, res: R
       });
     } catch (_) {}
 
+    const formattedMessage = formatMessage(message);
+    // Push to all channel members in real time (sender's other devices included)
+    emitToChannel(targetChannelId, 'message:new', { message: formattedMessage });
+
     // Asynchronously check and trigger AI response if chatting with ABUAD AI
     try {
       const aiUser = await getOrCreateAiUser();
@@ -572,8 +587,7 @@ router.post('/send', authenticateToken, async (req: AuthenticatedRequest, res: R
       console.error('Error checking AI channel:', e);
     }
 
-    const formatted = formatMessage(message);
-    return res.status(201).json({ success: true, data: formatted });
+    return res.status(201).json({ success: true, data: formattedMessage });
   } catch (error) {
     console.error('Error sending chat message:', error);
     return res.status(500).json({ error: 'Failed to send message' });
@@ -590,7 +604,9 @@ router.patch('/messages/:id', authenticateToken, async (req: AuthenticatedReques
     if (!msg) return res.status(404).json({ error: 'Message not found' });
     if (msg.senderId !== req.user!.id) return res.status(403).json({ error: 'Not authorized' });
     const updated = await prisma.chatMessage.update({ where: { id: String(req.params.id) }, data: { text, isEdited: true } });
-    return res.json({ success: true, data: formatMessage(updated) });
+    const formattedUpdated = formatMessage(updated);
+    emitToChannel(updated.channelId, 'message:updated', { message: formattedUpdated });
+    return res.json({ success: true, data: formattedUpdated });
   } catch (error) {
     return res.status(500).json({ error: 'Failed to edit message' });
   }
@@ -605,6 +621,7 @@ router.delete('/messages/:id', authenticateToken, async (req: AuthenticatedReque
     if (!msg) return res.status(404).json({ error: 'Message not found' });
     if (msg.senderId !== req.user!.id) return res.status(403).json({ error: 'Not authorized' });
     await prisma.chatMessage.update({ where: { id: String(req.params.id) }, data: { isDeleted: true, text: 'This message was deleted' } });
+    emitToChannel(msg.channelId, 'message:deleted', { messageId: msg.id });
     return res.json({ success: true });
   } catch (error) {
     return res.status(500).json({ error: 'Failed to delete message' });
@@ -634,7 +651,9 @@ router.post('/messages/:id/reaction', authenticateToken, async (req: Authenticat
       where: { id: String(req.params.id) },
       data: { reactions: JSON.stringify(reactions) },
     });
-    return res.json({ success: true, data: formatMessage(updated) });
+    const formattedReaction = formatMessage(updated);
+    emitToChannel(updated.channelId, 'message:updated', { message: formattedReaction });
+    return res.json({ success: true, data: formattedReaction });
   } catch (error) {
     return res.status(500).json({ error: 'Failed to react to message' });
   }

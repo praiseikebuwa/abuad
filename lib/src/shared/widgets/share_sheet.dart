@@ -344,7 +344,7 @@ class _ShareSheetState extends ConsumerState<ShareSheet> {
                                   Clipboard.setData(
                                     ClipboardData(
                                       text:
-                                          'https://abuadapp.web.app/post/${widget.post.id}',
+                                          'https://abuadapp.com.ng/post/${widget.post.id}',
                                     ),
                                   );
                                   ScaffoldMessenger.of(context).showSnackBar(
@@ -360,7 +360,7 @@ class _ShareSheetState extends ConsumerState<ShareSheet> {
                                 label: 'More',
                                 onTap: () {
                                   Share.share(
-                                    'Check out this post on Abuad life: https://abuadapp.web.app/post/${widget.post.id}',
+                                    'Check out this post on Abuad life: https://abuadapp.com.ng/post/${widget.post.id}',
                                     subject: 'Share Post',
                                   );
                                   Navigator.pop(context);

@@ -14,6 +14,7 @@ const db_1 = require("../config/db");
 const cloudflare_1 = require("../config/cloudflare");
 const genai_1 = require("@google/genai");
 const client_s3_1 = require("@aws-sdk/client-s3");
+const socket_1 = require("../realtime/socket");
 /**
  * Check if user is verified (Blue badge, Gold badge, or Admin)
  */
@@ -374,6 +375,20 @@ Reply as ABUAD AI:`;
                 lastMessage: aiReply,
                 lastMessageTime: new Date(),
             }
+        });
+        // Push AI reply to channel members in real time
+        (0, socket_1.emitToChannel)(channelId, 'message:new', {
+            message: {
+                ...createdMsg,
+                sender_id: createdMsg.senderId,
+                content: createdMsg.text,
+                reactions: {},
+                readBy: [aiUser.id],
+                read_by: [aiUser.id],
+                saved_by: [],
+                timestamp: createdMsg.createdAt,
+                created_at: createdMsg.createdAt,
+            },
         });
         // Mark prior messages in this channel as read by ABUAD AI
         const priorUnread = await db_1.prisma.chatMessage.findMany({

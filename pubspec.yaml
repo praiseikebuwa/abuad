@@ -95,6 +95,7 @@ dependencies:
   glassmorphism: ^3.0.0
   archive: ^4.0.2
   flutter_document_viewer: ^0.1.0+1
+  socket_io_client: ^3.1.6
 
 dev_dependencies:
   flutter_test:

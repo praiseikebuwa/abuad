@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/services/api_client.dart';
+import '../../../core/services/socket_service.dart';
 import '../../auth/data/auth_repository.dart';
 import '../domain/chat_channel.dart';
 import '../domain/chat_message.dart';
@@ -28,7 +29,139 @@ class ChatRepository {
   Timer? _channelsTimer;
   final Map<String, Timer> _messageTimers = {};
 
-  ChatRepository([this._ref, dynamic _]);
+  final Map<String, List<ChatMessage>> _cachedMessages = {};
+  final Map<String, StreamController<Map<String, bool>>> _typingControllers = {};
+  final Map<String, Map<String, bool>> _typingStatus = {};
+  bool _socketInitialized = false;
+
+  ChatRepository([this._ref, dynamic _]) {
+    _initSocketListeners();
+  }
+
+  void _initSocketListeners() {
+    if (_socketInitialized) return;
+    _socketInitialized = true;
+
+    SocketService.instance.onNewMessage.listen((data) {
+      final channelId = data['channelId']?.toString();
+      final msgMap = data['message'];
+      if (channelId != null && msgMap is Map) {
+        final newMsg = ChatMessage.fromMap(Map<String, dynamic>.from(msgMap));
+        final list = _cachedMessages.putIfAbsent(channelId, () => []);
+        if (!list.any((m) => m.id == newMsg.id)) {
+          list.add(newMsg);
+          if (_messageControllers.containsKey(channelId) && !_messageControllers[channelId]!.isClosed) {
+            _messageControllers[channelId]!.add(List.from(list));
+          }
+        }
+        _fetchChannels();
+      }
+    });
+
+    SocketService.instance.onMessageUpdated.listen((data) {
+      final channelId = data['channelId']?.toString();
+      final msgMap = data['message'];
+      if (channelId != null && msgMap is Map) {
+        final updatedMsg = ChatMessage.fromMap(Map<String, dynamic>.from(msgMap));
+        final list = _cachedMessages[channelId];
+        if (list != null) {
+          final idx = list.indexWhere((m) => m.id == updatedMsg.id);
+          if (idx != -1) {
+            list[idx] = updatedMsg;
+            if (_messageControllers.containsKey(channelId) && !_messageControllers[channelId]!.isClosed) {
+              _messageControllers[channelId]!.add(List.from(list));
+            }
+          }
+        }
+      }
+    });
+
+    SocketService.instance.onMessageDeleted.listen((data) {
+      final channelId = data['channelId']?.toString();
+      final messageId = data['messageId']?.toString();
+      if (channelId != null && messageId != null) {
+        final list = _cachedMessages[channelId];
+        if (list != null) {
+          final idx = list.indexWhere((m) => m.id == messageId);
+          if (idx != -1) {
+            list.removeAt(idx);
+            if (_messageControllers.containsKey(channelId) && !_messageControllers[channelId]!.isClosed) {
+              _messageControllers[channelId]!.add(List.from(list));
+            }
+          }
+        }
+      }
+    });
+
+    SocketService.instance.onMessagesRead.listen((data) {
+      final channelId = data['channelId']?.toString();
+      final readUserId = data['userId']?.toString();
+      if (channelId != null && readUserId != null) {
+        final list = _cachedMessages[channelId];
+        if (list != null) {
+          bool hasChange = false;
+          for (var i = 0; i < list.length; i++) {
+            final m = list[i];
+            if (!m.readBy.contains(readUserId)) {
+              final newReadBy = List<String>.from(m.readBy)..add(readUserId);
+              list[i] = ChatMessage(
+                id: m.id,
+                senderId: m.senderId,
+                content: m.content,
+                type: m.type,
+                timestamp: m.timestamp,
+                isRead: true,
+                readBy: newReadBy,
+                imageUrl: m.imageUrl,
+                imageWidth: m.imageWidth,
+                imageHeight: m.imageHeight,
+                audioUrl: m.audioUrl,
+                duration: m.duration,
+                latitude: m.latitude,
+                longitude: m.longitude,
+                replyToId: m.replyToId,
+                replyToContent: m.replyToContent,
+                replyToSenderId: m.replyToSenderId,
+                reactions: m.reactions,
+                mentions: m.mentions,
+                isSnap: m.isSnap,
+                isEdited: m.isEdited,
+                isDeleted: m.isDeleted,
+                isPinned: m.isPinned,
+                savedBy: m.savedBy,
+                forwardedFrom: m.forwardedFrom,
+                sharedPostId: m.sharedPostId,
+              );
+              hasChange = true;
+            }
+          }
+          if (hasChange && _messageControllers.containsKey(channelId) && !_messageControllers[channelId]!.isClosed) {
+            _messageControllers[channelId]!.add(List.from(list));
+          }
+        }
+      }
+    });
+
+    SocketService.instance.onChannelUpdated.listen((data) {
+      _fetchChannels();
+      final chId = data['channelId']?.toString();
+      if (chId != null) {
+        _fetchChannel(chId);
+      }
+    });
+
+    SocketService.instance.onTyping.listen((data) {
+      final channelId = data['channelId']?.toString();
+      final typingUserId = data['userId']?.toString();
+      final isTyping = data['isTyping'] == true;
+      if (channelId != null && typingUserId != null) {
+        _typingStatus.putIfAbsent(channelId, () => {})[typingUserId] = isTyping;
+        if (_typingControllers.containsKey(channelId) && !_typingControllers[channelId]!.isClosed) {
+          _typingControllers[channelId]!.add(Map.from(_typingStatus[channelId]!));
+        }
+      }
+    });
+  }
 
   String? get currentUserId => _ref?.read(authRepositoryProvider).currentUserId;
 
@@ -152,6 +285,7 @@ class ChatRepository {
             }
           }
 
+          _cachedMessages[channelId] = messages;
           if (_messageControllers.containsKey(channelId) && !_messageControllers[channelId]!.isClosed) {
             _messageControllers[channelId]!.add(messages);
           }
@@ -250,7 +384,9 @@ class ChatRepository {
     _fetchMessages(channelId);
   }
 
-  Future<void> setTypingStatus(String channelId, bool isTyping) async {}
+  Future<void> setTypingStatus(String channelId, bool isTyping) async {
+    SocketService.instance.sendTyping(channelId, isTyping);
+  }
 
   Future<void> togglePinChannel(String channelId, [dynamic arg2]) async {
     try {
@@ -315,8 +451,11 @@ class ChatRepository {
   Future<void> togglePinMessage(dynamic arg1, [dynamic arg2, dynamic arg3]) async {}
   Future<void> forwardMessage(dynamic arg1, dynamic arg2) async {}
 
-  Stream<Map<String, bool>> watchTypingStatus(String channelId) async* {
-    yield {};
+  Stream<Map<String, bool>> watchTypingStatus(String channelId) {
+    if (!_typingControllers.containsKey(channelId) || _typingControllers[channelId]!.isClosed) {
+      _typingControllers[channelId] = StreamController<Map<String, bool>>.broadcast();
+    }
+    return _typingControllers[channelId]!.stream;
   }
 
   Future<String> createGroupChannel({

@@ -9,8 +9,11 @@ const crypto_1 = __importDefault(require("crypto"));
 const db_1 = require("../config/db");
 const auth_1 = require("../middleware/auth");
 const rateLimiter_1 = require("../middleware/rateLimiter");
+const emailService_1 = require("../services/emailService");
 const jwt_1 = require("../utils/jwt");
 const router = (0, express_1.Router)();
+const sha256 = (value) => crypto_1.default.createHash('sha256').update(value).digest('hex');
+const PUBLIC_API_URL = () => (process.env.PUBLIC_API_URL || 'https://api.abuadapp.com.ng').replace(/\/$/, '');
 // Helper to set HTTP-only refresh token cookie
 function setRefreshTokenCookie(res, refreshToken) {
     res.cookie('refreshToken', refreshToken, {
@@ -237,32 +240,39 @@ router.get('/me', auth_1.authenticateToken, async (req, res) => {
 /**
  * POST /api/auth/forgot-password
  */
-router.post('/forgot-password', async (req, res) => {
+router.post('/forgot-password', rateLimiter_1.passwordResetLimiter, async (req, res) => {
+    const genericResponse = { success: true, message: 'If an account exists for that email, a reset link has been sent.' };
     try {
-        const { email } = req.body;
+        const email = String(req.body?.email || '').trim().toLowerCase();
         if (!email)
             return res.status(400).json({ error: 'Email is required' });
-        const user = await db_1.prisma.user.findUnique({ where: { email } });
+        const user = await db_1.prisma.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } } });
         if (!user) {
             // Do not reveal email existence for security
-            return res.json({ success: true, message: 'Password reset link sent if account exists' });
+            return res.json(genericResponse);
         }
-        const passwordResetToken = crypto_1.default.randomBytes(32).toString('hex');
+        const rawToken = crypto_1.default.randomBytes(32).toString('hex');
         const passwordResetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+        // Only the hash is stored; the raw token lives only in the email link
         await db_1.prisma.user.update({
             where: { id: user.id },
             data: {
-                passwordResetToken,
+                passwordResetToken: sha256(rawToken),
                 passwordResetExpires,
             },
         });
-        return res.json({
-            success: true,
-            message: 'Password reset token generated',
-            resetToken: passwordResetToken, // In production, send this via email link
-        });
+        const resetUrl = `${PUBLIC_API_URL()}/reset-password?token=${rawToken}`;
+        try {
+            await (0, emailService_1.sendPasswordResetEmail)(user.email, user.fullName, resetUrl);
+        }
+        catch (mailError) {
+            console.error('Password reset email failed:', mailError);
+            return res.status(502).json({ error: 'Could not send reset email. Please try again later.' });
+        }
+        return res.json(genericResponse);
     }
     catch (error) {
+        console.error('Forgot password error:', error);
         return res.status(500).json({ error: 'Failed to initiate password reset' });
     }
 });
@@ -275,9 +285,12 @@ router.post('/reset-password', async (req, res) => {
         if (!resetToken || !newPassword) {
             return res.status(400).json({ error: 'Reset token and new password are required' });
         }
+        if (typeof newPassword !== 'string' || newPassword.length < 8) {
+            return res.status(400).json({ error: 'Password must be at least 8 characters' });
+        }
         const user = await db_1.prisma.user.findFirst({
             where: {
-                passwordResetToken: resetToken,
+                passwordResetToken: sha256(String(resetToken)),
                 passwordResetExpires: { gt: new Date() },
             },
         });

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/api_client.dart';
+import '../../../core/services/socket_service.dart';
 import '../../user/data/user_repository.dart';
 export '../../user/data/user_repository.dart' show AppUser, userRepositoryProvider, userProvider, isFollowingProvider, isBlockedProvider;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -47,6 +48,7 @@ class AuthRepository {
           if (data['success'] == true && data['data'] != null) {
             _currentUser = AppUser.fromMap(data['data']);
             _controller.add(_currentUser);
+            SocketService.instance.connect();
             return;
           }
         }
@@ -60,6 +62,7 @@ class AuthRepository {
               if (data2['success'] == true && data2['data'] != null) {
                 _currentUser = AppUser.fromMap(data2['data']);
                 _controller.add(_currentUser);
+                SocketService.instance.connect();
                 return;
               }
             }
@@ -87,9 +90,10 @@ class AuthRepository {
       if (data['success'] == true) {
         final accessToken = data['data']['accessToken'];
         final refreshToken = data['data']['refreshToken'];
-        ApiClient.setTokens(accessToken: accessToken, refreshToken: refreshToken);
+        await ApiClient.setTokens(accessToken: accessToken, refreshToken: refreshToken);
         _currentUser = AppUser.fromMap(data['data']['user']);
         _controller.add(_currentUser);
+        SocketService.instance.connect();
         return data['data']['user'];
       }
     }
@@ -114,17 +118,14 @@ class AuthRepository {
       if (data['success'] == true) {
         final accessToken = data['data']['accessToken'];
         final refreshToken = data['data']['refreshToken'];
-        ApiClient.setTokens(accessToken: accessToken, refreshToken: refreshToken);
+        await ApiClient.setTokens(accessToken: accessToken, refreshToken: refreshToken);
         _currentUser = AppUser.fromMap(data['data']['user']);
         _controller.add(_currentUser);
+        SocketService.instance.connect();
         return data['data']['user'];
       }
     }
     throw Exception('Registration failed: ${response.body}');
-  }
-
-  Future<void> signInWithGoogle() async {
-    throw UnimplementedError('Google sign-in is disabled. Please sign in with email and password.');
   }
 
   bool get isPasswordLinked => true;
@@ -143,6 +144,7 @@ class AuthRepository {
   }
 
   Future<void> signOut() async {
+    SocketService.instance.disconnect();
     try {
       await ApiClient.post('/auth/logout', {});
     } catch (_) {}
@@ -151,8 +153,20 @@ class AuthRepository {
     _controller.add(null);
   }
 
-  Future<void> sendPasswordResetEmail(String email) async {
-    await ApiClient.post('/auth/forgot-password', {'email': email});
+  /// Requests a reset link by email (sent by the backend via Brevo SMTP).
+  /// Returns the server's confirmation message; throws with a readable message on failure.
+  Future<String> sendPasswordResetEmail(String email) async {
+    final response = await ApiClient.post('/auth/forgot-password', {'email': email});
+    Map<String, dynamic> data = {};
+    try {
+      data = jsonDecode(response.body) as Map<String, dynamic>;
+    } catch (_) {}
+
+    if (response.statusCode == 200 && data['success'] == true) {
+      return (data['message'] as String?) ??
+          'If an account exists for that email, a reset link has been sent.';
+    }
+    throw Exception(data['error'] ?? 'Could not send reset email. Please try again.');
   }
 }
 

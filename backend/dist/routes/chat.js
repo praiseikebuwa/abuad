@@ -4,6 +4,7 @@ const express_1 = require("express");
 const auth_1 = require("../middleware/auth");
 const db_1 = require("../config/db");
 const aiBotService_1 = require("../services/aiBotService");
+const socket_1 = require("../realtime/socket");
 const router = (0, express_1.Router)();
 async function formatChannel(ch, currentUserId) {
     let memberIds = [];
@@ -228,6 +229,7 @@ router.post('/channels', auth_1.authenticateToken, async (req, res) => {
             },
         });
         const formatted = await formatChannel(channel, req.user.id);
+        (0, socket_1.emitToUsers)(allMemberIds, 'channel:updated', { channelId: channel.id });
         return res.status(201).json({ success: true, data: formatted });
     }
     catch (error) {
@@ -264,6 +266,7 @@ router.patch('/channels/:id', auth_1.authenticateToken, async (req, res) => {
             },
         });
         const formatted = await formatChannel(channel, req.user.id);
+        (0, socket_1.emitToChannel)(channel.id, 'channel:updated', {});
         return res.json({ success: true, data: formatted });
     }
     catch (error) {
@@ -346,6 +349,7 @@ router.post('/channels/:id/read', auth_1.authenticateToken, async (req, res) => 
                 });
             }
         }
+        (0, socket_1.emitToChannel)(channelId, 'messages:read', { userId });
         return res.json({ success: true });
     }
     catch (error) {
@@ -361,6 +365,12 @@ router.delete('/channels/:id', auth_1.authenticateToken, async (req, res) => {
         const channel = await db_1.prisma.chatChannel.findUnique({ where: { id: channelId } });
         if (!channel)
             return res.status(404).json({ error: 'Channel not found' });
+        // Notify members before the channel (and its member list) is removed
+        let memberIds = [];
+        try {
+            memberIds = JSON.parse(channel.memberIds || '[]');
+        }
+        catch { }
         // Delete associated messages
         await db_1.prisma.chatMessage.deleteMany({
             where: { channelId },
@@ -369,6 +379,7 @@ router.delete('/channels/:id', auth_1.authenticateToken, async (req, res) => {
         await db_1.prisma.chatChannel.delete({
             where: { id: channelId },
         });
+        (0, socket_1.emitToUsers)(memberIds, 'channel:updated', { channelId, deleted: true });
         return res.json({ success: true, message: 'Channel deleted successfully' });
     }
     catch (error) {
@@ -388,6 +399,7 @@ router.delete('/channels/:id/messages', auth_1.authenticateToken, async (req, re
             where: { id: channelId },
             data: { lastMessage: null, lastMessageTime: null },
         });
+        (0, socket_1.emitToChannel)(channelId, 'channel:updated', { cleared: true });
         return res.json({ success: true, message: 'Messages cleared successfully' });
     }
     catch (error) {
@@ -526,6 +538,9 @@ router.post('/send', auth_1.authenticateToken, async (req, res) => {
             });
         }
         catch (_) { }
+        const formattedMessage = formatMessage(message);
+        // Push to all channel members in real time (sender's other devices included)
+        (0, socket_1.emitToChannel)(targetChannelId, 'message:new', { message: formattedMessage });
         // Asynchronously check and trigger AI response if chatting with ABUAD AI
         try {
             const aiUser = await (0, aiBotService_1.getOrCreateAiUser)();
@@ -555,8 +570,7 @@ router.post('/send', auth_1.authenticateToken, async (req, res) => {
         catch (e) {
             console.error('Error checking AI channel:', e);
         }
-        const formatted = formatMessage(message);
-        return res.status(201).json({ success: true, data: formatted });
+        return res.status(201).json({ success: true, data: formattedMessage });
     }
     catch (error) {
         console.error('Error sending chat message:', error);
@@ -575,7 +589,9 @@ router.patch('/messages/:id', auth_1.authenticateToken, async (req, res) => {
         if (msg.senderId !== req.user.id)
             return res.status(403).json({ error: 'Not authorized' });
         const updated = await db_1.prisma.chatMessage.update({ where: { id: String(req.params.id) }, data: { text, isEdited: true } });
-        return res.json({ success: true, data: formatMessage(updated) });
+        const formattedUpdated = formatMessage(updated);
+        (0, socket_1.emitToChannel)(updated.channelId, 'message:updated', { message: formattedUpdated });
+        return res.json({ success: true, data: formattedUpdated });
     }
     catch (error) {
         return res.status(500).json({ error: 'Failed to edit message' });
@@ -592,6 +608,7 @@ router.delete('/messages/:id', auth_1.authenticateToken, async (req, res) => {
         if (msg.senderId !== req.user.id)
             return res.status(403).json({ error: 'Not authorized' });
         await db_1.prisma.chatMessage.update({ where: { id: String(req.params.id) }, data: { isDeleted: true, text: 'This message was deleted' } });
+        (0, socket_1.emitToChannel)(msg.channelId, 'message:deleted', { messageId: msg.id });
         return res.json({ success: true });
     }
     catch (error) {
@@ -623,7 +640,9 @@ router.post('/messages/:id/reaction', auth_1.authenticateToken, async (req, res)
             where: { id: String(req.params.id) },
             data: { reactions: JSON.stringify(reactions) },
         });
-        return res.json({ success: true, data: formatMessage(updated) });
+        const formattedReaction = formatMessage(updated);
+        (0, socket_1.emitToChannel)(updated.channelId, 'message:updated', { message: formattedReaction });
+        return res.json({ success: true, data: formattedReaction });
     }
     catch (error) {
         return res.status(500).json({ error: 'Failed to react to message' });

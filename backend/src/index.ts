@@ -14,6 +14,9 @@ import aiRoutes from './routes/ai';
 import mediaRoutes from './routes/media';
 import utilityRoutes from './routes/utilities';
 import adminRoutes from './routes/admin';
+import resetPageRoutes from './routes/resetPage';
+import http from 'http';
+import { initSocket } from './realtime/socket';
 
 dotenv.config();
 
@@ -33,6 +36,9 @@ app.use(cookieParser());
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'ABUAD API Backend (JWT Native Auth)', timestamp: new Date().toISOString() });
 });
+
+// Public password reset page (link sent by email)
+app.use('/', resetPageRoutes);
 
 // API Routes
 app.use('/api/auth', authRoutes);
@@ -68,7 +74,10 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   res.status(500).json({ error: 'Internal Server Error', message: err.message });
 });
 
-app.listen(PORT, () => {
+const server = http.createServer(app);
+initSocket(server);
+
+server.listen(PORT, () => {
   console.log(`🚀 ABUAD Backend Server running on http://localhost:${PORT}`);
   scheduleAiAutonomousPosting();
 });

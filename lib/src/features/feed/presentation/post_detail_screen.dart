@@ -72,7 +72,6 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     });
   }
 
-
   Future<void> _postComment() async {
     if (_isPosting) return;
     final content = _commentController.text.trim();
@@ -196,21 +195,26 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
         await repo.editComment(postId, commentId, editedText);
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Comment updated')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Comment updated')));
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error updating comment: $e')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Error updating comment: $e')));
         }
       }
     }
   }
 
-  void _showCommentMenu(BuildContext context, String commentId, bool isOwn, {String? currentContent}) {
+  void _showCommentMenu(
+    BuildContext context,
+    String commentId,
+    bool isOwn, {
+    String? currentContent,
+  }) {
     showModalBottomSheet(
       context: context,
       builder: (context) => SafeArea(
@@ -305,7 +309,9 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                   width: 36,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF475569) : const Color(0xFFCBD5E1),
+                    color: isDark
+                        ? const Color(0xFF475569)
+                        : const Color(0xFFCBD5E1),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -319,7 +325,11 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                       color: Colors.red.withValues(alpha: 0.12),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(CupertinoIcons.trash, color: Colors.red, size: 20),
+                    child: const Icon(
+                      CupertinoIcons.trash,
+                      color: Colors.red,
+                      size: 20,
+                    ),
                   ),
                   title: const Text(
                     'Delete Post',
@@ -360,7 +370,9 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                         if (mounted) {
                           Navigator.pop(context); // Go back to feed
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Post deleted successfully')),
+                            const SnackBar(
+                              content: Text('Post deleted successfully'),
+                            ),
                           );
                         }
                       } catch (e) {
@@ -381,13 +393,20 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                     leading: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: (isSaved ? const Color(0xFFFFB800) : const Color(0xFF6366F1))
-                            .withValues(alpha: 0.12),
+                        color:
+                            (isSaved
+                                    ? const Color(0xFFFFB800)
+                                    : const Color(0xFF6366F1))
+                                .withValues(alpha: 0.12),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
-                        isSaved ? CupertinoIcons.bookmark_fill : CupertinoIcons.bookmark,
-                        color: isSaved ? const Color(0xFFFFB800) : const Color(0xFF6366F1),
+                        isSaved
+                            ? CupertinoIcons.bookmark_fill
+                            : CupertinoIcons.bookmark,
+                        color: isSaved
+                            ? const Color(0xFFFFB800)
+                            : const Color(0xFF6366F1),
                         size: 20,
                       ),
                     ),
@@ -413,7 +432,11 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                     color: Colors.amber.withValues(alpha: 0.12),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(CupertinoIcons.flag, color: Colors.amber, size: 20),
+                  child: const Icon(
+                    CupertinoIcons.flag,
+                    color: Colors.amber,
+                    size: 20,
+                  ),
                 ),
                 title: Text(
                   'Report Post',
@@ -487,7 +510,10 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                               .read(postRepositoryProvider)
                               .repost(originalPost, commentText);
                           ref.invalidate(paginatedFeedProvider);
-                          final currentUserId = ref.read(authRepositoryProvider).currentUser?.uid;
+                          final currentUserId = ref
+                              .read(authRepositoryProvider)
+                              .currentUser
+                              ?.uid;
                           if (currentUserId != null) {
                             ref.invalidate(userPostsProvider(currentUserId));
                           }
@@ -520,7 +546,11 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                     const CircleAvatar(
                       radius: 18,
                       backgroundColor: Colors.grey,
-                      child: Icon(CupertinoIcons.person_add, color: Colors.white, size: 20),
+                      child: Icon(
+                        CupertinoIcons.person_add,
+                        color: Colors.white,
+                        size: 20,
+                      ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -553,7 +583,9 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                         ClipRRect(
                           borderRadius: BorderRadius.circular(8),
                           child: CachedNetworkImage(
-                            imageUrl: UrlValidator.formatImageUrl(originalPost.mediaUrl),
+                            imageUrl: UrlValidator.formatImageUrl(
+                              originalPost.mediaUrl,
+                            ),
                             height: 60,
                             width: 60,
                             fit: BoxFit.cover,
@@ -643,7 +675,8 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
               onPressed: () {
                 SharePlus.instance.share(
                   ShareParams(
-                    text: 'Check out this post on Abuad life: https://abuadapp.web.app/post/$postId',
+                    text:
+                        'Check out this post on Abuad life: https://abuadapp.com.ng/post/$postId',
                     subject: 'Check out this post on ABUAD',
                   ),
                 );
@@ -709,7 +742,10 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
             }
             if (displayMediaUrl.isNotEmpty) {
               final lower = displayMediaUrl.toLowerCase();
-              if (lower.contains('.mp4') || lower.contains('.mov') || lower.contains('.webm') || lower.contains('.m3u8')) {
+              if (lower.contains('.mp4') ||
+                  lower.contains('.mov') ||
+                  lower.contains('.webm') ||
+                  lower.contains('.m3u8')) {
                 displayMediaType = domain.MediaType.video;
               } else if (lower.contains('giphy') || lower.endsWith('.gif')) {
                 displayMediaType = domain.MediaType.gif;
@@ -887,7 +923,8 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                               ],
 
                               // Post Media
-                              if (displayMediaUrl.isNotEmpty || post.allMediaUrls.isNotEmpty) ...[
+                              if (displayMediaUrl.isNotEmpty ||
+                                  post.allMediaUrls.isNotEmpty) ...[
                                 const SizedBox(height: 16),
                                 if (displayMediaType == domain.MediaType.video)
                                   VideoPostWidget(
@@ -911,10 +948,13 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                       );
                                     },
                                   )
-                                else if (displayMediaType == domain.MediaType.document)
+                                else if (displayMediaType ==
+                                    domain.MediaType.document)
                                   DocumentPreviewCard(
                                     documentUrl: displayMediaUrl,
-                                    fileName: (post.mediaAltText != null && post.mediaAltText!.isNotEmpty)
+                                    fileName:
+                                        (post.mediaAltText != null &&
+                                            post.mediaAltText!.isNotEmpty)
                                         ? post.mediaAltText
                                         : null,
                                   )
@@ -968,7 +1008,9 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                       if (post.commentsCount > 0) ...[
                                         _StatText(
                                           count: post.commentsCount,
-                                          label: post.commentsCount == 1 ? 'Comment' : 'Comments',
+                                          label: post.commentsCount == 1
+                                              ? 'Comment'
+                                              : 'Comments',
                                         ),
                                         const SizedBox(width: 20),
                                       ],
@@ -989,7 +1031,9 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                       if (post.savesCount > 0)
                                         _StatText(
                                           count: post.savesCount,
-                                          label: post.savesCount == 1 ? 'Save' : 'Saves',
+                                          label: post.savesCount == 1
+                                              ? 'Save'
+                                              : 'Saves',
                                         ),
                                     ],
                                   ),
@@ -1003,17 +1047,25 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                     MainAxisAlignment.spaceAround,
                                 children: [
                                   IconButton(
-                                    icon: const Icon(CupertinoIcons.chat_bubble),
+                                    icon: const Icon(
+                                      CupertinoIcons.chat_bubble,
+                                    ),
                                     onPressed: () {
                                       // Focus logic handled by placing focus node or just tapping the bottom field
                                     },
-                                    color: isDark ? Colors.grey[500] : Colors.grey[600],
+                                    color: isDark
+                                        ? Colors.grey[500]
+                                        : Colors.grey[600],
                                   ),
                                   IconButton(
-                                    icon: const Icon(CupertinoIcons.arrow_2_squarepath),
+                                    icon: const Icon(
+                                      CupertinoIcons.arrow_2_squarepath,
+                                    ),
                                     onPressed: () =>
                                         _showRepostBottomSheet(post),
-                                    color: isDark ? Colors.grey[500] : Colors.grey[600],
+                                    color: isDark
+                                        ? Colors.grey[500]
+                                        : Colors.grey[600],
                                   ),
                                   StreamBuilder<bool>(
                                     stream: isLikedStream,
@@ -1024,18 +1076,27 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                         count: 0,
                                         showCount: false,
                                         iconSize: 22,
-                                        inactiveColor: isDark ? Colors.grey[500] : Colors.grey[600],
+                                        inactiveColor: isDark
+                                            ? Colors.grey[500]
+                                            : Colors.grey[600],
                                         onTap: () => repo.toggleLike(post.id),
                                       );
                                     },
                                   ),
                                   Consumer(
                                     builder: (context, ref, child) {
-                                      final optimisticSaveMap = ref.watch(optimisticSaveProvider);
-                                      final apiSaved = ref.watch(
-                                        isPostSavedProvider(post.id),
-                                      ).value ?? post.isSaved;
-                                      final isSaved = optimisticSaveMap.containsKey(post.id)
+                                      final optimisticSaveMap = ref.watch(
+                                        optimisticSaveProvider,
+                                      );
+                                      final apiSaved =
+                                          ref
+                                              .watch(
+                                                isPostSavedProvider(post.id),
+                                              )
+                                              .value ??
+                                          post.isSaved;
+                                      final isSaved =
+                                          optimisticSaveMap.containsKey(post.id)
                                           ? optimisticSaveMap[post.id]!
                                           : apiSaved;
                                       const goldColor = Color(0xFFFFB800);
@@ -1047,16 +1108,34 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                               : CupertinoIcons.bookmark,
                                           color: isSaved
                                               ? goldColor
-                                              : (isDark ? Colors.grey[500] : Colors.grey[600]),
+                                              : (isDark
+                                                    ? Colors.grey[500]
+                                                    : Colors.grey[600]),
                                         ),
                                         onPressed: () async {
                                           HapticFeedback.lightImpact();
-                                          ref.read(optimisticSaveProvider.notifier).toggle(post.id, apiSaved);
+                                          ref
+                                              .read(
+                                                optimisticSaveProvider.notifier,
+                                              )
+                                              .toggle(post.id, apiSaved);
                                           try {
-                                            await ref.read(postRepositoryProvider).togglePostSave(post.id);
-                                            ref.read(optimisticSaveProvider.notifier).confirm(post.id);
+                                            await ref
+                                                .read(postRepositoryProvider)
+                                                .togglePostSave(post.id);
+                                            ref
+                                                .read(
+                                                  optimisticSaveProvider
+                                                      .notifier,
+                                                )
+                                                .confirm(post.id);
                                           } catch (_) {
-                                            ref.read(optimisticSaveProvider.notifier).revert(post.id, apiSaved);
+                                            ref
+                                                .read(
+                                                  optimisticSaveProvider
+                                                      .notifier,
+                                                )
+                                                .revert(post.id, apiSaved);
                                           }
                                         },
                                       );
@@ -1067,11 +1146,14 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                     onPressed: () {
                                       SharePlus.instance.share(
                                         ShareParams(
-                                          text: '${post.authorName} (@${post.authorHandle}): ${post.content}\n\nSent from Abuad life',
+                                          text:
+                                              '${post.authorName} (@${post.authorHandle}): ${post.content}\n\nSent from Abuad life',
                                         ),
                                       );
                                     },
-                                    color: isDark ? Colors.grey[500] : Colors.grey[600],
+                                    color: isDark
+                                        ? Colors.grey[500]
+                                        : Colors.grey[600],
                                   ),
                                 ],
                               ),
@@ -1093,7 +1175,10 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                             final rawComments = snapshot.data ?? [];
 
                             int getVerificationWeight(dynamic type) {
-                              final clean = (type ?? '').toString().trim().toLowerCase();
+                              final clean = (type ?? '')
+                                  .toString()
+                                  .trim()
+                                  .toLowerCase();
                               switch (clean) {
                                 case 'gold':
                                   return 3;
@@ -1119,21 +1204,41 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                             }
 
                             // Sort: Gold > Violet > Blue > None pinned at top, then Timestamp (Desc)
-                            final comments = List<Map<String, dynamic>>.from(dedupedList)
-                              ..sort((a, b) {
-                                final vTypeA = a['authorVerificationType'] ?? a['author_verification_type'] ?? (a['author']?['verificationType'] ?? (a['author']?['isVerified'] == true ? 'blue' : 'none'));
-                                final vTypeB = b['authorVerificationType'] ?? b['author_verification_type'] ?? (b['author']?['verificationType'] ?? (b['author']?['isVerified'] == true ? 'blue' : 'none'));
+                            final comments =
+                                List<Map<String, dynamic>>.from(
+                                  dedupedList,
+                                )..sort((a, b) {
+                                  final vTypeA =
+                                      a['authorVerificationType'] ??
+                                      a['author_verification_type'] ??
+                                      (a['author']?['verificationType'] ??
+                                          (a['author']?['isVerified'] == true
+                                              ? 'blue'
+                                              : 'none'));
+                                  final vTypeB =
+                                      b['authorVerificationType'] ??
+                                      b['author_verification_type'] ??
+                                      (b['author']?['verificationType'] ??
+                                          (b['author']?['isVerified'] == true
+                                              ? 'blue'
+                                              : 'none'));
 
-                                final weightA = getVerificationWeight(vTypeA);
-                                final weightB = getVerificationWeight(vTypeB);
+                                  final weightA = getVerificationWeight(vTypeA);
+                                  final weightB = getVerificationWeight(vTypeB);
 
-                                if (weightA != weightB) {
-                                  return weightB.compareTo(weightA); // Gold (3) > Violet (2) > Blue (1) > None (0) at TOP
-                                }
-                                final tsA = (a['timestamp'] is int) ? a['timestamp'] as int : 0;
-                                final tsB = (b['timestamp'] is int) ? b['timestamp'] as int : 0;
-                                return tsB.compareTo(tsA);
-                              });
+                                  if (weightA != weightB) {
+                                    return weightB.compareTo(
+                                      weightA,
+                                    ); // Gold (3) > Violet (2) > Blue (1) > None (0) at TOP
+                                  }
+                                  final tsA = (a['timestamp'] is int)
+                                      ? a['timestamp'] as int
+                                      : 0;
+                                  final tsB = (b['timestamp'] is int)
+                                      ? b['timestamp'] as int
+                                      : 0;
+                                  return tsB.compareTo(tsA);
+                                });
 
                             if (comments.isEmpty) {
                               return Padding(
@@ -1205,13 +1310,17 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                               horizontal: 16,
                               vertical: 8,
                             ),
-                            color: AppColors.secondaryTeal.withValues(alpha: 0.1),
+                            color: AppColors.secondaryTeal.withValues(
+                              alpha: 0.1,
+                            ),
                             child: Row(
                               children: [
                                 Text(
                                   "Replying to ",
                                   style: TextStyle(
-                                    color: isDark ? Colors.white70 : Colors.black87,
+                                    color: isDark
+                                        ? Colors.white70
+                                        : Colors.black87,
                                     fontSize: 13,
                                   ),
                                 ),
@@ -1268,7 +1377,12 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                             left: 12,
                             right: 12,
                             top: 6,
-                            bottom: max(MediaQuery.of(context).padding.bottom > 0 ? 6 : 12, 12),
+                            bottom: max(
+                              MediaQuery.of(context).padding.bottom > 0
+                                  ? 6
+                                  : 12,
+                              12,
+                            ),
                           ),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
@@ -1302,20 +1416,25 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                         TextCapitalization.sentences,
                                     style: TextStyle(
                                       fontSize: 14,
-                                      color: isDark ? Colors.white : Colors.black87,
+                                      color: isDark
+                                          ? Colors.white
+                                          : Colors.black87,
                                     ),
                                     decoration: InputDecoration(
                                       hintText: 'Post your reply',
                                       hintStyle: TextStyle(
                                         fontSize: 14,
-                                        color: isDark ? Colors.grey[400] : Colors.grey[500],
+                                        color: isDark
+                                            ? Colors.grey[400]
+                                            : Colors.grey[500],
                                       ),
                                       border: InputBorder.none,
                                       isDense: true,
-                                      contentPadding: const EdgeInsets.symmetric(
-                                        horizontal: 16,
-                                        vertical: 10,
-                                      ),
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 10,
+                                          ),
                                     ),
                                   ),
                                 ),
@@ -1366,7 +1485,9 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
       textStyle: TextStyle(
         fontSize: 18,
         height: 1.4,
-        color: theme.textTheme.bodyLarge?.color ?? (isDark ? Colors.white : Colors.black87),
+        color:
+            theme.textTheme.bodyLarge?.color ??
+            (isDark ? Colors.white : Colors.black87),
       ),
     );
   }
@@ -1444,7 +1565,8 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                 borderRadius: BorderRadius.circular(12),
                 child: (() {
                   final formattedMedia = UrlValidator.formatImageUrl(mediaUrl);
-                  return (formattedMedia.isNotEmpty && UrlValidator.isValidUrl(formattedMedia))
+                  return (formattedMedia.isNotEmpty &&
+                          UrlValidator.isValidUrl(formattedMedia))
                       ? CachedNetworkImage(
                           imageUrl: formattedMedia,
                           height: 150,
@@ -1512,17 +1634,23 @@ class _CommentItemState extends ConsumerState<_CommentItem> {
     final isDark = theme.brightness == Brightness.dark;
 
     final String commentId = comment['id']?.toString() ?? '';
-    final String authorId = (comment['authorId'] ?? comment['userId'] ?? '').toString();
-    final String rawName = (comment['authorName'] ?? comment['userName'] ?? 'Student').toString();
-    final String? rawAvatar = comment['authorAvatarUrl'] ?? comment['userAvatar'] as String?;
-    final String rawVerificationType = (comment['authorVerificationType'] ?? 'none').toString();
+    final String authorId = (comment['authorId'] ?? comment['userId'] ?? '')
+        .toString();
+    final String rawName =
+        (comment['authorName'] ?? comment['userName'] ?? 'Student').toString();
+    final String? rawAvatar =
+        comment['authorAvatarUrl'] ?? comment['userAvatar'] as String?;
+    final String rawVerificationType =
+        (comment['authorVerificationType'] ?? 'none').toString();
 
-    int tsInt = (comment['timestamp'] is int && (comment['timestamp'] as int) > 0)
+    int tsInt =
+        (comment['timestamp'] is int && (comment['timestamp'] as int) > 0)
         ? comment['timestamp'] as int
         : DateTime.now().millisecondsSinceEpoch;
     final timestamp = DateTime.fromMillisecondsSinceEpoch(tsInt);
 
-    final bool isOwnComment = widget.currentUserId != null &&
+    final bool isOwnComment =
+        widget.currentUserId != null &&
         authorId.isNotEmpty &&
         authorId == widget.currentUserId;
     final replyCount = comment['replyCount'] as int? ?? 0;
@@ -1561,7 +1689,8 @@ class _CommentItemState extends ConsumerState<_CommentItem> {
                   children: [
                     GestureDetector(
                       onTap: () {
-                        if (authorId.isNotEmpty) context.push('/user/$authorId');
+                        if (authorId.isNotEmpty)
+                          context.push('/user/$authorId');
                       },
                       child: UserAvatar(
                         userId: authorId,
@@ -1623,7 +1752,10 @@ class _CommentItemState extends ConsumerState<_CommentItem> {
                           const SizedBox(height: 4),
                           FormattedCommentContent(
                             content: comment['content'] ?? '',
-                            textStyle: const TextStyle(fontSize: 14, height: 1.3),
+                            textStyle: const TextStyle(
+                              fontSize: 14,
+                              height: 1.3,
+                            ),
                           ),
 
                           // Comment Media
@@ -1660,7 +1792,10 @@ class _CommentItemState extends ConsumerState<_CommentItem> {
                                 onTap: () {
                                   ref
                                       .read(postRepositoryProvider)
-                                      .toggleCommentLike(widget.postId, commentId);
+                                      .toggleCommentLike(
+                                        widget.postId,
+                                        commentId,
+                                      );
                                 },
                                 child: Row(
                                   children: [
@@ -1691,10 +1826,8 @@ class _CommentItemState extends ConsumerState<_CommentItem> {
                               ),
                               const SizedBox(width: 18),
                               GestureDetector(
-                                onTap: () => widget.onReply(
-                                  commentId,
-                                  effectiveName,
-                                ),
+                                onTap: () =>
+                                    widget.onReply(commentId, effectiveName),
                                 child: Text(
                                   "Reply",
                                   style: TextStyle(
@@ -1803,16 +1936,23 @@ class _ReplyItem extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final String authorId = (reply['authorId'] ?? reply['userId'] ?? '').toString();
-    final String rawName = (reply['authorName'] ?? reply['userName'] ?? 'Student').toString();
-    final String? rawAvatar = reply['authorAvatarUrl'] ?? reply['userAvatar'] as String?;
-    final String rawVerificationType = (reply['authorVerificationType'] ?? 'none').toString();
+    final String authorId = (reply['authorId'] ?? reply['userId'] ?? '')
+        .toString();
+    final String rawName =
+        (reply['authorName'] ?? reply['userName'] ?? 'Student').toString();
+    final String? rawAvatar =
+        reply['authorAvatarUrl'] ?? reply['userAvatar'] as String?;
+    final String rawVerificationType =
+        (reply['authorVerificationType'] ?? 'none').toString();
 
     int tsInt = (reply['timestamp'] is int && (reply['timestamp'] as int) > 0)
         ? reply['timestamp'] as int
         : DateTime.now().millisecondsSinceEpoch;
     final timestamp = DateTime.fromMillisecondsSinceEpoch(tsInt);
-    final isOwnReply = currentUserId != null && authorId.isNotEmpty && authorId == currentUserId;
+    final isOwnReply =
+        currentUserId != null &&
+        authorId.isNotEmpty &&
+        authorId == currentUserId;
 
     return StreamBuilder<AppUser?>(
       stream: authorId.isNotEmpty

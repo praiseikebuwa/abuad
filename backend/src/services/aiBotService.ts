@@ -2,6 +2,7 @@ import { prisma } from '../config/db';
 import { runCloudflareAI, runCloudflareAIVision, r2Client, r2BucketName } from '../config/cloudflare';
 import { GoogleGenAI } from '@google/genai';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
+import { emitToChannel } from '../realtime/socket';
 
 /**
  * Check if user is verified (Blue badge, Gold badge, or Admin)
@@ -391,6 +392,21 @@ Reply as ABUAD AI:`;
         lastMessage: aiReply,
         lastMessageTime: new Date(),
       }
+    });
+
+    // Push AI reply to channel members in real time
+    emitToChannel(channelId, 'message:new', {
+      message: {
+        ...createdMsg,
+        sender_id: createdMsg.senderId,
+        content: createdMsg.text,
+        reactions: {},
+        readBy: [aiUser.id],
+        read_by: [aiUser.id],
+        saved_by: [],
+        timestamp: createdMsg.createdAt,
+        created_at: createdMsg.createdAt,
+      },
     });
 
     // Mark prior messages in this channel as read by ABUAD AI

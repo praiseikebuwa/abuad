@@ -18,8 +18,13 @@ const upload = (0, multer_1.default)({
  * Helper to build public media URL with CORS proxy support
  */
 function buildPublicUrl(req, key) {
+    if (cloudflare_1.r2PublicDomain && cloudflare_1.r2PublicDomain.trim().length > 0) {
+        const domain = cloudflare_1.r2PublicDomain.replace(/\/+$/, '');
+        return `${domain}/${key}`;
+    }
     const host = req.get('host') || 'localhost:5000';
-    const protocol = req.protocol || 'http';
+    const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
+    const protocol = isLocal ? (req.protocol || 'http') : 'https';
     return `${protocol}://${host}/api/media/file/${key}`;
 }
 /**

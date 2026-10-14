@@ -17,7 +17,11 @@ import '../../../core/utils/url_validator.dart';
 class CreateStoryScreen extends ConsumerStatefulWidget {
   final String? initialImagePath;
   final Story? resharedStory;
-  const CreateStoryScreen({super.key, this.initialImagePath, this.resharedStory});
+  const CreateStoryScreen({
+    super.key,
+    this.initialImagePath,
+    this.resharedStory,
+  });
 
   @override
   ConsumerState<CreateStoryScreen> createState() => _CreateStoryScreenState();
@@ -146,9 +150,7 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                     Navigator.pop(context);
                     final result = await context.push(
                       '/camera',
-                      extra: {
-                        'isForStory': true,
-                      },
+                      extra: {'isForStory': true},
                     );
                     if (result != null && result is Map) {
                       final file = result['file'] as XFile?;
@@ -319,7 +321,9 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
   }
 
   void _uploadStory() async {
-    if (_selectedMedia == null && !_isTextMode && widget.resharedStory == null) {
+    if (_selectedMedia == null &&
+        !_isTextMode &&
+        widget.resharedStory == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select an image first')),
       );
@@ -333,12 +337,17 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
       return;
     }
 
-    final authUser = ref.read(authRepositoryProvider).currentUser ?? ref.read(currentUserProvider).value;
-    final currentUid = authUser?.uid ?? ref.read(authRepositoryProvider).currentUserId;
+    final authUser =
+        ref.read(authRepositoryProvider).currentUser ??
+        ref.read(currentUserProvider).value;
+    final currentUid =
+        authUser?.uid ?? ref.read(authRepositoryProvider).currentUserId;
 
     if (currentUid == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('User session invalid. Please sign in again.')),
+        const SnackBar(
+          content: Text('User session invalid. Please sign in again.'),
+        ),
       );
       return;
     }
@@ -410,7 +419,9 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
         content: content,
         isRawContent: isRawContent,
         mentions: mentions,
-        linkUrl: resharedStory != null ? 'https://abuadapp.web.app/post/${resharedStory.id}' : linkUrl,
+        linkUrl: resharedStory != null
+            ? 'https://abuadapp.com.ng/post/${resharedStory.id}'
+            : linkUrl,
         visibility: visibility,
         backgroundColor: backgroundColor,
         textColor: textColor,
@@ -510,17 +521,17 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
       body: widget.resharedStory != null
           ? _buildResharePreview(isDark)
           : (_isTextMode
-              ? _buildTextPreview(isDark)
-              : (_selectedMedia == null
-                    ? _buildEmptyState(isDark)
-                    : _buildPreview(isDark))),
+                ? _buildTextPreview(isDark)
+                : (_selectedMedia == null
+                      ? _buildEmptyState(isDark)
+                      : _buildPreview(isDark))),
       floatingActionButton: null,
     );
   }
 
   Widget _buildResharePreview(bool isDark) {
     if (widget.resharedStory == null) return const SizedBox();
-    
+
     final story = widget.resharedStory!;
 
     return Stack(
@@ -537,7 +548,7 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
             ),
           ),
         ),
-        
+
         // Centered story content snapshot
         Center(
           child: Column(
@@ -553,7 +564,7 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                       color: Colors.black.withValues(alpha: 0.5),
                       blurRadius: 20,
                       spreadRadius: 5,
-                    )
+                    ),
                   ],
                 ),
                 child: ClipRRect(
@@ -570,7 +581,11 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                             padding: const EdgeInsets.all(16),
                             child: Text(
                               story.content,
-                              textAlign: story.textAlign == 'left' ? TextAlign.left : (story.textAlign == 'right' ? TextAlign.right : TextAlign.center),
+                              textAlign: story.textAlign == 'left'
+                                  ? TextAlign.left
+                                  : (story.textAlign == 'right'
+                                        ? TextAlign.right
+                                        : TextAlign.center),
                               style: TextStyle(
                                 color: Color(story.textColor ?? 0xFFFFFFFF),
                                 fontSize: 18,
@@ -580,27 +595,39 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                             ),
                           )
                         else
-                          (story.content.isNotEmpty && UrlValidator.isValidUrl(story.content))
+                          (story.content.isNotEmpty &&
+                                  UrlValidator.isValidUrl(story.content))
                               ? CachedNetworkImage(
                                   imageUrl: story.content,
                                   fit: BoxFit.cover,
-                                  errorWidget: (context, url, error) => Container(
-                                    color: Colors.black,
-                                    child: const Center(
-                                      child: Icon(Icons.broken_image, color: Colors.white54, size: 48),
-                                    ),
-                                  ),
+                                  errorWidget: (context, url, error) =>
+                                      Container(
+                                        color: Colors.black,
+                                        child: const Center(
+                                          child: Icon(
+                                            Icons.broken_image,
+                                            color: Colors.white54,
+                                            size: 48,
+                                          ),
+                                        ),
+                                      ),
                                 )
                               : Container(
                                   color: Colors.black,
                                   child: const Center(
-                                    child: Icon(Icons.broken_image, color: Colors.white54, size: 48),
+                                    child: Icon(
+                                      Icons.broken_image,
+                                      color: Colors.white54,
+                                      size: 48,
+                                    ),
                                   ),
                                 ),
-                          
+
                         // Dark overlay and username at bottom
                         Positioned(
-                          bottom: 0, left: 0, right: 0,
+                          bottom: 0,
+                          left: 0,
+                          right: 0,
                           child: Container(
                             padding: const EdgeInsets.all(12),
                             decoration: const BoxDecoration(
@@ -614,29 +641,31 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                               children: [
                                 CircleAvatar(
                                   radius: 12,
-                                  backgroundImage: (story.userAvatar.isNotEmpty &&
+                                  backgroundImage:
+                                      (story.userAvatar.isNotEmpty &&
                                           UrlValidator.isValidUrl(
                                             story.userAvatar,
                                           ))
                                       ? CachedNetworkImageProvider(
-                                        story.userAvatar,
-                                      )
+                                          story.userAvatar,
+                                        )
                                       : null,
                                   backgroundColor: const Color(0xFF8B5CF6),
-                                  child: (story.userAvatar.isEmpty ||
+                                  child:
+                                      (story.userAvatar.isEmpty ||
                                           !UrlValidator.isValidUrl(
                                             story.userAvatar,
                                           ))
                                       ? Text(
-                                        story.userName.isNotEmpty
-                                            ? story.userName[0].toUpperCase()
-                                            : '?',
-                                        style: const TextStyle(
-                                          fontSize: 10,
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      )
+                                          story.userName.isNotEmpty
+                                              ? story.userName[0].toUpperCase()
+                                              : '?',
+                                          style: const TextStyle(
+                                            fontSize: 10,
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        )
                                       : null,
                                 ),
                                 const SizedBox(width: 8),
@@ -793,22 +822,32 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                           ? Image.network(
                               _selectedMedia!.path,
                               fit: BoxFit.contain,
-                              errorBuilder: (context, error, stackTrace) => Container(
-                                color: Colors.black,
-                                child: const Center(
-                                  child: Icon(Icons.broken_image, color: Colors.white54, size: 48),
-                                ),
-                              ),
+                              errorBuilder: (context, error, stackTrace) =>
+                                  Container(
+                                    color: Colors.black,
+                                    child: const Center(
+                                      child: Icon(
+                                        Icons.broken_image,
+                                        color: Colors.white54,
+                                        size: 48,
+                                      ),
+                                    ),
+                                  ),
                             )
                           : Image.file(
                               File(_selectedMedia!.path),
                               fit: BoxFit.contain,
-                              errorBuilder: (context, error, stackTrace) => Container(
-                                color: Colors.black,
-                                child: const Center(
-                                  child: Icon(Icons.broken_image, color: Colors.white54, size: 48),
-                                ),
-                              ),
+                              errorBuilder: (context, error, stackTrace) =>
+                                  Container(
+                                    color: Colors.black,
+                                    child: const Center(
+                                      child: Icon(
+                                        Icons.broken_image,
+                                        color: Colors.white54,
+                                        size: 48,
+                                      ),
+                                    ),
+                                  ),
                             ),
                       Positioned(
                         top: 16,
@@ -861,8 +900,12 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
-                    isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.02),
+                    isDark
+                        ? Colors.white.withValues(alpha: 0.1)
+                        : Colors.black.withValues(alpha: 0.05),
+                    isDark
+                        ? Colors.white.withValues(alpha: 0.05)
+                        : Colors.black.withValues(alpha: 0.02),
                   ],
                   stops: const [0.1, 1],
                 ),
@@ -870,8 +913,12 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    isDark ? Colors.white.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.1),
-                    isDark ? Colors.white.withValues(alpha: 0.0) : Colors.black.withValues(alpha: 0.0),
+                    isDark
+                        ? Colors.white.withValues(alpha: 0.2)
+                        : Colors.black.withValues(alpha: 0.1),
+                    isDark
+                        ? Colors.white.withValues(alpha: 0.0)
+                        : Colors.black.withValues(alpha: 0.0),
                   ],
                 ),
                 child: Padding(

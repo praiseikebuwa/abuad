@@ -8,11 +8,13 @@ class ApiClient {
   /// Base URL for the ABUAD backend API (Cloudflare R2 & Express server).
   static String baseUrl = const String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://46.101.214.112:5000/api',
+    defaultValue: 'https://api.abuadapp.com.ng/api',
   );
 
   static String? _accessToken;
   static String? _refreshToken;
+
+  static String? get accessToken => _accessToken;
 
   static Future<void> setTokens({
     String? accessToken,

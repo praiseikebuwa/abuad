@@ -297,7 +297,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
     setState(() => _isPaused = true);
 
     final text =
-        'Check out this story on Abuad life! ${story.caption ?? ""}\n\nhttps://abuadapp.web.app/post/${story.id}';
+        'Check out this story on Abuad life! ${story.caption ?? ""}\n\nhttps://abuadapp.com.ng/post/${story.id}';
     Share.share(text).then((_) {
       if (mounted) {
         setState(() {
@@ -683,18 +683,31 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                                                   Flexible(
                                                     child: Text(
                                                       userName,
-                                                      overflow: TextOverflow.ellipsis,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
                                                       style: const TextStyle(
                                                         color: Colors.white,
                                                         fontSize: 15,
-                                                        fontWeight: FontWeight.w600,
+                                                        fontWeight:
+                                                            FontWeight.w600,
                                                       ),
                                                     ),
                                                   ),
-                                                  if (user != null && (user.isVerified || (user.verificationType.isNotEmpty && user.verificationType != 'none'))) ...[
+                                                  if (user != null &&
+                                                      (user.isVerified ||
+                                                          (user
+                                                                  .verificationType
+                                                                  .isNotEmpty &&
+                                                              user.verificationType !=
+                                                                  'none'))) ...[
                                                     const SizedBox(width: 4),
                                                     VerificationBadge(
-                                                      type: user.verificationType.isNotEmpty ? user.verificationType : 'blue',
+                                                      type:
+                                                          user
+                                                              .verificationType
+                                                              .isNotEmpty
+                                                          ? user.verificationType
+                                                          : 'blue',
                                                       size: 14,
                                                     ),
                                                   ],

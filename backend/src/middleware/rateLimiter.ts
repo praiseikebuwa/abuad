@@ -25,3 +25,16 @@ export const registerLimiter = rateLimit({
     error: 'Too many accounts created from this IP, please try again later.',
   },
 });
+
+/**
+ * Rate Limiter for password reset emails (protects SMTP quota from abuse)
+ */
+export const passwordResetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Too many password reset requests. Please try again in 15 minutes.',
+  },
+});

@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.registerLimiter = exports.loginLimiter = void 0;
+exports.passwordResetLimiter = exports.registerLimiter = exports.loginLimiter = void 0;
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 /**
  * Strict Rate Limiter for Login and Sensitive Auth Endpoints
@@ -27,5 +27,17 @@ exports.registerLimiter = (0, express_rate_limit_1.default)({
     legacyHeaders: false,
     message: {
         error: 'Too many accounts created from this IP, please try again later.',
+    },
+});
+/**
+ * Rate Limiter for password reset emails (protects SMTP quota from abuse)
+ */
+exports.passwordResetLimiter = (0, express_rate_limit_1.default)({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+        error: 'Too many password reset requests. Please try again in 15 minutes.',
     },
 });

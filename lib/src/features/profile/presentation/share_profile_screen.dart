@@ -22,7 +22,7 @@ class ShareProfileScreen extends ConsumerWidget {
     final isDark = theme.brightness == Brightness.dark;
 
     // Use a deep link format or web URL
-    final profileUrl = 'https://abuadapp.web.app/user/$userId';
+    final profileUrl = 'https://abuadapp.com.ng/user/$userId';
 
     return Scaffold(
       backgroundColor: isDark ? AppColors.primaryInk : AppColors.surfaceLight,
@@ -68,7 +68,10 @@ class ShareProfileScreen extends ConsumerWidget {
               children: [
                 // Top Bar
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   child: Row(
                     children: [
                       IconButton(
@@ -108,16 +111,27 @@ class ShareProfileScreen extends ConsumerWidget {
                             ClipRRect(
                               borderRadius: BorderRadius.circular(32),
                               child: BackdropFilter(
-                                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                                filter: ImageFilter.blur(
+                                  sigmaX: 10,
+                                  sigmaY: 10,
+                                ),
                                 child: Container(
                                   padding: const EdgeInsets.all(32),
                                   decoration: BoxDecoration(
-                                    color: (isDark ? Colors.white : AppColors.primaryInk)
-                                        .withValues(alpha: isDark ? 0.05 : 0.03),
+                                    color:
+                                        (isDark
+                                                ? Colors.white
+                                                : AppColors.primaryInk)
+                                            .withValues(
+                                              alpha: isDark ? 0.05 : 0.03,
+                                            ),
                                     borderRadius: BorderRadius.circular(32),
                                     border: Border.all(
-                                      color: (isDark ? Colors.white : AppColors.primaryInk)
-                                          .withValues(alpha: 0.1),
+                                      color:
+                                          (isDark
+                                                  ? Colors.white
+                                                  : AppColors.primaryInk)
+                                              .withValues(alpha: 0.1),
                                     ),
                                   ),
                                   child: Column(
@@ -132,14 +146,17 @@ class ShareProfileScreen extends ConsumerWidget {
                                       ),
                                       const SizedBox(height: 16),
                                       Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
                                         children: [
                                           Text(
                                             user.displayName,
                                             style: TextStyle(
                                               fontSize: 22,
                                               fontWeight: FontWeight.bold,
-                                              color: isDark ? Colors.white : AppColors.primaryInk,
+                                              color: isDark
+                                                  ? Colors.white
+                                                  : AppColors.primaryInk,
                                             ),
                                           ),
                                           if (user.isVerified) ...[
@@ -155,8 +172,11 @@ class ShareProfileScreen extends ConsumerWidget {
                                         '@${user.handle}',
                                         style: TextStyle(
                                           fontSize: 16,
-                                          color: (isDark ? Colors.white : AppColors.primaryInk)
-                                              .withValues(alpha: 0.6),
+                                          color:
+                                              (isDark
+                                                      ? Colors.white
+                                                      : AppColors.primaryInk)
+                                                  .withValues(alpha: 0.6),
                                         ),
                                       ),
                                       const SizedBox(height: 32),
@@ -165,10 +185,14 @@ class ShareProfileScreen extends ConsumerWidget {
                                         padding: const EdgeInsets.all(16),
                                         decoration: BoxDecoration(
                                           color: Colors.white,
-                                          borderRadius: BorderRadius.circular(24),
+                                          borderRadius: BorderRadius.circular(
+                                            24,
+                                          ),
                                           boxShadow: [
                                             BoxShadow(
-                                              color: Colors.black.withValues(alpha: 0.1),
+                                              color: Colors.black.withValues(
+                                                alpha: 0.1,
+                                              ),
                                               blurRadius: 20,
                                               offset: const Offset(0, 10),
                                             ),
@@ -182,18 +206,23 @@ class ShareProfileScreen extends ConsumerWidget {
                                             eyeShape: QrEyeShape.square,
                                             color: AppColors.primaryInk,
                                           ),
-                                          dataModuleStyle: const QrDataModuleStyle(
-                                            dataModuleShape: QrDataModuleShape.square,
-                                            color: AppColors.primaryInk,
-                                          ),
+                                          dataModuleStyle:
+                                              const QrDataModuleStyle(
+                                                dataModuleShape:
+                                                    QrDataModuleShape.square,
+                                                color: AppColors.primaryInk,
+                                              ),
                                         ),
                                       ),
                                       const SizedBox(height: 24),
                                       Text(
                                         'Scan to view profile',
                                         style: TextStyle(
-                                          color: (isDark ? Colors.white : AppColors.primaryInk)
-                                              .withValues(alpha: 0.5),
+                                          color:
+                                              (isDark
+                                                      ? Colors.white
+                                                      : AppColors.primaryInk)
+                                                  .withValues(alpha: 0.5),
                                           fontWeight: FontWeight.w500,
                                         ),
                                       ),
@@ -211,16 +240,25 @@ class ShareProfileScreen extends ConsumerWidget {
                                     icon: Icons.link,
                                     label: 'Copy Link',
                                     onTap: () {
-                                      Clipboard.setData(ClipboardData(text: profileUrl));
+                                      Clipboard.setData(
+                                        ClipboardData(text: profileUrl),
+                                      );
                                       HapticFeedback.mediumImpact();
-                                      ScaffoldMessenger.of(context).showSnackBar(
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
                                         SnackBar(
-                                          content: const Text('Link copied to clipboard'),
+                                          content: const Text(
+                                            'Link copied to clipboard',
+                                          ),
                                           behavior: SnackBarBehavior.floating,
                                           shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(12),
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
                                           ),
-                                          backgroundColor: AppColors.secondaryTeal,
+                                          backgroundColor:
+                                              AppColors.secondaryTeal,
                                         ),
                                       );
                                     },
@@ -247,7 +285,8 @@ class ShareProfileScreen extends ConsumerWidget {
                         ),
                       );
                     },
-                    loading: () => const Center(child: CircularProgressIndicator()),
+                    loading: () =>
+                        const Center(child: CircularProgressIndicator()),
                     error: (e, s) => Center(child: Text('Error: $e')),
                   ),
                 ),
@@ -292,9 +331,12 @@ class _ActionButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(16),
-          border: isPrimary ? null : Border.all(
-            color: (isDark ? Colors.white : AppColors.primaryInk).withValues(alpha: 0.1),
-          ),
+          border: isPrimary
+              ? null
+              : Border.all(
+                  color: (isDark ? Colors.white : AppColors.primaryInk)
+                      .withValues(alpha: 0.1),
+                ),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -303,10 +345,7 @@ class _ActionButton extends StatelessWidget {
             const SizedBox(width: 8),
             Text(
               label,
-              style: TextStyle(
-                color: textColor,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
             ),
           ],
         ),

@@ -2,7 +2,7 @@
  * REST API & Native JWT Configuration for Admin Portal
  * Replaces Firebase SDK & Firestore calls with backend REST endpoints
  */
-const API_BASE_URL = 'http://46.101.214.112:5000/api';
+const API_BASE_URL = 'https://api.abuadapp.com.ng/api';
 
 class ApiClientAdmin {
   static getAccessToken() {
