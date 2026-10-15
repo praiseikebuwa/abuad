@@ -200,6 +200,44 @@ class AppUser {
       longitude: longitude ?? this.longitude,
     );
   }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': uid,
+      'fullName': displayName,
+      'email': email,
+      'username': handle,
+      'avatarUrl': avatarUrl,
+      'bannerUrl': bannerUrl,
+      'bio': bio,
+      'isVerified': isVerified,
+      'verificationType': verificationType,
+      'followersCount': followersCount,
+      'followingCount': followingCount,
+      'department': department,
+      'college': college,
+      'phoneNumber': phoneNumber,
+      'websiteUrl': websiteUrl,
+      'twitterUrl': twitterUrl,
+      'instagramUrl': instagramUrl,
+      'facebookUrl': facebookUrl,
+      'linkedinUrl': linkedinUrl,
+      'whatsappUrl': whatsappUrl,
+      'tiktokUrl': tiktokUrl,
+      'youtubeUrl': youtubeUrl,
+      'snapchatUrl': snapchatUrl,
+      'githubUrl': githubUrl,
+      'twitchUrl': twitchUrl,
+      'isFollowingVisible': isFollowingVisible,
+      'streakCount': streakCount,
+      'createdAt': createdAt?.toIso8601String(),
+      'role': isAdmin ? 'ADMIN' : 'STUDENT',
+      'isBlocked': isBanned,
+      'status': status,
+      'latitude': latitude,
+      'longitude': longitude,
+    };
+  }
 }
 
 class SuggestedUser {

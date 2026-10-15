@@ -39,44 +39,68 @@ class AuthRepository {
       final prefs = await SharedPreferences.getInstance();
       final accessToken = prefs.getString('accessToken');
       final refreshToken = prefs.getString('refreshToken');
+      final cachedUserRaw = prefs.getString('cachedUser');
+
+      // 1. Instantly restore cached user without waiting for network (0ms startup)
+      if (cachedUserRaw != null && cachedUserRaw.isNotEmpty) {
+        try {
+          final data = jsonDecode(cachedUserRaw);
+          _currentUser = AppUser.fromMap(data);
+          _controller.add(_currentUser);
+        } catch (_) {}
+      }
 
       if (accessToken != null && accessToken.isNotEmpty) {
         await ApiClient.setTokens(accessToken: accessToken, refreshToken: refreshToken);
-        final res = await ApiClient.get('/auth/me');
-        if (res.statusCode == 200) {
-          final data = jsonDecode(res.body);
-          if (data['success'] == true && data['data'] != null) {
-            _currentUser = AppUser.fromMap(data['data']);
-            _controller.add(_currentUser);
-            SocketService.instance.connect();
-            return;
-          }
-        }
-        // If access token expired, try refreshing token
-        if (refreshToken != null) {
-          final refreshed = await ApiClient.refreshToken();
-          if (refreshed) {
-            final res2 = await ApiClient.get('/auth/me');
-            if (res2.statusCode == 200) {
-              final data2 = jsonDecode(res2.body);
-              if (data2['success'] == true && data2['data'] != null) {
-                _currentUser = AppUser.fromMap(data2['data']);
-                _controller.add(_currentUser);
-                SocketService.instance.connect();
-                return;
-              }
-            }
-          }
-        }
+        SocketService.instance.connect();
+        // 2. Refresh profile in background without stalling the UI
+        unawaited(_syncUserProfile(prefs));
       }
     } catch (e) {
       debugPrint('AuthRepository.init error: $e');
     }
   }
 
+  Future<void> _syncUserProfile([SharedPreferences? existingPrefs]) async {
+    try {
+      final res = await ApiClient.get('/auth/me');
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['data'] != null) {
+          _currentUser = AppUser.fromMap(data['data']);
+          _controller.add(_currentUser);
+          final prefs = existingPrefs ?? await SharedPreferences.getInstance();
+          await prefs.setString('cachedUser', jsonEncode(_currentUser!.toMap()));
+          return;
+        }
+      }
+      final prefs = existingPrefs ?? await SharedPreferences.getInstance();
+      final refreshToken = prefs.getString('refreshToken');
+      if (refreshToken != null) {
+        final refreshed = await ApiClient.refreshToken();
+        if (refreshed) {
+          final res2 = await ApiClient.get('/auth/me');
+          if (res2.statusCode == 200) {
+            final data2 = jsonDecode(res2.body);
+            if (data2['success'] == true && data2['data'] != null) {
+              _currentUser = AppUser.fromMap(data2['data']);
+              _controller.add(_currentUser);
+              await prefs.setString('cachedUser', jsonEncode(_currentUser!.toMap()));
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('AuthRepository._syncUserProfile error: $e');
+    }
+  }
+
   void setCurrentUser(AppUser? user) {
     _currentUser = user;
     _controller.add(user);
+    if (user != null) {
+      SharedPreferences.getInstance().then((p) => p.setString('cachedUser', jsonEncode(user.toMap())));
+    }
   }
 
   Future<Map<String, dynamic>?> signInWithEmailAndPassword(String email, String password) async {
@@ -92,6 +116,8 @@ class AuthRepository {
         final refreshToken = data['data']['refreshToken'];
         await ApiClient.setTokens(accessToken: accessToken, refreshToken: refreshToken);
         _currentUser = AppUser.fromMap(data['data']['user']);
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('cachedUser', jsonEncode(_currentUser!.toMap()));
         _controller.add(_currentUser);
         SocketService.instance.connect();
         return data['data']['user'];
@@ -120,6 +146,8 @@ class AuthRepository {
         final refreshToken = data['data']['refreshToken'];
         await ApiClient.setTokens(accessToken: accessToken, refreshToken: refreshToken);
         _currentUser = AppUser.fromMap(data['data']['user']);
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('cachedUser', jsonEncode(_currentUser!.toMap()));
         _controller.add(_currentUser);
         SocketService.instance.connect();
         return data['data']['user'];
@@ -149,6 +177,8 @@ class AuthRepository {
       await ApiClient.post('/auth/logout', {});
     } catch (_) {}
     ApiClient.clearTokens();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('cachedUser');
     _currentUser = null;
     _controller.add(null);
   }

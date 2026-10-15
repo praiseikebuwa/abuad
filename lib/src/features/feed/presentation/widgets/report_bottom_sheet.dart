@@ -84,6 +84,15 @@ class _ReportBottomSheetState extends ConsumerState<ReportBottomSheet> {
                 : null,
           );
           break;
+        case ReportType.message:
+          await repo.reportMessage(
+            messageId: widget.targetId,
+            reason: _selectedReason!,
+            details: _detailsController.text.isNotEmpty
+                ? _detailsController.text
+                : null,
+          );
+          break;
       }
 
       if (mounted) {

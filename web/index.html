@@ -309,10 +309,33 @@
   </style>
   <script id="splash-screen-script">
     function removeSplashFromWeb() {
-      document.getElementById("splash")?.remove();
+      const splash = document.getElementById("splash");
+      if (splash) {
+        splash.style.transition = "opacity 0.3s ease-out";
+        splash.style.opacity = "0";
+        setTimeout(function() {
+          splash.remove();
+        }, 300);
+      }
       document.getElementById("splash-branding")?.remove();
       document.body.style.background = "transparent";
     }
+
+    // 1. Instantly remove splash when Flutter renders its first frame
+    window.addEventListener('flutter-first-frame', function () {
+      removeSplashFromWeb();
+    });
+
+    // 2. Also listen for Flutter engine DOM mounting
+    const observer = new MutationObserver(function () {
+      if (document.querySelector('flutter-view') || document.querySelector('flt-glass-pane')) {
+        setTimeout(removeSplashFromWeb, 80);
+        observer.disconnect();
+      }
+    });
+    document.addEventListener('DOMContentLoaded', function () {
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
   </script>
 </head>
 

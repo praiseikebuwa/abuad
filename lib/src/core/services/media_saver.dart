@@ -1,10 +1,32 @@
 import 'package:flutter/foundation.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:gal/gal.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:image_picker/image_picker.dart';
 
 class MediaSaver {
+  /// Save a local captured XFile directly to gallery (for photo or video)
+  static Future<bool> saveLocalFile(XFile file, {bool isVideo = false}) async {
+    if (kIsWeb) return true;
+    try {
+      final hasAccess = await Gal.hasAccess();
+      if (!hasAccess) {
+        final granted = await Gal.requestAccess();
+        if (!granted) return false;
+      }
+      if (isVideo) {
+        await Gal.putVideo(file.path);
+      } else {
+        await Gal.putImage(file.path);
+      }
+      return true;
+    } catch (e) {
+      debugPrint('MediaSaver.saveLocalFile error: $e');
+      return false;
+    }
+  }
+
   /// Save an image URL to gallery or download via browser if on Web/Desktop without Gal channel
   static Future<bool> saveImage(String url) async {
     if (url.isEmpty) return false;

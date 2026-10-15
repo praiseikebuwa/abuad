@@ -1,4 +1,4 @@
-enum ReportType { post, comment, story, user }
+enum ReportType { post, comment, story, user, message }
 
 enum ReportReason {
   spam,
@@ -18,6 +18,10 @@ class Report {
   final String? details;
   final DateTime createdAt;
   final String status;
+  final String reporterName;
+  final String reporterHandle;
+  final String? reporterAvatar;
+  final Map<String, dynamic>? targetPreview;
 
   Report({
     required this.id,
@@ -27,7 +31,11 @@ class Report {
     required this.reason,
     this.details,
     required this.createdAt,
-    this.status = 'pending',
+    this.status = 'PENDING',
+    this.reporterName = 'Student',
+    this.reporterHandle = '',
+    this.reporterAvatar,
+    this.targetPreview,
   });
 
   Map<String, dynamic> toMap() {
@@ -49,21 +57,37 @@ class Report {
       return DateTime.now();
     }
 
+    final reporterObj = map['reporter'] as Map<String, dynamic>?;
+    final targetTypeStr = (map['targetType'] ?? map['type'] ?? 'post').toString().toLowerCase();
+    final reasonStr = (map['reason'] ?? '').toString();
+
+    // Parse reason
+    ReportReason parsedReason = ReportReason.other;
+    for (var r in ReportReason.values) {
+      if (reasonStr.toLowerCase().contains(r.name.toLowerCase())) {
+        parsedReason = r;
+        break;
+      }
+    }
+
     return Report(
-      id: map['id'] ?? '',
+      id: map['id']?.toString() ?? '',
       reporterId: map['reporter_id'] ?? map['reporterId'] ?? '',
       targetId: map['target_id'] ?? map['targetId'] ?? '',
       type: ReportType.values.firstWhere(
-        (e) => e.name == map['type'],
+        (e) => e.name == targetTypeStr,
         orElse: () => ReportType.post,
       ),
-      reason: ReportReason.values.firstWhere(
-        (e) => e.name == map['reason'],
-        orElse: () => ReportReason.other,
-      ),
-      details: map['details'],
+      reason: parsedReason,
+      details: map['details'] ?? reasonStr,
       createdAt: parseTime(map['created_at'] ?? map['createdAt']),
-      status: map['status'] ?? 'pending',
+      status: (map['status'] ?? 'PENDING').toString().toUpperCase(),
+      reporterName: reporterObj?['fullName'] ?? 'Anonymous Student',
+      reporterHandle: reporterObj?['username'] ?? '',
+      reporterAvatar: reporterObj?['avatarUrl'],
+      targetPreview: map['targetPreview'] is Map<String, dynamic>
+          ? map['targetPreview'] as Map<String, dynamic>
+          : null,
     );
   }
 }

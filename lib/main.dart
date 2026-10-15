@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:abuad/src/core/services/notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -27,17 +28,10 @@ void main() async {
       ),
     );
 
-    // Initialize Notifications with timeout
-    try {
-      await NotificationService().initialize().timeout(
-        const Duration(seconds: 5),
-        onTimeout: () {
-          debugPrint("Notification initialization timed out");
-        },
-      );
-    } catch (e) {
+    // Initialize Notifications asynchronously without blocking UI startup
+    unawaited(NotificationService().initialize().catchError((e) {
       debugPrint("Notification initialization failed: $e");
-    }
+    }));
   } catch (e) {
     debugPrint("Initialization failed: $e");
   }

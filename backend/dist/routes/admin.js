@@ -4,33 +4,496 @@ const express_1 = require("express");
 const auth_1 = require("../middleware/auth");
 const db_1 = require("../config/db");
 const router = (0, express_1.Router)();
+const adminOnly = (req, res, next) => {
+    const role = req.user?.role?.toUpperCase();
+    if (role !== 'ADMIN') {
+        return res.status(403).json({ error: 'Forbidden: Admin access required' });
+    }
+    next();
+};
 /**
- * GET /api/admin/reports or /api/reports
+ * POST /api/admin/reports or /api/reports
+ * Any authenticated user can submit a report
  */
-router.get(['/', '/reports'], auth_1.authenticateToken, async (req, res) => {
+router.post(['/', '/reports'], auth_1.authenticateToken, async (req, res) => {
     try {
-        const reports = await db_1.prisma.report.findMany({
-            orderBy: { createdAt: 'desc' },
+        const { targetId, targetType, reason, details } = req.body;
+        if (!targetId || !targetType || !reason) {
+            return res.status(400).json({ error: 'targetId, targetType, and reason are required' });
+        }
+        const fullReason = details ? `${reason}: ${details}` : String(reason);
+        const report = await db_1.prisma.report.create({
+            data: {
+                reporterId: req.user.id,
+                targetId: String(targetId),
+                targetType: String(targetType).toLowerCase(),
+                reason: fullReason,
+                status: 'PENDING',
+            },
             include: {
                 reporter: {
-                    select: { id: true, username: true, fullName: true, email: true },
+                    select: { id: true, username: true, fullName: true, email: true, avatarUrl: true },
                 },
             },
         });
-        return res.json({ success: true, data: reports });
+        return res.status(201).json({ success: true, data: report });
     }
     catch (error) {
+        console.error('Error creating report:', error);
+        return res.status(500).json({ error: 'Failed to create report' });
+    }
+});
+/**
+ * GET /api/admin/reports or /api/reports
+ * Admin only: list reports with enriched preview info & filters
+ */
+router.get(['/', '/reports'], auth_1.authenticateToken, adminOnly, async (req, res) => {
+    try {
+        const { status, targetType } = req.query;
+        const where = {};
+        if (status && status !== 'ALL') {
+            where.status = String(status).toUpperCase();
+        }
+        if (targetType && targetType !== 'ALL') {
+            where.targetType = String(targetType).toLowerCase();
+        }
+        const reports = await db_1.prisma.report.findMany({
+            where,
+            orderBy: { createdAt: 'desc' },
+            include: {
+                reporter: {
+                    select: { id: true, username: true, fullName: true, email: true, avatarUrl: true },
+                },
+            },
+            take: 100,
+        });
+        // Enrich reports with preview of the reported target
+        const enriched = await Promise.all(reports.map(async (r) => {
+            let targetPreview = null;
+            try {
+                if (r.targetType === 'post') {
+                    const post = await db_1.prisma.post.findUnique({
+                        where: { id: r.targetId },
+                        select: {
+                            id: true,
+                            content: true,
+                            mediaUrl: true,
+                            channelId: true,
+                            authorId: true,
+                            isAnonymous: true,
+                            author: { select: { fullName: true, username: true, avatarUrl: true } },
+                        },
+                    });
+                    targetPreview = post;
+                }
+                else if (r.targetType === 'comment') {
+                    const comment = await db_1.prisma.postComment.findUnique({
+                        where: { id: r.targetId },
+                        select: {
+                            id: true,
+                            content: true,
+                            authorId: true,
+                            author: { select: { id: true, username: true, fullName: true, avatarUrl: true } },
+                        },
+                    });
+                    targetPreview = comment;
+                }
+                else if (r.targetType === 'user') {
+                    const user = await db_1.prisma.user.findUnique({
+                        where: { id: r.targetId },
+                        select: {
+                            id: true,
+                            username: true,
+                            fullName: true,
+                            avatarUrl: true,
+                            isBlocked: true,
+                            department: true,
+                            role: true,
+                        },
+                    });
+                    targetPreview = user;
+                }
+            }
+            catch (_) { }
+            return {
+                ...r,
+                targetPreview,
+            };
+        }));
+        return res.json({ success: true, data: enriched });
+    }
+    catch (error) {
+        console.error('Failed to fetch reports:', error);
         return res.status(500).json({ error: 'Failed to fetch reports' });
     }
 });
 /**
- * GET & POST /api/admin/config or /api/system/config
+ * PATCH /api/admin/reports/:id
+ * Admin only: update report status
  */
-router.get(['/', '/config', '/system/config'], auth_1.authenticateToken, async (req, res) => {
+router.patch('/reports/:id', auth_1.authenticateToken, adminOnly, async (req, res) => {
+    try {
+        const { status } = req.body;
+        if (!status)
+            return res.status(400).json({ error: 'status is required' });
+        const reportId = String(req.params.id);
+        const updated = await db_1.prisma.report.update({
+            where: { id: reportId },
+            data: { status: String(status).toUpperCase() },
+        });
+        return res.json({ success: true, data: updated });
+    }
+    catch (error) {
+        return res.status(500).json({ error: 'Failed to update report status' });
+    }
+});
+/**
+ * POST /api/admin/reports/:id/action
+ * Admin moderation actions: DELETE_CONTENT, BAN_USER, UNBAN_USER, WARN_USER, DISMISS
+ */
+router.post('/reports/:id/action', auth_1.authenticateToken, adminOnly, async (req, res) => {
+    try {
+        const { action, notes } = req.body;
+        const reportId = String(req.params.id);
+        const report = await db_1.prisma.report.findUnique({ where: { id: reportId } });
+        if (!report)
+            return res.status(404).json({ error: 'Report not found' });
+        let message = 'Action executed successfully';
+        if (action === 'DELETE_CONTENT') {
+            if (report.targetType === 'post') {
+                await db_1.prisma.post.deleteMany({ where: { id: report.targetId } });
+                message = 'Reported post has been deleted';
+            }
+            else if (report.targetType === 'comment') {
+                await db_1.prisma.postComment.deleteMany({ where: { id: report.targetId } });
+                message = 'Reported comment has been deleted';
+            }
+            await db_1.prisma.report.update({
+                where: { id: report.id },
+                data: { status: 'RESOLVED' },
+            });
+        }
+        else if (action === 'BAN_USER') {
+            let targetUserId = report.targetId;
+            if (report.targetType === 'post') {
+                const post = await db_1.prisma.post.findUnique({ where: { id: report.targetId } });
+                if (post)
+                    targetUserId = post.authorId;
+            }
+            else if (report.targetType === 'comment') {
+                const comment = await db_1.prisma.postComment.findUnique({ where: { id: report.targetId } });
+                if (comment)
+                    targetUserId = comment.authorId;
+            }
+            await db_1.prisma.user.update({
+                where: { id: targetUserId },
+                data: { isBlocked: true },
+            });
+            await db_1.prisma.report.update({
+                where: { id: report.id },
+                data: { status: 'RESOLVED' },
+            });
+            message = 'Author / user has been banned';
+        }
+        else if (action === 'UNBAN_USER') {
+            await db_1.prisma.user.update({
+                where: { id: report.targetId },
+                data: { isBlocked: false },
+            });
+            message = 'User has been unbanned';
+        }
+        else if (action === 'WARN_USER') {
+            let targetUserId = report.targetId;
+            if (report.targetType === 'post') {
+                const post = await db_1.prisma.post.findUnique({ where: { id: report.targetId } });
+                if (post)
+                    targetUserId = post.authorId;
+            }
+            await db_1.prisma.notification.create({
+                data: {
+                    userId: targetUserId,
+                    title: '⚠️ Moderation Warning',
+                    body: notes || 'Your recent activity was reported for violating ABUAD community rules. Please adhere to campus safety policies.',
+                    type: 'system',
+                },
+            });
+            await db_1.prisma.report.update({
+                where: { id: report.id },
+                data: { status: 'REVIEWED' },
+            });
+            message = 'Official warning delivered to user';
+        }
+        else if (action === 'DISMISS') {
+            await db_1.prisma.report.update({
+                where: { id: report.id },
+                data: { status: 'DISMISSED' },
+            });
+            message = 'Report dismissed';
+        }
+        else if (action === 'RESOLVE') {
+            await db_1.prisma.report.update({
+                where: { id: report.id },
+                data: { status: 'RESOLVED' },
+            });
+            message = 'Report marked resolved';
+        }
+        // Create Audit Log
+        try {
+            await db_1.prisma.auditLog.create({
+                data: {
+                    adminId: req.user.id,
+                    action: `REPORT_ACTION_${action}`,
+                    details: `Report ${report.id} target ${report.targetId} (${report.targetType}): ${message}`,
+                },
+            });
+        }
+        catch (_) { }
+        return res.json({ success: true, message });
+    }
+    catch (error) {
+        console.error('Error executing report action:', error);
+        return res.status(500).json({ error: error.message || 'Failed to execute moderation action' });
+    }
+});
+/**
+ * GET /api/admin/metrics
+ * System dashboard metrics: reports, users, posts, confessions
+ */
+router.get('/metrics', auth_1.authenticateToken, adminOnly, async (req, res) => {
+    try {
+        const [totalUsers, bannedUsers, verifiedUsers, adminCount, totalPosts, pendingReports, resolvedReports, confessionsCount, totalAnnouncements,] = await Promise.all([
+            db_1.prisma.user.count(),
+            db_1.prisma.user.count({ where: { isBlocked: true } }),
+            db_1.prisma.user.count({ where: { isVerified: true } }),
+            db_1.prisma.user.count({ where: { role: 'ADMIN' } }),
+            db_1.prisma.post.count(),
+            db_1.prisma.report.count({ where: { status: 'PENDING' } }),
+            db_1.prisma.report.count({ where: { status: { in: ['RESOLVED', 'REVIEWED', 'DISMISSED'] } } }),
+            db_1.prisma.post.count({ where: { channelId: 'confessions' } }),
+            db_1.prisma.announcement.count(),
+        ]);
+        return res.json({
+            success: true,
+            data: {
+                totalUsers,
+                bannedUsers,
+                verifiedUsers,
+                adminCount,
+                totalPosts,
+                pendingReports,
+                resolvedReports,
+                confessionsCount,
+                totalAnnouncements,
+            },
+        });
+    }
+    catch (error) {
+        console.error('Error fetching admin metrics:', error);
+        return res.status(500).json({ error: 'Failed to fetch metrics' });
+    }
+});
+/**
+ * GET /api/admin/users
+ * User directory with search & filters
+ */
+router.get('/users', auth_1.authenticateToken, adminOnly, async (req, res) => {
+    try {
+        const { q, filter } = req.query;
+        const where = {};
+        if (q) {
+            const search = String(q).trim();
+            where.OR = [
+                { username: { contains: search, mode: 'insensitive' } },
+                { fullName: { contains: search, mode: 'insensitive' } },
+                { email: { contains: search, mode: 'insensitive' } },
+            ];
+        }
+        if (filter === 'banned')
+            where.isBlocked = true;
+        if (filter === 'verified')
+            where.isVerified = true;
+        if (filter === 'admins')
+            where.role = 'ADMIN';
+        const users = await db_1.prisma.user.findMany({
+            where,
+            orderBy: { createdAt: 'desc' },
+            take: 50,
+            select: {
+                id: true,
+                email: true,
+                username: true,
+                fullName: true,
+                avatarUrl: true,
+                role: true,
+                isVerified: true,
+                verificationType: true,
+                isBlocked: true,
+                department: true,
+                level: true,
+                createdAt: true,
+                followersCount: true,
+                followingCount: true,
+            },
+        });
+        return res.json({ success: true, data: users });
+    }
+    catch (error) {
+        console.error('Error fetching users:', error);
+        return res.status(500).json({ error: 'Failed to fetch users' });
+    }
+});
+/**
+ * POST /api/admin/users/:id/ban
+ * Ban or unban a user
+ */
+router.post('/users/:id/ban', auth_1.authenticateToken, adminOnly, async (req, res) => {
+    try {
+        const { isBanned } = req.body;
+        const targetId = String(req.params.id);
+        if (targetId === req.user.id) {
+            return res.status(400).json({ error: 'Cannot ban your own admin account' });
+        }
+        const updated = await db_1.prisma.user.update({
+            where: { id: targetId },
+            data: { isBlocked: isBanned === true },
+            select: { id: true, username: true, fullName: true, isBlocked: true },
+        });
+        await db_1.prisma.auditLog.create({
+            data: {
+                adminId: req.user.id,
+                action: isBanned ? 'BAN_USER' : 'UNBAN_USER',
+                details: `User ${updated.username} (${updated.id}) isBlocked set to ${isBanned}`,
+            },
+        });
+        return res.json({ success: true, data: updated, message: isBanned ? 'User has been banned' : 'User unbanned' });
+    }
+    catch (error) {
+        return res.status(500).json({ error: 'Failed to update user ban status' });
+    }
+});
+/**
+ * POST /api/admin/users/:id/verify
+ * Grant or revoke user verification badge
+ */
+router.post('/users/:id/verify', auth_1.authenticateToken, adminOnly, async (req, res) => {
+    try {
+        const { isVerified, verificationType } = req.body;
+        const targetId = String(req.params.id);
+        const updated = await db_1.prisma.user.update({
+            where: { id: targetId },
+            data: {
+                isVerified: isVerified === true,
+                verificationType: isVerified ? (verificationType || 'BLUE') : 'NONE',
+            },
+            select: { id: true, username: true, isVerified: true, verificationType: true },
+        });
+        return res.json({ success: true, data: updated, message: 'Verification updated' });
+    }
+    catch (error) {
+        return res.status(500).json({ error: 'Failed to update verification' });
+    }
+});
+/**
+ * POST /api/admin/users/:id/role
+ * Change user role
+ */
+router.post('/users/:id/role', auth_1.authenticateToken, adminOnly, async (req, res) => {
+    try {
+        const { role } = req.body;
+        if (!['STUDENT', 'STAFF', 'ADMIN'].includes(String(role).toUpperCase())) {
+            return res.status(400).json({ error: 'Invalid role' });
+        }
+        const targetId = String(req.params.id);
+        const updated = await db_1.prisma.user.update({
+            where: { id: targetId },
+            data: { role: String(role).toUpperCase() },
+            select: { id: true, username: true, role: true },
+        });
+        return res.json({ success: true, data: updated, message: 'User role updated' });
+    }
+    catch (error) {
+        return res.status(500).json({ error: 'Failed to update user role' });
+    }
+});
+/**
+ * GET /api/admin/confessions
+ * Admin only: inspect all confessions unmasked
+ */
+router.get('/confessions', auth_1.authenticateToken, adminOnly, async (req, res) => {
+    try {
+        const confessions = await db_1.prisma.post.findMany({
+            where: { channelId: 'confessions' },
+            orderBy: { createdAt: 'desc' },
+            take: 50,
+            include: {
+                author: {
+                    select: { id: true, username: true, fullName: true, email: true, isBlocked: true },
+                },
+            },
+        });
+        return res.json({ success: true, data: confessions });
+    }
+    catch (error) {
+        return res.status(500).json({ error: 'Failed to fetch confessions' });
+    }
+});
+/**
+ * DELETE /api/admin/posts/:id
+ * Direct admin deletion of any post
+ */
+router.delete('/posts/:id', auth_1.authenticateToken, adminOnly, async (req, res) => {
+    try {
+        const postId = String(req.params.id);
+        await db_1.prisma.post.delete({ where: { id: postId } });
+        return res.json({ success: true, message: 'Post permanently deleted by admin' });
+    }
+    catch (error) {
+        return res.status(500).json({ error: 'Failed to delete post' });
+    }
+});
+/**
+ * POST /api/admin/broadcast
+ * Send a campus announcement + system notification to everyone
+ */
+router.post('/broadcast', auth_1.authenticateToken, adminOnly, async (req, res) => {
+    try {
+        const { title, body, target } = req.body;
+        if (!title || !body)
+            return res.status(400).json({ error: 'Title and body are required' });
+        const announcement = await db_1.prisma.announcement.create({
+            data: {
+                title,
+                body,
+                target: target || 'everyone',
+            },
+        });
+        // Notify all active users asynchronously
+        const users = await db_1.prisma.user.findMany({ select: { id: true }, take: 2000 });
+        const notificationsData = users.map((u) => ({
+            userId: u.id,
+            title: `📢 ${title}`,
+            body,
+            type: 'system',
+        }));
+        await db_1.prisma.notification.createMany({
+            data: notificationsData,
+            skipDuplicates: true,
+        });
+        return res.status(201).json({ success: true, data: announcement, message: 'Broadcast published to campus' });
+    }
+    catch (error) {
+        console.error('Error broadcasting announcement:', error);
+        return res.status(500).json({ error: 'Failed to broadcast announcement' });
+    }
+});
+/**
+ * Legacy routes for system config, announcements, audit logs
+ */
+router.get(['/config', '/system/config'], auth_1.authenticateToken, async (req, res) => {
     try {
         const settings = await db_1.prisma.systemSetting.findMany();
         const configMap = {};
-        settings.forEach(s => {
+        settings.forEach((s) => {
             try {
                 configMap[s.key] = JSON.parse(s.value);
             }
@@ -44,7 +507,7 @@ router.get(['/', '/config', '/system/config'], auth_1.authenticateToken, async (
         return res.json({ success: true, data: { maintenanceMode: false, appVersion: '1.0.0' } });
     }
 });
-router.post(['/', '/config', '/system/config'], auth_1.authenticateToken, async (req, res) => {
+router.post(['/config', '/system/config'], auth_1.authenticateToken, adminOnly, async (req, res) => {
     try {
         const { key, value } = req.body;
         if (!key)
@@ -61,21 +524,16 @@ router.post(['/', '/config', '/system/config'], auth_1.authenticateToken, async 
         return res.status(500).json({ error: 'Failed to save config' });
     }
 });
-/**
- * GET & POST /api/admin/announcements or /api/announcements
- */
-router.get(['/', '/announcements'], auth_1.authenticateToken, async (req, res) => {
+router.get('/announcements', auth_1.authenticateToken, async (req, res) => {
     try {
-        const announcements = await db_1.prisma.announcement.findMany({
-            orderBy: { createdAt: 'desc' }
-        });
+        const announcements = await db_1.prisma.announcement.findMany({ orderBy: { createdAt: 'desc' } });
         return res.json({ success: true, data: announcements });
     }
     catch (error) {
         return res.status(500).json({ error: 'Failed to fetch announcements' });
     }
 });
-router.post(['/', '/announcements'], auth_1.authenticateToken, async (req, res) => {
+router.post('/announcements', auth_1.authenticateToken, adminOnly, async (req, res) => {
     try {
         const { title, body, target } = req.body;
         const item = await db_1.prisma.announcement.create({
@@ -83,7 +541,7 @@ router.post(['/', '/announcements'], auth_1.authenticateToken, async (req, res) 
                 title: title || 'System Announcement',
                 body: body || '',
                 target: target || 'everyone',
-            }
+            },
         });
         return res.status(201).json({ success: true, data: item });
     }
@@ -91,91 +549,7 @@ router.post(['/', '/announcements'], auth_1.authenticateToken, async (req, res) 
         return res.status(500).json({ error: 'Failed to create announcement' });
     }
 });
-/**
- * GET & POST /api/admin/resources or /api/resources
- */
-router.get(['/', '/resources'], auth_1.authenticateToken, async (req, res) => {
-    try {
-        const resources = await db_1.prisma.resource.findMany({
-            orderBy: { createdAt: 'desc' },
-            include: {
-                uploader: {
-                    select: { id: true, username: true, fullName: true }
-                }
-            }
-        });
-        return res.json({ success: true, data: resources });
-    }
-    catch (error) {
-        return res.status(500).json({ error: 'Failed to fetch resources' });
-    }
-});
-router.post(['/', '/resources'], auth_1.authenticateToken, async (req, res) => {
-    try {
-        const { title, description, category, fileUrl } = req.body;
-        const item = await db_1.prisma.resource.create({
-            data: {
-                title: title || 'Untitled Resource',
-                description: description || '',
-                category: category || 'General',
-                fileUrl: fileUrl || '',
-                uploaderId: req.user.id,
-            }
-        });
-        return res.status(201).json({ success: true, data: item });
-    }
-    catch (error) {
-        return res.status(500).json({ error: 'Failed to create resource' });
-    }
-});
-/**
- * GET /api/admin/verification-requests
- */
-router.get('/verification-requests', auth_1.authenticateToken, async (req, res) => {
-    try {
-        const requests = await db_1.prisma.verificationRequest.findMany({
-            orderBy: { createdAt: 'desc' },
-            include: {
-                user: {
-                    select: { id: true, username: true, fullName: true, email: true },
-                },
-            },
-        });
-        return res.json({ success: true, data: requests });
-    }
-    catch (error) {
-        return res.status(500).json({ error: 'Failed to fetch verification requests' });
-    }
-});
-/**
- * POST /api/admin/verification-requests/:id/approve
- */
-router.post('/verification-requests/:id/approve', auth_1.authenticateToken, async (req, res) => {
-    try {
-        const requestId = String(req.params.id);
-        const requestItem = await db_1.prisma.verificationRequest.findUnique({ where: { id: requestId } });
-        if (!requestItem)
-            return res.status(404).json({ error: 'Request not found' });
-        await db_1.prisma.$transaction([
-            db_1.prisma.verificationRequest.update({
-                where: { id: requestId },
-                data: { status: 'APPROVED' },
-            }),
-            db_1.prisma.user.update({
-                where: { id: String(requestItem.userId) },
-                data: { isVerified: true, verificationType: requestItem.type },
-            }),
-        ]);
-        return res.json({ success: true, message: 'Verification request approved' });
-    }
-    catch (error) {
-        return res.status(500).json({ error: 'Failed to process verification' });
-    }
-});
-/**
- * GET & POST /api/admin/audit-logs
- */
-router.get('/audit-logs', auth_1.authenticateToken, async (req, res) => {
+router.get('/audit-logs', auth_1.authenticateToken, adminOnly, async (req, res) => {
     try {
         const logs = await db_1.prisma.auditLog.findMany({
             orderBy: { createdAt: 'desc' },
@@ -185,22 +559,6 @@ router.get('/audit-logs', auth_1.authenticateToken, async (req, res) => {
     }
     catch (error) {
         return res.status(500).json({ error: 'Failed to fetch audit logs' });
-    }
-});
-router.post('/audit-logs', auth_1.authenticateToken, async (req, res) => {
-    try {
-        const { action, details } = req.body;
-        const log = await db_1.prisma.auditLog.create({
-            data: {
-                adminId: req.user.id,
-                action: action || 'UNKNOWN',
-                details: details || '',
-            }
-        });
-        return res.status(201).json({ success: true, data: log });
-    }
-    catch (error) {
-        return res.status(500).json({ error: 'Failed to log action' });
     }
 });
 exports.default = router;

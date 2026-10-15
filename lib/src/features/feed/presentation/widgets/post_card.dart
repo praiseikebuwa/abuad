@@ -360,7 +360,7 @@ class _PostCardState extends ConsumerState<PostCard> {
                                                       .followUser(post.authorId);
                                                 },
                                                 child: Text(
-                                                  'Follow',
+                                                  '+Follow',
                                                   style: TextStyle(
                                                     color: AppColors.secondaryTeal,
                                                     fontWeight: FontWeight.bold,

@@ -13,6 +13,7 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../../core/theme/app_colors.dart';
+import 'media_editor_screen.dart';
 
 enum CameraMode { directors, photo, video, night, focus }
 enum GridType { thirds, golden, crosshair }
@@ -36,7 +37,13 @@ class _CameraScreenState extends State<CameraScreen>
   CameraMode _currentMode = CameraMode.photo;
   bool _isRecording = false;
   bool _isCameraInitialized = false;
+  bool _isCameraInitializing = false;
+  bool _isCaptureOperationInProgress = false;
   FlashMode _flashMode = FlashMode.off;
+
+  // Global key for exact preview viewfinder coordinate calculation
+  final GlobalKey _previewKey = GlobalKey();
+  Timer? _focusTimer;
 
   // Zoom control
   double _currentZoom = 1.0;
@@ -55,7 +62,7 @@ class _CameraScreenState extends State<CameraScreen>
   // Grid & Composition
   bool _showGrid = false;
   GridType _gridType = GridType.thirds;
-  bool _isMirrored = true;
+  final bool _isMirrored = true;
 
   // Gallery Asset
   Uint8List? _latestGallerImage;
@@ -94,39 +101,61 @@ class _CameraScreenState extends State<CameraScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _controller?.dispose();
-    _pulseController.dispose();
+    _focusTimer?.cancel();
     _recordingTimer?.cancel();
     _countdownTimer?.cancel();
+    _pulseController.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    final CameraController? cameraController = _controller;
-    if (cameraController == null || !cameraController.value.isInitialized) {
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+      _releaseCamera();
+    } else if (state == AppLifecycleState.resumed) {
+      _restoreCamera();
+    }
+  }
+
+  Future<void> _releaseCamera() async {
+    final controller = _controller;
+    _controller = null;
+    if (mounted) {
+      setState(() {
+        _isCameraInitialized = false;
+        if (_isRecording) {
+          _isRecording = false;
+          _recordingTimer?.cancel();
+        }
+      });
+    }
+    if (controller != null) {
+      await controller.dispose();
+    }
+  }
+
+  Future<void> _restoreCamera() async {
+    if (!mounted || _isCameraInitializing || _cameras.isEmpty) {
       return;
     }
-
-    if (state == AppLifecycleState.inactive) {
-      _isCameraInitialized = false;
-      cameraController.dispose();
-    } else if (state == AppLifecycleState.resumed) {
-      _onNewCameraSelected(cameraController.description);
-    }
+    final index = _selectedCameraIndex.clamp(0, _cameras.length - 1);
+    await _onNewCameraSelected(_cameras[index]);
   }
 
   Future<void> _initializeCamera() async {
     try {
       final cameraStatus = await Permission.camera.request();
-      final micStatus = await Permission.microphone.request();
-      if (cameraStatus.isGranted && micStatus.isGranted) {
+      // Request microphone optionally so photo mode is not blocked if denied
+      await Permission.microphone.request();
+
+      if (cameraStatus.isGranted) {
         _cameras = await availableCameras();
         if (_cameras.isNotEmpty) {
-          _onNewCameraSelected(_cameras[_selectedCameraIndex]);
+          await _onNewCameraSelected(_cameras[_selectedCameraIndex]);
         }
       } else {
-        if (mounted) setState(() {});
+        if (mounted) setState(() => _isCameraInitialized = false);
       }
     } catch (e) {
       debugPrint('Error initializing camera: $e');
@@ -134,8 +163,14 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Future<void> _onNewCameraSelected(CameraDescription cameraDescription) async {
-    if (_controller != null) {
-      await _controller!.dispose();
+    if (_isCameraInitializing) return;
+    _isCameraInitializing = true;
+
+    final oldController = _controller;
+    _controller = null;
+    if (mounted) setState(() => _isCameraInitialized = false);
+    if (oldController != null) {
+      await oldController.dispose();
     }
 
     final CameraController cameraController = CameraController(
@@ -150,7 +185,7 @@ class _CameraScreenState extends State<CameraScreen>
     cameraController.addListener(() {
       if (mounted) setState(() {});
       if (cameraController.value.hasError) {
-        debugPrint('Camera error ${cameraController.value.errorDescription}');
+        debugPrint('Camera error: ${cameraController.value.errorDescription}');
       }
     });
 
@@ -190,6 +225,8 @@ class _CameraScreenState extends State<CameraScreen>
       if (mounted) {
         setState(() => _isCameraInitialized = false);
       }
+    } finally {
+      _isCameraInitializing = false;
     }
   }
 
@@ -220,7 +257,7 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   void _toggleCamera() {
-    if (_cameras.length < 2) return;
+    if (_cameras.length < 2 || _isRecording || _isCaptureOperationInProgress) return;
     HapticFeedback.mediumImpact();
     _selectedCameraIndex = (_selectedCameraIndex + 1) % _cameras.length;
     _onNewCameraSelected(_cameras[_selectedCameraIndex]);
@@ -248,22 +285,16 @@ class _CameraScreenState extends State<CameraScreen>
     setState(() => _isNightMode = !_isNightMode);
     if (_isNightMode) {
       _setExposureOffset(_maxExposureOffset);
-      try {
-        _controller?.setFlashMode(FlashMode.torch);
-      } catch (_) {}
     } else {
       _setExposureOffset(0.0);
-      try {
-        _controller?.setFlashMode(FlashMode.off);
-      } catch (_) {}
     }
   }
 
   void _setFocusPoint(Offset globalPosition) {
-    final RenderBox? box = context.findRenderObject() as RenderBox?;
-    if (box == null || _controller == null) return;
-    final local = box.globalToLocal(globalPosition);
-    final size = box.size;
+    final renderObject = _previewKey.currentContext?.findRenderObject();
+    if (renderObject is! RenderBox || _controller == null || !_controller!.value.isInitialized) return;
+    final local = renderObject.globalToLocal(globalPosition);
+    final size = renderObject.size;
     final x = (local.dx / size.width).clamp(0.0, 1.0);
     final y = (local.dy / size.height).clamp(0.0, 1.0);
     try {
@@ -272,16 +303,92 @@ class _CameraScreenState extends State<CameraScreen>
     } catch (_) {}
     HapticFeedback.selectionClick();
     setState(() => _focusPoint = Offset(x, y));
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) setState(() => _focusPoint = null);
+    _focusTimer?.cancel();
+    _focusTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted && _focusPoint == Offset(x, y)) {
+        setState(() => _focusPoint = null);
+      }
     });
   }
 
-  void _setExposureOffset(double value) {
+  Future<void> _setExposureOffset(double value) async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    final clamped = value.clamp(_minExposureOffset, _maxExposureOffset);
     try {
-      _controller?.setExposureOffset(value);
+      await controller.setExposureOffset(clamped);
+      if (mounted) setState(() => _exposureOffset = clamped);
     } catch (_) {}
-    setState(() => _exposureOffset = value);
+  }
+
+  void _openGridTypeSelector() {
+    HapticFeedback.lightImpact();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E24),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(width: 36, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+              const SizedBox(height: 16),
+              const Text('Composition Grid', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const Icon(Icons.grid_3x3_rounded, color: Colors.white),
+                title: const Text('Rule of Thirds (3x3)', style: TextStyle(color: Colors.white)),
+                trailing: _showGrid && _gridType == GridType.thirds ? const Icon(Icons.check, color: AppColors.secondaryTeal) : null,
+                onTap: () {
+                  setState(() {
+                    _showGrid = true;
+                    _gridType = GridType.thirds;
+                  });
+                  Navigator.pop(ctx);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.crop_rotate_rounded, color: Colors.white),
+                title: const Text('Golden Ratio', style: TextStyle(color: Colors.white)),
+                trailing: _showGrid && _gridType == GridType.golden ? const Icon(Icons.check, color: AppColors.secondaryTeal) : null,
+                onTap: () {
+                  setState(() {
+                    _showGrid = true;
+                    _gridType = GridType.golden;
+                  });
+                  Navigator.pop(ctx);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.filter_center_focus_rounded, color: Colors.white),
+                title: const Text('Center Crosshair', style: TextStyle(color: Colors.white)),
+                trailing: _showGrid && _gridType == GridType.crosshair ? const Icon(Icons.check, color: AppColors.secondaryTeal) : null,
+                onTap: () {
+                  setState(() {
+                    _showGrid = true;
+                    _gridType = GridType.crosshair;
+                  });
+                  Navigator.pop(ctx);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.grid_off_rounded, color: Colors.white54),
+                title: const Text('Disable Grid', style: TextStyle(color: Colors.white70)),
+                trailing: !_showGrid ? const Icon(Icons.check, color: Colors.white54) : null,
+                onTap: () {
+                  setState(() => _showGrid = false);
+                  Navigator.pop(ctx);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _setZoom(double zoom) {
@@ -360,8 +467,42 @@ class _CameraScreenState extends State<CameraScreen>
     });
   }
 
+  Future<void> _handleShutterTap() async {
+    if (_isCaptureOperationInProgress) return;
+    switch (_currentMode) {
+      case CameraMode.photo:
+      case CameraMode.focus:
+      case CameraMode.directors:
+      case CameraMode.night:
+        await _takePhoto();
+        break;
+      case CameraMode.video:
+        if (_isRecording) {
+          await _stopVideoRecording();
+        } else {
+          await _startVideoRecording();
+        }
+        break;
+    }
+  }
+
+  void _handleShutterLongPressStart() {
+    if (_currentMode != CameraMode.video && !_isRecording) {
+      _startVideoRecording();
+    }
+  }
+
+  void _handleShutterLongPressEnd() {
+    if (_isRecording) {
+      _stopVideoRecording();
+    }
+  }
+
   Future<void> _takePhoto() async {
-    if (!_isCameraInitialized || _isRecording) return;
+    final controller = _controller;
+    if (!_isCameraInitialized || _isRecording || _isCaptureOperationInProgress || controller == null || !controller.value.isInitialized) {
+      return;
+    }
     HapticFeedback.mediumImpact();
 
     if (_timerModeActive) {
@@ -381,51 +522,78 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Future<void> _capturePhoto() async {
-    if (_controller == null || !_controller!.value.isInitialized) return;
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized || _isCaptureOperationInProgress) return;
+    _isCaptureOperationInProgress = true;
     try {
-      final XFile file = await _controller!.takePicture();
+      final XFile file = await controller.takePicture();
       _handleMediaCapture(file, CameraMode.photo);
     } catch (e) {
       debugPrint('Error taking photo: $e');
+    } finally {
+      _isCaptureOperationInProgress = false;
     }
   }
 
   Future<void> _startVideoRecording() async {
-    if (!_isCameraInitialized || _isRecording) return;
+    final controller = _controller;
+    if (!_isCameraInitialized || _isRecording || _isCaptureOperationInProgress || controller == null || !controller.value.isInitialized) {
+      return;
+    }
+    _isCaptureOperationInProgress = true;
     HapticFeedback.heavyImpact();
     try {
-      await _controller!.startVideoRecording();
+      await controller.startVideoRecording();
+      if (!mounted) return;
       setState(() {
         _isRecording = true;
         _recordingDuration = Duration.zero;
       });
+      _recordingTimer?.cancel();
       _recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (_isRecording) setState(() => _recordingDuration += const Duration(seconds: 1));
+        if (!mounted || !_isRecording) return;
+        setState(() => _recordingDuration += const Duration(seconds: 1));
       });
     } catch (e) {
-      debugPrint('Error starting video: $e');
+      debugPrint('Error starting video recording: $e');
+    } finally {
+      _isCaptureOperationInProgress = false;
     }
   }
 
   Future<void> _stopVideoRecording() async {
-    if (!_isCameraInitialized || !_isRecording) return;
+    final controller = _controller;
+    if (!_isCameraInitialized || !_isRecording || _isCaptureOperationInProgress || controller == null || !controller.value.isInitialized) {
+      return;
+    }
+    _isCaptureOperationInProgress = true;
     HapticFeedback.mediumImpact();
     try {
-      final XFile file = await _controller!.stopVideoRecording();
       _recordingTimer?.cancel();
+      final XFile file = await controller.stopVideoRecording();
+      if (!mounted) return;
       setState(() => _isRecording = false);
       _handleMediaCapture(file, CameraMode.video);
     } catch (e) {
-      debugPrint('Error stopping video: $e');
+      debugPrint('Error stopping video recording: $e');
+      if (mounted) setState(() => _isRecording = false);
+    } finally {
+      _isCaptureOperationInProgress = false;
     }
   }
 
   void _handleMediaCapture(XFile file, CameraMode mode) {
-    if (widget.onMediaCaptured != null) {
-      widget.onMediaCaptured!(file, mode);
-    } else {
-      Navigator.pop(context, {'file': file, 'mode': mode});
-    }
+    if (!mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => MediaEditorScreen(
+          mediaFile: file,
+          isVideo: mode == CameraMode.video,
+          isForStory: widget.isForStory,
+          onMediaExported: widget.onMediaCaptured,
+        ),
+      ),
+    );
   }
 
   Future<void> _pickFromGallery() async {
@@ -515,7 +683,10 @@ class _CameraScreenState extends State<CameraScreen>
             },
             onDoubleTap: _toggleCamera,
             onTapUp: (details) => _setFocusPoint(details.globalPosition),
-            child: _buildCameraViewfinder(screenSize, isFrontCamera),
+            child: KeyedSubtree(
+              key: _previewKey,
+              child: _buildCameraViewfinder(screenSize, isFrontCamera),
+            ),
           ),
 
           // 2. Focus & Lighting Indicator (Animated Ring + Exposure Sun)
@@ -660,11 +831,12 @@ class _CameraScreenState extends State<CameraScreen>
                         onTap: _toggleNightMode,
                       ),
                       const SizedBox(height: 14),
-                      // Grid Mode (4 squares)
+                      // Grid Mode (4 squares - tap to toggle, long-press to choose grid style)
                       _buildToolbarIcon(
                         icon: _showGrid ? Icons.grid_view_rounded : Icons.grid_view,
                         isActive: _showGrid,
                         onTap: () => setState(() => _showGrid = !_showGrid),
+                        onLongPress: _openGridTypeSelector,
                       ),
                       const SizedBox(height: 12),
                       Container(width: 24, height: 1, color: Colors.white24),
@@ -825,7 +997,7 @@ class _CameraScreenState extends State<CameraScreen>
 
                   const SizedBox(height: 12),
 
-                  // "tap to snap, hold for video" floating tooltip
+                  // Dynamic floating tooltip
                   ClipRRect(
                     borderRadius: BorderRadius.circular(16),
                     child: BackdropFilter(
@@ -837,9 +1009,13 @@ class _CameraScreenState extends State<CameraScreen>
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(color: Colors.white12, width: 0.5),
                         ),
-                        child: const Text(
-                          'tap to snap, hold for video',
-                          style: TextStyle(
+                        child: Text(
+                          _isRecording
+                              ? 'recording in progress'
+                              : _currentMode == CameraMode.video
+                                  ? 'tap to record video'
+                                  : 'tap to snap, hold for video',
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
@@ -889,9 +1065,9 @@ class _CameraScreenState extends State<CameraScreen>
 
                         // Center: Shutter with Iridescent Gradient Border
                         GestureDetector(
-                          onTap: _takePhoto,
-                          onLongPressStart: (_) => _startVideoRecording(),
-                          onLongPressEnd: (_) => _stopVideoRecording(),
+                          onTap: _handleShutterTap,
+                          onLongPressStart: (_) => _handleShutterLongPressStart(),
+                          onLongPressEnd: (_) => _handleShutterLongPressEnd(),
                           child: _buildGlowingShutterButton(),
                         ),
 
@@ -933,87 +1109,12 @@ class _CameraScreenState extends State<CameraScreen>
                     ),
                   ),
 
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 18),
 
                   // Mode Selector Bar: Directors Mode | Camera | Video | Night | Focus
                   _buildModeCarousel(),
 
-                  const SizedBox(height: 18),
-
-                  // Bottom Action Bar: [⬇ Save] [➕ My Story] [Send to... ➔]
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        // Save Pill Button
-                        _buildBottomPill(
-                          icon: Icons.file_download_outlined,
-                          label: 'Save',
-                          onTap: () {
-                            HapticFeedback.lightImpact();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Saved to Device Gallery')),
-                            );
-                          },
-                        ),
-
-                        // My Story Pill Button
-                        _buildBottomPill(
-                          icon: Icons.add_circle_outline_rounded,
-                          label: 'My Story',
-                          onTap: () {
-                            HapticFeedback.mediumImpact();
-                            _takePhoto();
-                          },
-                        ),
-
-                        // Send to... Arrow Button
-                        GestureDetector(
-                          onTap: () {
-                            HapticFeedback.mediumImpact();
-                            _takePhoto();
-                          },
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text(
-                                'Send to...',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Container(
-                                width: 44,
-                                height: 44,
-                                decoration: const BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  gradient: LinearGradient(
-                                    colors: [Color(0xFF6366F1), Color(0xFF4F46E5)],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Color(0x666366F1),
-                                      blurRadius: 10,
-                                      offset: Offset(0, 3),
-                                    ),
-                                  ],
-                                ),
-                                child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 22),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
                 ],
               ),
             ),
@@ -1114,25 +1215,39 @@ class _CameraScreenState extends State<CameraScreen>
 
   // Iridescent Shutter Button
   Widget _buildGlowingShutterButton() {
-    return Container(
-      width: 86,
-      height: 86,
+    final isVideo = _currentMode == CameraMode.video;
+    final isPulsing = _isRecording;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      width: isPulsing ? 92 : 86,
+      height: isPulsing ? 92 : 86,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: const SweepGradient(
-          colors: [
-            Color(0xFF8B5CF6), // Violet
-            Color(0xFFEC4899), // Pink
-            Color(0xFF38BDF8), // Cyan
-            Color(0xFF6366F1), // Indigo
-            Color(0xFF8B5CF6), // Loop
-          ],
-        ),
+        gradient: isVideo || isPulsing
+            ? const SweepGradient(
+                colors: [
+                  Color(0xFFEF4444), // Red 500
+                  Color(0xFFF87171), // Red 400
+                  Color(0xFFDC2626), // Red 600
+                  Color(0xFFEF4444),
+                ],
+              )
+            : const SweepGradient(
+                colors: [
+                  Color(0xFF8B5CF6), // Violet
+                  Color(0xFFEC4899), // Pink
+                  Color(0xFF38BDF8), // Cyan
+                  Color(0xFF6366F1), // Indigo
+                  Color(0xFF8B5CF6), // Loop
+                ],
+              ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF8B5CF6).withValues(alpha: 0.45),
-            blurRadius: 18,
-            spreadRadius: 2,
+            color: (isVideo || isPulsing ? const Color(0xFFEF4444) : const Color(0xFF8B5CF6))
+                .withValues(alpha: 0.45),
+            blurRadius: isPulsing ? 24 : 18,
+            spreadRadius: isPulsing ? 4 : 2,
           ),
         ],
       ),
@@ -1140,14 +1255,19 @@ class _CameraScreenState extends State<CameraScreen>
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         decoration: BoxDecoration(
-          color: _isRecording ? Colors.redAccent : Colors.white,
-          shape: BoxShape.circle,
+          color: isPulsing ? Colors.redAccent : Colors.white,
+          shape: isPulsing ? BoxShape.rectangle : BoxShape.circle,
+          borderRadius: isPulsing ? BorderRadius.circular(16) : null,
         ),
-        child: _isRecording
+        child: isPulsing
             ? const Center(
                 child: Icon(Icons.stop_rounded, color: Colors.white, size: 36),
               )
-            : null,
+            : (isVideo
+                ? const Center(
+                    child: Icon(Icons.videocam_rounded, color: Color(0xFFEF4444), size: 30),
+                  )
+                : null),
       ),
     );
   }
@@ -1226,45 +1346,7 @@ class _CameraScreenState extends State<CameraScreen>
     );
   }
 
-  // Frosted Bottom Pill Button
-  Widget _buildBottomPill({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.18),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: Colors.white24, width: 0.8),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, color: Colors.white, size: 18),
-                const SizedBox(width: 6),
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+
 
   // Right Toolbar Icon Button
   Widget _buildToolbarIcon({
@@ -1273,9 +1355,11 @@ class _CameraScreenState extends State<CameraScreen>
     bool isActive = false,
     Color? activeColor,
     required VoidCallback onTap,
+    VoidCallback? onLongPress,
   }) {
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Container(
         width: 36,
         height: 36,
