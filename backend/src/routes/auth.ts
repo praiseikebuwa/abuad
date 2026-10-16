@@ -164,7 +164,6 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
   }
 });
 
-/**
 interface RotationCacheEntry {
   previousTokenHash: string;
   newAccessToken: string;

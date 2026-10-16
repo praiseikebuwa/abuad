@@ -141,15 +141,7 @@ router.post('/login', rateLimiter_1.loginLimiter, async (req, res) => {
         return res.status(500).json({ error: 'Failed to authenticate user' });
     }
 });
-/**
-interface RotationCacheEntry {
-  previousTokenHash: string;
-  newAccessToken: string;
-  newRefreshToken: string;
-  expiresAt: number;
-}
-const rotationGraceCache = new Map<string, RotationCacheEntry>();
-
+const rotationGraceCache = new Map();
 /**
  * POST /api/auth/refresh (Rotating Refresh Token with Concurrent Grace Window)
  */
