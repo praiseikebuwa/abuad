@@ -857,9 +857,9 @@ router.get('/search', optionalAuth, async (req: AuthenticatedRequest, res: Respo
 /**
  * GET /api/posts/:id - Single post
  */
-router.get('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:id', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const userId = req.user!.id;
+    const userId = req.user?.id;
     const postId = String(req.params.id);
     const post = await prisma.post.findUnique({
       where: { id: postId },
@@ -867,22 +867,24 @@ router.get('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Res
         author: {
           select: { id: true, username: true, fullName: true, avatarUrl: true, isVerified: true, verificationType: true },
         },
-        likes: { where: { userId }, select: { id: true } },
-        savedBy: { where: { userId }, select: { id: true } },
+        likes: userId ? { where: { userId }, select: { id: true } } : false,
+        savedBy: userId ? { where: { userId }, select: { id: true } } : false,
         _count: { select: { comments: true, likes: true } },
       },
     });
     if (!post) return res.status(404).json({ error: 'Post not found' });
-    const { likes, savedBy, _count, ...rest } = post;
+    const { likes, savedBy, _count, ...rest } = post as any;
+    const sanitized = sanitizePost({
+      ...rest,
+      commentsCount: _count?.comments ?? 0,
+      likesCount: _count?.likes ?? 0,
+      isLiked: Array.isArray(likes) ? likes.length > 0 : false,
+      isSaved: Array.isArray(savedBy) ? savedBy.length > 0 : false,
+    }, req.user?.role, userId);
+
     return res.json({
       success: true,
-      data: {
-        ...rest,
-        commentsCount: _count.comments,
-        likesCount: _count.likes,
-        isLiked: likes.length > 0,
-        isSaved: savedBy.length > 0,
-      },
+      data: sanitized,
     });
   } catch (error) {
     return res.status(500).json({ error: 'Failed to fetch post' });
@@ -1331,7 +1333,7 @@ router.post('/:id/watch', authenticateToken, async (req: AuthenticatedRequest, r
 /**
  * GET /api/posts/:id/comments - Get comments sorted by verification tier
  */
-router.get('/:id/comments', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:id/comments', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const comments = await prisma.postComment.findMany({
       where: { postId: String(req.params.id) },

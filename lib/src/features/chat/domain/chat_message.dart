@@ -111,6 +111,23 @@ class ChatMessage {
         map['isRead'] == true ||
         readByList.length > 1;
 
+    final savedByRaw = map['saved_by'] ?? map['savedBy'];
+    List<String> savedByList = [];
+    if (savedByRaw is List) {
+      savedByList = List<String>.from(savedByRaw.map((e) => e.toString()));
+    } else if (savedByRaw is String) {
+      try {
+        final decoded = jsonDecode(savedByRaw);
+        if (decoded is List) {
+          savedByList = List<String>.from(decoded.map((e) => e.toString()));
+        }
+      } catch (_) {}
+    }
+
+    final isSnapVal = map['is_snap'] == true ||
+        map['isSnap'] == true ||
+        map['type'] == 'snap';
+
     return ChatMessage(
       id: map['id'] ?? '',
       senderId: map['sender_id'] ?? map['senderId'] ?? '',
@@ -131,13 +148,17 @@ class ChatMessage {
       replyToSenderId: map['reply_to_sender_id'],
       reactions: Map<String, String>.from(map['reactions'] ?? {}),
       mentions: List<String>.from(map['mentions'] ?? []),
-      isSnap: map['is_snap'] ?? false,
+      isSnap: isSnapVal,
       isEdited: map['is_edited'] ?? false,
       isDeleted: map['is_deleted'] ?? false,
       isPinned: map['is_pinned'] ?? false,
-      savedBy: List<String>.from(map['saved_by'] ?? []),
+      savedBy: savedByList,
       forwardedFrom: map['forwarded_from'],
-      sharedPostId: map['shared_post_id'],
+      sharedPostId: map['shared_post_id'] ??
+          map['sharedPostId'] ??
+          (map['mediaUrl'] != null && map['mediaUrl'].toString().startsWith('post:')
+              ? map['mediaUrl'].toString().replaceFirst('post:', '')
+              : null),
     );
   }
 }

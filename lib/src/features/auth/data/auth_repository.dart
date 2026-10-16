@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import '../../../core/services/api_client.dart';
 import '../../../core/services/socket_service.dart';
 import '../../user/data/user_repository.dart';
@@ -24,6 +25,7 @@ final currentUserIdProvider = Provider<String?>((ref) {
 class AuthRepository {
   final _controller = StreamController<AppUser?>.broadcast();
   AppUser? _currentUser;
+  bool _isSigningOut = false;
 
   AuthRepository();
 
@@ -37,8 +39,10 @@ class AuthRepository {
   Future<void> init() async {
     try {
       ApiClient.onSessionExpired = () {
-        debugPrint('⚠️ Session expired received from ApiClient. Signing out...');
-        signOut();
+        if (!_isSigningOut) {
+          debugPrint('⚠️ Session expired received from ApiClient. Signing out...');
+          signOut();
+        }
       };
 
       final prefs = await SharedPreferences.getInstance();
@@ -182,15 +186,31 @@ class AuthRepository {
   }
 
   Future<void> signOut() async {
-    SocketService.instance.disconnect();
+    if (_isSigningOut) return;
+    _isSigningOut = true;
     try {
-      await ApiClient.post('/auth/logout', {});
-    } catch (_) {}
-    ApiClient.clearTokens();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('cachedUser');
-    _currentUser = null;
-    _controller.add(null);
+      SocketService.instance.disconnect();
+      final token = ApiClient.accessToken;
+      if (token != null) {
+        try {
+          await http.post(
+            Uri.parse('${ApiClient.baseUrl}/auth/logout'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({}),
+          ).timeout(const Duration(seconds: 3));
+        } catch (_) {}
+      }
+      await ApiClient.clearTokens();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('cachedUser');
+      _currentUser = null;
+      _controller.add(null);
+    } finally {
+      _isSigningOut = false;
+    }
   }
 
   /// Requests a reset link by email (sent by the backend via Brevo SMTP).

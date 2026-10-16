@@ -11,17 +11,17 @@ export interface TokenPayload {
 }
 
 /**
- * Generate Access Token (short-lived e.g. 15 minutes)
+ * Generate Access Token (long-lived e.g. 30 days for persistent campus app session)
  */
 export function generateAccessToken(payload: TokenPayload): string {
-  return jwt.sign(payload, ACCESS_SECRET, { expiresIn: '15m' });
+  return jwt.sign(payload, ACCESS_SECRET, { expiresIn: '30d' });
 }
 
 /**
- * Generate Refresh Token (long-lived e.g. 7 days)
+ * Generate Refresh Token (long-lived e.g. 180 days)
  */
 export function generateRefreshToken(payload: TokenPayload): string {
-  return jwt.sign(payload, REFRESH_SECRET, { expiresIn: '7d' });
+  return jwt.sign(payload, REFRESH_SECRET, { expiresIn: '180d' });
 }
 
 /**

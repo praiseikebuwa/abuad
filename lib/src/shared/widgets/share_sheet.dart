@@ -7,6 +7,7 @@ import '../../core/theme/app_colors.dart';
 import '../../features/feed/domain/post.dart';
 import '../../features/chat/data/chat_repository.dart';
 import '../../features/user/data/user_repository.dart';
+import '../../features/auth/data/auth_repository.dart';
 import 'user_avatar.dart';
 
 class ShareSheet extends ConsumerStatefulWidget {
@@ -47,7 +48,8 @@ class _ShareSheetState extends ConsumerState<ShareSheet> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final channelsAsync = ref.watch(chatChannelsProvider);
-    final currentUser = ref.watch(currentUserProvider).value;
+    final currentUser =
+        ref.watch(currentUserProvider).value ?? ref.watch(authRepositoryProvider).currentUser;
 
     return DraggableScrollableSheet(
       initialChildSize: 0.7,
@@ -390,41 +392,46 @@ class _ShareSheetState extends ConsumerState<ShareSheet> {
 
     try {
       final repo = ref.read(chatRepositoryProvider);
-      final currentUser = ref.read(currentUserProvider).value;
-      if (currentUser == null) throw Exception('Not logged in');
+      final currentUser =
+          ref.read(currentUserProvider).value ?? ref.read(authRepositoryProvider).currentUser;
+      if (currentUser == null) throw Exception('Please log in to share posts');
 
-      await Future.wait(_selectedRecipients.values.map((entry) async {
+      final shareContent = widget.post.content.trim().isNotEmpty
+          ? widget.post.content.trim()
+          : 'Shared a post with you';
+
+      for (final entry in _selectedRecipients.values) {
+        String channelId;
+        String? receiverId;
+
         if (entry.type == 'channel') {
-          final channelId = entry.data as String;
-          await repo.sendMessage(
-            channelId,
-            'Shared a post with you',
-            type: 'text',
-            sharedPostId: widget.post.id,
-          );
+          channelId = entry.data as String;
         } else {
           final user = entry.data as AppUser;
-          final channelId = await repo.createOrGetChannel(
+          receiverId = user.uid;
+          channelId = await repo.createOrGetChannel(
             user.uid,
             otherUserName: user.displayName,
             otherUserAvatar: user.avatarUrl,
             currentUserName: currentUser.displayName,
             currentUserAvatar: currentUser.avatarUrl,
           );
-          await repo.sendMessage(
-            channelId,
-            'Shared a post with you',
-            type: 'text',
-            sharedPostId: widget.post.id,
-          );
         }
-      }));
+
+        await repo.sendMessage(
+          channelId,
+          shareContent,
+          type: 'post',
+          receiverId: receiverId,
+          sharedPostId: widget.post.id,
+        );
+      }
 
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('Shared successfully!')));
+        ).showSnackBar(const SnackBar(content: Text('Post sent to friend!')));
       }
     } catch (e) {
       if (mounted) {

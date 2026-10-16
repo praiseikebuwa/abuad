@@ -350,13 +350,22 @@ class ChatRepository {
     String? sharedPostId,
   }) async {
     try {
-      final res = await ApiClient.post('/chat/send', {
+      final effectiveType = sharedPostId != null ? 'post' : type;
+      final effectiveMediaUrl = mediaUrl ?? imageUrl ?? audioUrl ?? (sharedPostId != null ? 'post:$sharedPostId' : null);
+
+      final payload = <String, dynamic>{
         'channelId': channelId,
-        'receiverId': receiverId,
         'text': content,
-        'mediaUrl': mediaUrl ?? imageUrl ?? audioUrl,
-        'type': type,
-      });
+        'mediaUrl': effectiveMediaUrl,
+        'type': effectiveType,
+      };
+      if (receiverId != null) payload['receiverId'] = receiverId;
+      if (sharedPostId != null) {
+        payload['sharedPostId'] = sharedPostId;
+        payload['shared_post_id'] = sharedPostId;
+      }
+
+      final res = await ApiClient.post('/chat/send', payload);
 
       if (res.statusCode == 200 || res.statusCode == 201) {
         // Immediately refresh messages and channels
@@ -443,8 +452,23 @@ class ChatRepository {
     }
   }
 
-  Future<void> viewSnap(dynamic arg1, [dynamic arg2]) async {}
-  Future<void> toggleSaveMessage(dynamic arg1, [dynamic arg2]) async {}
+  Future<void> viewSnap(String channelId, String messageId) async {
+    try {
+      await ApiClient.post('/chat/messages/$messageId/view-snap', {});
+      _fetchMessages(channelId);
+    } catch (e) {
+      debugPrint('Error viewing snap: $e');
+    }
+  }
+
+  Future<void> toggleSaveMessage(String channelId, String messageId) async {
+    try {
+      await ApiClient.post('/chat/messages/$messageId/save', {});
+      _fetchMessages(channelId);
+    } catch (e) {
+      debugPrint('Error toggling save message: $e');
+    }
+  }
 
   Future<void> toggleReaction(String channelId, String messageId, [String? emoji]) async {
     try {

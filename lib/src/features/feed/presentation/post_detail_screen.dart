@@ -28,6 +28,7 @@ import 'widgets/post_media_carousel.dart';
 import 'widgets/document_preview_card.dart';
 import 'providers/feed_provider.dart';
 import '../../../shared/widgets/abuad_markdown.dart';
+import '../../../shared/widgets/share_sheet.dart';
 // import '../../chat/presentation/widgets/attachment_preview.dart';
 
 class PostDetailScreen extends ConsumerStatefulWidget {
@@ -44,10 +45,27 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
   final _commentController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   bool _isPosting = false;
+  bool _fetchFailed = false;
 
   // Reply State
   String? _replyToCommentId;
   String? _replyToUserName;
+
+  @override
+  void initState() {
+    super.initState();
+    final id = widget.post?.id ?? widget.postId;
+    if (id != null && id.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        final fetched = await ref.read(postRepositoryProvider).getPost(id);
+        if (mounted) {
+          setState(() {
+            _fetchFailed = (fetched == null && widget.post == null);
+          });
+        }
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -673,13 +691,18 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
             IconButton(
               icon: const Icon(CupertinoIcons.arrowshape_turn_up_right),
               onPressed: () {
-                SharePlus.instance.share(
-                  ShareParams(
-                    text:
-                        'Check out this post on Abuad life: https://abuadapp.com.ng/post/$postId',
-                    subject: 'Check out this post on ABUAD',
-                  ),
-                );
+                final currentPost = repo.getCachedPost(postId) ?? widget.post;
+                if (currentPost != null) {
+                  ShareSheet.show(context, currentPost);
+                } else {
+                  SharePlus.instance.share(
+                    ShareParams(
+                      text:
+                          'Check out this post on Abuad life: https://abuadapp.com.ng/post/$postId',
+                      subject: 'Check out this post on ABUAD',
+                    ),
+                  );
+                }
               },
             ),
           ],
@@ -687,9 +710,61 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
         body: StreamBuilder<domain.Post?>(
           stream: repo.watchPost(postId),
           builder: (context, snapshot) {
-            final post = snapshot.data ?? widget.post;
+            final post = snapshot.data ?? widget.post ?? repo.getCachedPost(postId);
 
             if (post == null) {
+              if (_fetchFailed || snapshot.hasError) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.05)
+                                : Colors.black.withValues(alpha: 0.04),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            CupertinoIcons.doc_text_search,
+                            size: 48,
+                            color: isDark ? Colors.white60 : Colors.black54,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'Post Not Found',
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'This post may have been removed, deleted by the author, or the link is incorrect.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        ElevatedButton.icon(
+                          onPressed: () => context.go('/'),
+                          icon: const Icon(CupertinoIcons.house_fill, size: 18),
+                          label: const Text('Back to Feed'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primaryBlue,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
               return const Center(child: CircularProgressIndicator());
             }
 

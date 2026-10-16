@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { prisma } from '../config/db';
-import { authenticateToken, AuthenticatedRequest } from '../middleware/auth';
+import { authenticateToken, optionalAuth, AuthenticatedRequest } from '../middleware/auth';
 import { loginLimiter, registerLimiter, passwordResetLimiter } from '../middleware/rateLimiter';
 import { sendPasswordResetEmail } from '../services/emailService';
 import {
@@ -173,7 +173,7 @@ interface RotationCacheEntry {
 const rotationGraceCache = new Map<string, RotationCacheEntry>();
 
 /**
- * POST /api/auth/refresh (Rotating Refresh Token with Concurrent Grace Window)
+ * POST /api/auth/refresh (Persistent Multi-Device Auth Refresh)
  */
 router.post('/refresh', async (req: Request, res: Response) => {
   try {
@@ -192,51 +192,14 @@ router.post('/refresh', async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'User not found' });
     }
 
-    // 1. Check if this is a concurrent request within the 30s grace window
-    const graceEntry = rotationGraceCache.get(user.id);
-    if (graceEntry && graceEntry.expiresAt > Date.now()) {
-      const matchesPrevious = await compareToken(rawRefreshToken, graceEntry.previousTokenHash);
-      if (matchesPrevious) {
-        setRefreshTokenCookie(res, graceEntry.newRefreshToken);
-        return res.json({
-          success: true,
-          data: {
-            accessToken: graceEntry.newAccessToken,
-            refreshToken: graceEntry.newRefreshToken,
-          },
-        });
-      }
+    if (user.isBlocked) {
+      return res.status(403).json({ error: 'Account has been suspended' });
     }
 
-    if (!user.refreshTokenHash) {
-      return res.status(401).json({ error: 'Invalid refresh token session' });
-    }
-
-    const isValid = await compareToken(rawRefreshToken, user.refreshTokenHash);
-    if (!isValid) {
-      return res.status(401).json({ error: 'Invalid or outdated refresh token' });
-    }
-
-    // Rotate tokens: Issue NEW access token and NEW refresh token
+    // Issue fresh access token and extend/maintain refresh token
     const newPayload = { userId: user.id, email: user.email, role: user.role };
     const newAccessToken = generateAccessToken(newPayload);
     const newRefreshToken = generateRefreshToken(newPayload);
-
-    const oldHash = user.refreshTokenHash;
-    const newRefreshTokenHash = await hashToken(newRefreshToken);
-
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { refreshTokenHash: newRefreshTokenHash },
-    });
-
-    // Store in grace cache for 30 seconds
-    rotationGraceCache.set(user.id, {
-      previousTokenHash: oldHash,
-      newAccessToken,
-      newRefreshToken,
-      expiresAt: Date.now() + 30 * 1000,
-    });
 
     setRefreshTokenCookie(res, newRefreshToken);
 
@@ -255,17 +218,20 @@ router.post('/refresh', async (req: Request, res: Response) => {
 /**
  * POST /api/auth/logout
  */
-router.post('/logout', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/logout', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    await prisma.user.update({
-      where: { id: req.user!.id },
-      data: { refreshTokenHash: null },
-    });
+    if (req.user?.id) {
+      await prisma.user.update({
+        where: { id: req.user.id },
+        data: { refreshTokenHash: null },
+      }).catch(() => {});
+    }
 
     res.clearCookie('refreshToken');
     return res.json({ success: true, message: 'Successfully logged out' });
   } catch (error) {
-    return res.status(500).json({ error: 'Failed to logout' });
+    res.clearCookie('refreshToken');
+    return res.json({ success: true, message: 'Successfully logged out' });
   }
 });
 

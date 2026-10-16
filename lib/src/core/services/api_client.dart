@@ -70,11 +70,15 @@ class ApiClient {
   // ── Basic CRUD ────────────────────────────────────────────────────────────
 
   static Future<http.Response> _sendWithRetry(
-    Future<http.Response> Function() requestFn,
-  ) async {
+    Future<http.Response> Function() requestFn, {
+    bool canRetry = true,
+  }) async {
     await ensureTokensLoaded();
     var response = await requestFn();
-    if (response.statusCode == 401) {
+    if (canRetry &&
+        response.statusCode == 401 &&
+        _refreshToken != null &&
+        _refreshToken!.isNotEmpty) {
       debugPrint(
         '🔑 Access token expired (401). Attempting automatic token refresh...',
       );
@@ -89,61 +93,75 @@ class ApiClient {
     return response;
   }
 
-  static Future<http.Response> get(String endpoint) async {
+  static Future<http.Response> get(String endpoint, {bool? canRetry}) async {
+    final retry = canRetry ?? !endpoint.startsWith('/auth/');
     return _sendWithRetry(
       () => http.get(Uri.parse('$baseUrl$endpoint'), headers: _getHeaders()),
+      canRetry: retry,
     );
   }
 
   static Future<http.Response> post(
     String endpoint,
-    Map<String, dynamic> body,
-  ) async {
+    Map<String, dynamic> body, {
+    bool? canRetry,
+  }) async {
+    final retry = canRetry ?? !endpoint.startsWith('/auth/');
     return _sendWithRetry(
       () => http.post(
         Uri.parse('$baseUrl$endpoint'),
         headers: _getHeaders(),
         body: jsonEncode(body),
       ),
+      canRetry: retry,
     );
   }
 
   static Future<http.Response> put(
     String endpoint,
-    Map<String, dynamic> body,
-  ) async {
+    Map<String, dynamic> body, {
+    bool? canRetry,
+  }) async {
+    final retry = canRetry ?? !endpoint.startsWith('/auth/');
     return _sendWithRetry(
       () => http.put(
         Uri.parse('$baseUrl$endpoint'),
         headers: _getHeaders(),
         body: jsonEncode(body),
       ),
+      canRetry: retry,
     );
   }
 
   static Future<http.Response> patch(
     String endpoint,
-    Map<String, dynamic> body,
-  ) async {
+    Map<String, dynamic> body, {
+    bool? canRetry,
+  }) async {
+    final retry = canRetry ?? !endpoint.startsWith('/auth/');
     return _sendWithRetry(
       () => http.patch(
         Uri.parse('$baseUrl$endpoint'),
         headers: _getHeaders(),
         body: jsonEncode(body),
       ),
+      canRetry: retry,
     );
   }
 
   static Future<http.Response> delete(
     String endpoint, [
     Map<String, dynamic>? body,
+    bool? canRetry,
   ]) async {
+    final retry = canRetry ?? !endpoint.startsWith('/auth/');
     return _sendWithRetry(
       () => http.delete(
         Uri.parse('$baseUrl$endpoint'),
         headers: _getHeaders(),
         body: body != null ? jsonEncode(body) : null,
       ),
+      canRetry: retry,
     );
   }
 
@@ -302,8 +320,6 @@ class ApiClient {
   static Future<bool> _performTokenRefresh() async {
     await ensureTokensLoaded();
     if (_refreshToken == null || _refreshToken!.isEmpty) {
-      await clearTokens();
-      onSessionExpired?.call();
       return false;
     }
     try {
@@ -319,17 +335,31 @@ class ApiClient {
           final newAccess = data['data']['accessToken'] as String?;
           final newRefresh = data['data']['refreshToken'] as String?;
           if (newAccess != null && newAccess.isNotEmpty) {
-            await setTokens(accessToken: newAccess, refreshToken: newRefresh ?? _refreshToken);
+            await setTokens(
+              accessToken: newAccess,
+              refreshToken: newRefresh ?? _refreshToken,
+            );
             return true;
           }
         }
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        debugPrint(
+          '⚠️ Refresh token rejected (status ${response.statusCode}). Session expired.',
+        );
+        await clearTokens();
+        onSessionExpired?.call();
+        return false;
+      } else {
+        debugPrint(
+          '⚠️ Refresh token server error ${response.statusCode}. Retaining credentials.',
+        );
+        return false;
       }
     } catch (e) {
-      debugPrint('ApiClient.refreshToken error: $e');
+      debugPrint('⚠️ Refresh token network error: $e. Retaining credentials.');
+      return false;
     }
 
-    await clearTokens();
-    onSessionExpired?.call();
     return false;
   }
 

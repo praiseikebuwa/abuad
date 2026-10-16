@@ -95,6 +95,15 @@ function formatMessage(msg: any) {
 
   const isRead = readBy.length > 1;
 
+  let sharedPostId = msg.sharedPostId || msg.shared_post_id;
+  if (!sharedPostId) {
+    if (msg.type === 'post' && msg.mediaUrl) {
+      sharedPostId = msg.mediaUrl.startsWith('post:') ? msg.mediaUrl.replace('post:', '') : msg.mediaUrl;
+    } else if (msg.mediaUrl && typeof msg.mediaUrl === 'string' && msg.mediaUrl.startsWith('post:')) {
+      sharedPostId = msg.mediaUrl.replace('post:', '');
+    }
+  }
+
   return {
     ...msg,
     senderId: msg.senderId,
@@ -105,6 +114,10 @@ function formatMessage(msg: any) {
     mediaUrl: msg.mediaUrl || null,
     imageUrl: msg.mediaUrl || null,
     image_url: msg.mediaUrl || null,
+    isSnap: msg.type === 'snap' || msg.isSnap === true,
+    is_snap: msg.type === 'snap' || msg.isSnap === true,
+    sharedPostId: sharedPostId || null,
+    shared_post_id: sharedPostId || null,
     reactions,
     savedBy,
     saved_by: savedBy,
@@ -518,8 +531,8 @@ router.get('/messages', authenticateToken, async (req: AuthenticatedRequest, res
  */
 router.post('/send', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { receiverId, channelId, text, mediaUrl, type } = req.body;
-    if (!text && !mediaUrl) {
+    const { receiverId, channelId, text, mediaUrl, type, sharedPostId } = req.body;
+    if (!text && !mediaUrl && !sharedPostId) {
       return res.status(400).json({ error: 'Message content or media required' });
     }
 
@@ -529,6 +542,11 @@ router.post('/send', authenticateToken, async (req: AuthenticatedRequest, res: R
     if (!inferredReceiverId && channelId && channelId.startsWith('channel_')) {
       inferredReceiverId = channelId.replace('channel_', '');
     }
+
+    const effectiveSharedPostId = sharedPostId || (type === 'post' && mediaUrl ? String(mediaUrl).replace('post:', '') : null);
+    const effectiveType = effectiveSharedPostId ? 'post' : (type || 'text');
+    const effectiveMediaUrl = mediaUrl || (effectiveSharedPostId ? `post:${effectiveSharedPostId}` : null);
+    const effectiveText = text || (effectiveSharedPostId ? 'Shared a post with you' : '');
 
     const userId = req.user!.id;
     if (inferredReceiverId && inferredReceiverId !== userId) {
@@ -555,7 +573,7 @@ router.post('/send', authenticateToken, async (req: AuthenticatedRequest, res: R
             type: 'direct',
             isGroup: false,
             memberIds: JSON.stringify([userId, inferredReceiverId]),
-            lastMessage: text || '📎 Media',
+            lastMessage: effectiveType === 'post' ? '📎 Shared a post' : (effectiveText || '📎 Media'),
             lastMessageTime: new Date(),
           },
         });
@@ -570,7 +588,7 @@ router.post('/send', authenticateToken, async (req: AuthenticatedRequest, res: R
             type: 'direct',
             isGroup: false,
             memberIds: JSON.stringify([userId]),
-            lastMessage: text || 'Media',
+            lastMessage: effectiveType === 'post' ? '📎 Shared a post' : (effectiveText || '📎 Media'),
             lastMessageTime: new Date(),
           },
         });
@@ -585,9 +603,9 @@ router.post('/send', authenticateToken, async (req: AuthenticatedRequest, res: R
       data: {
         senderId: req.user!.id,
         channelId: targetChannelId,
-        text: text || '',
-        mediaUrl: mediaUrl || null,
-        type: type || 'text',
+        text: effectiveText,
+        mediaUrl: effectiveMediaUrl,
+        type: effectiveType,
       },
       include: {
         sender: { select: { id: true, username: true, fullName: true, avatarUrl: true } },
@@ -597,7 +615,10 @@ router.post('/send', authenticateToken, async (req: AuthenticatedRequest, res: R
     try {
       await prisma.chatChannel.update({
         where: { id: targetChannelId },
-        data: { lastMessage: text || '📎 Media', lastMessageTime: new Date() },
+        data: {
+          lastMessage: effectiveType === 'post' ? '📎 Shared a post' : (effectiveText || '📎 Media'),
+          lastMessageTime: new Date(),
+        },
       });
     } catch (_) {}
 
@@ -711,5 +732,82 @@ router.post('/messages/:id/reaction', authenticateToken, async (req: Authenticat
   }
 });
 
+/**
+ * POST /api/chat/messages/:id/save - Toggle save snap/message in chat
+ */
+router.post('/messages/:id/save', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const msg = await prisma.chatMessage.findUnique({
+      where: { id: String(req.params.id) },
+    });
+    if (!msg) return res.status(404).json({ error: 'Message not found' });
+
+    let savedBy: string[] = [];
+    try { savedBy = JSON.parse(msg.savedBy); } catch {}
+
+    const isSaved = savedBy.includes(userId);
+    if (isSaved) {
+      savedBy = savedBy.filter((id) => id !== userId);
+    } else {
+      savedBy.push(userId);
+    }
+
+    const updated = await prisma.chatMessage.update({
+      where: { id: String(req.params.id) },
+      data: { savedBy: JSON.stringify(savedBy) },
+    });
+    const formatted = formatMessage(updated);
+    emitToChannel(updated.channelId, 'message:updated', { message: formatted });
+
+    if (!isSaved) {
+      const saver = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { fullName: true, username: true },
+      });
+      emitToChannel(updated.channelId, 'snap:saved', {
+        messageId: updated.id,
+        savedBy: userId,
+        saverName: saver?.fullName || saver?.username || 'A member',
+      });
+    }
+
+    return res.json({ success: true, data: formatted });
+  } catch (error) {
+    console.error('Failed to toggle save message:', error);
+    return res.status(500).json({ error: 'Failed to toggle save message' });
+  }
+});
+
+/**
+ * POST /api/chat/messages/:id/view-snap - Mark snap message as viewed
+ */
+router.post('/messages/:id/view-snap', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const msg = await prisma.chatMessage.findUnique({ where: { id: String(req.params.id) } });
+    if (!msg) return res.status(404).json({ error: 'Message not found' });
+
+    let readBy: string[] = [];
+    try { readBy = JSON.parse(msg.readBy); } catch {}
+
+    if (!readBy.includes(userId)) {
+      readBy.push(userId);
+    }
+
+    const updated = await prisma.chatMessage.update({
+      where: { id: String(req.params.id) },
+      data: { readBy: JSON.stringify(readBy) },
+    });
+    const formatted = formatMessage(updated);
+    emitToChannel(updated.channelId, 'message:updated', { message: formatted });
+    return res.json({ success: true, data: formatted });
+  } catch (error) {
+    console.error('Failed to mark snap viewed:', error);
+    return res.status(500).json({ error: 'Failed to mark snap viewed' });
+  }
+});
+
 export default router;
+
 

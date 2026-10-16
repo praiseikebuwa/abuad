@@ -101,6 +101,15 @@ function formatMessage(msg) {
     }
     catch { }
     const isRead = readBy.length > 1;
+    let sharedPostId = msg.sharedPostId || msg.shared_post_id;
+    if (!sharedPostId) {
+        if (msg.type === 'post' && msg.mediaUrl) {
+            sharedPostId = msg.mediaUrl.startsWith('post:') ? msg.mediaUrl.replace('post:', '') : msg.mediaUrl;
+        }
+        else if (msg.mediaUrl && typeof msg.mediaUrl === 'string' && msg.mediaUrl.startsWith('post:')) {
+            sharedPostId = msg.mediaUrl.replace('post:', '');
+        }
+    }
     return {
         ...msg,
         senderId: msg.senderId,
@@ -111,6 +120,8 @@ function formatMessage(msg) {
         mediaUrl: msg.mediaUrl || null,
         imageUrl: msg.mediaUrl || null,
         image_url: msg.mediaUrl || null,
+        sharedPostId: sharedPostId || null,
+        shared_post_id: sharedPostId || null,
         reactions,
         savedBy,
         saved_by: savedBy,
@@ -503,8 +514,8 @@ router.get('/messages', auth_1.authenticateToken, async (req, res) => {
  */
 router.post('/send', auth_1.authenticateToken, async (req, res) => {
     try {
-        const { receiverId, channelId, text, mediaUrl, type } = req.body;
-        if (!text && !mediaUrl) {
+        const { receiverId, channelId, text, mediaUrl, type, sharedPostId } = req.body;
+        if (!text && !mediaUrl && !sharedPostId) {
             return res.status(400).json({ error: 'Message content or media required' });
         }
         let targetChannelId = channelId;
@@ -512,6 +523,10 @@ router.post('/send', auth_1.authenticateToken, async (req, res) => {
         if (!inferredReceiverId && channelId && channelId.startsWith('channel_')) {
             inferredReceiverId = channelId.replace('channel_', '');
         }
+        const effectiveSharedPostId = sharedPostId || (type === 'post' && mediaUrl ? String(mediaUrl).replace('post:', '') : null);
+        const effectiveType = effectiveSharedPostId ? 'post' : (type || 'text');
+        const effectiveMediaUrl = mediaUrl || (effectiveSharedPostId ? `post:${effectiveSharedPostId}` : null);
+        const effectiveText = text || (effectiveSharedPostId ? 'Shared a post with you' : '');
         const userId = req.user.id;
         if (inferredReceiverId && inferredReceiverId !== userId) {
             const allChannels = await db_1.prisma.chatChannel.findMany({ where: { type: 'direct' } });
@@ -539,7 +554,7 @@ router.post('/send', auth_1.authenticateToken, async (req, res) => {
                         type: 'direct',
                         isGroup: false,
                         memberIds: JSON.stringify([userId, inferredReceiverId]),
-                        lastMessage: text || '📎 Media',
+                        lastMessage: effectiveType === 'post' ? '📎 Shared a post' : (effectiveText || '📎 Media'),
                         lastMessageTime: new Date(),
                     },
                 });
@@ -555,7 +570,7 @@ router.post('/send', auth_1.authenticateToken, async (req, res) => {
                         type: 'direct',
                         isGroup: false,
                         memberIds: JSON.stringify([userId]),
-                        lastMessage: text || 'Media',
+                        lastMessage: effectiveType === 'post' ? '📎 Shared a post' : (effectiveText || '📎 Media'),
                         lastMessageTime: new Date(),
                     },
                 });
@@ -568,9 +583,9 @@ router.post('/send', auth_1.authenticateToken, async (req, res) => {
             data: {
                 senderId: req.user.id,
                 channelId: targetChannelId,
-                text: text || '',
-                mediaUrl: mediaUrl || null,
-                type: type || 'text',
+                text: effectiveText,
+                mediaUrl: effectiveMediaUrl,
+                type: effectiveType,
             },
             include: {
                 sender: { select: { id: true, username: true, fullName: true, avatarUrl: true } },
@@ -579,7 +594,10 @@ router.post('/send', auth_1.authenticateToken, async (req, res) => {
         try {
             await db_1.prisma.chatChannel.update({
                 where: { id: targetChannelId },
-                data: { lastMessage: text || '📎 Media', lastMessageTime: new Date() },
+                data: {
+                    lastMessage: effectiveType === 'post' ? '📎 Shared a post' : (effectiveText || '📎 Media'),
+                    lastMessageTime: new Date(),
+                },
             });
         }
         catch (_) { }

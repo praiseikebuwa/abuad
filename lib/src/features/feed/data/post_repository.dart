@@ -200,7 +200,8 @@ class PostRepository {
     return _postsCache.values.toList();
   }
 
-  Post? getPost(String postId) => _postsCache[postId];
+  Post? getPostSync(String postId) => _postsCache[postId];
+  Post? getCachedPost(String postId) => _postsCache[postId];
 
   Stream<List<Post>> watchPosts({
     List<String> blockedUserIds = const [],
@@ -214,8 +215,42 @@ class PostRepository {
     }
   }
 
+  Future<Post?> getPost(String postId) async {
+    try {
+      final response = await ApiClient.get('/posts/$postId');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] != null) {
+          var p = Post.fromMap(Map<String, dynamic>.from(data['data']));
+          if (_likedPostsMap.containsKey(p.id)) {
+            final localLiked = _likedPostsMap[p.id]!;
+            if (p.isLiked != localLiked) {
+              final countDiff = localLiked ? (p.isLiked ? 0 : 1) : (p.isLiked ? -1 : 0);
+              p = p.copyWith(isLiked: localLiked, likesCount: (p.likesCount + countDiff).clamp(0, 999999));
+            }
+          }
+          if (_savedPostsMap.containsKey(p.id)) {
+            final localSaved = _savedPostsMap[p.id]!;
+            p = p.copyWith(savesCount: (p.savesCount + (localSaved ? 1 : 0)).clamp(0, 999999));
+          }
+          _postsCache[p.id] = p;
+          _postsController.add(Map<String, Post>.from(_postsCache));
+          return p;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching single post $postId: $e');
+    }
+    return _postsCache[postId];
+  }
+
   Stream<Post?> watchPost(String postId) async* {
-    yield _postsCache[postId];
+    if (_postsCache.containsKey(postId)) {
+      yield _postsCache[postId];
+    } else {
+      final fetched = await getPost(postId);
+      yield fetched;
+    }
 
     await for (final cache in _postsController.stream) {
       yield cache[postId];
