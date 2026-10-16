@@ -70,8 +70,14 @@ class StoryRepository {
           return stories;
         }
       }
+      if (!_storiesController.isClosed) {
+        _storiesController.add(_cachedStories);
+      }
     } catch (e) {
       debugPrint('Error fetching active stories: $e');
+      if (!_storiesController.isClosed) {
+        _storiesController.add(_cachedStories);
+      }
     }
     return _cachedStories;
   }

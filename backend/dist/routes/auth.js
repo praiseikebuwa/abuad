@@ -142,7 +142,16 @@ router.post('/login', rateLimiter_1.loginLimiter, async (req, res) => {
     }
 });
 /**
- * POST /api/auth/refresh (Rotating Refresh Token)
+interface RotationCacheEntry {
+  previousTokenHash: string;
+  newAccessToken: string;
+  newRefreshToken: string;
+  expiresAt: number;
+}
+const rotationGraceCache = new Map<string, RotationCacheEntry>();
+
+/**
+ * POST /api/auth/refresh (Rotating Refresh Token with Concurrent Grace Window)
  */
 router.post('/refresh', async (req, res) => {
     try {
@@ -154,26 +163,47 @@ router.post('/refresh', async (req, res) => {
         const user = await db_1.prisma.user.findUnique({
             where: { id: payload.userId },
         });
-        if (!user || !user.refreshTokenHash) {
+        if (!user) {
+            return res.status(401).json({ error: 'User not found' });
+        }
+        // 1. Check if this is a concurrent request within the 30s grace window
+        const graceEntry = rotationGraceCache.get(user.id);
+        if (graceEntry && graceEntry.expiresAt > Date.now()) {
+            const matchesPrevious = await (0, jwt_1.compareToken)(rawRefreshToken, graceEntry.previousTokenHash);
+            if (matchesPrevious) {
+                setRefreshTokenCookie(res, graceEntry.newRefreshToken);
+                return res.json({
+                    success: true,
+                    data: {
+                        accessToken: graceEntry.newAccessToken,
+                        refreshToken: graceEntry.newRefreshToken,
+                    },
+                });
+            }
+        }
+        if (!user.refreshTokenHash) {
             return res.status(401).json({ error: 'Invalid refresh token session' });
         }
         const isValid = await (0, jwt_1.compareToken)(rawRefreshToken, user.refreshTokenHash);
         if (!isValid) {
-            // Security alert: Invalidate all refresh tokens if reuse detected
-            await db_1.prisma.user.update({
-                where: { id: user.id },
-                data: { refreshTokenHash: null },
-            });
-            return res.status(401).json({ error: 'Compromised refresh token session' });
+            return res.status(401).json({ error: 'Invalid or outdated refresh token' });
         }
         // Rotate tokens: Issue NEW access token and NEW refresh token
         const newPayload = { userId: user.id, email: user.email, role: user.role };
         const newAccessToken = (0, jwt_1.generateAccessToken)(newPayload);
         const newRefreshToken = (0, jwt_1.generateRefreshToken)(newPayload);
+        const oldHash = user.refreshTokenHash;
         const newRefreshTokenHash = await (0, jwt_1.hashToken)(newRefreshToken);
         await db_1.prisma.user.update({
             where: { id: user.id },
             data: { refreshTokenHash: newRefreshTokenHash },
+        });
+        // Store in grace cache for 30 seconds
+        rotationGraceCache.set(user.id, {
+            previousTokenHash: oldHash,
+            newAccessToken,
+            newRefreshToken,
+            expiresAt: Date.now() + 30 * 1000,
         });
         setRefreshTokenCookie(res, newRefreshToken);
         return res.json({

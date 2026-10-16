@@ -281,23 +281,45 @@ class ApiClient {
 
   // ── Token Management ──────────────────────────────────────────────────────
 
-  /// Refresh JWT Access Token automatically when expired
+  static VoidCallback? onSessionExpired;
+  static Future<bool>? _activeRefreshFuture;
+
+  /// Refresh JWT Access Token automatically with mutex deduplication
   static Future<bool> refreshToken() async {
+    if (_activeRefreshFuture != null) {
+      return _activeRefreshFuture!;
+    }
+
+    _activeRefreshFuture = _performTokenRefresh();
+    try {
+      final success = await _activeRefreshFuture!;
+      return success;
+    } finally {
+      _activeRefreshFuture = null;
+    }
+  }
+
+  static Future<bool> _performTokenRefresh() async {
     await ensureTokensLoaded();
-    if (_refreshToken == null || _refreshToken!.isEmpty) return false;
+    if (_refreshToken == null || _refreshToken!.isEmpty) {
+      await clearTokens();
+      onSessionExpired?.call();
+      return false;
+    }
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/auth/refresh'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'refreshToken': _refreshToken}),
-      );
+      ).timeout(const Duration(seconds: 10));
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        if (data['success'] == true) {
+        if (data['success'] == true && data['data'] != null) {
           final newAccess = data['data']['accessToken'] as String?;
           final newRefresh = data['data']['refreshToken'] as String?;
-          if (newAccess != null) {
-            await setTokens(accessToken: newAccess, refreshToken: newRefresh);
+          if (newAccess != null && newAccess.isNotEmpty) {
+            await setTokens(accessToken: newAccess, refreshToken: newRefresh ?? _refreshToken);
             return true;
           }
         }
@@ -305,7 +327,9 @@ class ApiClient {
     } catch (e) {
       debugPrint('ApiClient.refreshToken error: $e');
     }
+
     await clearTokens();
+    onSessionExpired?.call();
     return false;
   }
 

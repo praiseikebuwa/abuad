@@ -36,25 +36,35 @@ class AuthRepository {
 
   Future<void> init() async {
     try {
+      ApiClient.onSessionExpired = () {
+        debugPrint('⚠️ Session expired received from ApiClient. Signing out...');
+        signOut();
+      };
+
       final prefs = await SharedPreferences.getInstance();
       final accessToken = prefs.getString('accessToken');
       final refreshToken = prefs.getString('refreshToken');
       final cachedUserRaw = prefs.getString('cachedUser');
 
-      // 1. Instantly restore cached user without waiting for network (0ms startup)
-      if (cachedUserRaw != null && cachedUserRaw.isNotEmpty) {
-        try {
-          final data = jsonDecode(cachedUserRaw);
-          _currentUser = AppUser.fromMap(data);
-          _controller.add(_currentUser);
-        } catch (_) {}
-      }
-
       if (accessToken != null && accessToken.isNotEmpty) {
+        // 1. Instantly restore cached user if valid token exists
+        if (cachedUserRaw != null && cachedUserRaw.isNotEmpty) {
+          try {
+            final data = jsonDecode(cachedUserRaw);
+            _currentUser = AppUser.fromMap(data);
+            _controller.add(_currentUser);
+          } catch (_) {}
+        }
+
         await ApiClient.setTokens(accessToken: accessToken, refreshToken: refreshToken);
         SocketService.instance.connect();
         // 2. Refresh profile in background without stalling the UI
         unawaited(_syncUserProfile(prefs));
+      } else {
+        // No valid token stored; ensure session is clean
+        _currentUser = null;
+        _controller.add(null);
+        await prefs.remove('cachedUser');
       }
     } catch (e) {
       debugPrint('AuthRepository.init error: $e');

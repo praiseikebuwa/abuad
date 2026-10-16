@@ -165,7 +165,16 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
 });
 
 /**
- * POST /api/auth/refresh (Rotating Refresh Token)
+interface RotationCacheEntry {
+  previousTokenHash: string;
+  newAccessToken: string;
+  newRefreshToken: string;
+  expiresAt: number;
+}
+const rotationGraceCache = new Map<string, RotationCacheEntry>();
+
+/**
+ * POST /api/auth/refresh (Rotating Refresh Token with Concurrent Grace Window)
  */
 router.post('/refresh', async (req: Request, res: Response) => {
   try {
@@ -180,18 +189,33 @@ router.post('/refresh', async (req: Request, res: Response) => {
       where: { id: payload.userId },
     });
 
-    if (!user || !user.refreshTokenHash) {
+    if (!user) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+
+    // 1. Check if this is a concurrent request within the 30s grace window
+    const graceEntry = rotationGraceCache.get(user.id);
+    if (graceEntry && graceEntry.expiresAt > Date.now()) {
+      const matchesPrevious = await compareToken(rawRefreshToken, graceEntry.previousTokenHash);
+      if (matchesPrevious) {
+        setRefreshTokenCookie(res, graceEntry.newRefreshToken);
+        return res.json({
+          success: true,
+          data: {
+            accessToken: graceEntry.newAccessToken,
+            refreshToken: graceEntry.newRefreshToken,
+          },
+        });
+      }
+    }
+
+    if (!user.refreshTokenHash) {
       return res.status(401).json({ error: 'Invalid refresh token session' });
     }
 
     const isValid = await compareToken(rawRefreshToken, user.refreshTokenHash);
     if (!isValid) {
-      // Security alert: Invalidate all refresh tokens if reuse detected
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { refreshTokenHash: null },
-      });
-      return res.status(401).json({ error: 'Compromised refresh token session' });
+      return res.status(401).json({ error: 'Invalid or outdated refresh token' });
     }
 
     // Rotate tokens: Issue NEW access token and NEW refresh token
@@ -199,10 +223,20 @@ router.post('/refresh', async (req: Request, res: Response) => {
     const newAccessToken = generateAccessToken(newPayload);
     const newRefreshToken = generateRefreshToken(newPayload);
 
+    const oldHash = user.refreshTokenHash;
     const newRefreshTokenHash = await hashToken(newRefreshToken);
+
     await prisma.user.update({
       where: { id: user.id },
       data: { refreshTokenHash: newRefreshTokenHash },
+    });
+
+    // Store in grace cache for 30 seconds
+    rotationGraceCache.set(user.id, {
+      previousTokenHash: oldHash,
+      newAccessToken,
+      newRefreshToken,
+      expiresAt: Date.now() + 30 * 1000,
     });
 
     setRefreshTokenCookie(res, newRefreshToken);

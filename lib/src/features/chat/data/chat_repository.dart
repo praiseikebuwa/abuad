@@ -185,10 +185,17 @@ class ChatRepository {
           if (!_channelsController.isClosed) {
             _channelsController.add(channels);
           }
+          return;
         }
+      }
+      if (!_channelsController.isClosed) {
+        _channelsController.add([]);
       }
     } catch (e) {
       debugPrint('Error fetching chat channels: $e');
+      if (!_channelsController.isClosed) {
+        _channelsController.add([]);
+      }
     }
   }
 
