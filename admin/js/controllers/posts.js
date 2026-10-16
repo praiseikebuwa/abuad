@@ -2,9 +2,96 @@ class PostsController {
     constructor() {
         this.tableBody = document.querySelector('#posts-table tbody');
         this.posts = []; // Cache for modals
+
+        this.aiPostingToggle = document.getElementById('posts-ai-posting-toggle');
+        this.aiStatusBadge = document.getElementById('posts-ai-status-badge');
+        this.cleanAiBtn = document.getElementById('posts-clean-ai-btn');
+
+        if (this.aiPostingToggle) {
+            this.aiPostingToggle.addEventListener('change', () => this.toggleAiPosting());
+        }
+
+        if (this.cleanAiBtn) {
+            this.cleanAiBtn.addEventListener('click', () => this.cleanAiPosts());
+        }
+    }
+
+    async loadAiStatus() {
+        try {
+            const res = await ApiClientAdmin.fetch('/admin/settings/ai-posting');
+            const data = await res.json();
+            const enabled = !!data.enabled;
+            if (this.aiPostingToggle) this.aiPostingToggle.checked = enabled;
+            if (this.aiStatusBadge) {
+                this.aiStatusBadge.textContent = enabled ? 'ACTIVE' : 'DISABLED';
+                this.aiStatusBadge.style.background = enabled ? '#10b981' : '#64748b';
+            }
+        } catch (e) {
+            if (this.aiStatusBadge) {
+                this.aiStatusBadge.textContent = 'OFF';
+                this.aiStatusBadge.style.background = '#64748b';
+            }
+        }
+    }
+
+    async toggleAiPosting() {
+        if (!this.aiPostingToggle) return;
+        const isEnabled = this.aiPostingToggle.checked;
+        try {
+            const res = await ApiClientAdmin.fetch('/admin/settings/ai-posting', {
+                method: 'POST',
+                body: JSON.stringify({ enabled: isEnabled }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                if (this.aiStatusBadge) {
+                    this.aiStatusBadge.textContent = isEnabled ? 'ACTIVE' : 'DISABLED';
+                    this.aiStatusBadge.style.background = isEnabled ? '#10b981' : '#64748b';
+                }
+                alert(`ABUAD AI Autonomous Feed Posting is now ${isEnabled ? 'ACTIVE' : 'DISABLED'}`);
+            } else {
+                alert('Failed to update AI posting: ' + (data.error || 'Server error'));
+                this.aiPostingToggle.checked = !isEnabled;
+            }
+        } catch (e) {
+            alert('Error updating AI posting: ' + e.message);
+            this.aiPostingToggle.checked = !isEnabled;
+        }
+    }
+
+    async cleanAiPosts() {
+        const confirmed = confirm("Are you sure you want to remove all automated ABUAD AI posts from the campus feed?\n\nThis will instantly delete prior AI posts so real student posts take full priority.");
+        if (!confirmed) return;
+
+        if (this.cleanAiBtn) {
+            this.cleanAiBtn.disabled = true;
+            this.cleanAiBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cleaning...';
+        }
+
+        try {
+            const res = await ApiClientAdmin.fetch('/admin/ai-posts/clean', {
+                method: 'POST',
+                body: JSON.stringify({}),
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert(data.message || `Removed ${data.count} AI posts from the feed`);
+                this.load();
+            } else {
+                alert('Failed to clean AI posts: ' + (data.error || 'Server error'));
+            }
+        } catch (e) {
+            alert('Error cleaning AI posts: ' + e.message);
+        } finally {
+            if (this.cleanAiBtn) {
+                this.cleanAiBtn.disabled = false;
+                this.cleanAiBtn.innerHTML = '<i class="fas fa-trash"></i> Clean AI Posts';
+            }
+        }
     }
 
     load() {
+        this.loadAiStatus();
         this.tableBody.innerHTML = '<tr><td colspan="5" class="loading-text">Loading posts feed...</td></tr>';
 
         if (this.unsubscribe) this.unsubscribe();
