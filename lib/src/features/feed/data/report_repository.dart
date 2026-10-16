@@ -295,4 +295,44 @@ class ReportRepository {
       return false;
     }
   }
+
+  Future<bool> getAiPostingStatus() async {
+    try {
+      final response = await ApiClient.get('/admin/settings/ai-posting');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['enabled'] == true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('Error fetching AI posting status: $e');
+      return false;
+    }
+  }
+
+  Future<bool> setAiPostingStatus(bool enabled) async {
+    try {
+      final response = await ApiClient.post('/admin/settings/ai-posting', {
+        'enabled': enabled,
+      });
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error updating AI posting status: $e');
+      return false;
+    }
+  }
+
+  Future<int?> cleanAiFeedPosts() async {
+    try {
+      final response = await ApiClient.post('/admin/ai-posts/clean', {});
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['count'] as int? ?? 0;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error cleaning AI feed posts: $e');
+      return null;
+    }
+  }
 }

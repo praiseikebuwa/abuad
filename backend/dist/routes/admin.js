@@ -561,4 +561,72 @@ router.get('/audit-logs', auth_1.authenticateToken, adminOnly, async (req, res) 
         return res.status(500).json({ error: 'Failed to fetch audit logs' });
     }
 });
+/**
+ * GET /api/admin/settings/ai-posting
+ * Check whether autonomous ABUAD AI posting to the feed is active
+ */
+router.get(['/settings/ai-posting', '/ai-posting'], auth_1.authenticateToken, adminOnly, async (req, res) => {
+    try {
+        const setting = await db_1.prisma.systemSetting.findUnique({
+            where: { key: 'ai_autonomous_posting' },
+        });
+        const enabled = setting ? (setting.value === 'true' || setting.value === '1') : false;
+        return res.json({ success: true, enabled });
+    }
+    catch (error) {
+        console.error('Error fetching AI posting setting:', error);
+        return res.status(500).json({ error: 'Failed to fetch setting' });
+    }
+});
+/**
+ * POST /api/admin/settings/ai-posting
+ * Toggle autonomous ABUAD AI posting to the feed ON or OFF
+ */
+router.post(['/settings/ai-posting', '/ai-posting'], auth_1.authenticateToken, adminOnly, async (req, res) => {
+    try {
+        const { enabled } = req.body;
+        const isEnabled = enabled === true || enabled === 'true' || enabled === 1 || enabled === '1';
+        const strVal = isEnabled ? 'true' : 'false';
+        await db_1.prisma.systemSetting.upsert({
+            where: { key: 'ai_autonomous_posting' },
+            update: { value: strVal },
+            create: { key: 'ai_autonomous_posting', value: strVal },
+        });
+        console.log(`🔧 Admin ${req.user?.username || req.user?.id} set ABUAD AI autonomous posting to: ${strVal}`);
+        return res.json({ success: true, enabled: isEnabled, message: `ABUAD AI autonomous posting is now ${isEnabled ? 'ENABLED' : 'DISABLED'}` });
+    }
+    catch (error) {
+        console.error('Error updating AI posting setting:', error);
+        return res.status(500).json({ error: 'Failed to update setting' });
+    }
+});
+/**
+ * POST /api/admin/ai-posts/clean
+ * Clean up existing autonomous ABUAD AI posts from the feed
+ */
+router.post('/ai-posts/clean', auth_1.authenticateToken, adminOnly, async (req, res) => {
+    try {
+        const aiUser = await db_1.prisma.user.findFirst({
+            where: {
+                OR: [{ username: 'abuad_ai' }, { email: 'ai@abuad.edu.ng' }]
+            }
+        });
+        if (!aiUser) {
+            return res.json({ success: true, count: 0, message: 'No AI bot user found' });
+        }
+        const deleteResult = await db_1.prisma.post.deleteMany({
+            where: { authorId: aiUser.id }
+        });
+        console.log(`🧹 Admin cleaned up ${deleteResult.count} autonomous ABUAD AI posts`);
+        return res.json({
+            success: true,
+            count: deleteResult.count,
+            message: `Successfully removed ${deleteResult.count} ABUAD AI posts from the feed`
+        });
+    }
+    catch (error) {
+        console.error('Error cleaning AI posts:', error);
+        return res.status(500).json({ error: 'Failed to clean AI posts' });
+    }
+});
 exports.default = router;

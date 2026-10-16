@@ -8,6 +8,7 @@ exports.isContentInappropriate = isContentInappropriate;
 exports.triggerAiPostReply = triggerAiPostReply;
 exports.triggerAiCommentReply = triggerAiCommentReply;
 exports.triggerAiDirectChatReply = triggerAiDirectChatReply;
+exports.isAiAutonomousPostingEnabled = isAiAutonomousPostingEnabled;
 exports.generateAndPublishAiPost = generateAndPublishAiPost;
 exports.scheduleAiAutonomousPosting = scheduleAiAutonomousPosting;
 const db_1 = require("../config/db");
@@ -531,8 +532,31 @@ Requirements:
     }
     return { content, channelId, mediaUrl, hashtags };
 }
+/**
+ * Check if Admin has allowed ABUAD AI to autonomously publish feed posts
+ */
+async function isAiAutonomousPostingEnabled() {
+    try {
+        const setting = await db_1.prisma.systemSetting.findUnique({
+            where: { key: 'ai_autonomous_posting' },
+        });
+        if (!setting)
+            return false; // Default OFF until admin explicitly enables it
+        return setting.value === 'true' || setting.value === '1';
+    }
+    catch {
+        return false;
+    }
+}
 async function generateAndPublishAiPost(force = false) {
     try {
+        if (!force) {
+            const isEnabled = await isAiAutonomousPostingEnabled();
+            if (!isEnabled) {
+                console.log('🤖 ABUAD AI autonomous posting is currently DISABLED by Admin setting.');
+                return null;
+            }
+        }
         const aiUser = await getOrCreateAiUser();
         // Check if AI posted in the last 12 hours (unless forced)
         if (!force) {
@@ -581,12 +605,12 @@ async function generateAndPublishAiPost(force = false) {
     }
 }
 function scheduleAiAutonomousPosting() {
-    // Check and potentially publish shortly after server start (after 3s)
+    // Check and potentially publish shortly after server start (after 30s)
     setTimeout(() => {
         generateAndPublishAiPost().catch(e => console.error('Initial AI post check failed:', e));
-    }, 3000);
-    // Check every 4 hours
+    }, 30000);
+    // Check every 6 hours
     setInterval(() => {
         generateAndPublishAiPost().catch(e => console.error('Periodic AI post check failed:', e));
-    }, 4 * 60 * 60 * 1000);
+    }, 6 * 60 * 60 * 1000);
 }

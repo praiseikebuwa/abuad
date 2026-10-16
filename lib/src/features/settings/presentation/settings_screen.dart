@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../auth/data/auth_repository.dart';
+import '../../feed/data/report_repository.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/providers/shared_preferences_provider.dart';
 
@@ -225,6 +226,9 @@ class SettingsScreen extends ConsumerWidget {
             showArrow: true,
             onTap: () => context.push('/settings/support', extra: {'title': 'Report a Bug', 'type': 'bug'}),
           ),
+
+          if (user?.isAdmin == true)
+            const _AdminAiPostingSection(),
 
           const SizedBox(height: 24),
           _SectionHeader(title: "ABOUT"),
@@ -719,6 +723,148 @@ class _SettingsTile extends StatelessWidget {
                   : null),
         ),
       ),
+    );
+  }
+}
+
+class _AdminAiPostingSection extends ConsumerStatefulWidget {
+  const _AdminAiPostingSection();
+
+  @override
+  ConsumerState<_AdminAiPostingSection> createState() => _AdminAiPostingSectionState();
+}
+
+class _AdminAiPostingSectionState extends ConsumerState<_AdminAiPostingSection> {
+  bool _isLoading = true;
+  bool _aiPostingEnabled = false;
+  bool _isCleaning = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStatus();
+  }
+
+  Future<void> _loadStatus() async {
+    final status = await ref.read(reportRepositoryProvider).getAiPostingStatus();
+    if (mounted) {
+      setState(() {
+        _aiPostingEnabled = status;
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _toggleAiPosting(bool val) async {
+    setState(() => _aiPostingEnabled = val);
+    final success = await ref.read(reportRepositoryProvider).setAiPostingStatus(val);
+    if (!success && mounted) {
+      setState(() => _aiPostingEnabled = !val);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to update AI posting setting')),
+      );
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(val
+              ? 'ABUAD AI Feed Posts ENABLED'
+              : 'ABUAD AI Feed Posts DISABLED (Real students prioritized)'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _cleanAiPosts() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clean ABUAD AI Posts'),
+        content: const Text(
+            'Are you sure you want to remove past autonomous AI posts from the feed so students see real posts?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Clean Up'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _isCleaning = true);
+    final count = await ref.read(reportRepositoryProvider).cleanAiFeedPosts();
+    if (mounted) {
+      setState(() => _isCleaning = false);
+      if (count != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Removed $count ABUAD AI post(s) from the feed.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to clean AI posts.')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 24),
+        _SectionHeader(title: "CAMPUS AI BOT ADMINISTRATION"),
+        _SettingsTile(
+          icon: Icons.smart_toy_outlined,
+          title: "ABUAD AI Feed Posts",
+          subtitle: _isLoading
+              ? "Checking status..."
+              : (_aiPostingEnabled
+                  ? "Bot actively creates periodic campus feed posts"
+                  : "Turned OFF - Students' real posts prioritized"),
+          trailing: _isLoading
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Switch.adaptive(
+                  value: _aiPostingEnabled,
+                  onChanged: _toggleAiPosting,
+                  activeTrackColor: AppColors.secondaryTeal.withValues(alpha: 0.5),
+                  activeThumbColor: AppColors.secondaryTeal,
+                ),
+        ),
+        _SettingsTile(
+          icon: Icons.cleaning_services_outlined,
+          title: "Clean Up Feed AI Posts",
+          subtitle: "Remove previous autonomous AI posts from the student feed",
+          textColor: AppColors.error,
+          iconColor: AppColors.error,
+          showArrow: true,
+          trailing: _isCleaning
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : null,
+          onTap: _isCleaning ? null : _cleanAiPosts,
+        ),
+      ],
     );
   }
 }

@@ -136,7 +136,15 @@ router.get(['/', '/channels'], auth_1.authenticateToken, async (req, res) => {
         const userChannels = allChannels.filter(ch => {
             try {
                 const members = JSON.parse(ch.memberIds);
-                return members.includes(userId);
+                if (!members.includes(userId))
+                    return false;
+                // Hide empty direct DMs with 0 messages from the inbox
+                const isGroup = ch.type === 'group' || ch.isGroup || members.length > 2;
+                const hasMessage = ch.lastMessage && String(ch.lastMessage).trim().length > 0;
+                if (!isGroup && !hasMessage) {
+                    return false; // Skip empty direct chats without messages
+                }
+                return true;
             }
             catch {
                 return false;
@@ -147,6 +155,43 @@ router.get(['/', '/channels'], auth_1.authenticateToken, async (req, res) => {
     }
     catch (error) {
         return res.status(500).json({ error: 'Failed to fetch chat channels' });
+    }
+});
+/**
+ * DELETE /api/chat/channels/:id - Delete / leave a chat channel
+ */
+router.delete('/channels/:id', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const channelId = String(req.params.id);
+        const channel = await db_1.prisma.chatChannel.findUnique({
+            where: { id: channelId },
+        });
+        if (!channel) {
+            return res.status(404).json({ error: 'Channel not found' });
+        }
+        let memberIds = [];
+        try {
+            memberIds = JSON.parse(channel.memberIds);
+        }
+        catch {
+            memberIds = [];
+        }
+        if (!memberIds.includes(userId)) {
+            return res.status(403).json({ error: 'Not a member of this chat' });
+        }
+        // Delete messages and channel
+        await db_1.prisma.chatMessage.deleteMany({
+            where: { channelId },
+        });
+        await db_1.prisma.chatChannel.delete({
+            where: { id: channelId },
+        });
+        return res.json({ success: true, message: 'Chat removed successfully' });
+    }
+    catch (error) {
+        console.error('Error deleting channel:', error);
+        return res.status(500).json({ error: 'Failed to delete channel' });
     }
 });
 /**

@@ -342,9 +342,16 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
         if (c.type == 'group') return false;
       }
 
+      // Hide empty 0-message direct channels when not searching
+      final isGroup = c.type == 'group';
+      final hasMessage = c.lastMessage.isNotEmpty &&
+          (c.lastMessage['content']?.toString().trim().isNotEmpty ?? false);
+      if (_searchQuery.isEmpty && !isGroup && !hasMessage) {
+        return false;
+      }
+
       if (_searchQuery.isEmpty) return true;
 
-      final isGroup = c.type == 'group';
       final otherUserId = isGroup
           ? null
           : c.memberIds.firstWhere(
@@ -362,6 +369,13 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
       final bPinned = b.pinnedBy.contains(currentUserId);
       if (aPinned && !bPinned) return -1;
       if (!aPinned && bPinned) return 1;
+
+      // Channels with real messages come before empty ones
+      final aHasMsg = a.lastMessage.isNotEmpty && (a.lastMessage['content']?.toString().trim().isNotEmpty ?? false);
+      final bHasMsg = b.lastMessage.isNotEmpty && (b.lastMessage['content']?.toString().trim().isNotEmpty ?? false);
+      if (aHasMsg && !bHasMsg) return -1;
+      if (!aHasMsg && bHasMsg) return 1;
+
       return b.lastMessageTime.compareTo(a.lastMessageTime);
     });
 
@@ -529,12 +543,22 @@ class _SnapchatListItem extends ConsumerWidget {
         ? ref.watch(userProvider(otherUserId))
         : null;
 
+    final resolvedName = otherUserAsync?.value?.displayName.trim();
+    final userHandle = otherUserAsync?.value?.handle.trim();
+    final memberName = channel.memberNames[otherUserId]?.trim();
+    final fallbackName = (channel.displayName != null && channel.displayName != 'Direct Message' && channel.displayName!.trim().isNotEmpty)
+        ? channel.displayName!.trim()
+        : null;
+
     final displayName = isGroup
         ? (channel.displayName ?? 'Untitled Group')
-        : (otherUserAsync?.value?.displayName ??
-            channel.memberNames[otherUserId] ??
-            (channel.displayName != null && channel.displayName != 'Direct Message' ? channel.displayName : null) ??
-            'Student');
+        : ((resolvedName != null && resolvedName.isNotEmpty)
+            ? resolvedName
+            : ((memberName != null && memberName.isNotEmpty)
+                ? memberName
+                : ((userHandle != null && userHandle.isNotEmpty)
+                    ? '@$userHandle'
+                    : (fallbackName ?? 'Student'))));
 
     final displayAvatar = isGroup
         ? channel.displayAvatarUrl

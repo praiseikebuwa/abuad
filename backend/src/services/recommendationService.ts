@@ -168,8 +168,14 @@ export function scorePost(post: any, userProfile: UserInterestProfile): number {
 
   // 7. Verified & Institutional Boost (Official Campus announcements / Gold badge)
   let verifiedBonus = 0;
-  if (post.author?.verificationType === 'GOLD') verifiedBonus = 25;
-  else if (post.author?.isVerified) verifiedBonus = 15;
+  const isAiAuthor = post.author?.username === 'abuad_ai' || post.author?.email === 'ai@abuad.edu.ng';
+  if (!isAiAuthor) {
+    if (post.author?.verificationType === 'GOLD') verifiedBonus = 25;
+    else if (post.author?.isVerified) verifiedBonus = 15;
+  } else {
+    // Automated AI Bot posts should never overtake real student creators
+    verifiedBonus = -35;
+  }
 
   // 8. Exploration / Serendipity Random Jitter (+- 10 points for discovery)
   const explorationJitter = (Math.random() * 20) - 10;

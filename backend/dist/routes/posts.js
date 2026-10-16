@@ -6,15 +6,34 @@ const db_1 = require("../config/db");
 const aiBotService_1 = require("../services/aiBotService");
 const recommendationService_1 = require("../services/recommendationService");
 const router = (0, express_1.Router)();
-function sanitizePost(post, userRole) {
+function sanitizePost(post, userRole, currentUserId) {
     if (!post)
         return post;
+    // Safely parse and enrich pollData
+    let pollData = post.pollData;
+    if (pollData) {
+        try {
+            if (typeof pollData === 'string') {
+                pollData = JSON.parse(pollData);
+            }
+            if (pollData && typeof pollData === 'object') {
+                if (currentUserId && pollData.voters && pollData.voters[currentUserId] !== undefined) {
+                    pollData.userVotedIndex = Number(pollData.voters[currentUserId]);
+                }
+            }
+        }
+        catch { }
+    }
     const isAnon = post.isAnonymous === true || post.channelId === 'confessions';
     if (!isAnon || userRole === 'ADMIN') {
-        return post;
+        return {
+            ...post,
+            pollData,
+        };
     }
     return {
         ...post,
+        pollData,
         authorId: 'anonymous',
         author: {
             id: 'anonymous',
@@ -108,7 +127,7 @@ router.get('/', auth_1.optionalAuth, async (req, res) => {
                     likesCount: _count.likes,
                     isLiked: likes.length > 0,
                     isSaved: savedBy.length > 0,
-                }, req.user?.role);
+                }, req.user?.role, userId);
             });
             const lastPost = formatted[formatted.length - 1];
             const nextCursor = hasMore && lastPost ? (0, recommendationService_1.encodeCursor)({ id: lastPost.id, createdAt: lastPost.createdAt.toISOString() }) : null;
@@ -116,11 +135,13 @@ router.get('/', auth_1.optionalAuth, async (req, res) => {
         }
         // 2. Personalized "For You" / Discovery Feed
         const userProfile = await (0, recommendationService_1.getUserInterestProfile)(userId);
+        const aiPostingEnabled = await (0, aiBotService_1.isAiAutonomousPostingEnabled)();
         // Fetch candidate posts (take a larger candidate batch to rank and score)
         const candidatePosts = await db_1.prisma.post.findMany({
             where: {
                 status: 'active',
                 ...channelFilter,
+                ...(!aiPostingEnabled ? { author: { username: { not: 'abuad_ai' } } } : {}),
                 ...(decodedCursor?.createdAt ? { createdAt: { lt: new Date(decodedCursor.createdAt) } } : {}),
             },
             take: Math.max(limit * 3, 45),
@@ -154,7 +175,7 @@ router.get('/', auth_1.optionalAuth, async (req, res) => {
                 likesCount: _count.likes,
                 isLiked: likes.length > 0,
                 isSaved: savedBy.length > 0,
-            }, req.user?.role);
+            }, req.user?.role, userId);
         });
         const lastPost = formatted[formatted.length - 1];
         const nextCursor = hasMore && lastPost ? (0, recommendationService_1.encodeCursor)({ id: lastPost.id, createdAt: lastPost.createdAt.toISOString() }) : null;
@@ -977,7 +998,7 @@ router.post('/', auth_1.authenticateToken, async (req, res) => {
                 catch (_) { }
             }
         }
-        return res.status(201).json({ success: true, data: sanitizePost(post, req.user?.role) });
+        return res.status(201).json({ success: true, data: sanitizePost(post, req.user?.role, req.user?.id) });
     }
     catch (error) {
         return res.status(500).json({ error: 'Failed to create post' });
@@ -1012,7 +1033,7 @@ router.get('/:id', auth_1.optionalAuth, async (req, res) => {
             isLiked: Array.isArray(likes) && likes.length > 0,
             isSaved: Array.isArray(savedBy) && savedBy.length > 0,
         };
-        return res.json({ success: true, data: sanitizePost(formatted, req.user?.role) });
+        return res.json({ success: true, data: sanitizePost(formatted, req.user?.role, userId) });
     }
     catch (error) {
         return res.status(500).json({ error: 'Failed to fetch post' });
@@ -1371,19 +1392,73 @@ router.delete('/:id/comment/:commentId', auth_1.authenticateToken, async (req, r
  */
 router.post('/:id/poll-vote', auth_1.authenticateToken, async (req, res) => {
     try {
-        const { optionIndex } = req.body;
-        const post = await db_1.prisma.post.findUnique({ where: { id: String(req.params.id) } });
+        const userId = req.user.id;
+        const optionIndex = Number(req.body.optionIndex);
+        const postId = String(req.params.id);
+        const post = await db_1.prisma.post.findUnique({ where: { id: postId } });
         if (!post || !post.pollData)
             return res.status(404).json({ error: 'Poll not found' });
         let poll = {};
-        try {
-            poll = JSON.parse(post.pollData);
+        if (typeof post.pollData === 'string') {
+            try {
+                poll = JSON.parse(post.pollData);
+            }
+            catch { }
         }
-        catch { }
-        await db_1.prisma.post.update({ where: { id: String(req.params.id) }, data: { pollData: JSON.stringify(poll) } });
-        return res.json({ success: true, data: poll });
+        else if (typeof post.pollData === 'object' && post.pollData !== null) {
+            poll = post.pollData;
+        }
+        if (!Array.isArray(poll.options) || poll.options.length === 0) {
+            return res.status(400).json({ error: 'Invalid poll data' });
+        }
+        if (isNaN(optionIndex) || optionIndex < 0 || optionIndex >= poll.options.length) {
+            return res.status(400).json({ error: 'Invalid option index' });
+        }
+        // Check poll expiration if ends_at exists
+        if (poll.ends_at) {
+            const endsAt = new Date(poll.ends_at);
+            if (Date.now() > endsAt.getTime()) {
+                return res.status(400).json({ error: 'Poll has already ended' });
+            }
+        }
+        // Ensure votes array exists and has correct length
+        if (!Array.isArray(poll.votes) || poll.votes.length !== poll.options.length) {
+            poll.votes = new Array(poll.options.length).fill(0);
+        }
+        else {
+            poll.votes = poll.votes.map((v) => (typeof v === 'number' ? v : Number(v) || 0));
+        }
+        // Ensure voters map exists
+        if (!poll.voters || typeof poll.voters !== 'object' || Array.isArray(poll.voters)) {
+            poll.voters = {};
+        }
+        // Check if user already voted
+        const previousVote = poll.voters[userId];
+        if (previousVote !== undefined && previousVote !== null) {
+            const prevIdx = Number(previousVote);
+            if (prevIdx === optionIndex) {
+                // Already voted for this option
+                poll.userVotedIndex = optionIndex;
+                return res.json({ success: true, data: poll, pollData: poll });
+            }
+            // If changing vote: decrement old option count
+            if (prevIdx >= 0 && prevIdx < poll.votes.length) {
+                poll.votes[prevIdx] = Math.max(0, (poll.votes[prevIdx] || 1) - 1);
+            }
+        }
+        // Increment newly voted option
+        poll.votes[optionIndex] = (poll.votes[optionIndex] || 0) + 1;
+        poll.voters[userId] = optionIndex;
+        poll.userVotedIndex = optionIndex;
+        await db_1.prisma.post.update({
+            where: { id: postId },
+            data: { pollData: JSON.stringify(poll) },
+        });
+        console.log(`🗳️ User ${userId} voted option ${optionIndex} on poll post ${postId}`);
+        return res.json({ success: true, data: poll, pollData: poll });
     }
     catch (error) {
+        console.error('Error voting on poll:', error);
         return res.status(500).json({ error: 'Failed to vote on poll' });
     }
 });

@@ -43,3 +43,23 @@ pm2 startup
 
 # 8. Allow port 5000 through the firewall
 ufw allow 5000/tcp
+
+
+
+
+
+
+
+
+
+cd ~/abuad/backend
+git pull
+NODE_OPTIONS="--max-old-space-size=1536" npm run build
+
+
+# Start or restart the process
+pm2 restart abuad-backend || pm2 start dist/index.js --name "abuad-backend"
+
+# Save PM2 state so it restarts automatically on server reboot
+pm2 save
+pm2 startup

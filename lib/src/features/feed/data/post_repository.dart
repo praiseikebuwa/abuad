@@ -851,10 +851,27 @@ class PostRepository {
     return fetchFeedPage(cursor: cursor, limit: limit, feedType: 'foryou');
   }
 
-  Future<void> votePoll(String postId, int optionIndex) async {
+  Future<Map<String, dynamic>?> votePoll(String postId, int optionIndex) async {
     try {
-      await ApiClient.post('/posts/$postId/poll-vote', {'optionIndex': optionIndex});
-    } catch (_) {}
+      final response = await ApiClient.post('/posts/$postId/poll-vote', {'optionIndex': optionIndex});
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body);
+        final poll = body['data'] ?? body['pollData'];
+        if (poll is Map) {
+          final pollMap = Map<String, dynamic>.from(poll);
+          if (_postsCache.containsKey(postId)) {
+            final oldPost = _postsCache[postId]!;
+            final updatedPost = oldPost.copyWith(pollData: pollMap);
+            _postsCache[postId] = updatedPost;
+            _postsController.add(_postsCache);
+          }
+          return pollMap;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error voting on poll: $e');
+    }
+    return null;
   }
 
   Future<void> incrementViewCount(String postId) async {

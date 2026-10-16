@@ -16,14 +16,23 @@ class PollWidget extends StatefulWidget {
 class _PollWidgetState extends State<PollWidget> {
   int? _optimisticVotedIndex;
   int? _selectedPendingIndex;
+  Map<String, dynamic>? _livePollData;
+
+  @override
+  void didUpdateWidget(PollWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.post.pollData != oldWidget.post.pollData) {
+      _livePollData = widget.post.pollData;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (widget.post.pollData == null) return const SizedBox.shrink();
+    final pollData = _livePollData ?? widget.post.pollData;
+    if (pollData == null) return const SizedBox.shrink();
 
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final pollData = widget.post.pollData!;
     final List<dynamic> optionsRaw = pollData['options'] ?? [];
 
     // Safely parse options (could be String or Map)
@@ -35,6 +44,14 @@ class _PollWidgetState extends State<PollWidget> {
 
     // Safely parse votes
     final List<dynamic> votesRaw = pollData['votes'] ?? [];
+    final voters = Map<String, dynamic>.from(pollData['voters'] ?? {});
+    final currentUserId = widget.repo.currentUserId;
+    final serverVotedIndex = (pollData['userVotedIndex'] as num?)?.toInt() ??
+        (currentUserId != null ? (voters[currentUserId] as num?)?.toInt() : null);
+
+    final userVoteIndex = _optimisticVotedIndex ?? serverVotedIndex;
+    final hasVoted = userVoteIndex != null;
+
     final votes = List<int>.generate(options.length, (i) {
       int baseCount = 0;
       if (i < votesRaw.length) {
@@ -42,21 +59,12 @@ class _PollWidgetState extends State<PollWidget> {
       } else if (i < optionsRaw.length && optionsRaw[i] is Map) {
         baseCount = (optionsRaw[i]['votes'] as num?)?.toInt() ?? 0;
       }
-      // Apply optimistic vote delta if newly voted locally
-      if (_optimisticVotedIndex != null && _optimisticVotedIndex == i) {
+      // Apply optimistic vote delta if newly voted locally and server hasn't counted it yet
+      if (_optimisticVotedIndex != null && serverVotedIndex == null && _optimisticVotedIndex == i) {
         baseCount += 1;
       }
       return baseCount;
     });
-
-    final voters = Map<String, dynamic>.from(pollData['voters'] ?? {});
-    final currentUserId = widget.repo.currentUserId;
-    final serverVotedIndex = currentUserId != null
-        ? (voters[currentUserId] as num?)?.toInt()
-        : null;
-
-    final userVoteIndex = _optimisticVotedIndex ?? serverVotedIndex;
-    final hasVoted = userVoteIndex != null;
 
     // Check poll expiration
     final endsAtStr = pollData['ends_at'] as String?;
@@ -178,7 +186,7 @@ class _PollWidgetState extends State<PollWidget> {
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: GestureDetector(
-                onTap: () {
+                onTap: () async {
                   if (showResults || isEnded) return;
 
                   HapticFeedback.lightImpact();
@@ -187,8 +195,14 @@ class _PollWidgetState extends State<PollWidget> {
                     _optimisticVotedIndex = index;
                   });
 
-                  // Execute vote API
-                  widget.repo.votePoll(widget.post.id, index);
+                  // Execute vote API and sync state
+                  final updatedPoll = await widget.repo.votePoll(widget.post.id, index);
+                  if (mounted && updatedPoll != null) {
+                    setState(() {
+                      _livePollData = updatedPoll;
+                      _selectedPendingIndex = null;
+                    });
+                  }
                 },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
