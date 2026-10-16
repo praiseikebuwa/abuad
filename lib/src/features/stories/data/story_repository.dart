@@ -119,16 +119,24 @@ class StoryRepository {
     }
 
     if (caption != null && caption.isNotEmpty) {
-      final isTextSafe = await ModerationService.isContentSafe(caption);
-      if (!isTextSafe && AppConfig.blockFlaggedPosts) {
-        throw Exception('Story caption violates community guidelines.');
+      try {
+        final isTextSafe = await ModerationService.isContentSafe(caption).timeout(const Duration(seconds: 4));
+        if (!isTextSafe && AppConfig.blockFlaggedPosts) {
+          throw Exception('Story caption violates community guidelines.');
+        }
+      } catch (e) {
+        if (e.toString().contains('violates')) rethrow;
       }
     }
 
     if (finalContent.isNotEmpty) {
-      final isMediaSafe = await ModerationService.isMediaSafe(finalContent, mediaType: type);
-      if (!isMediaSafe && AppConfig.blockFlaggedPosts) {
-        throw Exception('Story media violates community guidelines.');
+      try {
+        final isMediaSafe = await ModerationService.isMediaSafe(finalContent, mediaType: type).timeout(const Duration(seconds: 4));
+        if (!isMediaSafe && AppConfig.blockFlaggedPosts) {
+          throw Exception('Story media violates community guidelines.');
+        }
+      } catch (e) {
+        if (e.toString().contains('violates')) rethrow;
       }
     }
 

@@ -526,8 +526,7 @@ class UserRepository {
   }
 
   Future<List<AppUser>> getFollowing(String userId) async {
-    if (userId.isEmpty) return [];
-    final targetId = userId == 'me' ? 'me' : userId;
+    final targetId = (userId.isEmpty || userId == 'me') ? 'me' : userId;
     try {
       final response = await ApiClient.get('/users/$targetId/following');
       if (response.statusCode == 200) {

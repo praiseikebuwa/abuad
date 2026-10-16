@@ -359,9 +359,12 @@ class _ShareSheetState extends ConsumerState<ShareSheet> {
                                 icon: Icons.share,
                                 label: 'More',
                                 onTap: () {
-                                  Share.share(
-                                    'Check out this post on Abuad life: https://abuadapp.com.ng/post/${widget.post.id}',
-                                    subject: 'Share Post',
+                                  SharePlus.instance.share(
+                                    ShareParams(
+                                      text:
+                                          'Check out this post on Abuad life: https://abuadapp.com.ng/post/${widget.post.id}',
+                                      subject: 'Share Post',
+                                    ),
                                   );
                                   Navigator.pop(context);
                                 },
@@ -390,7 +393,7 @@ class _ShareSheetState extends ConsumerState<ShareSheet> {
       final currentUser = ref.read(currentUserProvider).value;
       if (currentUser == null) throw Exception('Not logged in');
 
-      for (final entry in _selectedRecipients.values) {
+      await Future.wait(_selectedRecipients.values.map((entry) async {
         if (entry.type == 'channel') {
           final channelId = entry.data as String;
           await repo.sendMessage(
@@ -415,7 +418,7 @@ class _ShareSheetState extends ConsumerState<ShareSheet> {
             sharedPostId: widget.post.id,
           );
         }
-      }
+      }));
 
       if (mounted) {
         Navigator.pop(context);
@@ -431,38 +434,6 @@ class _ShareSheetState extends ConsumerState<ShareSheet> {
         ).showSnackBar(SnackBar(content: Text('Error sharing: $e')));
       }
     }
-  }
-
-  Future<void> _shareToChannel(String channelId) async {
-    // Legacy support or kept for individual usage if needed
-    try {
-      await ref
-          .read(chatRepositoryProvider)
-          .sendMessage(
-            channelId,
-            'Shared a post with you',
-            type: 'text',
-            sharedPostId: widget.post.id,
-          );
-    } catch (_) {}
-  }
-
-  Future<void> _shareToUser(AppUser user) async {
-    // Legacy support
-    try {
-      final currentUser = ref.read(currentUserProvider).value;
-      if (currentUser == null) return;
-      final channelId = await ref
-          .read(chatRepositoryProvider)
-          .createOrGetChannel(
-            user.uid,
-            otherUserName: user.displayName,
-            otherUserAvatar: user.avatarUrl,
-            currentUserName: currentUser.displayName,
-            currentUserAvatar: currentUser.avatarUrl,
-          );
-      await _shareToChannel(channelId);
-    } catch (_) {}
   }
 }
 

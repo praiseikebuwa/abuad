@@ -2,15 +2,12 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:timeago/timeago.dart' as timeago;
-
 import '../../domain/post.dart';
 import '../../data/post_repository.dart';
-import '../../../../core/widgets/verification_badge.dart';
 import '../../../../shared/widgets/user_avatar.dart';
-import '../../../../shared/widgets/formatted_comment_content.dart';
 import '../../../auth/data/auth_repository.dart';
 import '../../../user/data/user_repository.dart';
+import 'comment_thread_view.dart';
 
 class ReelCommentSheet extends ConsumerStatefulWidget {
   final Post post;
@@ -28,11 +25,16 @@ class _ReelCommentSheetState extends ConsumerState<ReelCommentSheet> {
   String? _replyingToCommentId;
   String? _replyingToName;
   bool _hasInputText = false;
+  late Stream<List<Map<String, dynamic>>> _commentsStream;
 
   @override
   void initState() {
     super.initState();
     _commentController.addListener(_onTextChanged);
+    _commentsStream = ref
+        .read(postRepositoryProvider)
+        .watchComments(widget.post.id)
+        .asBroadcastStream();
   }
 
   void _onTextChanged() {
@@ -104,8 +106,6 @@ class _ReelCommentSheetState extends ConsumerState<ReelCommentSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final repo = ref.watch(postRepositoryProvider);
-    final commentsStream = repo.watchComments(widget.post.id);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final currentUser = ref.watch(currentUserProvider).value;
@@ -131,35 +131,37 @@ class _ReelCommentSheetState extends ConsumerState<ReelCommentSheet> {
       ),
       child: SafeArea(
         top: false,
-        child: Column(
-          children: [
-            // Drag Handle & Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 8, 8),
-              child: Column(
-                children: [
-                  Center(
-                    child: Container(
-                      width: 38,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF475569) : const Color(0xFFCBD5E1),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: StreamBuilder<List<Map<String, dynamic>>>(
+          stream: _commentsStream,
+          builder: (context, snapshot) {
+            final rawComments = snapshot.data ?? [];
+            final count = snapshot.hasData
+                ? rawComments.length
+                : widget.post.commentsCount;
+
+            return Column(
+              children: [
+                // Drag Handle & Header
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 8, 8),
+                  child: Column(
                     children: [
-                      const SizedBox(width: 32), // Balance for close button
-                      StreamBuilder<List<Map<String, dynamic>>>(
-                        stream: commentsStream,
-                        builder: (context, snapshot) {
-                          final count = snapshot.hasData
-                              ? snapshot.data!.length
-                              : widget.post.commentsCount;
-                          return Row(
+                      Center(
+                        child: Container(
+                          width: 38,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF475569) : const Color(0xFFCBD5E1),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const SizedBox(width: 32), // Balance for close button
+                          Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
@@ -194,139 +196,39 @@ class _ReelCommentSheetState extends ConsumerState<ReelCommentSheet> {
                                 ),
                               ],
                             ],
-                          );
-                        },
-                      ),
-                      IconButton(
-                        icon: const Icon(CupertinoIcons.xmark, size: 20),
-                        color: textSecondary,
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            Divider(height: 1, color: borderColor),
-
-            // Comments List
-            Expanded(
-              child: StreamBuilder<List<Map<String, dynamic>>>(
-                stream: commentsStream,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    );
-                  }
-                  final rawComments = snapshot.data ?? [];
-
-                  int getVerificationWeight(dynamic type) {
-                    final clean = (type ?? '').toString().trim().toLowerCase();
-                    switch (clean) {
-                      case 'gold':
-                        return 3;
-                      case 'violet':
-                        return 2;
-                      case 'blue':
-                      case 'true':
-                        return 1;
-                      default:
-                        return 0;
-                    }
-                  }
-
-                  // Deduplicate comments
-                  final seenIds = <String>{};
-                  final dedupedList = <Map<String, dynamic>>[];
-                  for (final c in rawComments) {
-                    final id = (c['id'] ?? '').toString();
-                    if (id.isNotEmpty && !seenIds.contains(id)) {
-                      seenIds.add(id);
-                      dedupedList.add(c);
-                    }
-                  }
-
-                  final comments = List<Map<String, dynamic>>.from(dedupedList)
-                    ..sort((a, b) {
-                      final vTypeA = a['authorVerificationType'] ??
-                          a['author_verification_type'] ??
-                          (a['author']?['verificationType'] ??
-                              (a['author']?['isVerified'] == true
-                                  ? 'blue'
-                                  : 'none'));
-                      final vTypeB = b['authorVerificationType'] ??
-                          b['author_verification_type'] ??
-                          (b['author']?['verificationType'] ??
-                              (b['author']?['isVerified'] == true
-                                  ? 'blue'
-                                  : 'none'));
-
-                      final weightA = getVerificationWeight(vTypeA);
-                      final weightB = getVerificationWeight(vTypeB);
-
-                      if (weightA != weightB) {
-                        return weightB.compareTo(weightA);
-                      }
-                      final tsA = (a['timestamp'] is int) ? a['timestamp'] as int : 0;
-                      final tsB = (b['timestamp'] is int) ? b['timestamp'] as int : 0;
-                      return tsB.compareTo(tsA);
-                    });
-
-                  if (comments.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            CupertinoIcons.chat_bubble_2,
-                            size: 48,
-                            color: isDark ? Colors.white24 : Colors.grey[400],
                           ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'No comments yet',
-                            style: TextStyle(
-                              color: textPrimary,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 15,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Be the first to share your thoughts!',
-                            style: TextStyle(
-                              color: textSecondary,
-                              fontSize: 13,
-                            ),
+                          IconButton(
+                            icon: const Icon(CupertinoIcons.xmark, size: 20),
+                            color: textSecondary,
+                            onPressed: () => Navigator.pop(context),
                           ),
                         ],
                       ),
-                    );
-                  }
+                    ],
+                  ),
+                ),
+                Divider(height: 1, color: borderColor),
 
-                  return ListView.builder(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    itemCount: comments.length,
-                    itemBuilder: (context, index) {
-                      final comment = comments[index];
-                      return _CommentTile(
-                        postId: widget.post.id,
-                        comment: comment,
-                        isDark: isDark,
-                        onReplyTap: () => _setReplyTarget(
-                          comment['id']?.toString() ?? '',
-                          comment['userName']?.toString() ?? 'Student',
-                        ),
+                // Comments List
+                Expanded(
+                  child: Builder(
+                    builder: (context) {
+                      if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+                        return const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        );
+                      }
+                      final rawComments = snapshot.data ?? [];
+                      return CommentThreadView(
+                        post: widget.post,
+                        comments: rawComments,
+                        onReply: _setReplyTarget,
+                        currentUserId: currentUser?.uid,
+                        isScrollable: true,
                       );
                     },
-                  );
-                },
-              ),
-            ),
+                  ),
+                ),
 
             // Input Bar
             Container(
@@ -481,229 +383,12 @@ class _ReelCommentSheetState extends ConsumerState<ReelCommentSheet> {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CommentTile extends ConsumerWidget {
-  final String postId;
-  final Map<String, dynamic> comment;
-  final bool isDark;
-  final VoidCallback onReplyTap;
-
-  const _CommentTile({
-    required this.postId,
-    required this.comment,
-    required this.isDark,
-    required this.onReplyTap,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final repo = ref.watch(postRepositoryProvider);
-    final commentId = comment['id']?.toString() ?? '';
-    final authorId = (comment['authorId'] ?? comment['userId'] ?? '').toString();
-    final authorName = (comment['authorName'] ?? comment['userName'] ?? 'Student').toString();
-    final content = (comment['content'] ?? '').toString();
-    final avatarUrl = comment['authorAvatarUrl'] ?? comment['userAvatar'] as String?;
-    final replyCount = (comment['replyCount'] as num?)?.toInt() ?? 0;
-    final isLiked = comment['isLiked'] == true;
-    final likesCount = (comment['likesCount'] as num?)?.toInt() ?? 0;
-
-    int tsInt = (comment['timestamp'] is int && (comment['timestamp'] as int) > 0)
-        ? comment['timestamp'] as int
-        : DateTime.now().millisecondsSinceEpoch;
-    final timestamp = DateTime.fromMillisecondsSinceEpoch(tsInt);
-    final isVerified = comment['authorIsVerified'] == true;
-    final verificationType = (comment['authorVerificationType'] ?? 'none').toString();
-
-    final textPrimary = isDark ? Colors.white : const Color(0xFF0F172A);
-    final textSecondary = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
-
-    return StreamBuilder<AppUser?>(
-      stream: authorId.isNotEmpty
-          ? ref.read(userRepositoryProvider).watchUser(authorId)
-          : const Stream.empty(),
-      builder: (context, snapshot) {
-        final user = snapshot.data;
-        final effectiveName = (user != null && user.displayName.isNotEmpty)
-            ? user.displayName
-            : (authorName.isNotEmpty ? authorName : 'Student');
-        final effectiveAvatar = user?.avatarUrl ?? avatarUrl;
-        final effectiveVerification = user?.verificationType ?? verificationType;
-
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 16.0),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              UserAvatar(
-                userId: authorId,
-                avatarUrl: effectiveAvatar,
-                displayName: effectiveName,
-                radius: 18,
-                showStoryRing: true,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            effectiveName,
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                              color: textPrimary,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (isVerified || (user?.isVerified == true)) ...[
-                          const SizedBox(width: 4),
-                          VerificationBadge(type: effectiveVerification, size: 13),
-                        ],
-                        const SizedBox(width: 8),
-                        Text(
-                          timeago.format(timestamp, locale: 'en_short'),
-                          style: TextStyle(color: textSecondary, fontSize: 11),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    FormattedCommentContent(
-                      content: content,
-                      textStyle: TextStyle(
-                        fontSize: 14,
-                        color: textPrimary,
-                        height: 1.35,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        GestureDetector(
-                          onTap: () {
-                            repo.toggleCommentLike(postId, commentId);
-                          },
-                          child: Row(
-                            children: [
-                              Icon(
-                                isLiked ? CupertinoIcons.heart_fill : CupertinoIcons.heart,
-                                size: 15,
-                                color: isLiked ? Colors.redAccent : textSecondary,
-                              ),
-                              if (likesCount > 0) ...[
-                                const SizedBox(width: 4),
-                                Text(
-                                  '$likesCount',
-                                  style: TextStyle(
-                                    color: isLiked ? Colors.redAccent : textSecondary,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 18),
-                        GestureDetector(
-                          onTap: onReplyTap,
-                          child: Text(
-                            'Reply',
-                            style: TextStyle(
-                              color: textSecondary,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        if (replyCount > 0) ...[
-                          const SizedBox(width: 14),
-                          Text(
-                            '$replyCount ${replyCount == 1 ? 'reply' : 'replies'}',
-                            style: TextStyle(
-                              color: const Color(0xFF6366F1),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    if (replyCount > 0 && commentId.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: StreamBuilder<List<Map<String, dynamic>>>(
-                          stream: repo.watchReplies(postId, commentId),
-                          builder: (context, snapshot) {
-                            final replies = snapshot.data ?? const [];
-                            if (replies.isEmpty) return const SizedBox.shrink();
-                            return Container(
-                              margin: const EdgeInsets.only(top: 4),
-                              padding: const EdgeInsets.only(left: 10),
-                              decoration: BoxDecoration(
-                                border: Border(
-                                  left: BorderSide(
-                                    color: isDark
-                                        ? const Color(0xFF334155)
-                                        : const Color(0xFFE2E8F0),
-                                    width: 1.5,
-                                  ),
-                                ),
-                              ),
-                              child: Column(
-                                children: replies.map((reply) {
-                                  final replyName = (reply['authorName'] ??
-                                          reply['userName'] ??
-                                          'Student')
-                                      .toString();
-                                  final replyContent = (reply['content'] ?? '').toString();
-                                  return Padding(
-                                    padding: const EdgeInsets.only(bottom: 6),
-                                    child: Row(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          '$replyName: ',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 12,
-                                            color: textPrimary,
-                                          ),
-                                        ),
-                                        Expanded(
-                                          child: FormattedCommentContent(
-                                            content: replyContent,
-                                            textStyle: TextStyle(
-                                              fontSize: 12,
-                                              color: textPrimary,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }).toList(),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
         );
       },
-    );
+    ),
+  ),
+);
   }
 }
+
+

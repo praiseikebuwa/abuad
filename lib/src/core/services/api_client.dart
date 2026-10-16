@@ -222,7 +222,7 @@ class ApiClient {
                 Uri.parse(uploadUrl),
                 headers: {'Content-Type': contentType},
                 body: bytes,
-              );
+              ).timeout(const Duration(seconds: 10));
               if (putRes.statusCode >= 200 && putRes.statusCode < 300) {
                 return publicUrl;
               }

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../features/camera/presentation/camera_screen.dart';
 
 import '../../features/feed/presentation/feed_screen.dart';
@@ -117,14 +118,20 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       final isCompletingProfile = state.uri.toString() == '/complete-profile';
       final isBanned = state.uri.toString() == '/banned';
 
-      if (isFirstLaunch && !isOnboarding) {
+      final uriPath = state.uri.path;
+      final isPublicPostRoute = uriPath.startsWith('/post/') ||
+          uriPath.startsWith('/p/') ||
+          uriPath == '/post-detail';
+
+      if (isFirstLaunch && !isOnboarding && !isPublicPostRoute) {
         return '/onboarding';
       }
 
       if (!isLoggedIn &&
           !isLoggingIn &&
           !isSigningUp &&
-          !isOnboarding) {
+          !isOnboarding &&
+          !isPublicPostRoute) {
         return '/login';
       }
 
@@ -140,7 +147,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             return '/banned';
           }
 
-          if (isIncomplete && !isCompletingProfile) {
+          if (isIncomplete && !isCompletingProfile && !isPublicPostRoute) {
             return '/complete-profile';
           }
 
@@ -177,9 +184,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           final extra = state.extra;
           if (extra is Map<String, dynamic>) {
             return CreatePostScreen(
-              initialChannelId: extra['channelId'],
-              initialMedia: extra['media'],
-              initialMode: extra['mode'],
+              initialChannelId: (extra['channelId'] ?? extra['initialChannelId']) as String?,
+              initialMedia: (extra['media'] ?? extra['initialMedia']) as XFile?,
+              initialMode: (extra['mode'] ?? extra['initialMode']) as CameraMode?,
+              initialContent: (extra['initialContent'] ?? extra['initialText'] ?? extra['content']) as String?,
             );
           }
           final channelId = extra as String?;
@@ -191,12 +199,43 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const BannedScreen(),
       ),
       GoRoute(
+        path: '/post/:postId',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) {
+          final extra = state.extra;
+          final post = extra is Post ? extra : null;
+          final postId =
+              state.pathParameters['postId'] ??
+              state.uri.queryParameters['postId'];
+          return PostDetailScreen(post: post, postId: postId);
+        },
+      ),
+      GoRoute(
+        path: '/p/:postId',
+        parentNavigatorKey: rootNavigatorKey,
+        redirect: (context, state) {
+          final postId = state.pathParameters['postId'];
+          return postId != null ? '/post/$postId' : '/';
+        },
+      ),
+      GoRoute(
+        path: '/post-detail',
+        parentNavigatorKey: rootNavigatorKey,
+        redirect: (context, state) {
+          final postId = state.uri.queryParameters['postId'];
+          return postId != null ? '/post/$postId' : '/';
+        },
+      ),
+      GoRoute(
         path: '/camera',
         parentNavigatorKey: rootNavigatorKey,
         builder: (context, state) {
           final extra = state.extra as Map<String, dynamic>?;
           return CameraScreen(
             isForStory: extra?['isForStory'] ?? false,
+            cameraContext: extra?['cameraContext'],
+            directRecipientId: extra?['directRecipientId'],
+            directRecipientName: extra?['directRecipientName'],
             onMediaCaptured: extra?['onMediaCaptured'],
           );
         },
@@ -482,30 +521,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                       );
                     },
                   ),
-                  GoRoute(
-                    path: 'post/:postId',
-                    parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) {
-                      final extra = state.extra;
-                      final post = extra is Post ? extra : null;
-                      final postId =
-                          state.pathParameters['postId'] ??
-                          state.uri.queryParameters['postId'];
-                      return PostDetailScreen(post: post, postId: postId);
-                    },
-                  ),
-                  // Keeping post-detail for backward compatibility if needed, but routing it to the above
-                  GoRoute(
-                    path: 'post-detail',
-                    parentNavigatorKey: rootNavigatorKey,
-                    redirect: (context, state) {
-                      final postId = state.uri.queryParameters['postId'];
-                      if (postId != null) {
-                        return '/post/$postId';
-                      }
-                      return null;
-                    },
-                  ),
+
                   GoRoute(
                     path: 'hashtag/:tag',
                     parentNavigatorKey: rootNavigatorKey,

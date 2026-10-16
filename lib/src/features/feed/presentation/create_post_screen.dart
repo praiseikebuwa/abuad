@@ -30,12 +30,14 @@ class CreatePostScreen extends ConsumerStatefulWidget {
   final String? initialChannelId;
   final XFile? initialMedia;
   final CameraMode? initialMode;
+  final String? initialContent;
 
   const CreatePostScreen({
     super.key,
     this.initialChannelId,
     this.initialMedia,
     this.initialMode,
+    this.initialContent,
   });
 
   @override
@@ -102,6 +104,10 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       if (_channelId == 'confessions') {
         _isAnonymous = true;
       }
+    }
+    if (widget.initialContent != null && widget.initialContent!.isNotEmpty) {
+      _contentController.text = widget.initialContent!;
+      _contentController.selection = TextSelection.collapsed(offset: _contentController.text.length);
     }
     _contentController.addListener(_updateState);
     _loadDrafts();
@@ -317,7 +323,13 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                   subtitle: const Text('Use camera now'),
                   onTap: () async {
                     Navigator.pop(ctx);
-                    final result = await context.push('/camera');
+                    final result = await context.push(
+                      '/camera',
+                      extra: {
+                        'isForStory': false,
+                        'cameraContext': CameraContext.post,
+                      },
+                    );
                     if (result != null && result is Map) {
                       final file = result['file'] as XFile?;
                       final mode = result['mode'] as CameraMode?;

@@ -16,12 +16,29 @@ class VerificationBadge extends StatelessWidget {
     final clean = rawType.trim().toLowerCase();
     switch (clean) {
       case 'violet':
-        return const Color(0xFF7C3AED); // Violet #7C3AED
+      case 'purple':
+        return const Color(0xFF7C3AED); // Violet/Purple #7C3AED
       case 'gold':
         return const Color(0xFFD97706); // Gold #D97706
       case 'blue':
       default:
         return const Color(0xFF0284C7); // Blue #0284C7
+    }
+  }
+
+  static int getTierWeight(dynamic rawType) {
+    final clean = (rawType ?? '').toString().trim().toLowerCase();
+    switch (clean) {
+      case 'gold':
+        return 3;
+      case 'violet':
+      case 'purple':
+        return 2;
+      case 'blue':
+      case 'true':
+        return 1;
+      default:
+        return 0;
     }
   }
 

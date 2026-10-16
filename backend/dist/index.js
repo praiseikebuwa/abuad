@@ -18,6 +18,7 @@ const ai_1 = __importDefault(require("./routes/ai"));
 const media_1 = __importDefault(require("./routes/media"));
 const utilities_1 = __importDefault(require("./routes/utilities"));
 const admin_1 = __importDefault(require("./routes/admin"));
+const music_1 = __importDefault(require("./routes/music"));
 const resetPage_1 = __importDefault(require("./routes/resetPage"));
 const http_1 = __importDefault(require("http"));
 const socket_1 = require("./realtime/socket");
@@ -51,6 +52,7 @@ app.use('/api/ai', ai_1.default);
 app.use('/api/media', media_1.default);
 app.use('/api/utilities', utilities_1.default);
 app.use('/api/admin', admin_1.default);
+app.use('/api/music', music_1.default);
 // Direct collection alias routes for legacy/admin client calls
 app.use('/api/system', admin_1.default);
 app.use('/api/system/config', admin_1.default);

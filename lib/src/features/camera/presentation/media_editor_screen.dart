@@ -1,18 +1,27 @@
+import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
+import 'dart:ui' as ui;
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 import '../../../core/services/media_saver.dart';
+import '../../../core/services/image_upload_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../stories/data/story_repository.dart';
 import '../../user/data/user_repository.dart';
 import '../../auth/data/auth_repository.dart';
+import '../../chat/data/chat_repository.dart';
+import '../../music/domain/audio_track.dart';
+import '../../music/presentation/music_picker_sheet.dart';
 import '../presentation/camera_screen.dart';
 
 /// Snapchat-style Media Editor Screen
@@ -23,14 +32,26 @@ class MediaEditorScreen extends ConsumerStatefulWidget {
   final XFile mediaFile;
   final bool isVideo;
   final bool isForStory;
+  final CameraContext cameraContext;
+  final String? directRecipientId;
+  final String? directRecipientName;
   final Function(XFile file, CameraMode mode)? onMediaExported;
+  final AudioTrack? initialAudioTrack;
+  final double? aspectRatio;
+  final String? aspectRatioLabel;
 
   const MediaEditorScreen({
     super.key,
     required this.mediaFile,
     required this.isVideo,
     this.isForStory = true,
+    this.cameraContext = CameraContext.snap,
+    this.directRecipientId,
+    this.directRecipientName,
     this.onMediaExported,
+    this.initialAudioTrack,
+    this.aspectRatio,
+    this.aspectRatioLabel,
   });
 
   @override
@@ -38,10 +59,17 @@ class MediaEditorScreen extends ConsumerStatefulWidget {
 }
 
 class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
+  // GlobalKey to composite drawings, text overlays, and stickers into the saved image
+  final GlobalKey _previewStackKey = GlobalKey();
+
   // Video playback
   VideoPlayerController? _videoController;
   bool _isVideoInitialized = false;
   bool _isMuted = false;
+
+  // Audio / Music Track state
+  AudioTrack? _selectedAudioTrack;
+  AudioPlayer? _bgMusicPlayer;
 
   // Image bytes (web & mobile safe)
   Uint8List? _mediaBytes;
@@ -81,6 +109,30 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
   void initState() {
     super.initState();
     _loadMedia();
+    if (widget.initialAudioTrack != null) {
+      _selectedAudioTrack = widget.initialAudioTrack;
+      _playBackgroundMusic(widget.initialAudioTrack!);
+    }
+  }
+
+  Future<void> _playBackgroundMusic(AudioTrack track) async {
+    try {
+      _bgMusicPlayer ??= AudioPlayer();
+      await _bgMusicPlayer!.stop();
+      await _bgMusicPlayer!.setReleaseMode(ReleaseMode.loop);
+      await _bgMusicPlayer!.play(UrlSource(track.audioUrl));
+    } catch (e) {
+      debugPrint('Error playing background audio: $e');
+    }
+  }
+
+  Future<void> _removeBackgroundMusic() async {
+    try {
+      await _bgMusicPlayer?.stop();
+    } catch (_) {}
+    if (mounted) {
+      setState(() => _selectedAudioTrack = null);
+    }
   }
 
   Future<void> _loadMedia() async {
@@ -110,6 +162,8 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
 
   @override
   void dispose() {
+    _bgMusicPlayer?.stop();
+    _bgMusicPlayer?.dispose();
     _videoController?.dispose();
     _textController.dispose();
     super.dispose();
@@ -117,14 +171,51 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
 
   // ── Gallery Save ─────────────────────────────────────────────────────────
 
+  /// Composite overlays (drawings, stickers, text) into a single exportable image
+  Future<XFile> _exportCompositedMedia() async {
+    if (widget.isVideo) {
+      return widget.mediaFile;
+    }
+
+    try {
+      final boundary = _previewStackKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) return widget.mediaFile;
+
+      final ui.Image image = await boundary.toImage(pixelRatio: 2.5);
+      final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) return widget.mediaFile;
+
+      final pngBytes = byteData.buffer.asUint8List();
+
+      if (kIsWeb) {
+        return XFile.fromData(
+          pngBytes,
+          mimeType: 'image/png',
+          name: 'snap_${DateTime.now().millisecondsSinceEpoch}.png',
+        );
+      } else {
+        final tempDir = await getTemporaryDirectory();
+        final file = File('${tempDir.path}/snap_${DateTime.now().millisecondsSinceEpoch}.png');
+        await file.writeAsBytes(pngBytes);
+        return XFile(file.path);
+      }
+    } catch (e) {
+      debugPrint('Error compositing media: $e');
+      return widget.mediaFile;
+    }
+  }
+
+  // ── Save to Gallery ────────────────────────────────────────────────────────
+
   Future<void> _handleSave() async {
     if (_isSaving) return;
     HapticFeedback.mediumImpact();
     setState(() => _isSaving = true);
 
     try {
+      final exportedFile = await _exportCompositedMedia();
       final success = await MediaSaver.saveLocalFile(
-        widget.mediaFile,
+        exportedFile,
         isVideo: widget.isVideo,
       );
 
@@ -174,13 +265,14 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
     setState(() => _isPostingStory = true);
 
     try {
+      final exportedFile = await _exportCompositedMedia();
       final storyRepo = ref.read(storyRepositoryProvider);
       await storyRepo.createStory(
-        mediaFile: widget.mediaFile,
+        mediaFile: exportedFile,
         content: '',
         type: widget.isVideo ? 'video' : 'image',
         caption: _textOverlays.isNotEmpty ? _textOverlays.first.text : null,
-      );
+      ).timeout(const Duration(seconds: 25));
 
       if (mounted) {
         setState(() => _isPostingStory = false);
@@ -207,10 +299,108 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
           SnackBar(content: Text('Failed to publish story: $e')),
         );
       }
+    } finally {
+      if (mounted && _isPostingStory) {
+        setState(() => _isPostingStory = false);
+      }
     }
   }
 
-  // ── Send to Recipient Sheet ───────────────────────────────────────────────
+  // ── Add To Post Flow ───────────────────────────────────────────────────────
+
+  Future<void> _handleAddToPost() async {
+    HapticFeedback.mediumImpact();
+    final exportedFile = await _exportCompositedMedia();
+    final mode = widget.isVideo ? CameraMode.video : CameraMode.photo;
+    if (widget.onMediaExported != null) {
+      widget.onMediaExported!(exportedFile, mode);
+    }
+    if (mounted) {
+      Navigator.of(context).pop({
+        'file': exportedFile,
+        'mode': mode,
+      });
+    }
+  }
+
+  // ── Send to Recipient Sheet & Direct Snap ──────────────────────────────────
+
+  Future<void> _sendSnapToRecipient(AppUser recipient) async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              ),
+              const SizedBox(width: 12),
+              Text('Sending Snap to @${recipient.handle}...'),
+            ],
+          ),
+          backgroundColor: const Color(0xFF6366F1),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 15),
+        ),
+      );
+
+      final exportedFile = await _exportCompositedMedia();
+      final chatRepo = ref.read(chatRepositoryProvider);
+      final imageService = ref.read(imageUploadServiceProvider);
+
+      final channelId = await chatRepo.createOrGetChannel(
+        recipient.uid,
+        otherUserName: recipient.displayName,
+        otherUserAvatar: recipient.avatarUrl,
+      );
+
+      final result = await (widget.isVideo
+          ? imageService.uploadVideo(exportedFile, path: 'chat_snaps/$channelId/')
+          : imageService.uploadImage(exportedFile, path: 'chat_snaps/$channelId/'));
+
+      await chatRepo.sendMessage(
+        channelId,
+        widget.isVideo ? '🎥 Video Snap' : '📸 Snap',
+        type: widget.isVideo ? 'video' : 'image',
+        imageUrl: result.url,
+        imageWidth: result.width,
+        imageHeight: result.height,
+        isSnap: true,
+        receiverId: recipient.uid,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.local_fire_department_rounded, color: Colors.amberAccent),
+                const SizedBox(width: 8),
+                Text(
+                  'Snap delivered to @${recipient.handle}! 🔥',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF10B981),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      debugPrint('Error delivering direct snap: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to send snap: $e')),
+        );
+      }
+    }
+  }
 
   void _openSendToSheet() {
     HapticFeedback.mediumImpact();
@@ -224,20 +414,7 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
       builder: (ctx) => _SendToSheet(
         onRecipientSelected: (recipient) {
           Navigator.pop(ctx);
-          if (widget.onMediaExported != null) {
-            widget.onMediaExported!(
-              widget.mediaFile,
-              widget.isVideo ? CameraMode.video : CameraMode.photo,
-            );
-          }
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Sent Snap to @${recipient.handle}!'),
-              backgroundColor: const Color(0xFF6366F1),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
+          _sendSnapToRecipient(recipient);
         },
       ),
     );
@@ -374,105 +551,138 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
 
+    double targetWidth = screenSize.width;
+    double targetHeight = screenSize.height;
+
+    if (widget.aspectRatio != null) {
+      final calculatedHeight = screenSize.width / widget.aspectRatio!;
+      if (calculatedHeight <= screenSize.height) {
+        targetWidth = screenSize.width;
+        targetHeight = calculatedHeight;
+      } else {
+        targetHeight = screenSize.height;
+        targetWidth = screenSize.height * widget.aspectRatio!;
+      }
+    }
+
+    final canvasSize = Size(targetWidth, targetHeight);
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. Fullscreen Media Canvas (Image or Video)
-          GestureDetector(
-            onTap: () {
-              if (_isTextEditing) _submitText();
-            },
-            child: _buildMediaView(screenSize),
-          ),
-
-          // 2. Custom Drawing Canvas
-          Positioned.fill(
-            child: IgnorePointer(
-              ignoring: !_isDrawingMode,
-              child: GestureDetector(
-                onPanStart: (details) {
-                  setState(() {
-                    _strokes.add(
-                      _DoodleStroke(
-                        points: [details.localPosition],
-                        color: _selectedDrawColor,
-                        strokeWidth: _strokeWidth,
+          // 1-4. Composite Render Tree for Exporting (Framed in chosen aspect ratio)
+          Center(
+            child: SizedBox(
+              width: targetWidth,
+              height: targetHeight,
+              child: ClipRect(
+                child: RepaintBoundary(
+                  key: _previewStackKey,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // 1. Fullscreen Media Canvas (Image or Video)
+                      GestureDetector(
+                        onTap: () {
+                          if (_isTextEditing) _submitText();
+                        },
+                        child: _buildMediaView(canvasSize),
                       ),
-                    );
-                  });
-                },
-                onPanUpdate: (details) {
-                  setState(() {
-                    if (_strokes.isNotEmpty) {
-                      _strokes.last.points.add(details.localPosition);
-                    }
-                  });
-                },
-                child: CustomPaint(
-                  painter: _DoodlePainter(strokes: _strokes),
-                  size: Size.infinite,
-                ),
-              ),
-            ),
-          ),
 
-          // 3. Draggable Sticker Overlays
-          ..._stickers.map((item) {
-            return Positioned(
-              left: item.position.dx,
-              top: item.position.dy,
-              child: GestureDetector(
-                onPanUpdate: (details) {
-                  setState(() {
-                    item.position += details.delta;
-                  });
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  child: Text(item.emoji, style: const TextStyle(fontSize: 48)),
-                ),
-              ),
-            );
-          }),
-
-          // 4. Draggable Text Overlays
-          ..._textOverlays.map((item) {
-            return Positioned(
-              left: item.position.dx,
-              top: item.position.dy,
-              child: GestureDetector(
-                onPanUpdate: (details) {
-                  setState(() {
-                    item.position += details.delta;
-                  });
-                },
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.55),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white24, width: 0.8),
-                      ),
-                      child: Text(
-                        item.text,
-                        style: TextStyle(
-                          color: item.color,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
+                // 2. Custom Drawing Canvas
+                Positioned.fill(
+                  child: IgnorePointer(
+                    ignoring: !_isDrawingMode,
+                    child: GestureDetector(
+                      onPanStart: (details) {
+                        setState(() {
+                          _strokes.add(
+                            _DoodleStroke(
+                              points: [details.localPosition],
+                              color: _selectedDrawColor,
+                              strokeWidth: _strokeWidth,
+                            ),
+                          );
+                        });
+                      },
+                      onPanUpdate: (details) {
+                        setState(() {
+                          if (_strokes.isNotEmpty) {
+                            _strokes.last.points.add(details.localPosition);
+                          }
+                        });
+                      },
+                      child: CustomPaint(
+                        painter: _DoodlePainter(strokes: _strokes),
+                        size: Size.infinite,
                       ),
                     ),
                   ),
                 ),
+
+                // 3. Draggable Sticker Overlays
+                ..._stickers.map((item) {
+                  return Positioned(
+                    left: item.position.dx,
+                    top: item.position.dy,
+                    child: GestureDetector(
+                      onPanUpdate: (details) {
+                        setState(() {
+                          item.position += details.delta;
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        child: Text(item.emoji, style: const TextStyle(fontSize: 48)),
+                      ),
+                    ),
+                  );
+                }),
+
+                // 4. Draggable Text Overlays
+                ..._textOverlays.map((item) {
+                  return Positioned(
+                    left: item.position.dx,
+                    top: item.position.dy,
+                    child: GestureDetector(
+                      onPanUpdate: (details) {
+                        setState(() {
+                          item.position += details.delta;
+                        });
+                      },
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.55),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.white24, width: 0.8),
+                            ),
+                            child: Text(
+                              item.text,
+                              style: TextStyle(
+                                color: item.color,
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+                    ],
+                  ),
+                ),
               ),
-            );
-          }),
+            ),
+          ),
 
           // 5. Top Left Action: Discard / Close
           Positioned(
@@ -498,6 +708,54 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
                     _videoController?.setVolume(_isMuted ? 0.0 : 1.0);
                   });
                 },
+              ),
+            ),
+
+          // 6.5 Floating Music Tag Pill (if sound selected)
+          if (_selectedAudioTrack != null && !_isTextEditing && !_isDrawingMode)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 14,
+              left: 70,
+              right: 70,
+              child: Center(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.65),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white24, width: 1),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.music_note_rounded, color: AppColors.secondaryTeal, size: 16),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              '${_selectedAudioTrack!.title} · ${_selectedAudioTrack!.artist}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: _removeBackgroundMusic,
+                            child: const Icon(Icons.close_rounded, color: Colors.white70, size: 16),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
 
@@ -642,12 +900,18 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
 
               // Sound / Music
               _buildToolButton(
-                iconWidget: const Icon(Icons.music_note_rounded, color: Colors.white, size: 20),
-                onTap: () {
+                iconWidget: Icon(
+                  Icons.music_note_rounded,
+                  color: _selectedAudioTrack != null ? AppColors.secondaryTeal : Colors.white,
+                  size: 20,
+                ),
+                onTap: () async {
                   HapticFeedback.lightImpact();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Music track tagged to Snap')),
-                  );
+                  final selected = await MusicPickerSheet.show(context);
+                  if (selected != null && mounted) {
+                    setState(() => _selectedAudioTrack = selected);
+                    _playBackgroundMusic(selected);
+                  }
                 },
               ),
             ],
@@ -811,52 +1075,139 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
             onTap: _handleSave,
           ),
 
-          // My Story Button (Real Story Upload)
-          _buildPillAction(
-            icon: Icons.add_circle_outline_rounded,
-            label: 'My Story',
-            isLoading: _isPostingStory,
-            onTap: _handleMyStory,
-          ),
-
-          // Send to... Arrow Button
-          GestureDetector(
-            onTap: _openSendToSheet,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Send to...',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
+          if (widget.cameraContext == CameraContext.post) ...[
+            // Post Flow: [Add to Post ➔]
+            GestureDetector(
+              onTap: _handleAddToPost,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(24),
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF6366F1), Color(0xFF4F46E5)],
                   ),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x666366F1), blurRadius: 12, offset: Offset(0, 4)),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [Color(0xFF8B5CF6), Color(0xFF6366F1)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Color(0x668B5CF6),
-                        blurRadius: 12,
-                        offset: Offset(0, 4),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Add to Post',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
                       ),
-                    ],
-                  ),
-                  child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 24),
+                    ),
+                    SizedBox(width: 8),
+                    Icon(Icons.check_rounded, color: Colors.white, size: 20),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
+          ] else if (widget.cameraContext == CameraContext.story) ...[
+            // Story Flow: [Add to Story]
+            GestureDetector(
+              onTap: _handleMyStory,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(24),
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)],
+                  ),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x668B5CF6), blurRadius: 12, offset: Offset(0, 4)),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_isPostingStory)
+                      const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    else
+                      const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 20),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Add to Story',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ] else ...[
+            // Snap Flow: [My Story] and [Send to... ➔]
+            _buildPillAction(
+              icon: Icons.add_circle_outline_rounded,
+              label: 'My Story',
+              isLoading: _isPostingStory,
+              onTap: _handleMyStory,
+            ),
+
+            GestureDetector(
+              onTap: () {
+                if (widget.directRecipientId != null) {
+                  _sendSnapToRecipient(
+                    AppUser(
+                      uid: widget.directRecipientId!,
+                      email: '',
+                      displayName: widget.directRecipientName ?? 'Friend',
+                      handle: widget.directRecipientName?.toLowerCase().replaceAll(' ', '') ?? 'friend',
+                    ),
+                  );
+                } else {
+                  _openSendToSheet();
+                }
+              },
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    widget.directRecipientName != null
+                        ? 'Send to ${widget.directRecipientName}'
+                        : 'Send to...',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF8B5CF6), Color(0xFF6366F1)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Color(0x668B5CF6),
+                          blurRadius: 12,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 24),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1002,11 +1353,58 @@ class _SendToSheet extends ConsumerStatefulWidget {
 class _SendToSheetState extends ConsumerState<_SendToSheet> {
   final TextEditingController _searchCtrl = TextEditingController();
   String _query = '';
+  List<AppUser> _directoryResults = [];
+  bool _isSearchingDirectory = false;
+  Timer? _debounce;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final currentUser = ref.read(currentUserProvider).value ?? ref.read(authRepositoryProvider).currentUser;
+      final currentUserId = (currentUser?.uid != null && currentUser!.uid.isNotEmpty) ? currentUser.uid : 'me';
+      ref.invalidate(followingProvider(currentUserId));
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String val) {
+    final trimmed = val.trim();
+    setState(() => _query = trimmed.toLowerCase());
+
+    _debounce?.cancel();
+    if (trimmed.length >= 2) {
+      _debounce = Timer(const Duration(milliseconds: 300), () async {
+        setState(() => _isSearchingDirectory = true);
+        try {
+          final results = await ref.read(userRepositoryProvider).searchUsers(trimmed);
+          if (mounted) {
+            setState(() {
+              _directoryResults = results;
+              _isSearchingDirectory = false;
+            });
+          }
+        } catch (_) {
+          if (mounted) setState(() => _isSearchingDirectory = false);
+        }
+      });
+    } else {
+      setState(() => _directoryResults = []);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final currentUserId = ref.watch(authRepositoryProvider).currentUser?.uid ?? '';
+    final currentUser = ref.watch(currentUserProvider).value ?? ref.watch(authRepositoryProvider).currentUser;
+    final currentUserId = (currentUser?.uid != null && currentUser!.uid.isNotEmpty) ? currentUser.uid : 'me';
     final followingAsync = ref.watch(followingProvider(currentUserId));
+    final suggestionsAsync = ref.watch(peopleYouMayKnowProvider);
 
     return DraggableScrollableSheet(
       initialChildSize: 0.65,
@@ -1040,12 +1438,22 @@ class _SendToSheetState extends ConsumerState<_SendToSheet> {
             // Search field
             TextField(
               controller: _searchCtrl,
-              onChanged: (val) => setState(() => _query = val.trim().toLowerCase()),
+              onChanged: _onSearchChanged,
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
                 hintText: 'Search friends or classmates...',
                 hintStyle: const TextStyle(color: Colors.white38),
                 prefixIcon: const Icon(Icons.search, color: Colors.white38),
+                suffixIcon: _isSearchingDirectory
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF8B5CF6)),
+                        ),
+                      )
+                    : null,
                 filled: true,
                 fillColor: const Color(0xFF27272A),
                 contentPadding: const EdgeInsets.symmetric(vertical: 10),
@@ -1056,74 +1464,133 @@ class _SendToSheetState extends ConsumerState<_SendToSheet> {
               ),
             ),
             const SizedBox(height: 16),
-            // Friends List
+            // Friends List / Directory Search
             Expanded(
               child: followingAsync.when(
                 data: (friends) {
-                  final filtered = _query.isEmpty
-                      ? friends
-                      : friends.where((f) =>
-                          f.displayName.toLowerCase().contains(_query) ||
-                          f.handle.toLowerCase().contains(_query)).toList();
+                  // If searching: combine local following matches and directory search results
+                  if (_query.isNotEmpty) {
+                    final matchingFollowing = friends.where((f) =>
+                        f.displayName.toLowerCase().contains(_query) ||
+                        f.handle.toLowerCase().contains(_query)).toList();
 
-                  if (filtered.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.people_outline_rounded, color: Colors.white38, size: 48),
-                          const SizedBox(height: 12),
-                          Text(
-                            _query.isEmpty ? 'No friends followed yet' : 'No matching friends found',
-                            style: const TextStyle(color: Colors.white54, fontSize: 14),
-                          ),
-                        ],
-                      ),
+                    final combinedMap = <String, AppUser>{};
+                    for (final u in matchingFollowing) {
+                      combinedMap[u.uid] = u;
+                    }
+                    for (final u in _directoryResults) {
+                      if (u.uid != currentUser?.uid) {
+                        combinedMap[u.uid] = u;
+                      }
+                    }
+                    final combined = combinedMap.values.toList();
+
+                    if (combined.isEmpty && !_isSearchingDirectory) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.search_off_rounded, color: Colors.white38, size: 48),
+                            const SizedBox(height: 12),
+                            Text(
+                              'No classmates found matching "$_query"',
+                              style: const TextStyle(color: Colors.white54, fontSize: 14),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    return ListView.separated(
+                      controller: scrollController,
+                      itemCount: combined.length,
+                      separatorBuilder: (context, index) => const Divider(color: Colors.white10, height: 1),
+                      itemBuilder: (context, i) {
+                        final user = combined[i];
+                        return _buildUserTile(user);
+                      },
                     );
                   }
 
-                  return ListView.separated(
-                    controller: scrollController,
-                    itemCount: filtered.length,
-                    separatorBuilder: (context, index) => const Divider(color: Colors.white10, height: 1),
-                    itemBuilder: (context, i) {
-                      final friend = filtered[i];
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: CircleAvatar(
-                          radius: 22,
-                          backgroundColor: Colors.white10,
-                          backgroundImage: friend.avatarUrl != null && friend.avatarUrl!.isNotEmpty
-                              ? CachedNetworkImageProvider(friend.avatarUrl!)
-                              : null,
-                          child: friend.avatarUrl == null || friend.avatarUrl!.isEmpty
-                              ? Text(
-                                  friend.displayName.isNotEmpty ? friend.displayName[0].toUpperCase() : 'U',
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                                )
-                              : null,
-                        ),
-                        title: Text(
-                          friend.displayName,
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15),
-                        ),
-                        subtitle: Text(
-                          '@${friend.handle}',
-                          style: const TextStyle(color: Colors.white54, fontSize: 13),
-                        ),
-                        trailing: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF8B5CF6),
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            elevation: 0,
+                  // If not searching and user has following
+                  if (friends.isNotEmpty) {
+                    return ListView.separated(
+                      controller: scrollController,
+                      itemCount: friends.length,
+                      separatorBuilder: (context, index) => const Divider(color: Colors.white10, height: 1),
+                      itemBuilder: (context, i) {
+                        final friend = friends[i];
+                        return _buildUserTile(friend);
+                      },
+                    );
+                  }
+
+                  // If following is empty: show suggested classmates so user can immediately snap
+                  return suggestionsAsync.when(
+                    data: (suggestions) {
+                      final suggestedUsers = suggestions
+                          .map((s) => s.user)
+                          .where((u) => u.uid != currentUser?.uid)
+                          .toList();
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF27272A),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.tips_and_updates_rounded, color: Colors.amberAccent, size: 18),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Search any student above or snap a suggested classmate below!',
+                                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                          onPressed: () => widget.onRecipientSelected(friend),
-                          child: const Text('Send', style: TextStyle(fontWeight: FontWeight.bold)),
-                        ),
+                          const SizedBox(height: 14),
+                          const Text(
+                            'Suggested Classmates',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                          ),
+                          const SizedBox(height: 8),
+                          Expanded(
+                            child: ListView.separated(
+                              controller: scrollController,
+                              itemCount: suggestedUsers.length,
+                              separatorBuilder: (context, index) => const Divider(color: Colors.white10, height: 1),
+                              itemBuilder: (context, i) {
+                                final student = suggestedUsers[i];
+                                return _buildUserTile(student);
+                              },
+                            ),
+                          ),
+                        ],
                       );
                     },
+                    loading: () => const Center(
+                      child: CircularProgressIndicator(color: Color(0xFF8B5CF6)),
+                    ),
+                    error: (_, _) => Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.people_outline_rounded, color: Colors.white38, size: 48),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Search any student or friend above',
+                            style: TextStyle(color: Colors.white54, fontSize: 14),
+                          ),
+                        ],
+                      ),
+                    ),
                   );
                 },
                 loading: () => const Center(
@@ -1136,6 +1603,44 @@ class _SendToSheetState extends ConsumerState<_SendToSheet> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildUserTile(AppUser user) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: CircleAvatar(
+        radius: 22,
+        backgroundColor: Colors.white10,
+        backgroundImage: user.avatarUrl != null && user.avatarUrl!.isNotEmpty
+            ? CachedNetworkImageProvider(user.avatarUrl!)
+            : null,
+        child: user.avatarUrl == null || user.avatarUrl!.isEmpty
+            ? Text(
+                user.displayName.isNotEmpty ? user.displayName[0].toUpperCase() : 'U',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              )
+            : null,
+      ),
+      title: Text(
+        user.displayName,
+        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15),
+      ),
+      subtitle: Text(
+        '@${user.handle}',
+        style: const TextStyle(color: Colors.white54, fontSize: 13),
+      ),
+      trailing: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF8B5CF6),
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          elevation: 0,
+        ),
+        onPressed: () => widget.onRecipientSelected(user),
+        child: const Text('Send', style: TextStyle(fontWeight: FontWeight.bold)),
       ),
     );
   }

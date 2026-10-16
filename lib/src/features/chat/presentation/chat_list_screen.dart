@@ -18,6 +18,7 @@ import '../../stories/presentation/my_story_screen.dart';
 import '../../stories/presentation/story_viewer_screen.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../../../core/utils/url_validator.dart';
+import '../../camera/presentation/camera_screen.dart';
 
 
 class ChatListScreen extends ConsumerStatefulWidget {
@@ -278,6 +279,43 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                   ),
           ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'chat_list_snap_camera_btn',
+        onPressed: () {
+          HapticFeedback.mediumImpact();
+          context.push(
+            '/camera',
+            extra: {
+              'isForStory': false,
+              'cameraContext': CameraContext.snap,
+            },
+          );
+        },
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        highlightElevation: 0,
+        child: Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const LinearGradient(
+              colors: [Color(0xFF8B5CF6), Color(0xFF6366F1)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF8B5CF6).withValues(alpha: 0.45),
+                blurRadius: 14,
+                offset: const Offset(0, 5),
+              ),
+            ],
+            border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1.5),
+          ),
+          child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 28),
+        ),
       ),
     );
   }

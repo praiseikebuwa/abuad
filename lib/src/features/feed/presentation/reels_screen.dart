@@ -14,7 +14,14 @@ final reelsProvider = StreamProvider.family<List<Post>, ({ReelFeedMode mode, Str
     final userId = args.userId;
     if (userId == null) return Stream<List<Post>>.value(const []);
     return repo.watchFollowingPosts(userId).map(
-      (posts) => posts.where((post) => post.mediaType.name == 'video').toList(),
+      (posts) => posts.where((post) {
+        final url = post.mediaUrl.toLowerCase();
+        return post.mediaType == MediaType.video ||
+            url.endsWith('.mp4') ||
+            url.endsWith('.mov') ||
+            url.endsWith('.webm') ||
+            url.contains('/videos/');
+      }).toList(),
     );
   }
   return repo.watchVideoPosts(limit: 30);
@@ -99,34 +106,94 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
   }
 
   Widget _buildViewer(List<Post> posts) {
-    if (posts.isEmpty) {
-      return const Center(
-        child: Text('No videos found', style: TextStyle(color: Colors.white)),
-      );
-    }
-
     return Stack(
       children: [
-        PageView.builder(
-          controller: _pageController,
-          scrollDirection: Axis.vertical,
-          physics: const BouncingScrollPhysics(),
-          allowImplicitScrolling: true,
-          itemCount: posts.length,
-          onPageChanged: (index) {
-
-            setState(() => _currentIndex = index);
-            // Trigger preloading for the active and upcoming videos
-            ref.read(reelControllerProvider.notifier).updateConfig(index, posts);
-          },
-          itemBuilder: (context, index) {
-            final post = posts[index];
-            return TikTokReelPage(
-              post: post,
-              isActive: index == _currentIndex,
-            );
-          },
-        ),
+        if (posts.isEmpty)
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      _feedMode == ReelFeedMode.following
+                          ? Icons.people_outline_rounded
+                          : Icons.videocam_outlined,
+                      color: Colors.white70,
+                      size: 36,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    _feedMode == ReelFeedMode.following
+                        ? 'No Videos From Following'
+                        : 'No Videos Found',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _feedMode == ReelFeedMode.following
+                        ? 'Follow students and creators to watch their reels here.'
+                        : 'Check back soon for new videos from the campus community.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.65),
+                      fontSize: 13,
+                    ),
+                  ),
+                  if (_feedMode == ReelFeedMode.following) ...[
+                    const SizedBox(height: 20),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFE2C55),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      ),
+                      onPressed: () => _switchMode(ReelFeedMode.forYou),
+                      child: const Text(
+                        'Explore For You',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          )
+        else
+          PageView.builder(
+            controller: _pageController,
+            scrollDirection: Axis.vertical,
+            physics: const BouncingScrollPhysics(),
+            allowImplicitScrolling: true,
+            itemCount: posts.length,
+            onPageChanged: (index) {
+              setState(() => _currentIndex = index);
+              // Trigger preloading for the active and upcoming videos
+              ref.read(reelControllerProvider.notifier).updateConfig(index, posts);
+            },
+            itemBuilder: (context, index) {
+              final post = posts[index];
+              return TikTokReelPage(
+                post: post,
+                isActive: index == _currentIndex,
+              );
+            },
+          ),
         Positioned(
           left: 12,
           right: 12,
@@ -144,21 +211,22 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
                     ),
                     onPressed: () => Navigator.pop(context),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.4),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      '${_currentIndex + 1}/${posts.length}',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                  if (posts.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.4),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${_currentIndex + 1}/${posts.length}',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                  ),
                   const Spacer(),
                   _buildFeedToggle(),
                 ],
@@ -244,20 +312,26 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
 
     final recommendedPosts = reelsAsync.value ?? [];
 
-    // Create a comprehensive unified video playlist starting with widget.videos
-    final List<Post> playlist = [];
-    final Set<String> seenIds = {};
+    // Separate Following from For You mode cleanly
+    final List<Post> playlist;
+    if (_feedMode == ReelFeedMode.following) {
+      playlist = recommendedPosts;
+    } else {
+      final List<Post> combined = [];
+      final Set<String> seenIds = {};
 
-    for (final p in widget.videos) {
-      if (seenIds.add(p.id)) {
-        playlist.add(p);
+      for (final p in widget.videos) {
+        if (seenIds.add(p.id)) {
+          combined.add(p);
+        }
       }
-    }
 
-    for (final p in recommendedPosts) {
-      if (seenIds.add(p.id)) {
-        playlist.add(p);
+      for (final p in recommendedPosts) {
+        if (seenIds.add(p.id)) {
+          combined.add(p);
+        }
       }
+      playlist = combined;
     }
 
     _syncIndexWithPosts(playlist);
@@ -274,23 +348,25 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       extendBodyBehindAppBar: true,
-      body: playlist.isNotEmpty
-          ? _buildViewer(playlist)
-          : reelsAsync.when(
-              loading: () => const Center(
+      body: reelsAsync.when(
+        loading: () => playlist.isNotEmpty
+            ? _buildViewer(playlist)
+            : const Center(
                 child: CircularProgressIndicator(color: Colors.white),
               ),
-              error: (error, _) => Center(
+        error: (error, _) => playlist.isNotEmpty
+            ? _buildViewer(playlist)
+            : Center(
                 child: Text(
                   'Error loading reels: $error',
                   style: const TextStyle(color: Colors.white),
                 ),
               ),
-              data: (posts) {
-                _syncIndexWithPosts(posts);
-                return _buildViewer(posts);
-              },
-            ),
+        data: (posts) {
+          _syncIndexWithPosts(playlist);
+          return _buildViewer(playlist);
+        },
+      ),
     );
   }
 }

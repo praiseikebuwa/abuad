@@ -62,6 +62,9 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
   final List<Offset> _doubleTapPositions = [];
   bool _isScrubbing = false;
   Duration _scrubPosition = Duration.zero;
+  double _scrubX = 0.0;
+  PostRepository? _postRepo;
+  bool _isHoldingToPause = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -70,8 +73,15 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _postRepo = ref.read(postRepositoryProvider);
     _startOverlayTimer();
     // We'll manage the controller via the provider in build/didUpdateWidget
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _postRepo = ref.read(postRepositoryProvider);
   }
 
   @override
@@ -189,6 +199,7 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
 
   void _togglePlayback() {
     if (_controller == null || !_controller!.value.isInitialized) return;
+    HapticFeedback.lightImpact();
     if (_controller!.value.isPlaying) {
       _controller!.pause();
       _stopWatchSession();
@@ -202,6 +213,24 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
       setState(() {
         _showPlayHint = false;
         _manuallyPaused = false;
+      });
+    }
+  }
+
+  void _handleHoldToPause(bool holding) {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+    if (holding) {
+      HapticFeedback.selectionClick();
+      _controller!.pause();
+      setState(() {
+        _isHoldingToPause = true;
+      });
+    } else {
+      if (!_manuallyPaused) {
+        _controller!.play();
+      }
+      setState(() {
+        _isHoldingToPause = false;
       });
     }
   }
@@ -240,17 +269,15 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
     final skippedQuickly = _watchedMsAccumulated < 3000;
 
     try {
-      await ref
-          .read(postRepositoryProvider)
-          .trackReelWatchMetrics(
-            postId: widget.post.id,
-            watchedMs: _watchedMsAccumulated,
-            completionRate: completionRate,
-            replayCount: _replayCount,
-            skippedQuickly: skippedQuickly,
-            completed: _completed,
-            source: 'reels_$reason',
-          );
+      await _postRepo?.trackReelWatchMetrics(
+        postId: widget.post.id,
+        watchedMs: _watchedMsAccumulated,
+        completionRate: completionRate,
+        replayCount: _replayCount,
+        skippedQuickly: skippedQuickly,
+        completed: _completed,
+        source: 'reels_$reason',
+      );
     } catch (e) {
       debugPrint('Failed to track reel watch metrics: $e');
     }
@@ -258,23 +285,14 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
 
   void _startOverlayTimer() {
     _overlayTimer?.cancel();
-    _overlayTimer = Timer(const Duration(seconds: 3), () {
+    _overlayTimer = Timer(const Duration(seconds: 4), () {
       if (!mounted) return;
       setState(() => _showOverlayUi = false);
     });
   }
 
-  void _revealOverlayUi() {
-    if (!mounted) return;
-    setState(() => _showOverlayUi = true);
-    _startOverlayTimer();
-  }
 
   void _onSurfaceTap() {
-    if (!_showOverlayUi) {
-      _revealOverlayUi();
-      return;
-    }
     _togglePlayback();
     _startOverlayTimer();
   }
@@ -341,68 +359,6 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
     }
   }
 
-  void _showEngagementMenu(domain.Post post) {
-    if (widget.onBoost != null) {
-      widget.onBoost!();
-      return;
-    }
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => SafeArea(
-        top: false,
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.85),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Post actions',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-              const SizedBox(height: 12),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(
-                  Icons.rocket_launch,
-                  color: AppColors.secondaryTeal,
-                ),
-                title: const Text('Boost this post'),
-                subtitle: const Text('Show it to more students on Abuad life'),
-                onTap: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Boost queued — good luck!')),
-                  );
-                },
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(
-                  Icons.bookmark_border_rounded,
-                  color: Colors.white,
-                ),
-                title: const Text('Save post'),
-                subtitle: const Text('Add to your bookmarks'),
-                onTap: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(const SnackBar(content: Text('Post saved!')));
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -448,11 +404,14 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
           key: Key('reel_${widget.post.id}'),
           onVisibilityChanged: _handleVisibilityChanged,
           child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onDoubleTapDown: (details) =>
                 _onDoubleTap(details.localPosition, ref, livePost),
             onHorizontalDragEnd: (details) =>
                 _handleHorizontalDragEnd(details, livePost),
-            onLongPress: () => _showEngagementMenu(livePost),
+            onLongPressStart: (_) => _handleHoldToPause(true),
+            onLongPressEnd: (_) => _handleHoldToPause(false),
+            onLongPressCancel: () => _handleHoldToPause(false),
             onTap: _onSurfaceTap,
             child: Container(
               color: Colors.black,
@@ -498,16 +457,31 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
                       ),
                     ),
 
-                  // Play hint
+                  // Center Play / Pause Indicator (TikTok style)
                   Positioned.fill(
-                    child: AnimatedOpacity(
-                      duration: const Duration(milliseconds: 300),
-                      opacity: _showPlayHint ? 1 : 0,
-                      child: const Center(
-                        child: Icon(
-                          Icons.play_arrow,
-                          color: Colors.white54,
-                          size: 64,
+                    child: Center(
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 200),
+                        opacity: (_showPlayHint || _isHoldingToPause) ? 1.0 : 0.0,
+                        child: Container(
+                          width: 80,
+                          height: 80,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.55),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white24, width: 1.5),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.4),
+                                blurRadius: 20,
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            _isHoldingToPause ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                            color: Colors.white,
+                            size: 48,
+                          ),
                         ),
                       ),
                     ),
@@ -516,7 +490,7 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
                   Positioned.fill(
                     child: AnimatedOpacity(
                       duration: const Duration(milliseconds: 220),
-                      opacity: _showOverlayUi ? 1 : 0,
+                      opacity: (_showOverlayUi && !_isHoldingToPause) ? 1 : 0,
                       child: _buildGradientOverlay(),
                     ),
                   ),
@@ -525,10 +499,10 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
                   Positioned(
                     left: 16,
                     right: 80,
-                    bottom: MediaQuery.of(context).padding.bottom + 16,
+                    bottom: MediaQuery.of(context).padding.bottom + 22,
                     child: AnimatedOpacity(
                       duration: const Duration(milliseconds: 220),
-                      opacity: _showOverlayUi ? 1 : 0,
+                      opacity: (_showOverlayUi && !_isHoldingToPause) ? 1 : 0,
                       child: SafeArea(
                         top: false,
                         child: _buildCaptionSection(livePost),
@@ -539,10 +513,10 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
                   // Sidebar Actions
                   Positioned(
                     right: 12,
-                    bottom: MediaQuery.of(context).padding.bottom + 80,
+                    bottom: MediaQuery.of(context).padding.bottom + 85,
                     child: AnimatedOpacity(
                       duration: const Duration(milliseconds: 220),
-                      opacity: _showOverlayUi ? 1 : 0,
+                      opacity: (_showOverlayUi && !_isHoldingToPause) ? 1 : 0,
                       child: SafeArea(
                         top: false,
                         child: _buildActionColumn(
@@ -558,10 +532,10 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
                   // Music Disc (positioned relative to bottom right)
                   Positioned(
                     right: 12,
-                    bottom: MediaQuery.of(context).padding.bottom + 16,
+                    bottom: MediaQuery.of(context).padding.bottom + 22,
                     child: AnimatedOpacity(
                       duration: const Duration(milliseconds: 220),
-                      opacity: _showOverlayUi ? 1 : 0,
+                      opacity: (_showOverlayUi && !_isHoldingToPause) ? 1 : 0,
                       child: SafeArea(
                         top: false,
                         child: GestureDetector(
@@ -578,10 +552,11 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
                   // Double Tap Hearts
                   ..._doubleTapPositions.map((pos) => _buildHeartSplash(pos)),
 
+                  // Timeline Scrubber
                   Positioned(
                     left: 0,
                     right: 0,
-                    bottom: 0,
+                    bottom: MediaQuery.of(context).padding.bottom + 2,
                     child: _buildProgressBar(),
                   ),
                 ],
@@ -684,55 +659,58 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
 
     final bool isReady = controller != null && controller.value.isInitialized;
 
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        // 1. Instant Poster / Thumbnail Layer (Prevents black flash while loading)
-        if (posterUrl != null && posterUrl.isNotEmpty)
-          CachedNetworkImage(
-            imageUrl: posterUrl,
-            fit: BoxFit.cover,
-            placeholder: (context, url) => Container(color: Colors.black),
-            errorWidget: (context, url, err) => Container(
+    return Container(
+      color: Colors.black,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // 1. Instant Poster / Thumbnail Layer (Contained on black, no cropping)
+          if (posterUrl != null && posterUrl.isNotEmpty)
+            Center(
+              child: CachedNetworkImage(
+                imageUrl: posterUrl,
+                fit: BoxFit.contain,
+                placeholder: (context, url) => Container(color: Colors.black),
+                errorWidget: (context, url, err) => Container(
+                  color: Colors.black,
+                  child: Center(
+                    child: Icon(
+                      Icons.play_circle_outline,
+                      color: Colors.white.withValues(alpha: 0.15),
+                      size: 60,
+                    ),
+                  ),
+                ),
+              ),
+            )
+          else
+            Container(
               color: Colors.black,
               child: Center(
                 child: Icon(
                   Icons.play_circle_outline,
                   color: Colors.white.withValues(alpha: 0.15),
-                  size: 80,
+                  size: 60,
                 ),
               ),
             ),
-          )
-        else
-          Container(
-            color: Colors.black,
-            child: Center(
-              child: Icon(
-                Icons.play_circle_outline,
-                color: Colors.white.withValues(alpha: 0.15),
-                size: 80,
-              ),
-            ),
-          ),
 
-        // 2. Active Video Layer (Plays on top as soon as ready)
-        if (isReady)
-          SizedBox.expand(
-            child: FittedBox(
-              fit: BoxFit.cover,
-              child: SizedBox(
-                width: controller.value.size.width > 0
-                    ? controller.value.size.width
-                    : 16.0,
-                height: controller.value.size.height > 0
-                    ? controller.value.size.height
-                    : 9.0,
+          // 2. Active Video Layer (Letterboxed on black background without cropping)
+          if (isReady)
+            Center(
+              child: AspectRatio(
+                aspectRatio: controller.value.aspectRatio > 0
+                    ? controller.value.aspectRatio
+                    : (controller.value.size.width > 0 &&
+                            controller.value.size.height > 0
+                        ? controller.value.size.width /
+                            controller.value.size.height
+                        : 9.0 / 16.0),
                 child: VideoPlayer(controller),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -756,80 +734,147 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
 
     final totalDuration = _controller!.value.duration;
     final currentPos = _isScrubbing ? _scrubPosition : _controller!.value.position;
+    final screenWidth = MediaQuery.of(context).size.width;
 
     return Stack(
       clipBehavior: Clip.none,
       alignment: Alignment.bottomCenter,
       children: [
-        // Floating Scrubber Time Tooltip
+        // Floating Scrubber Time Tooltip centered above finger
         if (_isScrubbing)
           Positioned(
-            bottom: 24,
+            bottom: 32,
+            left: (_scrubX - 55).clamp(16.0, screenWidth - 126.0),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
               decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.85),
+                color: Colors.black.withValues(alpha: 0.88),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white24, width: 0.8),
+                border: Border.all(color: Colors.white30, width: 1.0),
                 boxShadow: const [
-                  BoxShadow(color: Colors.black45, blurRadius: 8),
+                  BoxShadow(color: Colors.black54, blurRadius: 10, offset: Offset(0, 3)),
                 ],
               ),
-              child: Text(
-                '${_formatDuration(currentPos)} / ${_formatDuration(totalDuration)}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.circle, size: 7, color: Color(0xFFFE2C55)),
+                  const SizedBox(width: 6),
+                  Text(
+                    '${_formatDuration(currentPos)} / ${_formatDuration(totalDuration)}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ],
               ),
-            ).animate().scale(duration: 150.ms, curve: Curves.easeOut),
+            ).animate().scale(duration: 120.ms, curve: Curves.easeOut),
           ),
 
-        // Interactive Scrubbing Bar
+        // Interactive Scrubbing Bar (Generous touch target)
         GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onHorizontalDragStart: (details) {
+          onTapDown: (details) {
+            HapticFeedback.selectionClick();
             final box = context.findRenderObject() as RenderBox?;
-            if (box != null && totalDuration.inMilliseconds > 0) {
-              final width = box.size.width;
+            final width = box?.size.width ?? screenWidth;
+            if (width > 0 && totalDuration.inMilliseconds > 0) {
+              final fraction = (details.localPosition.dx / width).clamp(0.0, 1.0);
+              final targetMs = (fraction * totalDuration.inMilliseconds).toInt();
+              final target = Duration(milliseconds: targetMs);
+              setState(() {
+                _isScrubbing = true;
+                _scrubPosition = target;
+                _scrubX = details.localPosition.dx;
+              });
+              _controller?.seekTo(target);
+            }
+          },
+          onTapUp: (_) {
+            setState(() => _isScrubbing = false);
+          },
+          onTapCancel: () {
+            setState(() => _isScrubbing = false);
+          },
+          onHorizontalDragStart: (details) {
+            HapticFeedback.selectionClick();
+            final box = context.findRenderObject() as RenderBox?;
+            final width = box?.size.width ?? screenWidth;
+            if (width > 0 && totalDuration.inMilliseconds > 0) {
               final fraction = (details.localPosition.dx / width).clamp(0.0, 1.0);
               final targetMs = (fraction * totalDuration.inMilliseconds).toInt();
               setState(() {
                 _isScrubbing = true;
                 _scrubPosition = Duration(milliseconds: targetMs);
+                _scrubX = details.localPosition.dx;
               });
             }
           },
           onHorizontalDragUpdate: (details) {
             final box = context.findRenderObject() as RenderBox?;
-            if (box != null && totalDuration.inMilliseconds > 0) {
-              final width = box.size.width;
+            final width = box?.size.width ?? screenWidth;
+            if (width > 0 && totalDuration.inMilliseconds > 0) {
               final fraction = (details.localPosition.dx / width).clamp(0.0, 1.0);
               final targetMs = (fraction * totalDuration.inMilliseconds).toInt();
               setState(() {
                 _scrubPosition = Duration(milliseconds: targetMs);
+                _scrubX = details.localPosition.dx;
               });
               _controller?.seekTo(_scrubPosition);
             }
           },
           onHorizontalDragEnd: (_) {
+            HapticFeedback.lightImpact();
             setState(() => _isScrubbing = false);
           },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            height: _isScrubbing ? 20 : 12,
-            padding: EdgeInsets.only(top: _isScrubbing ? 14 : 9.5),
-            child: VideoProgressIndicator(
-              _controller!,
-              allowScrubbing: true,
-              padding: EdgeInsets.zero,
-              colors: const VideoProgressColors(
-                playedColor: Color(0xFFFE2C55),
-                backgroundColor: Colors.white24,
-                bufferedColor: Colors.white38,
-              ),
+          onHorizontalDragCancel: () {
+            setState(() => _isScrubbing = false);
+          },
+          child: Container(
+            height: 32,
+            alignment: Alignment.bottomCenter,
+            color: Colors.transparent,
+            child: Stack(
+              alignment: Alignment.bottomCenter,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  height: _isScrubbing ? 5.5 : 2.5,
+                  child: VideoProgressIndicator(
+                    _controller!,
+                    allowScrubbing: false,
+                    padding: EdgeInsets.zero,
+                    colors: const VideoProgressColors(
+                      playedColor: Color(0xFFFE2C55),
+                      backgroundColor: Colors.white24,
+                      bufferedColor: Colors.white38,
+                    ),
+                  ),
+                ),
+                if (_isScrubbing)
+                  Positioned(
+                    left: (_scrubX - 7).clamp(0.0, screenWidth - 14.0),
+                    bottom: 0,
+                    child: Container(
+                      width: 14,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.6),
+                            blurRadius: 6,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
@@ -964,25 +1009,25 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
       children: [
         // Profile
         Padding(
-          padding: const EdgeInsets.only(bottom: 20),
+          padding: const EdgeInsets.only(bottom: 14),
           child: Stack(
             clipBehavior: Clip.none,
             children: [
               Container(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 1.5),
+                  border: Border.all(color: Colors.white, width: 1.2),
                 ),
                 child: UserAvatar(
                   userId: post.authorId,
                   avatarUrl: avatarUrl,
                   displayName: post.authorName,
-                  radius: 24,
+                  radius: 19,
                   showStoryRing: true,
                 ),
               ),
               Positioned(
-                bottom: -9,
+                bottom: -8,
                 left: 0,
                 right: 0,
                 child: Center(child: _FollowButton(userId: post.authorId)),
@@ -1112,7 +1157,7 @@ class _ActionIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 5),
       child: Column(
         children: [
           GestureDetector(
@@ -1124,17 +1169,17 @@ class _ActionIconButton extends StatelessWidget {
               child: Icon(
                 icon,
                 color: iconColor,
-                size: 38,
+                size: 27,
                 shadows: const [Shadow(color: Colors.black45, blurRadius: 4)],
               ),
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           Text(
             label,
             style: TextStyle(
               color: labelColor ?? Colors.white,
-              fontSize: 13,
+              fontSize: 11.5,
               fontWeight: FontWeight.w600,
               shadows: const [Shadow(color: Colors.black45, blurRadius: 2)],
             ),
@@ -1177,9 +1222,9 @@ class _MusicDiscState extends State<_MusicDisc>
     return RotationTransition(
       turns: _controller,
       child: Container(
-        width: 45,
-        height: 45,
-        padding: const EdgeInsets.all(8),
+        width: 36,
+        height: 36,
+        padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           gradient: const LinearGradient(
@@ -1187,7 +1232,7 @@ class _MusicDiscState extends State<_MusicDisc>
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          border: Border.all(color: Colors.white24, width: 2),
+          border: Border.all(color: Colors.white24, width: 1.5),
         ),
         child: ClipOval(
           child:
@@ -1205,7 +1250,7 @@ class _MusicDiscState extends State<_MusicDisc>
                       widget.post.authorName.isNotEmpty
                           ? widget.post.authorName[0]
                           : '?',
-                      style: const TextStyle(color: Colors.white, fontSize: 10),
+                      style: const TextStyle(color: Colors.white, fontSize: 9),
                     ),
                   ),
                 ),
@@ -1263,8 +1308,8 @@ class _FollowButtonState extends ConsumerState<_FollowButton> {
           },
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 300),
-            width: 22,
-            height: 22,
+            width: 18,
+            height: 18,
             decoration: BoxDecoration(
               color: _isFollowingInProgress
                   ? Colors.green
@@ -1283,7 +1328,7 @@ class _FollowButtonState extends ConsumerState<_FollowButton> {
                   ? const Icon(
                           Icons.check_rounded,
                           color: Colors.white,
-                          size: 16,
+                          size: 12,
                         )
                         .animate()
                         .scale(duration: 200.ms, curve: Curves.easeOutBack)
@@ -1291,7 +1336,7 @@ class _FollowButtonState extends ConsumerState<_FollowButton> {
                   : const Icon(
                       Icons.add_rounded,
                       color: Colors.white,
-                      size: 18,
+                      size: 14,
                     ),
             ),
           ),

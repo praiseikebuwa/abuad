@@ -14,8 +14,11 @@ import 'src/core/providers/shared_preferences_provider.dart';
 import 'src/features/utilities/broadcast_listener.dart';
 import 'src/features/settings/presentation/settings_screen.dart';
 import 'src/features/auth/data/auth_repository.dart';
+import 'src/core/utils/url_strategy_helper.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  configureUrlStrategy();
 
   try {
     // Configure System UI for Edge-to-Edge

@@ -1,18 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../data/post_repository.dart';
 import '../../domain/post.dart';
 
-class PollWidget extends StatelessWidget {
+class PollWidget extends StatefulWidget {
   final Post post;
   final PostRepository repo;
 
   const PollWidget({super.key, required this.post, required this.repo});
 
   @override
-  Widget build(BuildContext context) {
-    if (post.pollData == null) return const SizedBox.shrink();
+  State<PollWidget> createState() => _PollWidgetState();
+}
 
-    final pollData = post.pollData!;
+class _PollWidgetState extends State<PollWidget> {
+  int? _optimisticVotedIndex;
+  int? _selectedPendingIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.post.pollData == null) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final pollData = widget.post.pollData!;
     final List<dynamic> optionsRaw = pollData['options'] ?? [];
 
     // Safely parse options (could be String or Map)
@@ -25,123 +36,290 @@ class PollWidget extends StatelessWidget {
     // Safely parse votes
     final List<dynamic> votesRaw = pollData['votes'] ?? [];
     final votes = List<int>.generate(options.length, (i) {
+      int baseCount = 0;
       if (i < votesRaw.length) {
-        return (votesRaw[i] as num?)?.toInt() ?? 0;
+        baseCount = (votesRaw[i] as num?)?.toInt() ?? 0;
+      } else if (i < optionsRaw.length && optionsRaw[i] is Map) {
+        baseCount = (optionsRaw[i]['votes'] as num?)?.toInt() ?? 0;
       }
-      // Fallback: check if votes are inside the option maps
-      if (i < optionsRaw.length && optionsRaw[i] is Map) {
-        return (optionsRaw[i]['votes'] as num?)?.toInt() ?? 0;
+      // Apply optimistic vote delta if newly voted locally
+      if (_optimisticVotedIndex != null && _optimisticVotedIndex == i) {
+        baseCount += 1;
       }
-      return 0;
+      return baseCount;
     });
 
     final voters = Map<String, dynamic>.from(pollData['voters'] ?? {});
-    final totalVotes = votes.fold(0, (sum, item) => sum + item);
-    final currentUserId = repo.currentUserId;
-    final userVoteIndex = currentUserId != null
+    final currentUserId = widget.repo.currentUserId;
+    final serverVotedIndex = currentUserId != null
         ? (voters[currentUserId] as num?)?.toInt()
         : null;
+
+    final userVoteIndex = _optimisticVotedIndex ?? serverVotedIndex;
     final hasVoted = userVoteIndex != null;
 
+    // Check poll expiration
+    final endsAtStr = pollData['ends_at'] as String?;
+    final endsAt = endsAtStr != null && endsAtStr.isNotEmpty
+        ? DateTime.tryParse(endsAtStr)
+        : widget.post.timestamp.add(const Duration(days: 1));
+    final now = DateTime.now();
+    final isEnded = endsAt != null && now.isAfter(endsAt);
+
+    // If ended or user has voted, show results mode
+    final showResults = hasVoted || isEnded;
+    final totalVotes = votes.fold<int>(0, (sum, item) => sum + item);
+
+    // Compute remaining time text
+    final String pollStatusText;
+    if (isEnded) {
+      pollStatusText = 'Poll ended';
+    } else if (endsAt != null) {
+      final diff = endsAt.difference(now);
+      if (diff.inDays >= 1) {
+        pollStatusText = 'Poll ends in ${diff.inDays} ${diff.inDays == 1 ? 'day' : 'days'}';
+      } else if (diff.inHours >= 1) {
+        pollStatusText = 'Poll ends in ${diff.inHours} ${diff.inHours == 1 ? 'hour' : 'hours'}';
+      } else if (diff.inMinutes >= 1) {
+        pollStatusText = 'Poll ends in ${diff.inMinutes} ${diff.inMinutes == 1 ? 'minute' : 'minutes'}';
+      } else {
+        pollStatusText = 'Poll ends soon';
+      }
+    } else {
+      pollStatusText = 'Poll active';
+    }
+
+    final String? question = pollData['question'] as String?;
+
+    // Sophisticated dark styling matching social media feeds
+    final cardBorderColor = isDark ? Colors.white.withValues(alpha: 0.15) : const Color(0xFF334155);
+    final cardBgColor = isDark ? const Color(0xFF0F172A) : const Color(0xFF1E293B);
+    const accentBlue = Color(0xFF38BDF8);
+    const primaryBlue = Color(0xFF2563EB);
+
     return Container(
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey[300]!),
-        borderRadius: BorderRadius.circular(12),
+        color: cardBgColor,
+        border: Border.all(color: cardBorderColor, width: 1.0),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black38,
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            post.pollData?['question'] ?? 'Poll',
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          const SizedBox(height: 12),
-          ...List.generate(options.length, (index) {
-            final voteCount = index < votes.length ? votes[index] : 0;
-            final percentage = totalVotes == 0 ? 0.0 : (voteCount / totalVotes);
-            final isSelected = userVoteIndex == index;
-
-            return GestureDetector(
-              onTap: () {
-                if (!hasVoted) {
-                  repo.votePoll(post.id, index);
-                }
-              },
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                height: 40,
-                child: Stack(
+          // Header Badge: [Poll]
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: accentBlue.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: accentBlue.withValues(alpha: 0.35), width: 0.8),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Background
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.grey[50], // Very light grey base
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: isSelected ? Colors.blue : Colors.grey[300]!,
-                        ),
-                      ),
-                    ),
-                    // Progress Bar
-                    if (hasVoted)
-                      FractionallySizedBox(
-                        widthFactor: percentage,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.blue.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                      ),
-                    // Content
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              options[index],
-                              style: TextStyle(
-                                fontWeight: isSelected
-                                    ? FontWeight.bold
-                                    : FontWeight.normal,
-                                color: isSelected
-                                    ? Colors.blue
-                                    : Colors.black87,
-                              ),
-                            ),
-                          ),
-                          if (hasVoted) ...[
-                            Text(
-                              '${(percentage * 100).toStringAsFixed(1)}%',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.grey[700],
-                              ),
-                            ),
-                          ],
-                          if (isSelected) ...[
-                            const SizedBox(width: 8),
-                            const Icon(
-                              Icons.check_circle,
-                              color: Colors.blue,
-                              size: 18,
-                            ),
-                          ],
-                        ],
+                    Icon(Icons.poll_rounded, color: accentBlue, size: 14),
+                    SizedBox(width: 4),
+                    Text(
+                      'Poll',
+                      style: TextStyle(
+                        color: accentBlue,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ],
                 ),
               ),
+              const Spacer(),
+              Text(
+                pollStatusText,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.6),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          if (question != null && question.trim().isNotEmpty) ...[
+            Text(
+              question,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: Colors.white,
+                height: 1.3,
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          ...List.generate(options.length, (index) {
+            final optionText = options[index];
+            final voteCount = index < votes.length ? votes[index] : 0;
+            final percentage = totalVotes == 0 ? 0.0 : (voteCount / totalVotes);
+            final isUserVoted = userVoteIndex == index;
+            final isSelectedPending = _selectedPendingIndex == index;
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: GestureDetector(
+                onTap: () {
+                  if (showResults || isEnded) return;
+
+                  HapticFeedback.lightImpact();
+                  setState(() {
+                    _selectedPendingIndex = index;
+                    _optimisticVotedIndex = index;
+                  });
+
+                  // Execute vote API
+                  widget.repo.votePoll(widget.post.id, index);
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: isUserVoted
+                        ? primaryBlue.withValues(alpha: 0.2)
+                        : const Color(0xFF090D16), // Deep dark surface
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isUserVoted || isSelectedPending
+                          ? accentBlue
+                          : Colors.white.withValues(alpha: 0.18),
+                      width: isUserVoted || isSelectedPending ? 1.5 : 1.0,
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(11),
+                    child: Stack(
+                      children: [
+                        // Animated Horizontal Progress Bar for Results View
+                        if (showResults)
+                          TweenAnimationBuilder<double>(
+                            duration: const Duration(milliseconds: 450),
+                            curve: Curves.easeOutCubic,
+                            tween: Tween<double>(begin: 0.0, end: percentage),
+                            builder: (context, value, _) {
+                              return FractionallySizedBox(
+                                widthFactor: value,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: isUserVoted
+                                          ? [
+                                              primaryBlue.withValues(alpha: 0.5),
+                                              accentBlue.withValues(alpha: 0.45),
+                                            ]
+                                          : [
+                                              Colors.white.withValues(alpha: 0.08),
+                                              Colors.white.withValues(alpha: 0.14),
+                                            ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+
+                        // Option Content & Label (Centered vertically)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 14),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                // State 1: Radio button outline before voting
+                                if (!showResults) ...[
+                                  Container(
+                                    width: 18,
+                                    height: 18,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: isSelectedPending ? accentBlue : Colors.white54,
+                                        width: isSelectedPending ? 5 : 1.6,
+                                      ),
+                                      color: isSelectedPending ? accentBlue : Colors.transparent,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                ],
+
+                                // State 2: User Voted checkmark icon
+                                if (showResults && isUserVoted) ...[
+                                  const Icon(
+                                    Icons.check_circle_rounded,
+                                    color: accentBlue,
+                                    size: 19,
+                                  ),
+                                  const SizedBox(width: 10),
+                                ],
+
+                                // Option text (White, perfectly vertically centered)
+                                Expanded(
+                                  child: Text(
+                                    optionText,
+                                    style: TextStyle(
+                                      fontSize: 14.5,
+                                      fontWeight: isUserVoted ? FontWeight.bold : FontWeight.w500,
+                                      color: Colors.white,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+
+                                // State 3: Percentage label on right
+                                if (showResults) ...[
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '${(percentage * 100).round()}%',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: isUserVoted ? FontWeight.w800 : FontWeight.w600,
+                                      color: isUserVoted ? accentBlue : Colors.white70,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             );
           }),
+
+          // Footer: Vote count & Tap to vote hint
           Padding(
-            padding: const EdgeInsets.only(top: 4.0),
+            padding: const EdgeInsets.only(top: 4, left: 4),
             child: Text(
-              '$totalVotes votes${hasVoted ? '' : ' • Tap to vote'}',
-              style: TextStyle(color: Colors.grey[600], fontSize: 13),
+              '$totalVotes ${totalVotes == 1 ? 'vote' : 'votes'}${hasVoted || isEnded ? '' : ' • Tap to vote'}',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.6),
+                fontSize: 12.5,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],

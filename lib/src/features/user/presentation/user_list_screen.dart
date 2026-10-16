@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,10 +7,12 @@ import '../data/user_repository.dart';
 import '../../../core/utils/url_validator.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/verification_badge.dart';
+import '../../../core/services/api_client.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class UserListScreen extends ConsumerWidget {
   final String userId;
-  final int initialIndex; // 0 = Followers, 1 = Following
+  final int initialIndex; // 0 = Followers, 1 = Following, 2 = Hashtags
 
   const UserListScreen({
     super.key,
@@ -19,10 +22,8 @@ class UserListScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-
     return DefaultTabController(
-      length: 2,
+      length: 3,
       initialIndex: initialIndex,
       child: Scaffold(
         appBar: AppBar(
@@ -34,6 +35,7 @@ class UserListScreen extends ConsumerWidget {
             tabs: const [
               Tab(text: 'Followers'),
               Tab(text: 'Following'),
+              Tab(text: 'Hashtags'),
             ],
           ),
         ),
@@ -41,6 +43,7 @@ class UserListScreen extends ConsumerWidget {
           children: [
             _UserList(userId: userId, type: 'followers'),
             _UserList(userId: userId, type: 'following'),
+            const _FollowedHashtagsList(),
           ],
         ),
       ),
@@ -197,3 +200,220 @@ class _UserList extends ConsumerWidget {
     );
   }
 }
+
+class _FollowedHashtagsList extends StatefulWidget {
+  const _FollowedHashtagsList();
+
+  @override
+  State<_FollowedHashtagsList> createState() => _FollowedHashtagsListState();
+}
+
+class _FollowedHashtagsListState extends State<_FollowedHashtagsList> {
+  List<String> _tags = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTags();
+  }
+
+  Future<void> _loadTags() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList('followed_hashtags') ?? [];
+      if (mounted) {
+        setState(() {
+          _tags = list;
+          _isLoading = false;
+        });
+      }
+
+      // Sync with backend if authenticated
+      if (ApiClient.isAuthenticated) {
+        try {
+          final res = await ApiClient.get('/posts/hashtag/following');
+          if (res.statusCode == 200) {
+            final decoded = jsonDecode(res.body);
+            final dataList = decoded['data'];
+            if (dataList is List) {
+              final serverTags = dataList.map((e) => e.toString().toLowerCase()).toList();
+              await prefs.setStringList('followed_hashtags', serverTags);
+              if (mounted) {
+                setState(() {
+                  _tags = serverTags;
+                });
+              }
+            }
+          }
+        } catch (_) {}
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _unfollowTag(String tag) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList('followed_hashtags') ?? [];
+      final key = tag.toLowerCase();
+      list.remove(key);
+      await prefs.setStringList('followed_hashtags', list);
+
+      if (ApiClient.isAuthenticated) {
+        ApiClient.post('/posts/hashtag/unfollow', {'tag': key}).then((_) {}).catchError((_) => null);
+      }
+
+      if (mounted) {
+        setState(() {
+          _tags = list;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Unfollowed #$tag'),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+      }
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_tags.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isDark ? Colors.white10 : Colors.grey.shade100,
+                ),
+                child: const Icon(
+                  Icons.tag_rounded,
+                  size: 36,
+                  color: Colors.grey,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'No Followed Hashtags',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Follow hashtags to stay connected with campus trends and discussions that matter to you.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: isDark ? Colors.white60 : Colors.black54,
+                ),
+              ),
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                onPressed: () => context.push('/search'),
+                icon: const Icon(Icons.explore_rounded, size: 18),
+                label: const Text('Explore Topics'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.secondaryTeal,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadTags,
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        itemCount: _tags.length,
+        separatorBuilder: (_, _) => Divider(
+          height: 1,
+          indent: 72,
+          color: isDark ? Colors.white10 : Colors.grey.shade200,
+        ),
+        itemBuilder: (context, index) {
+          final tag = _tags[index];
+          final displayTag = '#$tag';
+
+          return ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            leading: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF6366F1), Color(0xFF4F46E5)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Center(
+                child: Icon(Icons.tag_rounded, color: Colors.white, size: 22),
+              ),
+            ),
+            title: Text(
+              displayTag,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            ),
+            subtitle: Text(
+              'Topic • Followed',
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark ? Colors.white54 : Colors.black45,
+              ),
+            ),
+            trailing: SizedBox(
+              height: 32,
+              child: OutlinedButton(
+                onPressed: () => _unfollowTag(tag),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+                child: const Text('Following', style: TextStyle(fontSize: 12)),
+              ),
+            ),
+            onTap: () {
+              context.push('/hashtag/$tag');
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+

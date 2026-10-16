@@ -9,7 +9,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:photo_view/photo_view.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 // import 'package:giphy_get/giphy_get.dart';
@@ -34,6 +33,7 @@ import './widgets/shared_post_preview.dart';
 import '../../../core/services/media_saver.dart';
 import '../../marketplace/data/marketplace_repository.dart';
 import '../../../shared/widgets/abuad_markdown.dart';
+import '../../feed/presentation/widgets/full_screen_image_view.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String channelId;
@@ -1097,33 +1097,70 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
+  Widget _buildMessageContentWithTimestamp({
+    required ChatMessage message,
+    required bool isMe,
+    required bool isDark,
+    required bool isRead,
+  }) {
+    final statusWidget = Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        if (message.isEdited) ...[
+          Text(
+            'edited ',
+            style: TextStyle(
+              fontSize: 9.5,
+              fontStyle: FontStyle.italic,
+              color: isMe ? Colors.white70 : Colors.grey[500],
+            ),
+          ),
+        ],
+        Text(
+          _formatTime(message.timestamp),
+          style: TextStyle(
+            fontSize: 10,
+            color: isMe
+                ? Colors.white70
+                : (isDark ? Colors.white54 : Colors.grey[500]),
+          ),
+        ),
+        if (isMe) ...[
+          const SizedBox(width: 3),
+          _buildMessageStatusIcon(
+            message,
+            isMe: isMe,
+            isRead: isRead,
+          ),
+        ],
+      ],
+    );
+
+    return Wrap(
+      alignment: WrapAlignment.end,
+      crossAxisAlignment: WrapCrossAlignment.end,
+      spacing: 8,
+      runSpacing: 2,
+      children: [
+        _buildRichText(
+          message.content,
+          isMe,
+          isDark,
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 1),
+          child: statusWidget,
+        ),
+      ],
+    );
+  }
+
   void _viewImage(String url) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => Scaffold(
-          backgroundColor: Colors.black,
-          appBar: AppBar(
-            backgroundColor: Colors.black,
-            iconTheme: const IconThemeData(color: Colors.white),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.share),
-                onPressed: () {
-                  SharePlus.instance.share(
-                    ShareParams(
-                      text: url,
-                      subject: 'Image from Abuad life Chat',
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
-          body: PhotoView(
-            imageProvider: CachedNetworkImageProvider(url),
-            minScale: PhotoViewComputedScale.contained,
-            maxScale: PhotoViewComputedScale.covered * 2,
-          ),
+        builder: (context) => FullScreenImageView(
+          imageUrl: url,
         ),
       ),
     );
@@ -2734,6 +2771,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                       crossAxisAlignment: isMe
                                           ? CrossAxisAlignment.end
                                           : CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
                                       children: [
                                         if (message.forwardedFrom != null)
                                           Padding(
@@ -2903,6 +2941,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                             mainAxisAlignment: isMe
                                                 ? MainAxisAlignment.end
                                                 : MainAxisAlignment.start,
+                                            mainAxisSize: MainAxisSize.min,
                                             crossAxisAlignment:
                                                 CrossAxisAlignment.end,
                                             children: [
@@ -3212,48 +3251,36 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                                                     final isRep = name.toLowerCase().contains('rep') || name.toLowerCase().contains('liam');
 
                                                                     return Padding(
-                                                                      padding: const EdgeInsets.only(bottom: 6),
+                                                                      padding: const EdgeInsets.only(bottom: 4),
                                                                       child: Row(
-                                                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                                        mainAxisSize: MainAxisSize.min,
                                                                         children: [
-                                                                          Row(
-                                                                            mainAxisSize: MainAxisSize.min,
-                                                                            children: [
-                                                                              Text(
-                                                                                name,
-                                                                                style: TextStyle(
-                                                                                  fontWeight: FontWeight.bold,
-                                                                                  color: isDark ? Colors.white : const Color(0xFF0F172A),
-                                                                                  fontSize: 13,
-                                                                                ),
-                                                                              ),
-                                                                              if (isAdmin || isRep) ...[
-                                                                                const SizedBox(width: 6),
-                                                                                Container(
-                                                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                                                                                  decoration: BoxDecoration(
-                                                                                    color: const Color(0xFFE2E8F0),
-                                                                                    borderRadius: BorderRadius.circular(6),
-                                                                                  ),
-                                                                                  child: Text(
-                                                                                    isRep ? 'Class Rep' : 'Admin',
-                                                                                    style: const TextStyle(
-                                                                                      fontSize: 10,
-                                                                                      fontWeight: FontWeight.w600,
-                                                                                      color: Color(0xFF475569),
-                                                                                    ),
-                                                                                  ),
-                                                                                ),
-                                                                              ],
-                                                                            ],
-                                                                          ),
                                                                           Text(
-                                                                            DateFormat('h:mm a').format(message.timestamp),
+                                                                            name,
                                                                             style: TextStyle(
-                                                                              fontSize: 11,
-                                                                              color: isDark ? Colors.white38 : Colors.grey[400],
+                                                                              fontWeight: FontWeight.bold,
+                                                                              color: _themeColor,
+                                                                              fontSize: 12.5,
                                                                             ),
                                                                           ),
+                                                                          if (isAdmin || isRep) ...[
+                                                                            const SizedBox(width: 6),
+                                                                            Container(
+                                                                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                                                              decoration: BoxDecoration(
+                                                                                color: isDark ? Colors.white12 : const Color(0xFFE2E8F0),
+                                                                                borderRadius: BorderRadius.circular(4),
+                                                                              ),
+                                                                              child: Text(
+                                                                                isRep ? 'Class Rep' : 'Admin',
+                                                                                style: TextStyle(
+                                                                                  fontSize: 9.5,
+                                                                                  fontWeight: FontWeight.w600,
+                                                                                  color: isDark ? Colors.white70 : const Color(0xFF475569),
+                                                                                ),
+                                                                              ),
+                                                                            ),
+                                                                          ],
                                                                         ],
                                                                       ),
                                                                     );
@@ -3262,58 +3289,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
                                                               // Shared Post Preview
                                                               if (message.sharedPostId != null)
-                                                                SharedPostPreview(
-                                                                  postId: message.sharedPostId!,
-                                                                ),
-
-                                                              // Message Content
-                                                              _buildRichText(
-                                                                message.content,
-                                                                isMe,
-                                                                isDark,
-                                                              ),
-
-                                                              if (message.isEdited)
                                                                 Padding(
-                                                                  padding: const EdgeInsets.only(top: 2),
-                                                                  child: Text(
-                                                                    'edited',
-                                                                    style: TextStyle(
-                                                                      fontSize: 9,
-                                                                      fontStyle: FontStyle.italic,
-                                                                      color: isMe ? Colors.white70 : Colors.grey,
-                                                                    ),
+                                                                  padding: const EdgeInsets.only(bottom: 6),
+                                                                  child: SharedPostPreview(
+                                                                    postId: message.sharedPostId!,
                                                                   ),
                                                                 ),
 
-                                                              // Timestamp & Read Receipts
-                                                              const SizedBox(height: 4),
-                                                              Align(
-                                                                alignment: Alignment.bottomRight,
-                                                                child: Row(
-                                                                  mainAxisSize: MainAxisSize.min,
-                                                                  children: [
-                                                                    Text(
-                                                                      _formatTime(message.timestamp),
-                                                                      style: TextStyle(
-                                                                        fontSize: 10,
-                                                                        color: isMe
-                                                                            ? Colors.white70
-                                                                            : (isDark
-                                                                                ? Colors.white54
-                                                                                : Colors.grey[500]),
-                                                                      ),
-                                                                    ),
-                                                                    if (isMe) ...[
-                                                                      const SizedBox(width: 3),
-                                                                      _buildMessageStatusIcon(
-                                                                        message,
-                                                                        isMe: isMe,
-                                                                        isRead: isRead,
-                                                                      ),
-                                                                    ],
-                                                                  ],
-                                                                ),
+                                                              // Dynamic Message Content with Inline / Auto-wrapping Timestamp
+                                                              _buildMessageContentWithTimestamp(
+                                                                message: message,
+                                                                isMe: isMe,
+                                                                isDark: isDark,
+                                                                isRead: isRead,
                                                               ),
                                                             ],
                                                           ),
@@ -3327,6 +3315,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                             Padding(
                                               padding: const EdgeInsets.only(top: 2, right: 4),
                                               child: Row(
+                                                mainAxisSize: MainAxisSize.min,
                                                 mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
                                                 children: [
                                                   Container(
@@ -3490,7 +3479,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           _buildLiveTypingBanner(channel, displayName, isDark),
                           if (_replyingTo != null) _buildReplyPreview(isDark),
                           if (_editingMessage != null) _buildEditPreview(isDark),
-                          if (_showAttachmentDrawer) _buildAttachmentDrawer(isDark),
+                          if (_showAttachmentDrawer)
+                            _buildAttachmentDrawer(
+                              isDark,
+                              otherUserId: otherUserId,
+                              displayName: displayName,
+                            ),
                           _isRecording
                               ? Padding(
                                   padding: const EdgeInsets.all(8.0),
@@ -4895,7 +4889,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  Widget _buildAttachmentDrawer(bool isDark) {
+  Widget _buildAttachmentDrawer(
+    bool isDark, {
+    String? otherUserId,
+    String? displayName,
+  }) {
     return Container(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E293B) : Colors.white,
@@ -4957,7 +4955,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     final result = await Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => const CameraScreen(isForStory: false),
+                        builder: (context) => CameraScreen(
+                          isForStory: false,
+                          cameraContext: CameraContext.snap,
+                          directRecipientId: otherUserId,
+                          directRecipientName: displayName,
+                        ),
                       ),
                     );
                     if (result != null && result is Map) {

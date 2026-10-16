@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:share_plus/share_plus.dart';
-
+import '../../music/domain/audio_track.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/url_validator.dart';
 import '../../auth/data/auth_repository.dart';
@@ -79,17 +79,91 @@ class _AudioTrackScreenState extends ConsumerState<AudioTrackScreen>
     );
   }
 
+
+
   void _useThisSound() {
     HapticFeedback.mediumImpact();
-    context.push(
-      '/create-post',
-      extra: {
-        'audioTrack': {
-          'id': widget.audioId,
-          'title': widget.title,
-          'author': widget.authorHandle,
-        },
-      },
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 38,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 18),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.secondaryTeal.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.videocam_rounded, color: AppColors.secondaryTeal),
+                ),
+                title: const Text('Record Video with this Sound', style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Open Camera to shoot a Reel or Story with this track'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.push('/camera', extra: {
+                    'audioTrack': AudioTrack(
+                      id: widget.audioId,
+                      title: widget.title,
+                      artist: widget.authorName,
+                      album: 'Original Audio',
+                      coverUrl: widget.authorAvatarUrl ?? '',
+                      audioUrl: '',
+                      duration: 30,
+                      category: 'Reels',
+                      usesCount: 1,
+                    ),
+                  });
+                },
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.edit_note_rounded, color: Colors.blue),
+                ),
+                title: const Text('Attach to New Post', style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Tag this sound to a text or photo post'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.push(
+                    '/create-post',
+                    extra: {
+                      'audioTrack': {
+                        'id': widget.audioId,
+                        'title': widget.title,
+                        'author': widget.authorHandle,
+                      },
+                    },
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

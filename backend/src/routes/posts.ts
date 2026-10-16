@@ -656,6 +656,115 @@ router.get('/trending-tags', optionalAuth, async (req: AuthenticatedRequest, res
 });
 
 /**
+ * POST /api/posts/hashtag/follow - Follow a hashtag
+ */
+router.post('/hashtag/follow', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const rawTag = String(req.body.tag || '').replace(/^#/, '').toLowerCase().trim();
+    if (!rawTag) return res.status(400).json({ error: 'Tag required' });
+    const userId = req.user!.id;
+
+    // 1. Add userId to tag followers
+    const tagKey = `hashtag_followers:${rawTag}`;
+    const existingTagSetting = await prisma.systemSetting.findUnique({ where: { key: tagKey } });
+    let followers: string[] = [];
+    if (existingTagSetting && existingTagSetting.value) {
+      try { followers = JSON.parse(existingTagSetting.value); } catch (_) {}
+    }
+    if (!followers.includes(userId)) {
+      followers.push(userId);
+      await prisma.systemSetting.upsert({
+        where: { key: tagKey },
+        update: { value: JSON.stringify(followers) },
+        create: { key: tagKey, value: JSON.stringify(followers) },
+      });
+    }
+
+    // 2. Add tag to user followed list
+    const userKey = `user_followed_hashtags:${userId}`;
+    const existingUserSetting = await prisma.systemSetting.findUnique({ where: { key: userKey } });
+    let followedTags: string[] = [];
+    if (existingUserSetting && existingUserSetting.value) {
+      try { followedTags = JSON.parse(existingUserSetting.value); } catch (_) {}
+    }
+    if (!followedTags.includes(rawTag)) {
+      followedTags.push(rawTag);
+      await prisma.systemSetting.upsert({
+        where: { key: userKey },
+        update: { value: JSON.stringify(followedTags) },
+        create: { key: userKey, value: JSON.stringify(followedTags) },
+      });
+    }
+
+    return res.json({ success: true, isFollowing: true, tag: rawTag });
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to follow hashtag' });
+  }
+});
+
+/**
+ * POST /api/posts/hashtag/unfollow - Unfollow a hashtag
+ */
+router.post('/hashtag/unfollow', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const rawTag = String(req.body.tag || '').replace(/^#/, '').toLowerCase().trim();
+    if (!rawTag) return res.status(400).json({ error: 'Tag required' });
+    const userId = req.user!.id;
+
+    // 1. Remove userId from tag followers
+    const tagKey = `hashtag_followers:${rawTag}`;
+    const existingTagSetting = await prisma.systemSetting.findUnique({ where: { key: tagKey } });
+    if (existingTagSetting && existingTagSetting.value) {
+      try {
+        let followers: string[] = JSON.parse(existingTagSetting.value);
+        followers = followers.filter(id => id !== userId);
+        await prisma.systemSetting.update({
+          where: { key: tagKey },
+          data: { value: JSON.stringify(followers) },
+        });
+      } catch (_) {}
+    }
+
+    // 2. Remove tag from user followed list
+    const userKey = `user_followed_hashtags:${userId}`;
+    const existingUserSetting = await prisma.systemSetting.findUnique({ where: { key: userKey } });
+    if (existingUserSetting && existingUserSetting.value) {
+      try {
+        let followedTags: string[] = JSON.parse(existingUserSetting.value);
+        followedTags = followedTags.filter(t => t !== rawTag);
+        await prisma.systemSetting.update({
+          where: { key: userKey },
+          data: { value: JSON.stringify(followedTags) },
+        });
+      } catch (_) {}
+    }
+
+    return res.json({ success: true, isFollowing: false, tag: rawTag });
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to unfollow hashtag' });
+  }
+});
+
+/**
+ * GET /api/posts/hashtag/following - Get followed hashtags for user
+ */
+router.get('/hashtag/following', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const userKey = `user_followed_hashtags:${userId}`;
+    const existingUserSetting = await prisma.systemSetting.findUnique({ where: { key: userKey } });
+    let followedTags: string[] = [];
+    if (existingUserSetting && existingUserSetting.value) {
+      try { followedTags = JSON.parse(existingUserSetting.value); } catch (_) {}
+    }
+    return res.json({ success: true, data: followedTags });
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to get followed hashtags' });
+  }
+});
+
+
+/**
  * GET /api/posts/search?q= - Search posts by content, hashtag, or author
  */
 router.get('/search', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
@@ -669,15 +778,15 @@ router.get('/search', optionalAuth, async (req: AuthenticatedRequest, res: Respo
 
     const rawTag = q.replace(/^#/, '');
     const searchConditions: any[] = [
-      { content: { contains: q } },
-      { hashtags: { contains: q } },
-      { author: { username: { contains: q } } },
-      { author: { fullName: { contains: q } } },
+      { content: { contains: q, mode: 'insensitive' } },
+      { hashtags: { contains: q, mode: 'insensitive' } },
+      { author: { username: { contains: q, mode: 'insensitive' } } },
+      { author: { fullName: { contains: q, mode: 'insensitive' } } },
     ];
 
     if (rawTag !== q && rawTag.length > 0) {
-      searchConditions.push({ content: { contains: rawTag } });
-      searchConditions.push({ hashtags: { contains: rawTag } });
+      searchConditions.push({ content: { contains: rawTag, mode: 'insensitive' } });
+      searchConditions.push({ hashtags: { contains: rawTag, mode: 'insensitive' } });
     }
 
     const posts = await prisma.post.findMany({
@@ -774,6 +883,23 @@ router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Respo
 
     const effectiveIsAnonymous = isAnonymous === true || channelId === 'confessions';
 
+    const rawTags: string[] = [];
+    if (Array.isArray(hashtags)) {
+      for (const h of hashtags) {
+        if (typeof h === 'string') {
+          const clean = h.replace(/^#/, '').toLowerCase().trim();
+          if (clean && !rawTags.includes(clean)) rawTags.push(clean);
+        }
+      }
+    }
+    const hashMatches = (content || '').match(/#([a-zA-Z0-9_]+)/g);
+    if (hashMatches) {
+      for (const m of hashMatches) {
+        const clean = m.replace(/^#/, '').toLowerCase().trim();
+        if (clean && !rawTags.includes(clean)) rawTags.push(clean);
+      }
+    }
+
     const post = await prisma.post.create({
       data: {
         authorId: req.user!.id,
@@ -781,7 +907,7 @@ router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Respo
         mediaUrl: mediaUrl || (mediaUrls && mediaUrls[0]) || '',
         mediaType: mediaType || 'none',
         mediaUrls: JSON.stringify(mediaUrls || (mediaUrl ? [mediaUrl] : [])),
-        hashtags: JSON.stringify(hashtags || []),
+        hashtags: JSON.stringify(rawTags),
         mentions: JSON.stringify(mentions || []),
         visibility: visibility || 'everyone',
         channelId: channelId || 'general',
@@ -868,6 +994,45 @@ router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Respo
         await (prisma.notification.createMany as any)({
           data: notifData,
         }).catch(() => {});
+      }
+    }
+
+    // 3. Notify hashtag followers (case-insensitive)
+    if (rawTags.length > 0) {
+      const authorName = post.author.fullName || post.author.username || 'Student';
+      const previewText = (post.content || (post.mediaUrl ? 'shared media' : 'posted an update')).trim();
+      const snippet = previewText.length > 60 ? previewText.slice(0, 57) + '...' : previewText;
+      const notifiedUserIds = new Set<string>();
+      notifiedUserIds.add(req.user!.id);
+
+      for (const tag of rawTags) {
+        try {
+          const setting = await prisma.systemSetting.findUnique({
+            where: { key: `hashtag_followers:${tag}` },
+          });
+          if (setting && setting.value) {
+            const followerIds: string[] = JSON.parse(setting.value);
+            const recipients = followerIds.filter(id => !notifiedUserIds.has(id));
+            if (recipients.length > 0) {
+              const notifs = recipients.map(uid => {
+                notifiedUserIds.add(uid);
+                return {
+                  userId: uid,
+                  senderId: effectiveIsAnonymous ? null : req.user!.id,
+                  title: `#${tag} update 🚀`,
+                  body: effectiveIsAnonymous
+                    ? `Someone posted in #${tag}: "${snippet}"`
+                    : `${authorName} posted in #${tag}: "${snippet}"`,
+                  type: 'hashtagPost',
+                  relatedId: post.id,
+                };
+              });
+              await (prisma.notification.createMany as any)({
+                data: notifs,
+              }).catch(() => {});
+            }
+          }
+        } catch (_) {}
       }
     }
 

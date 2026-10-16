@@ -9,20 +9,48 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:photo_manager/photo_manager.dart';
-import 'package:go_router/go_router.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../music/domain/audio_track.dart';
+import '../../music/presentation/music_picker_sheet.dart';
 import 'media_editor_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 enum CameraMode { directors, photo, video, night, focus }
 enum GridType { thirds, golden, crosshair }
+enum CameraContext { post, story, snap }
+enum CameraAspectRatio {
+  full('Full', null),
+  ratio9_16('9:16', 9 / 16),
+  ratio3_4('3:4', 3 / 4),
+  ratio1_1('1:1', 1.0);
+
+  final String label;
+  final double? ratio; // width / height
+  const CameraAspectRatio(this.label, this.ratio);
+}
 
 class CameraScreen extends StatefulWidget {
   final bool isForStory;
+  final CameraContext? cameraContext;
+  final String? directRecipientId;
+  final String? directRecipientName;
   final Function(XFile file, CameraMode mode)? onMediaCaptured;
 
-  const CameraScreen({super.key, this.isForStory = true, this.onMediaCaptured});
+  const CameraScreen({
+    super.key,
+    this.isForStory = true,
+    this.cameraContext,
+    this.directRecipientId,
+    this.directRecipientName,
+    this.onMediaCaptured,
+  });
+
+  CameraContext get effectiveContext {
+    if (cameraContext != null) return cameraContext!;
+    return isForStory ? CameraContext.story : CameraContext.snap;
+  }
 
   @override
   State<CameraScreen> createState() => _CameraScreenState();
@@ -40,6 +68,7 @@ class _CameraScreenState extends State<CameraScreen>
   bool _isCameraInitializing = false;
   bool _isCaptureOperationInProgress = false;
   FlashMode _flashMode = FlashMode.off;
+  AudioTrack? _selectedAudioTrack;
 
   // Global key for exact preview viewfinder coordinate calculation
   final GlobalKey _previewKey = GlobalKey();
@@ -85,6 +114,12 @@ class _CameraScreenState extends State<CameraScreen>
   final _picker = ImagePicker();
   bool _isPickingImage = false;
 
+  // Aspect Ratio & Toolbar Visibility State
+  static const String _prefAspectRatioKey = 'camera_aspect_ratio_pref';
+  static const String _prefShowToolbarKey = 'camera_show_toolbar_pref';
+  CameraAspectRatio _aspectRatio = CameraAspectRatio.full;
+  bool _showSideToolbar = true;
+
   late final AnimationController _pulseController = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1200),
@@ -96,6 +131,66 @@ class _CameraScreenState extends State<CameraScreen>
     WidgetsBinding.instance.addObserver(this);
     _initializeCamera();
     _fetchLatestGalleryImage();
+    _loadPreferences();
+  }
+
+  Future<void> _loadPreferences() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedRatio = prefs.getString(_prefAspectRatioKey);
+      final savedToolbar = prefs.getBool(_prefShowToolbarKey);
+
+      if (savedRatio != null && mounted) {
+        final matchedRatio = CameraAspectRatio.values.firstWhere(
+          (r) => r.name == savedRatio || r.label == savedRatio,
+          orElse: () => CameraAspectRatio.full,
+        );
+        setState(() {
+          _aspectRatio = matchedRatio;
+        });
+      }
+
+      if (savedToolbar != null && mounted) {
+        setState(() {
+          _showSideToolbar = savedToolbar;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading camera preferences: $e');
+    }
+  }
+
+  Future<void> _setAspectRatio(CameraAspectRatio ratio) async {
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _aspectRatio = ratio;
+    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_prefAspectRatioKey, ratio.name);
+    } catch (e) {
+      debugPrint('Error saving aspect ratio: $e');
+    }
+  }
+
+  void _cycleAspectRatio() {
+    final currentIndex = CameraAspectRatio.values.indexOf(_aspectRatio);
+    final nextIndex = (currentIndex + 1) % CameraAspectRatio.values.length;
+    _setAspectRatio(CameraAspectRatio.values[nextIndex]);
+  }
+
+  Future<void> _toggleSideToolbar() async {
+    HapticFeedback.lightImpact();
+    final nextVal = !_showSideToolbar;
+    setState(() {
+      _showSideToolbar = nextVal;
+    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_prefShowToolbarKey, nextVal);
+    } catch (e) {
+      debugPrint('Error saving toolbar pref: $e');
+    }
   }
 
   @override
@@ -391,6 +486,139 @@ class _CameraScreenState extends State<CameraScreen>
     );
   }
 
+  void _openAspectRatioSelector() {
+    HapticFeedback.lightImpact();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F172A).withValues(alpha: 0.96),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(color: Colors.white12),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Camera Aspect Ratio',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Frames viewfinder and crops photos & videos with black letterboxing',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.65),
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: CameraAspectRatio.values.map((ratio) {
+                    final isSelected = _aspectRatio == ratio;
+                    return GestureDetector(
+                      onTap: () {
+                        _setAspectRatio(ratio);
+                        Navigator.pop(ctx);
+                      },
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 60,
+                            height: 60,
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? AppColors.secondaryTeal.withValues(alpha: 0.25)
+                                  : Colors.white10,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: isSelected
+                                    ? AppColors.secondaryTeal
+                                    : Colors.white24,
+                                width: isSelected ? 2 : 1,
+                              ),
+                            ),
+                            child: Center(
+                              child: _buildAspectRatioIcon(ratio, isSelected),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            ratio.label,
+                            style: TextStyle(
+                              color: isSelected ? AppColors.secondaryTeal : Colors.white70,
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAspectRatioIcon(CameraAspectRatio ratio, bool isSelected) {
+    final color = isSelected ? AppColors.secondaryTeal : Colors.white70;
+    switch (ratio) {
+      case CameraAspectRatio.full:
+        return Icon(Icons.fullscreen_rounded, color: color, size: 28);
+      case CameraAspectRatio.ratio9_16:
+        return Container(
+          width: 18,
+          height: 32,
+          decoration: BoxDecoration(
+            border: Border.all(color: color, width: 2),
+            borderRadius: BorderRadius.circular(4),
+          ),
+        );
+      case CameraAspectRatio.ratio3_4:
+        return Container(
+          width: 22,
+          height: 30,
+          decoration: BoxDecoration(
+            border: Border.all(color: color, width: 2),
+            borderRadius: BorderRadius.circular(4),
+          ),
+        );
+      case CameraAspectRatio.ratio1_1:
+        return Container(
+          width: 24,
+          height: 24,
+          decoration: BoxDecoration(
+            border: Border.all(color: color, width: 2),
+            borderRadius: BorderRadius.circular(4),
+          ),
+        );
+    }
+  }
+
   void _setZoom(double zoom) {
     final clamped = zoom.clamp(_minZoom, _maxZoom);
     setState(() => _currentZoom = clamped);
@@ -582,18 +810,27 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
-  void _handleMediaCapture(XFile file, CameraMode mode) {
+  void _handleMediaCapture(XFile file, CameraMode mode) async {
     if (!mounted) return;
-    Navigator.of(context).push(
+    final result = await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => MediaEditorScreen(
           mediaFile: file,
           isVideo: mode == CameraMode.video,
           isForStory: widget.isForStory,
+          cameraContext: widget.effectiveContext,
+          directRecipientId: widget.directRecipientId,
+          directRecipientName: widget.directRecipientName,
           onMediaExported: widget.onMediaCaptured,
+          initialAudioTrack: _selectedAudioTrack,
+          aspectRatio: _aspectRatio.ratio,
+          aspectRatioLabel: _aspectRatio.label,
         ),
       ),
     );
+    if (result != null && mounted) {
+      Navigator.of(context).pop(result);
+    }
   }
 
   Future<void> _pickFromGallery() async {
@@ -608,53 +845,14 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
-  void _openMusicSelector() {
+  Future<void> _openMusicSelector() async {
     HapticFeedback.lightImpact();
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF1E293B),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        padding: const EdgeInsets.all(20),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
-              const SizedBox(height: 16),
-              const Row(
-                children: [
-                  Icon(Icons.music_note_rounded, color: AppColors.secondaryTeal, size: 24),
-                  SizedBox(width: 10),
-                  Text('Add Sound to Snap', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                ],
-              ),
-              const SizedBox(height: 16),
-              ListTile(
-                leading: const CircleAvatar(backgroundColor: AppColors.secondaryTeal, child: Icon(Icons.mic, color: Colors.white)),
-                title: const Text('Original Camera Audio', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-                subtitle: const Text('Live microphone sound', style: TextStyle(color: Colors.white60, fontSize: 12)),
-                trailing: const Icon(Icons.check, color: AppColors.secondaryTeal),
-                onTap: () => Navigator.pop(context),
-              ),
-              ListTile(
-                leading: const CircleAvatar(backgroundColor: Colors.white10, child: Icon(Icons.library_music_rounded, color: Colors.white)),
-                title: const Text('Campus Anthem / Trending', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-                subtitle: const Text('Browse library of campus sounds', style: TextStyle(color: Colors.white60, fontSize: 12)),
-                trailing: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white38, size: 14),
-                onTap: () {
-                  Navigator.pop(context);
-                  context.push('/audio-track?title=Campus+Anthem&author=ABUAD');
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    final track = await MusicPickerSheet.show(context);
+    if (track != null && mounted) {
+      setState(() {
+        _selectedAudioTrack = track;
+      });
+    }
   }
 
   @override
@@ -712,15 +910,7 @@ class _CameraScreenState extends State<CameraScreen>
               ),
             ),
 
-          // 3. Composition Grid Overlay
-          if (_showGrid)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: CustomPaint(painter: GridPainter(_gridType)),
-              ),
-            ),
-
-          // 4. Top Action Bar: [X], [Flash], [Music Pill]
+          // 4. Top Action Bar: [X], [Flash], [Music Pill], [Aspect Ratio Pill], [Toolbar Toggle]
           Positioned(
             top: MediaQuery.of(context).padding.top + 8,
             left: 16,
@@ -745,7 +935,7 @@ class _CameraScreenState extends State<CameraScreen>
                       isActive: _flashMode != FlashMode.off,
                       onTap: _toggleFlash,
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 8),
                     // Music Pill (Frosted dropdown capsule)
                     GestureDetector(
                       onTap: _openMusicSelector,
@@ -754,18 +944,49 @@ class _CameraScreenState extends State<CameraScreen>
                         child: BackdropFilter(
                           filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
                             decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.35),
+                              color: _selectedAudioTrack != null
+                                  ? AppColors.secondaryTeal.withValues(alpha: 0.35)
+                                  : Colors.black.withValues(alpha: 0.35),
                               borderRadius: BorderRadius.circular(24),
-                              border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+                              border: Border.all(
+                                color: _selectedAudioTrack != null
+                                    ? AppColors.secondaryTeal
+                                    : Colors.white.withValues(alpha: 0.15),
+                              ),
                             ),
-                            child: const Row(
+                            child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.music_note_rounded, color: Colors.white, size: 18),
-                                SizedBox(width: 4),
-                                Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white70, size: 18),
+                                const Icon(Icons.music_note_rounded, color: Colors.white, size: 18),
+                                if (_selectedAudioTrack != null) ...[
+                                  const SizedBox(width: 6),
+                                  ConstrainedBox(
+                                    constraints: const BoxConstraints(maxWidth: 100),
+                                    child: Text(
+                                      _selectedAudioTrack!.title,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  GestureDetector(
+                                    onTap: () {
+                                      HapticFeedback.lightImpact();
+                                      setState(() => _selectedAudioTrack = null);
+                                    },
+                                    child: const Icon(Icons.close, color: Colors.white70, size: 16),
+                                  ),
+                                ] else ...[
+                                  const SizedBox(width: 4),
+                                  const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white70, size: 18),
+                                ],
                               ],
                             ),
                           ),
@@ -775,122 +996,257 @@ class _CameraScreenState extends State<CameraScreen>
                   ],
                 ),
 
-                // Balance space
-                const SizedBox(width: 42),
+                // Right Top Actions: [Aspect Ratio Pill] & [Side Toolbar Toggle]
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Aspect Ratio Pill
+                    GestureDetector(
+                      onTap: _cycleAspectRatio,
+                      onLongPress: _openAspectRatioSelector,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: _aspectRatio != CameraAspectRatio.full
+                                  ? AppColors.secondaryTeal.withValues(alpha: 0.3)
+                                  : Colors.black.withValues(alpha: 0.35),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: _aspectRatio != CameraAspectRatio.full
+                                    ? AppColors.secondaryTeal
+                                    : Colors.white.withValues(alpha: 0.18),
+                                width: 1,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.crop_rounded,
+                                  color: _aspectRatio != CameraAspectRatio.full
+                                      ? AppColors.secondaryTeal
+                                      : Colors.white,
+                                  size: 15,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _aspectRatio.label,
+                                  style: TextStyle(
+                                    color: _aspectRatio != CameraAspectRatio.full
+                                        ? AppColors.secondaryTeal
+                                        : Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Side Toolbar Visibility Toggle
+                    _buildFrostedCircleButton(
+                      icon: _showSideToolbar ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                      size: 42,
+                      isActive: _showSideToolbar,
+                      onTap: _toggleSideToolbar,
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
 
-          // 5. Right Vertical Floating Capsule Toolbar (Frosted Island from Reference)
+          // 5. Right Vertical Floating Capsule Toolbar (Frosted Island) - Collapsible
           Positioned(
-            right: 16,
+            right: 14,
             top: MediaQuery.of(context).padding.top + 60,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(30),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                child: Container(
-                  width: 50,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.38),
+            child: AnimatedSlide(
+              offset: _showSideToolbar ? Offset.zero : const Offset(1.4, 0),
+              duration: const Duration(milliseconds: 280),
+              curve: Curves.easeInOutCubic,
+              child: AnimatedOpacity(
+                opacity: _showSideToolbar ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 220),
+                child: IgnorePointer(
+                  ignoring: !_showSideToolbar,
+                  child: ClipRRect(
                     borderRadius: BorderRadius.circular(30),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.18),
-                      width: 1,
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                      child: Container(
+                        width: 50,
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.42),
+                          borderRadius: BorderRadius.circular(30),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.18),
+                            width: 1,
+                          ),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Collapse Chevron (Arrow to hide)
+                            GestureDetector(
+                              onTap: _toggleSideToolbar,
+                              behavior: HitTestBehavior.opaque,
+                              child: Container(
+                                width: 34,
+                                height: 26,
+                                alignment: Alignment.center,
+                                child: const Icon(
+                                  Icons.chevron_right_rounded,
+                                  color: Colors.white70,
+                                  size: 22,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Container(width: 20, height: 1, color: Colors.white12),
+                            const SizedBox(height: 8),
+                            // Aspect Ratio switcher in toolbar
+                            _buildToolbarIcon(
+                              icon: Icons.crop_rounded,
+                              isActive: _aspectRatio != CameraAspectRatio.full,
+                              activeColor: AppColors.secondaryTeal,
+                              onTap: _cycleAspectRatio,
+                              onLongPress: _openAspectRatioSelector,
+                            ),
+                            const SizedBox(height: 12),
+                            // Tuning / Exposure
+                            _buildToolbarIcon(
+                              icon: Icons.tune_rounded,
+                              isActive: _showExposureSlider,
+                              onTap: () => setState(() => _showExposureSlider = !_showExposureSlider),
+                            ),
+                            const SizedBox(height: 12),
+                            // Camera Flip
+                            _buildToolbarIcon(
+                              icon: Icons.flip_camera_ios_rounded,
+                              onTap: _toggleCamera,
+                            ),
+                            const SizedBox(height: 12),
+                            // Timer (History/Retake)
+                            _buildToolbarIcon(
+                              icon: _timerModeActive ? Icons.timer_rounded : Icons.timer_outlined,
+                              isActive: _timerModeActive,
+                              onTap: _toggleTimerMode,
+                            ),
+                            const SizedBox(height: 12),
+                            // Night Mode (Crescent Moon)
+                            _buildToolbarIcon(
+                              icon: _isNightMode ? Icons.nightlight_round : Icons.dark_mode_outlined,
+                              isActive: _isNightMode,
+                              activeColor: Colors.amberAccent,
+                              onTap: _toggleNightMode,
+                            ),
+                            const SizedBox(height: 12),
+                            // Grid Mode (4 squares - tap to toggle, long-press to choose grid style)
+                            _buildToolbarIcon(
+                              icon: _showGrid ? Icons.grid_view_rounded : Icons.grid_view,
+                              isActive: _showGrid,
+                              onTap: () => setState(() => _showGrid = !_showGrid),
+                              onLongPress: _openGridTypeSelector,
+                            ),
+                            const SizedBox(height: 10),
+                            Container(width: 20, height: 1, color: Colors.white24),
+                            const SizedBox(height: 10),
+                            // Text Tool (Aa)
+                            _buildToolbarIcon(
+                              label: 'Aa',
+                              onTap: () {
+                                HapticFeedback.lightImpact();
+                                _takePhoto();
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            // Pen / Draw Tool
+                            _buildToolbarIcon(
+                              icon: Icons.edit_outlined,
+                              onTap: () {
+                                HapticFeedback.lightImpact();
+                                _takePhoto();
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            // Sticker Tool
+                            _buildToolbarIcon(
+                              icon: Icons.sticky_note_2_outlined,
+                              onTap: () {
+                                HapticFeedback.lightImpact();
+                                _openSnapchatLenses();
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            // Scissors Tool
+                            _buildToolbarIcon(
+                              icon: Icons.content_cut_rounded,
+                              onTap: () => HapticFeedback.lightImpact(),
+                            ),
+                            const SizedBox(height: 12),
+                            // Paperclip Link Tool
+                            _buildToolbarIcon(
+                              icon: Icons.link_rounded,
+                              onTap: () => HapticFeedback.lightImpact(),
+                            ),
+                            const SizedBox(height: 12),
+                            // Stopwatch Duration
+                            _buildToolbarIcon(
+                              icon: Icons.av_timer_rounded,
+                              onTap: () => HapticFeedback.lightImpact(),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Tuning / Exposure
-                      _buildToolbarIcon(
-                        icon: Icons.tune_rounded,
-                        isActive: _showExposureSlider,
-                        onTap: () => setState(() => _showExposureSlider = !_showExposureSlider),
-                      ),
-                      const SizedBox(height: 14),
-                      // Camera Flip
-                      _buildToolbarIcon(
-                        icon: Icons.flip_camera_ios_rounded,
-                        onTap: _toggleCamera,
-                      ),
-                      const SizedBox(height: 14),
-                      // Timer (History/Retake)
-                      _buildToolbarIcon(
-                        icon: _timerModeActive ? Icons.timer_rounded : Icons.timer_outlined,
-                        isActive: _timerModeActive,
-                        onTap: _toggleTimerMode,
-                      ),
-                      const SizedBox(height: 14),
-                      // Night Mode (Crescent Moon)
-                      _buildToolbarIcon(
-                        icon: _isNightMode ? Icons.nightlight_round : Icons.dark_mode_outlined,
-                        isActive: _isNightMode,
-                        activeColor: Colors.amberAccent,
-                        onTap: _toggleNightMode,
-                      ),
-                      const SizedBox(height: 14),
-                      // Grid Mode (4 squares - tap to toggle, long-press to choose grid style)
-                      _buildToolbarIcon(
-                        icon: _showGrid ? Icons.grid_view_rounded : Icons.grid_view,
-                        isActive: _showGrid,
-                        onTap: () => setState(() => _showGrid = !_showGrid),
-                        onLongPress: _openGridTypeSelector,
-                      ),
-                      const SizedBox(height: 12),
-                      Container(width: 24, height: 1, color: Colors.white24),
-                      const SizedBox(height: 12),
-                      // Text Tool (Aa)
-                      _buildToolbarIcon(
-                        label: 'Aa',
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          _takePhoto();
-                        },
-                      ),
-                      const SizedBox(height: 14),
-                      // Pen / Draw Tool
-                      _buildToolbarIcon(
-                        icon: Icons.edit_outlined,
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          _takePhoto();
-                        },
-                      ),
-                      const SizedBox(height: 14),
-                      // Sticker Tool
-                      _buildToolbarIcon(
-                        icon: Icons.sticky_note_2_outlined,
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          _openSnapchatLenses();
-                        },
-                      ),
-                      const SizedBox(height: 14),
-                      // Scissors Tool
-                      _buildToolbarIcon(
-                        icon: Icons.content_cut_rounded,
-                        onTap: () => HapticFeedback.lightImpact(),
-                      ),
-                      const SizedBox(height: 14),
-                      // Paperclip Link Tool
-                      _buildToolbarIcon(
-                        icon: Icons.link_rounded,
-                        onTap: () => HapticFeedback.lightImpact(),
-                      ),
-                      const SizedBox(height: 14),
-                      // Stopwatch Duration
-                      _buildToolbarIcon(
-                        icon: Icons.av_timer_rounded,
-                        onTap: () => HapticFeedback.lightImpact(),
-                      ),
-                    ],
                   ),
                 ),
               ),
             ),
           ),
+
+          // 5.5 Mini Docked Pull Handle (when side toolbar is collapsed)
+          if (!_showSideToolbar)
+            Positioned(
+              right: 6,
+              top: MediaQuery.of(context).padding.top + 70,
+              child: GestureDetector(
+                onTap: _toggleSideToolbar,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white24, width: 0.8),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black38, blurRadius: 8, offset: Offset(-2, 2)),
+                        ],
+                      ),
+                      child: const Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.chevron_left_rounded, color: Colors.white, size: 20),
+                          SizedBox(height: 4),
+                          Icon(Icons.tune_rounded, color: AppColors.secondaryTeal, size: 14),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
 
           // 6. Vertical Exposure Slider (When tuning toggle is active)
           if (_showExposureSlider)
@@ -1124,7 +1480,7 @@ class _CameraScreenState extends State<CameraScreen>
     );
   }
 
-  // Viewfinder Edge-to-Edge full screen cover (no black bars, no distortion)
+  // Viewfinder with dynamic Aspect Ratio letterboxing and framing
   Widget _buildCameraViewfinder(Size screenSize, bool isFrontCamera) {
     if (_controller == null || !_controller!.value.isInitialized) {
       return Container(
@@ -1139,24 +1495,56 @@ class _CameraScreenState extends State<CameraScreen>
     final previewWidth = previewSize != null ? previewSize.height : screenSize.width;
     final previewHeight = previewSize != null ? previewSize.width : screenSize.height;
 
-    return SizedBox(
+    double targetWidth = screenSize.width;
+    double targetHeight = screenSize.height;
+
+    if (_aspectRatio.ratio != null) {
+      final calculatedHeight = screenSize.width / _aspectRatio.ratio!;
+      if (calculatedHeight <= screenSize.height) {
+        targetWidth = screenSize.width;
+        targetHeight = calculatedHeight;
+      } else {
+        targetHeight = screenSize.height;
+        targetWidth = screenSize.height * _aspectRatio.ratio!;
+      }
+    }
+
+    return Container(
+      color: Colors.black,
       width: screenSize.width,
       height: screenSize.height,
-      child: ClipRect(
-        child: OverflowBox(
-          alignment: Alignment.center,
-          child: FittedBox(
-            fit: BoxFit.cover,
-            child: SizedBox(
-              width: previewWidth,
-              height: previewHeight,
-              child: Transform(
-                alignment: Alignment.center,
-                transform: isFrontCamera && _isMirrored
-                    ? Matrix4.diagonal3Values(-1.0, 1.0, 1.0)
-                    : Matrix4.identity(),
-                child: CameraPreview(_controller!),
-              ),
+      child: Center(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOutCubic,
+          width: targetWidth,
+          height: targetHeight,
+          child: ClipRect(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                OverflowBox(
+                  alignment: Alignment.center,
+                  child: FittedBox(
+                    fit: BoxFit.cover,
+                    child: SizedBox(
+                      width: previewWidth,
+                      height: previewHeight,
+                      child: Transform(
+                        alignment: Alignment.center,
+                        transform: isFrontCamera && _isMirrored
+                            ? Matrix4.diagonal3Values(-1.0, 1.0, 1.0)
+                            : Matrix4.identity(),
+                        child: CameraPreview(_controller!),
+                      ),
+                    ),
+                  ),
+                ),
+                if (_showGrid)
+                  IgnorePointer(
+                    child: CustomPaint(painter: GridPainter(_gridType)),
+                  ),
+              ],
             ),
           ),
         ),

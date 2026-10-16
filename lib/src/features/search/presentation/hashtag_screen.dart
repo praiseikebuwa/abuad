@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/url_validator.dart';
+import '../../../core/services/api_client.dart';
 import '../../feed/data/post_repository.dart';
 import '../../feed/domain/post.dart';
 import '../../feed/presentation/widgets/post_card.dart';
@@ -60,10 +62,31 @@ class _HashtagScreenState extends ConsumerState<HashtagScreen>
     try {
       final prefs = await SharedPreferences.getInstance();
       final followedTags = prefs.getStringList('followed_hashtags') ?? [];
+      final key = _cleanTag.toLowerCase();
       if (mounted) {
         setState(() {
-          _isFollowingTag = followedTags.contains(_cleanTag.toLowerCase());
+          _isFollowingTag = followedTags.contains(key);
         });
+      }
+
+      // Sync with backend if authenticated
+      if (ApiClient.isAuthenticated) {
+        try {
+          final res = await ApiClient.get('/posts/hashtag/following');
+          if (res.statusCode == 200) {
+            final decoded = jsonDecode(res.body);
+            final dataList = decoded['data'];
+            if (dataList is List) {
+              final serverTags = dataList.map((e) => e.toString().toLowerCase()).toList();
+              await prefs.setStringList('followed_hashtags', serverTags);
+              if (mounted) {
+                setState(() {
+                  _isFollowingTag = serverTags.contains(key);
+                });
+              }
+            }
+          }
+        } catch (_) {}
       }
     } catch (_) {}
   }
@@ -74,18 +97,25 @@ class _HashtagScreenState extends ConsumerState<HashtagScreen>
       final prefs = await SharedPreferences.getInstance();
       final followedTags = prefs.getStringList('followed_hashtags') ?? [];
       final key = _cleanTag.toLowerCase();
+      final willFollow = !_isFollowingTag;
 
       setState(() {
-        if (_isFollowingTag) {
+        if (willFollow) {
+          if (!followedTags.contains(key)) followedTags.add(key);
+          _isFollowingTag = true;
+        } else {
           followedTags.remove(key);
           _isFollowingTag = false;
-        } else {
-          followedTags.add(key);
-          _isFollowingTag = true;
         }
       });
 
       await prefs.setStringList('followed_hashtags', followedTags);
+
+      // Notify backend asynchronously
+      if (ApiClient.isAuthenticated) {
+        final endpoint = willFollow ? '/posts/hashtag/follow' : '/posts/hashtag/unfollow';
+        ApiClient.post(endpoint, {'tag': key}).then((_) {}).catchError((_) => null);
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).clearSnackBars();
@@ -154,7 +184,10 @@ class _HashtagScreenState extends ConsumerState<HashtagScreen>
       backgroundColor: theme.scaffoldBackgroundColor,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
-          context.push('/create-post', extra: {'initialText': '$_hashtagDisplay '});
+          context.push('/create-post', extra: {
+            'initialContent': '$_hashtagDisplay ',
+            'initialText': '$_hashtagDisplay ',
+          });
         },
         backgroundColor: AppColors.primaryInk,
         foregroundColor: Colors.white,
@@ -201,29 +234,79 @@ class _HashtagScreenState extends ConsumerState<HashtagScreen>
                 ),
               ],
               flexibleSpace: FlexibleSpaceBar(
-                background: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: isDark
-                          ? [
-                              const Color(0xFF1E1B4B).withValues(alpha: 0.6),
-                              const Color(0xFF0F172A),
-                            ]
-                          : [
-                              AppColors.primaryInk.withValues(alpha: 0.08),
-                              Colors.white,
-                            ],
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
+                background: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // Dynamic gradient base
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: isDark
+                              ? [
+                                  const Color(0xFF0F172A),
+                                  const Color(0xFF1E1B4B),
+                                  const Color(0xFF090D16),
+                                ]
+                              : [
+                                  AppColors.primaryInk.withValues(alpha: 0.12),
+                                  const Color(0xFFEEF2FF),
+                                  Colors.white,
+                                ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                      ),
                     ),
-                  ),
-                  child: SafeArea(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 48, 20, 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
+                    // Ambient decorative glow
+                    Positioned(
+                      top: -30,
+                      right: -20,
+                      child: Container(
+                        width: 170,
+                        height: 170,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0xFF6366F1).withValues(alpha: isDark ? 0.18 : 0.08),
+                        ),
+                      ),
+                    ),
+                    // Repeating watermark hashtag typography
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: ClipRect(
+                          child: Transform.rotate(
+                            angle: -0.12,
+                            child: Opacity(
+                              opacity: isDark ? 0.05 : 0.035,
+                              child: Center(
+                                child: Text(
+                                  List.generate(
+                                    6,
+                                    (_) => List.generate(4, (_) => _hashtagDisplay).join('   '),
+                                  ).join('\n'),
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 2.5,
+                                    color: isDark ? Colors.white : AppColors.primaryInk,
+                                    height: 1.6,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Foreground content
+                    SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 48, 20, 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
                           Row(
                             children: [
                               // Glowing Tag Icon
@@ -381,8 +464,9 @@ class _HashtagScreenState extends ConsumerState<HashtagScreen>
                       ),
                     ),
                   ),
-                ),
+                ],
               ),
+            ),
               bottom: PreferredSize(
                 preferredSize: const Size.fromHeight(48),
                 child: Container(
