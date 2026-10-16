@@ -1169,42 +1169,137 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Future<void> _viewSnap(ChatMessage message, ChatRepository repo) async {
     if (message.imageUrl == null) return;
 
-    // Open specialized viewer
+    bool isSavedInChat = message.savedBy.contains(repo.currentUserId);
+
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => Scaffold(
-          backgroundColor: Colors.black,
-          body: Stack(
-            children: [
-              Center(
-                child: CachedNetworkImage(
-                  imageUrl: message.imageUrl!,
-                  fit: BoxFit.contain,
-                  width: double.infinity,
-                  height: double.infinity,
-                ),
-              ),
-              Positioned(
-                top: 50,
-                right: 20,
-                child: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white, size: 30),
+        builder: (context) => StatefulBuilder(
+          builder: (context, setSnapState) {
+            return Scaffold(
+              backgroundColor: Colors.black,
+              appBar: AppBar(
+                backgroundColor: Colors.transparent,
+                elevation: 0,
+                leading: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white, size: 28),
                   onPressed: () => Navigator.pop(context),
                 ),
-              ),
-              const Positioned(
-                bottom: 40,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Text(
-                    'Snap will close after viewing',
-                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                actions: [
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      backgroundColor: isSavedInChat
+                          ? AppColors.secondaryTeal
+                          : Colors.white.withValues(alpha: 0.2),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 6,
+                      ),
+                    ),
+                    icon: Icon(
+                      isSavedInChat
+                          ? Icons.bookmark
+                          : Icons.bookmark_add_outlined,
+                      size: 18,
+                      color: Colors.white,
+                    ),
+                    label: Text(
+                      isSavedInChat ? 'Saved in Chat' : 'Save in Chat',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                    onPressed: () async {
+                      await repo.toggleSaveMessage(widget.channelId, message.id);
+                      setSnapState(() {
+                        isSavedInChat = !isSavedInChat;
+                      });
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              isSavedInChat
+                                  ? '📌 Snap saved in chat'
+                                  : 'Snap removed from saved',
+                            ),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    },
                   ),
-                ),
+                  IconButton(
+                    icon: const Icon(
+                      Icons.download_rounded,
+                      color: Colors.white,
+                      size: 26,
+                    ),
+                    tooltip: 'Save to Gallery',
+                    onPressed: () => _saveImageToGallery(message.imageUrl!),
+                  ),
+                  const SizedBox(width: 8),
+                ],
               ),
-            ],
-          ),
+              body: Stack(
+                children: [
+                  Center(
+                    child: InteractiveViewer(
+                      minScale: 1.0,
+                      maxScale: 4.0,
+                      child: CachedNetworkImage(
+                        imageUrl: message.imageUrl!,
+                        fit: BoxFit.contain,
+                        width: double.infinity,
+                        height: double.infinity,
+                        placeholder: (context, url) => const Center(
+                          child: CircularProgressIndicator(color: Colors.white),
+                        ),
+                        errorWidget: (context, url, error) => const Center(
+                          child: Icon(
+                            Icons.broken_image,
+                            color: Colors.white54,
+                            size: 64,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    bottom: 30,
+                    left: 20,
+                    right: 20,
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.white24, width: 0.8),
+                        ),
+                        child: Text(
+                          isSavedInChat
+                              ? '📌 Saved in chat • Accessible anytime'
+                              : '📸 Tap "Save in Chat" to keep this snap in the conversation',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         ),
       ),
     );
@@ -1220,47 +1315,99 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     ChatRepository repo,
   ) async {
     if (message.imageUrl == null) return;
+    bool isSavedInChat = message.savedBy.contains(repo.currentUserId);
 
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => Scaffold(
-          backgroundColor: Colors.black,
-          appBar: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            leading: IconButton(
-              icon: const Icon(Icons.close, color: Colors.white),
-              onPressed: () => Navigator.pop(context),
-            ),
-            actions: [
-              IconButton(
-                icon: Icon(
-                  message.savedBy.contains(repo.currentUserId)
-                      ? Icons.bookmark
-                      : Icons.bookmark_border,
-                  color: Colors.white,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setSnapState) {
+            return Scaffold(
+              backgroundColor: Colors.black,
+              appBar: AppBar(
+                backgroundColor: Colors.transparent,
+                elevation: 0,
+                leading: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.pop(context),
                 ),
-                onPressed: () async {
-                  await repo.toggleSaveMessage(widget.channelId, message.id);
-                  Navigator.pop(
-                    context,
-                  ); // Refresh by closing and reopening or just pop
-                },
+                actions: [
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      backgroundColor: isSavedInChat
+                          ? AppColors.secondaryTeal
+                          : Colors.white.withValues(alpha: 0.2),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 6,
+                      ),
+                    ),
+                    icon: Icon(
+                      isSavedInChat
+                          ? Icons.bookmark
+                          : Icons.bookmark_add_outlined,
+                      size: 18,
+                      color: Colors.white,
+                    ),
+                    label: Text(
+                      isSavedInChat ? 'Saved in Chat' : 'Save in Chat',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                    onPressed: () async {
+                      await repo.toggleSaveMessage(widget.channelId, message.id);
+                      setSnapState(() {
+                        isSavedInChat = !isSavedInChat;
+                      });
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              isSavedInChat
+                                  ? '📌 Snap saved in chat'
+                                  : 'Snap removed from saved',
+                            ),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.download_rounded, color: Colors.white),
+                    tooltip: 'Save to Gallery',
+                    onPressed: () => _saveImageToGallery(message.imageUrl!),
+                  ),
+                  const SizedBox(width: 8),
+                ],
               ),
-              IconButton(
-                icon: const Icon(Icons.download, color: Colors.white),
-                onPressed: () => _saveImageToGallery(message.imageUrl!),
+              body: Center(
+                child: InteractiveViewer(
+                  minScale: 1.0,
+                  maxScale: 4.0,
+                  child: CachedNetworkImage(
+                    imageUrl: message.imageUrl!,
+                    fit: BoxFit.contain,
+                    placeholder: (context, url) => const Center(
+                      child: CircularProgressIndicator(color: Colors.white),
+                    ),
+                    errorWidget: (context, url, error) => const Center(
+                      child: Icon(
+                        Icons.broken_image,
+                        color: Colors.white54,
+                        size: 64,
+                      ),
+                    ),
+                  ),
+                ),
               ),
-            ],
-          ),
-          body: Center(
-            child: InteractiveViewer(
-              child: CachedNetworkImage(
-                imageUrl: message.imageUrl!,
-                fit: BoxFit.contain,
-              ),
-            ),
-          ),
+            );
+          },
         ),
       ),
     );
@@ -1278,6 +1425,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (isSnap) {
       if (isMe) {
         // I sent the snap
+        if (message.savedBy.isNotEmpty) {
+          return _buildSavedSnapPreview(message, isMe, isDark, repo);
+        }
         return Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -1307,75 +1457,147 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         );
       } else {
         // Someone sent me a snap
-        if (isReadByMe && message.savedBy.isEmpty) {
+        if (message.savedBy.isNotEmpty) {
+          // Saved Snap - Show image directly
+          return _buildSavedSnapPreview(message, isMe, isDark, repo);
+        } else if (isReadByMe) {
+          // Replay Snap or Save in Chat
           return Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: isDark ? Colors.white12 : Colors.grey[200],
+              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
               borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: AppColors.secondaryTeal.withValues(alpha: 0.35),
+                width: 1.2,
+              ),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  Icons.camera_alt_outlined,
-                  color: isDark ? Colors.grey[400] : Colors.grey[600],
-                  size: 20,
+                // Replay button
+                InkWell(
+                  onTap: () => _viewSnap(message, repo),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.secondaryTeal.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.replay_rounded,
+                          color: AppColors.secondaryTeal,
+                          size: 18,
+                        ),
+                        SizedBox(width: 6),
+                        Text(
+                          'Replay',
+                          style: TextStyle(
+                            color: AppColors.secondaryTeal,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  'Opened',
-                  style: TextStyle(
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
-                    fontWeight: FontWeight.w500,
+                // Save in Chat button
+                InkWell(
+                  onTap: () async {
+                    await repo.toggleSaveMessage(widget.channelId, message.id);
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('📌 Snap saved in chat'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? Colors.white10
+                          : Colors.black.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.bookmark_add_outlined,
+                          color: isDark ? Colors.white70 : Colors.black87,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Save',
+                          style: TextStyle(
+                            color: isDark ? Colors.white70 : Colors.black87,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
             ),
           );
-        } else if (message.savedBy.isNotEmpty) {
-          // Saved Snap - Show image directly
-          return _buildSavedSnapPreview(message, isMe, isDark, repo);
         } else {
           // New Snap!
           return GestureDetector(
             onTap: () => _viewSnap(message, repo),
-            child:
-                Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.secondaryTeal,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.secondaryTeal.withValues(
-                              alpha: 0.3,
-                            ),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.camera_alt, color: Colors.white, size: 24),
-                          SizedBox(width: 12),
-                          Text(
-                            'Tap to view Snap',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 15,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                    .animate(
-                      onPlay: (controller) => controller.repeat(reverse: true),
-                    )
-                    .shimmer(duration: 2.seconds, color: Colors.white24),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.secondaryTeal,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.secondaryTeal.withValues(
+                      alpha: 0.3,
+                    ),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.camera_alt, color: Colors.white, size: 24),
+                  SizedBox(width: 12),
+                  Text(
+                    'Tap to view Snap',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 15,
+                    ),
+                  ),
+                ],
+              ),
+            )
+            .animate(
+              onPlay: (controller) => controller.repeat(reverse: true),
+            )
+            .shimmer(duration: 2.seconds, color: Colors.white24),
           );
         }
       }
