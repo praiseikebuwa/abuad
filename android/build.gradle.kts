@@ -1,4 +1,18 @@
 allprojects {
+    buildscript {
+        configurations.all {
+            resolutionStrategy {
+                force("com.android.tools.build:gradle:8.9.1")
+                force("org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.20")
+            }
+        }
+    }
+    configurations.all {
+        resolutionStrategy {
+            force("com.android.tools.build:gradle:8.9.1")
+            force("org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.20")
+        }
+    }
     repositories {
         google()
         mavenCentral()
