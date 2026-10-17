@@ -86,12 +86,28 @@ async function formatChannel(ch: any, currentUserId: string) {
 }
 
 function formatMessage(msg: any) {
-  let reactions: Record<string, string> = {};
+  let reactions: Record<string, any> = {};
   let savedBy: string[] = [];
   let readBy: string[] = [];
   try { reactions = typeof msg.reactions === 'string' ? JSON.parse(msg.reactions || '{}') : (msg.reactions || {}); } catch {}
   try { savedBy = typeof msg.savedBy === 'string' ? JSON.parse(msg.savedBy || '[]') : (msg.savedBy || []); } catch {}
   try { readBy = typeof msg.readBy === 'string' ? JSON.parse(msg.readBy || '[]') : (msg.readBy || []); } catch {}
+
+  let replyToId = msg.replyToId || msg.reply_to_id || null;
+  let replyToContent = msg.replyToContent || msg.reply_to_content || null;
+  let replyToSenderId = msg.replyToSenderId || msg.reply_to_sender_id || null;
+
+  if (reactions._reply) {
+    replyToId = replyToId || reactions._reply.id || null;
+    replyToContent = replyToContent || reactions._reply.content || null;
+    replyToSenderId = replyToSenderId || reactions._reply.senderId || null;
+    delete reactions._reply;
+  }
+
+  const isSnap = msg.type === 'snap' || msg.isSnap === true || reactions._isSnap === true;
+  if (reactions._isSnap) {
+    delete reactions._isSnap;
+  }
 
   const isRead = readBy.length > 1;
 
@@ -110,12 +126,18 @@ function formatMessage(msg: any) {
     sender_id: msg.senderId,
     content: msg.text || msg.content || '',
     text: msg.text || msg.content || '',
-    type: msg.type || 'text',
+    type: isSnap ? 'snap' : (msg.type || 'text'),
     mediaUrl: msg.mediaUrl || null,
     imageUrl: msg.mediaUrl || null,
     image_url: msg.mediaUrl || null,
-    isSnap: msg.type === 'snap' || msg.isSnap === true,
-    is_snap: msg.type === 'snap' || msg.isSnap === true,
+    isSnap,
+    is_snap: isSnap,
+    replyToId,
+    reply_to_id: replyToId,
+    replyToContent,
+    reply_to_content: replyToContent,
+    replyToSenderId,
+    reply_to_sender_id: replyToSenderId,
     sharedPostId: sharedPostId || null,
     shared_post_id: sharedPostId || null,
     reactions,
@@ -531,7 +553,7 @@ router.get('/messages', authenticateToken, async (req: AuthenticatedRequest, res
  */
 router.post('/send', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { receiverId, channelId, text, mediaUrl, type, sharedPostId } = req.body;
+    const { receiverId, channelId, text, mediaUrl, type, sharedPostId, replyToId, replyToContent, replyToSenderId, isSnap } = req.body;
     if (!text && !mediaUrl && !sharedPostId) {
       return res.status(400).json({ error: 'Message content or media required' });
     }
@@ -544,9 +566,26 @@ router.post('/send', authenticateToken, async (req: AuthenticatedRequest, res: R
     }
 
     const effectiveSharedPostId = sharedPostId || (type === 'post' && mediaUrl ? String(mediaUrl).replace('post:', '') : null);
-    const effectiveType = effectiveSharedPostId ? 'post' : (type || 'text');
+    const isSnapMessage = Boolean(isSnap || type === 'snap');
+    const effectiveType = effectiveSharedPostId ? 'post' : (isSnapMessage ? 'snap' : (type || 'text'));
     const effectiveMediaUrl = mediaUrl || (effectiveSharedPostId ? `post:${effectiveSharedPostId}` : null);
-    const effectiveText = text || (effectiveSharedPostId ? 'Shared a post with you' : '');
+    const effectiveText = text || (effectiveSharedPostId ? 'Shared a post with you' : (isSnapMessage ? '📸 Snap' : ''));
+
+    const initialReactions: Record<string, any> = {};
+    if (replyToId) {
+      initialReactions._reply = {
+        id: replyToId,
+        content: replyToContent || '',
+        senderId: replyToSenderId || '',
+      };
+    }
+    if (isSnapMessage) {
+      initialReactions._isSnap = true;
+    }
+
+    const lastMsgSummary = isSnapMessage
+        ? '📸 Snap'
+        : (effectiveType === 'post' ? '📎 Shared a post' : (effectiveText || '📎 Media'));
 
     const userId = req.user!.id;
     if (inferredReceiverId && inferredReceiverId !== userId) {
@@ -573,7 +612,7 @@ router.post('/send', authenticateToken, async (req: AuthenticatedRequest, res: R
             type: 'direct',
             isGroup: false,
             memberIds: JSON.stringify([userId, inferredReceiverId]),
-            lastMessage: effectiveType === 'post' ? '📎 Shared a post' : (effectiveText || '📎 Media'),
+            lastMessage: lastMsgSummary,
             lastMessageTime: new Date(),
           },
         });
@@ -588,7 +627,7 @@ router.post('/send', authenticateToken, async (req: AuthenticatedRequest, res: R
             type: 'direct',
             isGroup: false,
             memberIds: JSON.stringify([userId]),
-            lastMessage: effectiveType === 'post' ? '📎 Shared a post' : (effectiveText || '📎 Media'),
+            lastMessage: lastMsgSummary,
             lastMessageTime: new Date(),
           },
         });
@@ -606,6 +645,7 @@ router.post('/send', authenticateToken, async (req: AuthenticatedRequest, res: R
         text: effectiveText,
         mediaUrl: effectiveMediaUrl,
         type: effectiveType,
+        reactions: JSON.stringify(initialReactions),
       },
       include: {
         sender: { select: { id: true, username: true, fullName: true, avatarUrl: true } },
@@ -616,7 +656,7 @@ router.post('/send', authenticateToken, async (req: AuthenticatedRequest, res: R
       await prisma.chatChannel.update({
         where: { id: targetChannelId },
         data: {
-          lastMessage: effectiveType === 'post' ? '📎 Shared a post' : (effectiveText || '📎 Media'),
+          lastMessage: lastMsgSummary,
           lastMessageTime: new Date(),
         },
       });

@@ -1,9 +1,13 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import 'package:video_player/video_player.dart';
+import 'package:audioplayers/audioplayers.dart';
+import '../../../core/theme/app_colors.dart';
 import '../domain/story.dart';
 import '../data/story_repository.dart';
 import 'package:abuad/src/features/user/data/user_repository.dart';
@@ -33,7 +37,8 @@ class StoryViewerScreen extends ConsumerStatefulWidget {
   ConsumerState<StoryViewerScreen> createState() => _StoryViewerScreenState();
 }
 
-class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
+class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
+    with TickerProviderStateMixin {
   late PageController _userPageController;
   late int _currentUserIndex;
   late int _currentStoryIndex;
@@ -44,6 +49,11 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
   late FocusNode _focusNode;
   bool _isTyping = false;
   bool _isNavigating = false;
+
+  VideoPlayerController? _videoPlayerController;
+  AudioPlayer? _bgAudioPlayer;
+  bool _isMediaLoading = false;
+  late AnimationController _progressAnimController;
 
   @override
   void initState() {
@@ -59,6 +69,11 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
     _messageController = TextEditingController();
     _focusNode = FocusNode();
 
+    _progressAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 5),
+    );
+
     _messageController.addListener(() {
       if (_messageController.text.isNotEmpty && !_isTyping) {
         setState(() => _isTyping = true);
@@ -69,42 +84,132 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
 
     _focusNode.addListener(() {
       if (_focusNode.hasFocus) {
-        _storyTimer?.cancel();
-        setState(() => _isPaused = true);
+        _pauseStory();
       } else {
         if (_messageController.text.isEmpty) {
-          setState(() {
-            _isPaused = false;
-            _startStoryTimer();
-          });
+          _resumeStory();
         }
       }
     });
 
-    // Mark first story as viewed and start timer
+    // Mark first story as viewed and set up media playback
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _markCurrentStoryViewed();
-      _startStoryTimer();
+      _setupStoryMedia();
     });
   }
 
   @override
   void dispose() {
     _storyTimer?.cancel();
+    _progressAnimController.dispose();
+    _videoPlayerController?.dispose();
+    _bgAudioPlayer?.stop();
+    _bgAudioPlayer?.dispose();
     _userPageController.dispose();
     _messageController.dispose();
     _focusNode.dispose();
     super.dispose();
   }
 
-  void _startStoryTimer() {
-    _storyTimer?.cancel();
-    if (_isPaused) return;
+  Story? get _currentStory {
+    if (_currentUserIndex < 0 || _currentUserIndex >= _userIds.length) return null;
+    final currentUserId = _userIds[_currentUserIndex];
+    final stories = widget.storiesGrouped[currentUserId];
+    if (stories == null || _currentStoryIndex < 0 || _currentStoryIndex >= stories.length) return null;
+    return stories[_currentStoryIndex];
+  }
 
-    _storyTimer = Timer(const Duration(seconds: 5), () {
-      _nextStory();
+  void _setupStoryMedia() {
+    _storyTimer?.cancel();
+    _progressAnimController.stop();
+    _progressAnimController.reset();
+
+    final oldVideo = _videoPlayerController;
+    _videoPlayerController = null;
+    oldVideo?.pause();
+    oldVideo?.dispose();
+
+    _bgAudioPlayer?.stop();
+
+    final story = _currentStory;
+    if (story == null) return;
+
+    final isVideo = story.type == 'video' ||
+        story.content.toLowerCase().endsWith('.mp4') ||
+        story.content.toLowerCase().contains('.mp4?');
+
+    // Background soundtrack playback
+    if (story.audioUrl != null && story.audioUrl!.isNotEmpty) {
+      _bgAudioPlayer ??= AudioPlayer();
+      _bgAudioPlayer!.play(UrlSource(story.audioUrl!)).catchError((e) {
+        debugPrint('Error playing story audio: $e');
+      });
+    }
+
+    if (isVideo) {
+      setState(() => _isMediaLoading = true);
+      final isLocal = !story.content.startsWith('http://') && !story.content.startsWith('https://');
+      final controller = isLocal
+          ? VideoPlayerController.file(File(story.content))
+          : VideoPlayerController.networkUrl(Uri.parse(story.content));
+      _videoPlayerController = controller;
+
+      controller.initialize().then((_) {
+        if (!mounted || _videoPlayerController != controller) {
+          controller.dispose();
+          return;
+        }
+        final dur = controller.value.duration;
+        final validDuration = dur.inMilliseconds > 500 ? dur : const Duration(seconds: 10);
+        _progressAnimController.duration = validDuration;
+        controller.play();
+        setState(() => _isMediaLoading = false);
+        _startStoryPlayback(validDuration);
+      }).catchError((err) {
+        debugPrint('Error initializing video in story viewer: $err');
+        if (!mounted || _videoPlayerController != controller) return;
+        setState(() => _isMediaLoading = false);
+        _progressAnimController.duration = const Duration(seconds: 5);
+        _startStoryPlayback(const Duration(seconds: 5));
+      });
+    } else {
+      setState(() => _isMediaLoading = false);
+      const dur = Duration(seconds: 5);
+      _progressAnimController.duration = dur;
+      _startStoryPlayback(dur);
+    }
+  }
+
+  void _startStoryPlayback(Duration duration) {
+    if (_isPaused || _isMediaLoading || !mounted) return;
+    _progressAnimController.forward(from: _progressAnimController.value);
+
+    _storyTimer?.cancel();
+    final remainingMs = (duration.inMilliseconds * (1.0 - _progressAnimController.value)).round();
+    _storyTimer = Timer(Duration(milliseconds: remainingMs.clamp(100, 120000)), () {
+      if (!_isPaused && !_isMediaLoading && mounted) {
+        _nextStory();
+      }
     });
   }
+
+  void _pauseStory() {
+    setState(() => _isPaused = true);
+    _storyTimer?.cancel();
+    _progressAnimController.stop();
+    _videoPlayerController?.pause();
+    _bgAudioPlayer?.pause();
+  }
+
+  void _resumeStory() {
+    if (_focusNode.hasFocus || _isTyping || _isMediaLoading) return;
+    setState(() => _isPaused = false);
+    _videoPlayerController?.play();
+    _bgAudioPlayer?.resume();
+    _startStoryPlayback(_progressAnimController.duration ?? const Duration(seconds: 5));
+  }
+
 
   void _markCurrentStoryViewed() {
     final currentUserId = _userIds[_currentUserIndex];
@@ -119,6 +224,9 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
     if (_isNavigating || !mounted) return;
     _isNavigating = true;
     _storyTimer?.cancel();
+    _progressAnimController.stop();
+    _videoPlayerController?.pause();
+    _bgAudioPlayer?.stop();
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
     } else {
@@ -139,7 +247,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
         _currentStoryIndex++;
       });
       _markCurrentStoryViewed();
-      _startStoryTimer();
+      _setupStoryMedia();
     } else {
       // Next user's stories
       if (_currentUserIndex < _userIds.length - 1) {
@@ -153,7 +261,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
           curve: Curves.easeInOut,
         );
         _markCurrentStoryViewed();
-        _startStoryTimer();
+        _setupStoryMedia();
       } else {
         // End of all stories
         _safePop();
@@ -167,7 +275,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
       setState(() {
         _currentStoryIndex--;
       });
-      _startStoryTimer();
+      _setupStoryMedia();
     } else {
       // Previous user's stories
       if (_currentUserIndex > 0) {
@@ -182,7 +290,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeInOut,
         );
-        _startStoryTimer();
+        _setupStoryMedia();
       }
     }
   }
@@ -239,14 +347,10 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
   Future<void> _launchUrl(String urlString) async {
     final url = Uri.parse(urlString);
     if (await canLaunchUrl(url)) {
-      _storyTimer?.cancel();
-      setState(() => _isPaused = true);
+      _pauseStory();
       await launchUrl(url, mode: LaunchMode.externalApplication);
       if (mounted) {
-        setState(() {
-          _isPaused = false;
-          _startStoryTimer();
-        });
+        _resumeStory();
       }
     }
   }
@@ -274,8 +378,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
   }
 
   void _reshareStory(Story story) {
-    _storyTimer?.cancel();
-    setState(() => _isPaused = true);
+    _pauseStory();
 
     Navigator.push(
       context,
@@ -284,26 +387,19 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
       ),
     ).then((_) {
       if (mounted) {
-        setState(() {
-          _isPaused = false;
-          _startStoryTimer();
-        });
+        _resumeStory();
       }
     });
   }
 
   void _shareStory(Story story) {
-    _storyTimer?.cancel();
-    setState(() => _isPaused = true);
+    _pauseStory();
 
     final text =
         'Check out this story on Abuad life! ${story.caption ?? ""}\n\nhttps://abuadapp.com.ng/post/${story.id}';
     Share.share(text).then((_) {
       if (mounted) {
-        setState(() {
-          _isPaused = false;
-          _startStoryTimer();
-        });
+        _resumeStory();
       }
     });
   }
@@ -322,8 +418,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
   }
 
   void _showViewers(Story story) {
-    _storyTimer?.cancel();
-    setState(() => _isPaused = true);
+    _pauseStory();
 
     showModalBottomSheet(
       context: context,
@@ -332,10 +427,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
       builder: (context) => _buildViewersSheet(context, story),
     ).whenComplete(() {
       if (mounted) {
-        setState(() {
-          _isPaused = false;
-          _startStoryTimer();
-        });
+        _resumeStory();
       }
     });
   }
@@ -446,16 +538,10 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
             }
           },
           onLongPressStart: (_) {
-            setState(() {
-              _isPaused = true;
-            });
-            _storyTimer?.cancel();
+            _pauseStory();
           },
           onLongPressEnd: (_) {
-            setState(() {
-              _isPaused = false;
-              _startStoryTimer();
-            });
+            _resumeStory();
           },
           onVerticalDragEnd: (details) {
             if (details.primaryVelocity! > 0) {
@@ -472,7 +558,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                 _currentStoryIndex = 0;
               });
               _markCurrentStoryViewed();
-              _startStoryTimer();
+              _setupStoryMedia();
             },
             itemBuilder: (context, userIndex) {
               final userId = _userIds[userIndex];
@@ -505,9 +591,13 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
 
                       final isOwnStory = story.authorId == viewerId;
 
+                      final isVideoStory = story.type == 'video' ||
+                          story.content.toLowerCase().endsWith('.mp4') ||
+                          story.content.toLowerCase().contains('.mp4?');
+
                       return Stack(
                         children: [
-                          // Story Content (Image or Text)
+                          // Story Content (Video, Image, or Text)
                           Center(
                             child: story.type == 'text'
                                 ? Container(
@@ -534,25 +624,41 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                                       ),
                                     ),
                                   )
-                                : CachedNetworkImage(
-                                    imageUrl: story.content,
-                                    fit: BoxFit.contain,
-                                    width: double.infinity,
-                                    height: double.infinity,
-                                    placeholder: (context, url) => const Center(
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    errorWidget: (context, url, error) =>
-                                        const Center(
-                                          child: Icon(
-                                            Icons.error,
+                                : isVideoStory
+                                    ? (_videoPlayerController != null &&
+                                            _videoPlayerController!.value.isInitialized
+                                        ? FittedBox(
+                                            fit: BoxFit.contain,
+                                            child: SizedBox(
+                                              width: _videoPlayerController!.value.size.width,
+                                              height: _videoPlayerController!.value.size.height,
+                                              child: VideoPlayer(_videoPlayerController!),
+                                            ),
+                                          )
+                                        : const Center(
+                                            child: CircularProgressIndicator(
+                                              color: Colors.white,
+                                            ),
+                                          ))
+                                    : CachedNetworkImage(
+                                        imageUrl: story.content,
+                                        fit: BoxFit.contain,
+                                        width: double.infinity,
+                                        height: double.infinity,
+                                        placeholder: (context, url) => const Center(
+                                          child: CircularProgressIndicator(
                                             color: Colors.white,
-                                            size: 48,
                                           ),
                                         ),
-                                  ),
+                                        errorWidget: (context, url, error) =>
+                                            const Center(
+                                              child: Icon(
+                                                Icons.error,
+                                                color: Colors.white,
+                                                size: 48,
+                                              ),
+                                            ),
+                                      ),
                           ),
 
                           // Gradient overlay at top
@@ -595,22 +701,28 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                                       ),
                                       borderRadius: BorderRadius.circular(2),
                                     ),
-                                    child: FractionallySizedBox(
-                                      alignment: Alignment.centerLeft,
-                                      widthFactor: index < _currentStoryIndex
-                                          ? 1.0
-                                          : index == _currentStoryIndex
-                                          ? (_isPaused ? 0.5 : 1.0)
-                                          : 0.0,
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                          color: Colors.white,
-                                          borderRadius: BorderRadius.circular(
-                                            2,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
+                                    child: index < _currentStoryIndex
+                                        ? Container(
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius: BorderRadius.circular(2),
+                                            ),
+                                          )
+                                        : index == _currentStoryIndex
+                                            ? AnimatedBuilder(
+                                                animation: _progressAnimController,
+                                                builder: (context, _) => FractionallySizedBox(
+                                                  alignment: Alignment.centerLeft,
+                                                  widthFactor: _progressAnimController.value.clamp(0.0, 1.0),
+                                                  child: Container(
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.white,
+                                                      borderRadius: BorderRadius.circular(2),
+                                                    ),
+                                                  ),
+                                                ),
+                                              )
+                                            : const SizedBox.shrink(),
                                   ),
                                 ),
                               ),
@@ -628,14 +740,10 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                                 Expanded(
                                   child: InkWell(
                                     onTap: () {
-                                      setState(() => _isPaused = true);
-                                      _storyTimer?.cancel();
+                                      _pauseStory();
                                       context.push('/user/$userId').then((_) {
                                         if (mounted) {
-                                          setState(() {
-                                            _isPaused = false;
-                                            _startStoryTimer();
-                                          });
+                                          _resumeStory();
                                         }
                                       });
                                     },
@@ -721,6 +829,32 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                                                   fontSize: 13,
                                                 ),
                                               ),
+                                              if (story.musicTitle != null &&
+                                                  story.musicTitle!.isNotEmpty) ...[
+                                                const SizedBox(height: 2),
+                                                Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    const Icon(
+                                                      Icons.music_note_rounded,
+                                                      color: AppColors.secondaryTeal,
+                                                      size: 13,
+                                                    ),
+                                                    const SizedBox(width: 4),
+                                                    Flexible(
+                                                      child: Text(
+                                                        '${story.musicTitle}${story.musicArtist != null ? " · ${story.musicArtist}" : ""}',
+                                                        style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 11,
+                                                          fontWeight: FontWeight.bold,
+                                                        ),
+                                                        overflow: TextOverflow.ellipsis,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
                                             ],
                                           ),
                                         ),
@@ -821,8 +955,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                                 if (!isOwnStory)
                                   IconButton(
                                     onPressed: () {
-                                      setState(() => _isPaused = true);
-                                      _storyTimer?.cancel();
+                                      _pauseStory();
                                       showModalBottomSheet(
                                         context: context,
                                         isScrollControlled: true,
@@ -833,10 +966,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                                         ),
                                       ).then((_) {
                                         if (mounted) {
-                                          setState(() {
-                                            _isPaused = false;
-                                            _startStoryTimer();
-                                          });
+                                          _resumeStory();
                                         }
                                       });
                                     },
@@ -919,8 +1049,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                                         .map(
                                           (mention) => GestureDetector(
                                             onTap: () {
-                                              _storyTimer?.cancel();
-                                              setState(() => _isPaused = true);
+                                              _pauseStory();
                                               ref
                                                   .read(userRepositoryProvider)
                                                   .getUserByHandle(mention)
@@ -940,10 +1069,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                                                           ),
                                                         ),
                                                       );
-                                                      setState(() {
-                                                        _isPaused = false;
-                                                        _startStoryTimer();
-                                                      });
+                                                      _resumeStory();
                                                     }
                                                   });
                                             },

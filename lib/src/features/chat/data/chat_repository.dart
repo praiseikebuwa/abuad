@@ -364,6 +364,10 @@ class ChatRepository {
         payload['sharedPostId'] = sharedPostId;
         payload['shared_post_id'] = sharedPostId;
       }
+      if (replyToId != null) payload['replyToId'] = replyToId;
+      if (replyToContent != null) payload['replyToContent'] = replyToContent;
+      if (replyToSenderId != null) payload['replyToSenderId'] = replyToSenderId;
+      if (isSnap != null) payload['isSnap'] = isSnap;
 
       final res = await ApiClient.post('/chat/send', payload);
 

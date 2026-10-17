@@ -272,7 +272,10 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
         content: '',
         type: widget.isVideo ? 'video' : 'image',
         caption: _textOverlays.isNotEmpty ? _textOverlays.first.text : null,
-      ).timeout(const Duration(seconds: 25));
+        audioUrl: _selectedAudioTrack?.audioUrl,
+        musicTitle: _selectedAudioTrack?.title,
+        musicArtist: _selectedAudioTrack?.artist,
+      ).timeout(const Duration(seconds: 60));
 
       if (mounted) {
         setState(() => _isPostingStory = false);
@@ -323,10 +326,17 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
     }
   }
 
-  // ── Send to Recipient Sheet & Direct Snap ──────────────────────────────────
+  // ── Send to Multi-Recipient Sheet & Direct Snaps ──────────────────────────
 
-  Future<void> _sendSnapToRecipient(AppUser recipient) async {
+  Future<void> _sendSnapToRecipient(AppUser recipient) => _sendSnapToRecipients([recipient]);
+
+  Future<void> _sendSnapToRecipients(List<AppUser> recipients) async {
+    if (recipients.isEmpty) return;
     try {
+      final label = recipients.length == 1
+          ? '@${recipients.first.handle}'
+          : '${recipients.length} friends';
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
@@ -337,12 +347,12 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
                 child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
               ),
               const SizedBox(width: 12),
-              Text('Sending Snap to @${recipient.handle}...'),
+              Text('Sending Snap to $label...'),
             ],
           ),
           backgroundColor: const Color(0xFF6366F1),
           behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 15),
+          duration: const Duration(seconds: 30),
         ),
       );
 
@@ -350,26 +360,34 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
       final chatRepo = ref.read(chatRepositoryProvider);
       final imageService = ref.read(imageUploadServiceProvider);
 
-      final channelId = await chatRepo.createOrGetChannel(
-        recipient.uid,
-        otherUserName: recipient.displayName,
-        otherUserAvatar: recipient.avatarUrl,
-      );
-
+      // Upload media once to optimize speed and network bandwidth
       final result = await (widget.isVideo
-          ? imageService.uploadVideo(exportedFile, path: 'chat_snaps/$channelId/')
-          : imageService.uploadImage(exportedFile, path: 'chat_snaps/$channelId/'));
+          ? imageService.uploadVideo(exportedFile, path: 'chat_snaps/multi/')
+          : imageService.uploadImage(exportedFile, path: 'chat_snaps/multi/'));
 
-      await chatRepo.sendMessage(
-        channelId,
-        widget.isVideo ? '🎥 Video Snap' : '📸 Snap',
-        type: widget.isVideo ? 'video' : 'image',
-        imageUrl: result.url,
-        imageWidth: result.width,
-        imageHeight: result.height,
-        isSnap: true,
-        receiverId: recipient.uid,
-      );
+      // Dispatch snaps concurrently to each recipient channel
+      await Future.wait(recipients.map((recipient) async {
+        try {
+          final channelId = await chatRepo.createOrGetChannel(
+            recipient.uid,
+            otherUserName: recipient.displayName,
+            otherUserAvatar: recipient.avatarUrl,
+          );
+
+          await chatRepo.sendMessage(
+            channelId,
+            widget.isVideo ? '🎥 Video Snap' : '📸 Snap',
+            type: widget.isVideo ? 'video' : 'image',
+            imageUrl: result.url,
+            imageWidth: result.width,
+            imageHeight: result.height,
+            isSnap: true,
+            receiverId: recipient.uid,
+          );
+        } catch (err) {
+          debugPrint('Error delivering snap to ${recipient.uid}: $err');
+        }
+      }));
 
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -380,7 +398,7 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
                 const Icon(Icons.local_fire_department_rounded, color: Colors.amberAccent),
                 const SizedBox(width: 8),
                 Text(
-                  'Snap delivered to @${recipient.handle}! 🔥',
+                  'Snap delivered to $label! 🔥',
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ],
@@ -412,9 +430,9 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => _SendToSheet(
-        onRecipientSelected: (recipient) {
+        onRecipientsSelected: (recipients) {
           Navigator.pop(ctx);
-          _sendSnapToRecipient(recipient);
+          _sendSnapToRecipients(recipients);
         },
       ),
     );
@@ -1342,9 +1360,9 @@ class _StickerOverlayItem {
 // ── Send to Friends Bottom Sheet ─────────────────────────────────────────────
 
 class _SendToSheet extends ConsumerStatefulWidget {
-  final Function(AppUser recipient) onRecipientSelected;
+  final Function(List<AppUser> recipients) onRecipientsSelected;
 
-  const _SendToSheet({required this.onRecipientSelected});
+  const _SendToSheet({required this.onRecipientsSelected});
 
   @override
   ConsumerState<_SendToSheet> createState() => _SendToSheetState();
@@ -1352,6 +1370,7 @@ class _SendToSheet extends ConsumerStatefulWidget {
 
 class _SendToSheetState extends ConsumerState<_SendToSheet> {
   final TextEditingController _searchCtrl = TextEditingController();
+  final Map<String, AppUser> _selectedUsers = {};
   String _query = '';
   List<AppUser> _directoryResults = [];
   bool _isSearchingDirectory = false;
@@ -1407,9 +1426,9 @@ class _SendToSheetState extends ConsumerState<_SendToSheet> {
     final suggestionsAsync = ref.watch(peopleYouMayKnowProvider);
 
     return DraggableScrollableSheet(
-      initialChildSize: 0.65,
-      maxChildSize: 0.9,
-      minChildSize: 0.4,
+      initialChildSize: 0.75,
+      maxChildSize: 0.92,
+      minChildSize: 0.45,
       builder: (context, scrollController) => Container(
         decoration: const BoxDecoration(
           color: Color(0xFF18181B),
@@ -1424,14 +1443,31 @@ class _SendToSheetState extends ConsumerState<_SendToSheet> {
               decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
             ),
             const SizedBox(height: 16),
-            const Row(
+            Row(
               children: [
-                Icon(Icons.send_rounded, color: Color(0xFF8B5CF6), size: 22),
-                SizedBox(width: 10),
-                Text(
+                const Icon(Icons.send_rounded, color: Color(0xFF8B5CF6), size: 22),
+                const SizedBox(width: 10),
+                const Text(
                   'Send Snap To...',
                   style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                 ),
+                const Spacer(),
+                if (_selectedUsers.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${_selectedUsers.length} selected',
+                      style: const TextStyle(
+                        color: Color(0xFF8B5CF6),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
               ],
             ),
             const SizedBox(height: 16),
@@ -1548,7 +1584,7 @@ class _SendToSheetState extends ConsumerState<_SendToSheet> {
                                 SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    'Search any student above or snap a suggested classmate below!',
+                                    'Select classmates below to send direct snaps!',
                                     style: TextStyle(color: Colors.white70, fontSize: 12),
                                   ),
                                 ),
@@ -1601,6 +1637,30 @@ class _SendToSheetState extends ConsumerState<_SendToSheet> {
                 ),
               ),
             ),
+            if (_selectedUsers.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.only(top: 12, bottom: 6),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF8B5CF6),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
+                      elevation: 4,
+                    ),
+                    icon: const Icon(Icons.send_rounded, size: 20),
+                    label: Text(
+                      'Send Snap to ${_selectedUsers.length} ${_selectedUsers.length == 1 ? "Friend" : "Friends"} 🔥',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                    onPressed: () {
+                      widget.onRecipientsSelected(_selectedUsers.values.toList());
+                    },
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -1608,39 +1668,76 @@ class _SendToSheetState extends ConsumerState<_SendToSheet> {
   }
 
   Widget _buildUserTile(AppUser user) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: CircleAvatar(
-        radius: 22,
-        backgroundColor: Colors.white10,
-        backgroundImage: user.avatarUrl != null && user.avatarUrl!.isNotEmpty
-            ? CachedNetworkImageProvider(user.avatarUrl!)
-            : null,
-        child: user.avatarUrl == null || user.avatarUrl!.isEmpty
-            ? Text(
-                user.displayName.isNotEmpty ? user.displayName[0].toUpperCase() : 'U',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              )
-            : null,
-      ),
-      title: Text(
-        user.displayName,
-        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15),
-      ),
-      subtitle: Text(
-        '@${user.handle}',
-        style: const TextStyle(color: Colors.white54, fontSize: 13),
-      ),
-      trailing: ElevatedButton(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF8B5CF6),
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          elevation: 0,
+    final isSelected = _selectedUsers.containsKey(user.uid);
+    return InkWell(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        setState(() {
+          if (isSelected) {
+            _selectedUsers.remove(user.uid);
+          } else {
+            _selectedUsers[user.uid] = user;
+          }
+        });
+      },
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 22,
+              backgroundColor: Colors.white10,
+              backgroundImage: user.avatarUrl != null && user.avatarUrl!.isNotEmpty
+                  ? CachedNetworkImageProvider(user.avatarUrl!)
+                  : null,
+              child: user.avatarUrl == null || user.avatarUrl!.isEmpty
+                  ? Text(
+                      user.displayName.isNotEmpty ? user.displayName[0].toUpperCase() : 'U',
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    user.displayName,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '@${user.handle}',
+                    style: const TextStyle(color: Colors.white54, fontSize: 13),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isSelected ? const Color(0xFF8B5CF6) : Colors.transparent,
+                border: Border.all(
+                  color: isSelected ? const Color(0xFF8B5CF6) : Colors.white38,
+                  width: 2,
+                ),
+              ),
+              child: isSelected
+                  ? const Icon(Icons.check_rounded, color: Colors.white, size: 18)
+                  : null,
+            ),
+          ],
         ),
-        onPressed: () => widget.onRecipientSelected(user),
-        child: const Text('Send', style: TextStyle(fontWeight: FontWeight.bold)),
       ),
     );
   }

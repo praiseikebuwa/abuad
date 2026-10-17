@@ -1419,188 +1419,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     bool isDark,
     ChatRepository repo,
   ) {
-    final isReadByMe = message.readBy.contains(repo.currentUserId);
-    final isSnap = message.isSnap;
-
-    if (isSnap) {
-      if (isMe) {
-        // I sent the snap
-        if (message.savedBy.isNotEmpty) {
-          return _buildSavedSnapPreview(message, isMe, isDark, repo);
-        }
-        return Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: AppColors.secondaryTeal.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.secondaryTeal, width: 1.5),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.camera_alt,
-                color: AppColors.secondaryTeal,
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                message.readBy.length > 1 ? 'Opened' : 'Delivered',
-                style: const TextStyle(
-                  color: AppColors.secondaryTeal,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
-              ),
-            ],
-          ),
-        );
-      } else {
-        // Someone sent me a snap
-        if (message.savedBy.isNotEmpty) {
-          // Saved Snap - Show image directly
-          return _buildSavedSnapPreview(message, isMe, isDark, repo);
-        } else if (isReadByMe) {
-          // Replay Snap or Save in Chat
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: AppColors.secondaryTeal.withValues(alpha: 0.35),
-                width: 1.2,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Replay button
-                InkWell(
-                  onTap: () => _viewSnap(message, repo),
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.secondaryTeal.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.replay_rounded,
-                          color: AppColors.secondaryTeal,
-                          size: 18,
-                        ),
-                        SizedBox(width: 6),
-                        Text(
-                          'Replay',
-                          style: TextStyle(
-                            color: AppColors.secondaryTeal,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Save in Chat button
-                InkWell(
-                  onTap: () async {
-                    await repo.toggleSaveMessage(widget.channelId, message.id);
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('📌 Snap saved in chat'),
-                          duration: Duration(seconds: 2),
-                        ),
-                      );
-                    }
-                  },
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? Colors.white10
-                          : Colors.black.withValues(alpha: 0.05),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.bookmark_add_outlined,
-                          color: isDark ? Colors.white70 : Colors.black87,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Save',
-                          style: TextStyle(
-                            color: isDark ? Colors.white70 : Colors.black87,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        } else {
-          // New Snap!
-          return GestureDetector(
-            onTap: () => _viewSnap(message, repo),
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.secondaryTeal,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.secondaryTeal.withValues(
-                      alpha: 0.3,
-                    ),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.camera_alt, color: Colors.white, size: 24),
-                  SizedBox(width: 12),
-                  Text(
-                    'Tap to view Snap',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 15,
-                    ),
-                  ),
-                ],
-              ),
-            )
-            .animate(
-              onPlay: (controller) => controller.repeat(reverse: true),
-            )
-            .shimmer(duration: 2.seconds, color: Colors.white24),
-          );
-        }
-      }
+    if (message.isSnap) {
+      return _buildSnapCard(message, isMe, isDark, repo);
     }
 
     // Regular image
@@ -1632,6 +1452,243 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildSnapCard(
+    ChatMessage message,
+    bool isMe,
+    bool isDark,
+    ChatRepository repo,
+  ) {
+    final isReadByMe = message.readBy.contains(repo.currentUserId);
+    final isOpened = isMe ? message.readBy.length > 1 : isReadByMe;
+    final isSaved = message.savedBy.isNotEmpty;
+
+    // Status text & icon
+    final String statusText;
+    final IconData statusIcon;
+    final bool isHollow;
+
+    if (isMe) {
+      if (isOpened) {
+        statusText = 'Opened';
+        statusIcon = Icons.arrow_outward_rounded;
+        isHollow = true;
+      } else {
+        statusText = 'Delivered';
+        statusIcon = Icons.send_rounded;
+        isHollow = false;
+      }
+    } else {
+      if (isOpened) {
+        statusText = 'Opened · Tap to replay';
+        statusIcon = Icons.replay_rounded;
+        isHollow = true;
+      } else {
+        statusText = 'Tap to view';
+        statusIcon = Icons.camera_alt_rounded;
+        isHollow = false;
+      }
+    }
+
+    const Color snapRed = Color(0xFFEF4444);
+
+    return GestureDetector(
+      onTap: () => _viewSnap(message, repo),
+      onLongPress: () => _showSnapOptionsSheet(message, repo),
+      child: Container(
+        constraints: const BoxConstraints(minWidth: 180, maxWidth: 240),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E293B) : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: snapRed.withValues(alpha: isHollow ? 0.35 : 0.8),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: snapRed.withValues(alpha: isHollow ? 0.06 : 0.22),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 🟥 Red square box (solid when new, hollow when opened)
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: isHollow ? Colors.transparent : snapRed,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: snapRed,
+                  width: 2.2,
+                ),
+              ),
+              child: Center(
+                child: Icon(
+                  statusIcon,
+                  color: isHollow ? snapRed : Colors.white,
+                  size: 19,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Text Column: "Snap" & Status
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Snap',
+                        style: TextStyle(
+                          color: isDark ? Colors.white : Colors.black87,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                      if (isSaved) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF6366F1).withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'Saved',
+                            style: TextStyle(
+                              color: Color(0xFF6366F1),
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    statusText,
+                    style: TextStyle(
+                      color: isDark ? Colors.white60 : Colors.black54,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showSnapOptionsSheet(ChatMessage message, ChatRepository repo) {
+    final isSavedInChat = message.savedBy.contains(repo.currentUserId);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.remove_red_eye_rounded,
+                    color: Color(0xFFEF4444),
+                  ),
+                  title: const Text(
+                    'View Snap',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _viewSnap(message, repo);
+                  },
+                ),
+                ListTile(
+                  leading: Icon(
+                    isSavedInChat
+                        ? Icons.bookmark_remove_rounded
+                        : Icons.bookmark_add_rounded,
+                    color: const Color(0xFFEF4444),
+                  ),
+                  title: Text(
+                    isSavedInChat ? 'Remove from Saved' : 'Save in Chat',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    await repo.toggleSaveMessage(widget.channelId, message.id);
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            isSavedInChat
+                                ? 'Snap removed from saved'
+                                : '📌 Snap saved in chat',
+                          ),
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  },
+                ),
+                if (message.imageUrl != null)
+                  ListTile(
+                    leading: const Icon(
+                      Icons.download_rounded,
+                      color: Color(0xFF6366F1),
+                    ),
+                    title: const Text(
+                      'Save to Gallery',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _saveImageToGallery(message.imageUrl!);
+                    },
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -2509,7 +2566,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       stream: repo.watchChannel(widget.channelId),
       builder: (context, channelSnapshot) {
         final channel = channelSnapshot.data;
-        final isGroup = channel?.type == 'group' || widget.channelId.startsWith('group_');
+        final isGroup = (channel?.isGroup ?? false) ||
+            widget.channelId.startsWith('group_') ||
+            widget.channelId.contains('_group');
 
         String? otherUserId = isGroup
             ? null
@@ -3106,21 +3165,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                           if (message.replyToContent != null)
                                             Container(
                                               margin: const EdgeInsets.only(
-                                                bottom: 4,
+                                                bottom: 6,
                                               ),
-                                              padding: const EdgeInsets.all(8),
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 10,
+                                                vertical: 6,
+                                              ),
                                               decoration: BoxDecoration(
-                                                color: isDark
-                                                    ? Colors.black26
-                                                    : Colors.black.withValues(
-                                                        alpha: 0.05,
-                                                      ),
+                                                color: isMe
+                                                    ? Colors.white.withValues(alpha: 0.15)
+                                                    : (isDark
+                                                        ? Colors.black26
+                                                        : Colors.black.withValues(alpha: 0.05)),
                                                 borderRadius:
                                                     BorderRadius.circular(8),
                                                 border: Border(
                                                   left: BorderSide(
-                                                    color: _themeColor,
-                                                    width: 3,
+                                                    color: isMe ? Colors.white : _themeColor,
+                                                    width: 3.5,
                                                   ),
                                                 ),
                                               ),
@@ -3128,30 +3190,44 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                                 crossAxisAlignment:
                                                     CrossAxisAlignment.start,
                                                 children: [
-                                                  Text(
-                                                    message.replyToSenderId ==
-                                                            repo.currentUserId
-                                                        ? 'You'
-                                                        : (channel?.memberNames[message
-                                                                  .replyToSenderId] ??
-                                                              'User'),
-                                                    style: TextStyle(
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      fontSize: 12,
-                                                      color: _themeColor,
-                                                    ),
+                                                  Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      Icon(
+                                                        Icons.reply_rounded,
+                                                        size: 13,
+                                                        color: isMe ? Colors.white70 : _themeColor,
+                                                      ),
+                                                      const SizedBox(width: 4),
+                                                      Text(
+                                                        message.replyToSenderId ==
+                                                                repo.currentUserId
+                                                            ? 'You'
+                                                            : (channel?.memberNames[message.replyToSenderId] != null &&
+                                                                    channel!.memberNames[message.replyToSenderId]!.isNotEmpty
+                                                                ? channel.memberNames[message.replyToSenderId]!
+                                                                : 'Friend'),
+                                                        style: TextStyle(
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          fontSize: 11.5,
+                                                          color: isMe ? Colors.white : _themeColor,
+                                                        ),
+                                                      ),
+                                                    ],
                                                   ),
                                                   const SizedBox(height: 2),
                                                   Text(
                                                     message.replyToContent!,
                                                     style: TextStyle(
                                                       fontSize: 12,
-                                                      color: isDark
-                                                          ? Colors.white70
-                                                          : Colors.black87,
+                                                      color: isMe
+                                                          ? Colors.white.withValues(alpha: 0.9)
+                                                          : (isDark
+                                                              ? Colors.white70
+                                                              : Colors.black87),
                                                     ),
-                                                    maxLines: 1,
+                                                    maxLines: 2,
                                                     overflow:
                                                         TextOverflow.ellipsis,
                                                   ),
@@ -3699,7 +3775,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           _buildLiveTypingBanner(channel, displayName, isDark),
-                          if (_replyingTo != null) _buildReplyPreview(isDark),
+                          if (_replyingTo != null)
+                            _buildReplyPreview(
+                              isDark,
+                              channel: channel,
+                              currentUserId: repo.currentUserId,
+                            ),
                           if (_editingMessage != null) _buildEditPreview(isDark),
                           if (_showAttachmentDrawer)
                             _buildAttachmentDrawer(
@@ -3819,12 +3900,38 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  Widget _buildReplyPreview(bool isDark) {
+  Widget _buildReplyPreview(
+    bool isDark, {
+    ChatChannel? channel,
+    String? currentUserId,
+  }) {
+    final senderId = _replyingTo?.senderId;
+    final isMe = senderId != null && senderId == currentUserId;
+    final senderName = isMe
+        ? 'yourself'
+        : (channel?.memberNames[senderId] != null &&
+                channel!.memberNames[senderId]!.isNotEmpty
+            ? channel.memberNames[senderId]!
+            : 'Friend');
+
+    String previewText = _replyingTo!.content;
+    if (_replyingTo!.isSnap) {
+      previewText = '📸 Snap';
+    } else if (_replyingTo!.type == 'image') {
+      previewText = '📷 Photo';
+    } else if (_replyingTo!.type == 'voice') {
+      previewText = '🎤 Voice message';
+    } else if (_replyingTo!.type == 'location') {
+      previewText = '📍 Shared location';
+    }
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8, left: 12, right: 12),
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[50],
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.06)
+            : const Color(0xFFEEF2FF),
         borderRadius: BorderRadius.circular(12),
         border: const Border(
           left: BorderSide(color: Color(0xFF6366F1), width: 4),
@@ -3832,21 +3939,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ),
       child: Row(
         children: [
+          const Icon(
+            Icons.reply_rounded,
+            size: 18,
+            color: Color(0xFF6366F1),
+          ),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  "Replying to",
-                  style: TextStyle(
-                    fontSize: 11,
+                Text(
+                  "Replying to $senderName",
+                  style: const TextStyle(
+                    fontSize: 12,
                     fontWeight: FontWeight.bold,
                     color: Color(0xFF6366F1),
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  _replyingTo!.content,
+                  previewText,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -3858,7 +3971,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.close, size: 18),
+            icon: const Icon(Icons.close_rounded, size: 18),
             onPressed: () => setState(() => _replyingTo = null),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),

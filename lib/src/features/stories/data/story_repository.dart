@@ -98,6 +98,9 @@ class StoryRepository {
     String? reshareAuthorId,
     String? reshareAuthorName,
     String? reshareStoryId,
+    String? audioUrl,
+    String? musicTitle,
+    String? musicArtist,
   }) async {
     final user = authRepo.currentUser;
     final uid = user?.uid ?? currentUserId;
@@ -107,11 +110,16 @@ class StoryRepository {
     if (mediaFile != null) {
       try {
         final bytes = await mediaFile.readAsBytes();
+        final isVid = type == 'video' || (mediaFile.path.toLowerCase().endsWith('.mp4'));
+        final ext = isVid ? 'mp4' : 'jpg';
+        final cType = isVid ? 'video/mp4' : 'image/jpeg';
+        final name = mediaFile.name.isNotEmpty && mediaFile.name.contains('.')
+            ? mediaFile.name
+            : 'story_${DateTime.now().millisecondsSinceEpoch}.$ext';
         final uploadedUrl = await ApiClient.uploadBytes(
           bytes,
-          mediaFile.name.isNotEmpty
-              ? mediaFile.name
-              : 'story_${DateTime.now().millisecondsSinceEpoch}.jpg',
+          name,
+          contentType: cType,
         );
         if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
           finalContent = uploadedUrl;
@@ -173,6 +181,9 @@ class StoryRepository {
       reshareAuthorId: reshareAuthorId,
       reshareAuthorName: reshareAuthorName,
       reshareStoryId: reshareStoryId,
+      audioUrl: audioUrl,
+      musicTitle: musicTitle,
+      musicArtist: musicArtist,
     );
 
     final res = await ApiClient.post('/stories', story.toMap());

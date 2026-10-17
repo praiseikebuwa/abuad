@@ -47,6 +47,8 @@ class ChatChannel {
     this.archivedBy = const [],
   });
 
+  bool get isGroup => type == 'group' || memberIds.length > 2 || id.startsWith('group_');
+
   Map<String, dynamic> toMap() {
     return {
       'id': id,

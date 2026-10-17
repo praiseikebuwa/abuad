@@ -24,6 +24,9 @@ class Story {
   final String? reshareAuthorId;
   final String? reshareAuthorName;
   final String? reshareStoryId;
+  final String? audioUrl;
+  final String? musicTitle;
+  final String? musicArtist;
 
   Story({
     required this.id,
@@ -48,6 +51,9 @@ class Story {
     this.reshareAuthorId,
     this.reshareAuthorName,
     this.reshareStoryId,
+    this.audioUrl,
+    this.musicTitle,
+    this.musicArtist,
   });
 
   Story copyWith({
@@ -73,6 +79,9 @@ class Story {
     String? reshareAuthorId,
     String? reshareAuthorName,
     String? reshareStoryId,
+    String? audioUrl,
+    String? musicTitle,
+    String? musicArtist,
   }) {
     return Story(
       id: id ?? this.id,
@@ -97,6 +106,9 @@ class Story {
       reshareAuthorId: reshareAuthorId ?? this.reshareAuthorId,
       reshareAuthorName: reshareAuthorName ?? this.reshareAuthorName,
       reshareStoryId: reshareStoryId ?? this.reshareStoryId,
+      audioUrl: audioUrl ?? this.audioUrl,
+      musicTitle: musicTitle ?? this.musicTitle,
+      musicArtist: musicArtist ?? this.musicArtist,
     );
   }
 
@@ -130,6 +142,12 @@ class Story {
       'reshare_author_id': reshareAuthorId,
       'reshare_author_name': reshareAuthorName,
       'reshare_story_id': reshareStoryId,
+      'audioUrl': audioUrl,
+      'audio_url': audioUrl,
+      'musicTitle': musicTitle,
+      'music_title': musicTitle,
+      'musicArtist': musicArtist,
+      'music_artist': musicArtist,
     };
   }
 
@@ -159,6 +177,23 @@ class Story {
         ? map['author'] as Map<String, dynamic>
         : null;
 
+    String? audioUrl = map['audioUrl'] ?? map['audio_url'];
+    String? musicTitle = map['musicTitle'] ?? map['music_title'];
+    String? musicArtist = map['musicArtist'] ?? map['music_artist'];
+    String? linkUrl = map['link_url'] ?? map['linkUrl'];
+
+    if (linkUrl != null && linkUrl.startsWith('{') && linkUrl.contains('"audioUrl"')) {
+      try {
+        final decoded = json.decode(linkUrl);
+        if (decoded is Map) {
+          audioUrl ??= decoded['audioUrl'];
+          musicTitle ??= decoded['musicTitle'];
+          musicArtist ??= decoded['musicArtist'];
+          linkUrl = decoded['linkUrl'];
+        }
+      } catch (_) {}
+    }
+
     return Story(
       id: map['id'] ?? map['_id'] ?? '',
       authorId: map['author_id'] ??
@@ -174,7 +209,7 @@ class Story {
       viewers: parseStringList(map['viewers'] ?? map['viewers_list']),
       likes: parseStringList(map['likes'] ?? map['likes_list']),
       mentions: parseStringList(map['mentions']),
-      linkUrl: map['link_url'] ?? map['linkUrl'],
+      linkUrl: linkUrl,
       visibility: map['visibility'] ?? 'everyone',
       backgroundColor: map['background_color'] ?? map['backgroundColor'],
       textColor: map['text_color'] ?? map['textColor'],
@@ -195,6 +230,9 @@ class Story {
       reshareAuthorId: map['reshare_author_id'] ?? map['reshareAuthorId'],
       reshareAuthorName: map['reshare_author_name'] ?? map['reshareAuthorName'],
       reshareStoryId: map['reshare_story_id'] ?? map['reshareStoryId'],
+      audioUrl: audioUrl,
+      musicTitle: musicTitle,
+      musicArtist: musicArtist,
     );
   }
 }
