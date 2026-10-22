@@ -3,9 +3,29 @@ import { authenticateToken, AuthenticatedRequest } from '../middleware/auth';
 import { prisma } from '../config/db';
 import { getOrCreateAiUser, triggerAiDirectChatReply } from '../services/aiBotService';
 import { emitToChannel, emitToUsers } from '../realtime/socket';
-import { channel } from 'diagnostics_channel';
+import { deleteR2Object, extractR2Key } from '../config/cloudflare';
 
 const router = Router();
+
+// Per-message async lock queue to eliminate concurrent race conditions
+const messageLocks = new Map<string, Promise<any>>();
+
+async function runWithMessageLock<T>(messageId: string, fn: () => Promise<T>): Promise<T> {
+  const currentLock = messageLocks.get(messageId) || Promise.resolve();
+  let release: () => void;
+  const newLock = new Promise<void>((resolve) => { release = resolve; });
+  messageLocks.set(messageId, currentLock.then(() => newLock));
+
+  try {
+    await currentLock;
+    return await fn();
+  } finally {
+    release!();
+    if (messageLocks.get(messageId) === newLock) {
+      messageLocks.delete(messageId);
+    }
+  }
+}
 
 async function formatChannel(ch: any, currentUserId: string) {
   let memberIds: string[] = [];
@@ -85,7 +105,7 @@ async function formatChannel(ch: any, currentUserId: string) {
   };
 }
 
-function formatMessage(msg: any) {
+function formatMessage(msg: any, requestingUserId?: string) {
   let reactions: Record<string, any> = {};
   let savedBy: string[] = [];
   let readBy: string[] = [];
@@ -105,8 +125,31 @@ function formatMessage(msg: any) {
   }
 
   const isSnap = msg.type === 'snap' || msg.isSnap === true || reactions._isSnap === true;
-  if (reactions._isSnap) {
-    delete reactions._isSnap;
+  const snapViews = reactions._snapViews || {};
+  const snapDuration = reactions._snapDuration || (reactions._snapMediaType === 'video' ? 30 : 10);
+  const snapMediaType = reactions._snapMediaType || ((msg.mediaUrl && String(msg.mediaUrl).includes('.mp4')) || (msg.text && String(msg.text).includes('Video')) ? 'video' : 'image');
+
+  // Media masking for expired snaps:
+  // If the snap has expired for the requesting recipient and is NOT saved in chat, mask mediaUrl
+  let effectiveMediaUrl = msg.mediaUrl || null;
+  if (isSnap) {
+    if (!msg.mediaUrl || reactions._mediaDeleted === true) {
+      effectiveMediaUrl = null;
+    } else if (requestingUserId && msg.senderId !== requestingUserId) {
+      const isExpiredForUser = (snapViews[requestingUserId] || 0) >= 2 || (reactions._snapExpired && reactions._snapExpired[requestingUserId]);
+      const isSavedByUser = savedBy.includes(requestingUserId);
+      if (isExpiredForUser && !isSavedByUser) {
+        effectiveMediaUrl = null;
+      }
+    }
+  }
+
+  // Clean emoji reactions without internal underscore metadata
+  const cleanReactions: Record<string, string> = {};
+  for (const [k, v] of Object.entries(reactions)) {
+    if (!k.startsWith('_') && typeof v === 'string') {
+      cleanReactions[k] = v;
+    }
   }
 
   const isRead = readBy.length > 1;
@@ -127,11 +170,17 @@ function formatMessage(msg: any) {
     content: msg.text || msg.content || '',
     text: msg.text || msg.content || '',
     type: isSnap ? 'snap' : (msg.type || 'text'),
-    mediaUrl: msg.mediaUrl || null,
-    imageUrl: msg.mediaUrl || null,
-    image_url: msg.mediaUrl || null,
+    mediaUrl: effectiveMediaUrl,
+    imageUrl: effectiveMediaUrl,
+    image_url: effectiveMediaUrl,
     isSnap,
     is_snap: isSnap,
+    snapViews,
+    snap_views: snapViews,
+    snapDuration,
+    snap_duration: snapDuration,
+    snapMediaType,
+    snap_media_type: snapMediaType,
     replyToId,
     reply_to_id: replyToId,
     replyToContent,
@@ -140,7 +189,7 @@ function formatMessage(msg: any) {
     reply_to_sender_id: replyToSenderId,
     sharedPostId: sharedPostId || null,
     shared_post_id: sharedPostId || null,
-    reactions,
+    reactions: cleanReactions,
     savedBy,
     saved_by: savedBy,
     readBy,
@@ -529,6 +578,18 @@ router.get('/messages', authenticateToken, async (req: AuthenticatedRequest, res
     }
 
     if (targetChannelId) {
+      const channel = await prisma.chatChannel.findUnique({
+        where: { id: String(targetChannelId) },
+        select: { memberIds: true },
+      });
+      if (!channel) return res.status(404).json({ error: 'Channel not found' });
+
+      let memberIds: string[] = [];
+      try { memberIds = JSON.parse(channel.memberIds || '[]'); } catch {}
+      if (!memberIds.includes(userId)) {
+        return res.status(403).json({ error: 'Not authorized to view messages in this conversation' });
+      }
+
       const messages = await prisma.chatMessage.findMany({
         where: { channelId: String(targetChannelId), isDeleted: false },
         orderBy: { createdAt: 'asc' },
@@ -538,7 +599,7 @@ router.get('/messages', authenticateToken, async (req: AuthenticatedRequest, res
         },
       });
 
-      const formatted = messages.map(formatMessage);
+      const formatted = messages.map((m) => formatMessage(m, userId));
       return res.json({ success: true, data: formatted });
     }
 
@@ -553,7 +614,7 @@ router.get('/messages', authenticateToken, async (req: AuthenticatedRequest, res
  */
 router.post('/send', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { receiverId, channelId, text, mediaUrl, type, sharedPostId, replyToId, replyToContent, replyToSenderId, isSnap } = req.body;
+    const { receiverId, channelId, text, mediaUrl, type, sharedPostId, replyToId, replyToContent, replyToSenderId, isSnap, duration, mediaType } = req.body;
     if (!text && !mediaUrl && !sharedPostId) {
       return res.status(400).json({ error: 'Message content or media required' });
     }
@@ -581,10 +642,14 @@ router.post('/send', authenticateToken, async (req: AuthenticatedRequest, res: R
     }
     if (isSnapMessage) {
       initialReactions._isSnap = true;
+      initialReactions._snapViews = {};
+      const inferredMediaType = mediaType || (type === 'video' || (mediaUrl && String(mediaUrl).endsWith('.mp4')) || (text && String(text).includes('Video')) ? 'video' : 'image');
+      initialReactions._snapMediaType = inferredMediaType;
+      initialReactions._snapDuration = duration || (inferredMediaType === 'video' ? 30 : 10);
     }
 
     const lastMsgSummary = isSnapMessage
-        ? '📸 Snap'
+        ? (initialReactions._snapMediaType === 'video' ? '🎥 Video Snap' : '📸 Snap')
         : (effectiveType === 'post' ? '📎 Shared a post' : (effectiveText || '📎 Media'));
 
     const userId = req.user!.id;
@@ -745,107 +810,267 @@ router.delete('/messages/:id', authenticateToken, async (req: AuthenticatedReque
  * POST /api/chat/messages/:id/reaction - React to a message
  */
 router.post('/messages/:id/reaction', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const { emoji } = req.body;
-    const userId = req.user!.id;
-    const msg = await prisma.chatMessage.findUnique({ where: { id: String(req.params.id) } });
-    if (!msg) return res.status(404).json({ error: 'Message not found' });
+  const messageId = String(req.params.id);
+  return runWithMessageLock(messageId, async () => {
+    try {
+      const { emoji } = req.body;
+      const userId = req.user!.id;
+      const msg = await prisma.chatMessage.findUnique({ where: { id: messageId } });
+      if (!msg) return res.status(404).json({ error: 'Message not found' });
 
-    let reactions: Record<string, string> = {};
-    try { reactions = JSON.parse(msg.reactions); } catch {}
+      let reactions: Record<string, any> = {};
+      try { reactions = JSON.parse(msg.reactions); } catch {}
 
-    if (reactions[userId] === emoji) {
-      delete reactions[userId]; // toggle off
-    } else {
-      reactions[userId] = emoji;
+      if (reactions[userId] === emoji) {
+        delete reactions[userId]; // toggle off
+      } else {
+        reactions[userId] = emoji;
+      }
+
+      const updated = await prisma.chatMessage.update({
+        where: { id: messageId },
+        data: { reactions: JSON.stringify(reactions) },
+      });
+
+      const channel = await prisma.chatChannel.findUnique({
+        where: { id: updated.channelId },
+        select: { memberIds: true },
+      });
+      let members: string[] = [];
+      try { members = JSON.parse(channel?.memberIds || '[]'); } catch {}
+
+      for (const mId of members) {
+        const memberFormatted = formatMessage(updated, mId);
+        emitToUsers([mId], 'message:updated', { message: memberFormatted });
+      }
+
+      const formattedReaction = formatMessage(updated, userId);
+      return res.json({ success: true, data: formattedReaction });
+    } catch (error) {
+      return res.status(500).json({ error: 'Failed to react to message' });
     }
-
-    const updated = await prisma.chatMessage.update({
-      where: { id: String(req.params.id) },
-      data: { reactions: JSON.stringify(reactions) },
-    });
-    const formattedReaction = formatMessage(updated);
-    emitToChannel(updated.channelId, 'message:updated', { message: formattedReaction });
-    return res.json({ success: true, data: formattedReaction });
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to react to message' });
-  }
+  });
 });
 
 /**
  * POST /api/chat/messages/:id/save - Toggle save snap/message in chat
  */
 router.post('/messages/:id/save', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const userId = req.user!.id;
-    const msg = await prisma.chatMessage.findUnique({
-      where: { id: String(req.params.id) },
-    });
-    if (!msg) return res.status(404).json({ error: 'Message not found' });
-
-    let savedBy: string[] = [];
-    try { savedBy = JSON.parse(msg.savedBy); } catch {}
-
-    const isSaved = savedBy.includes(userId);
-    if (isSaved) {
-      savedBy = savedBy.filter((id) => id !== userId);
-    } else {
-      savedBy.push(userId);
-    }
-
-    const updated = await prisma.chatMessage.update({
-      where: { id: String(req.params.id) },
-      data: { savedBy: JSON.stringify(savedBy) },
-    });
-    const formatted = formatMessage(updated);
-    emitToChannel(updated.channelId, 'message:updated', { message: formatted });
-
-    if (!isSaved) {
-      const saver = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { fullName: true, username: true },
+  const messageId = String(req.params.id);
+  return runWithMessageLock(messageId, async () => {
+    try {
+      const userId = req.user!.id;
+      const msg = await prisma.chatMessage.findUnique({
+        where: { id: messageId },
       });
-      emitToChannel(updated.channelId, 'snap:saved', {
-        messageId: updated.id,
-        savedBy: userId,
-        saverName: saver?.fullName || saver?.username || 'A member',
-      });
-    }
+      if (!msg) return res.status(404).json({ error: 'Message not found' });
 
-    return res.json({ success: true, data: formatted });
-  } catch (error) {
-    console.error('Failed to toggle save message:', error);
-    return res.status(500).json({ error: 'Failed to toggle save message' });
-  }
+      // Authorization: User must be a participant in the conversation
+      const channel = await prisma.chatChannel.findUnique({
+        where: { id: msg.channelId },
+        select: { memberIds: true },
+      });
+      let members: string[] = [];
+      try { members = JSON.parse(channel?.memberIds || '[]'); } catch {}
+      if (!members.includes(userId) && msg.senderId !== userId) {
+        return res.status(403).json({ error: 'Not authorized to save messages in this conversation' });
+      }
+
+      let reactions: Record<string, any> = {};
+      try { reactions = typeof msg.reactions === 'string' ? JSON.parse(msg.reactions || '{}') : (msg.reactions || {}); } catch {}
+      const isSnap = msg.type === 'snap' || reactions._isSnap === true;
+
+      let savedBy: string[] = [];
+      try { savedBy = JSON.parse(msg.savedBy); } catch {}
+      const isSaved = savedBy.includes(userId);
+
+      // Prevent saving an already expired Snap whose media is deleted or expired
+      if (isSnap && !isSaved) {
+        const snapViews: Record<string, number> = reactions._snapViews || {};
+        const viewCount = snapViews[userId] || 0;
+        if (viewCount >= 2 || reactions._mediaDeleted === true || !msg.mediaUrl) {
+          return res.status(400).json({ error: 'Cannot save an expired Snap' });
+        }
+      }
+
+      if (isSaved) {
+        savedBy = savedBy.filter((id) => id !== userId);
+      } else {
+        savedBy.push(userId);
+      }
+
+      let mediaUrlToPersist = msg.mediaUrl;
+      // If someone unsaved, and now NO ONE has it saved, and it's already expired for the recipient:
+      if (isSnap && isSaved && savedBy.length === 0) {
+        const snapViews: Record<string, number> = reactions._snapViews || {};
+        const recipientMemberId = members.find((m) => m !== msg.senderId) || '';
+        const recipientViewCount = snapViews[recipientMemberId] || 0;
+        if (recipientViewCount >= 2 && msg.mediaUrl) {
+          const r2Key = extractR2Key(msg.mediaUrl);
+          if (r2Key) {
+            const deleted = await deleteR2Object(r2Key);
+            if (deleted) {
+              reactions._mediaDeleted = true;
+              mediaUrlToPersist = null;
+            }
+          }
+        }
+      }
+
+      const updated = await prisma.chatMessage.update({
+        where: { id: messageId },
+        data: {
+          savedBy: JSON.stringify(savedBy),
+          reactions: JSON.stringify(reactions),
+          mediaUrl: mediaUrlToPersist,
+        },
+      });
+
+      for (const mId of members) {
+        const memberFormatted = formatMessage(updated, mId);
+        emitToUsers([mId], 'message:updated', { message: memberFormatted });
+      }
+
+      if (!isSaved) {
+        const saver = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { fullName: true, username: true },
+        });
+        emitToChannel(updated.channelId, 'snap:saved', {
+          messageId: updated.id,
+          savedBy: userId,
+          saverName: saver?.fullName || saver?.username || 'A member',
+        });
+      }
+
+      const formatted = formatMessage(updated, userId);
+      return res.json({ success: true, data: formatted });
+    } catch (error) {
+      console.error('Failed to toggle save message:', error);
+      return res.status(500).json({ error: 'Failed to toggle save message' });
+    }
+  });
 });
 
 /**
  * POST /api/chat/messages/:id/view-snap - Mark snap message as viewed
  */
 router.post('/messages/:id/view-snap', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const userId = req.user!.id;
-    const msg = await prisma.chatMessage.findUnique({ where: { id: String(req.params.id) } });
-    if (!msg) return res.status(404).json({ error: 'Message not found' });
+  const messageId = String(req.params.id);
+  return runWithMessageLock(messageId, async () => {
+    try {
+      const userId = req.user!.id;
+      const msg = await prisma.chatMessage.findUnique({
+        where: { id: messageId },
+        include: {
+          sender: { select: { id: true, username: true, fullName: true, avatarUrl: true } },
+        },
+      });
+      if (!msg) return res.status(404).json({ error: 'Message not found' });
 
-    let readBy: string[] = [];
-    try { readBy = JSON.parse(msg.readBy); } catch {}
+      // 1. Authorization: user must be sender or an authorized channel member
+      const channel = await prisma.chatChannel.findUnique({
+        where: { id: msg.channelId },
+        select: { memberIds: true },
+      });
+      let members: string[] = [];
+      try { members = JSON.parse(channel?.memberIds || '[]'); } catch {}
+      if (!members.includes(userId) && msg.senderId !== userId) {
+        return res.status(403).json({ error: 'Not authorized to view snaps in this conversation' });
+      }
 
-    if (!readBy.includes(userId)) {
-      readBy.push(userId);
+      // 2. Validate that message is actually a snap
+      let reactions: Record<string, any> = {};
+      try { reactions = typeof msg.reactions === 'string' ? JSON.parse(msg.reactions || '{}') : (msg.reactions || {}); } catch {}
+      const isSnap = msg.type === 'snap' || reactions._isSnap === true;
+      if (!isSnap) {
+        return res.status(400).json({ error: 'Message is not a Snap' });
+      }
+
+      const snapViews: Record<string, number> = reactions._snapViews || {};
+      const currentCount = snapViews[userId] || 0;
+
+      // 3. Server-side Replay Limit:
+      // If recipient has already exhausted both views (initial view + 1 replay), strictly reject
+      if (userId !== msg.senderId) {
+        if (currentCount >= 2) {
+          return res.status(403).json({
+            error: 'This Snap has already expired and cannot be replayed again',
+            expired: true,
+            viewCount: currentCount,
+          });
+        }
+
+        // Increment view count: view 1 = 1, replay = 2
+        snapViews[userId] = currentCount + 1;
+        reactions._snapViews = snapViews;
+
+        if (snapViews[userId] >= 2) {
+          reactions._snapExpired = reactions._snapExpired || {};
+          reactions._snapExpired[userId] = true;
+        }
+      }
+
+      let readBy: string[] = [];
+      try { readBy = JSON.parse(msg.readBy); } catch {}
+      if (!readBy.includes(userId)) {
+        readBy.push(userId);
+      }
+
+      // 4. Check for Cloudflare R2 media deletion if fully expired and unsaved:
+      let savedBy: string[] = [];
+      try { savedBy = JSON.parse(msg.savedBy); } catch {}
+
+      let mediaUrlToPersist = msg.mediaUrl;
+      const isRecipientExpired = userId !== msg.senderId && snapViews[userId] >= 2;
+      const isUnsaved = savedBy.length === 0;
+
+      if (isRecipientExpired && isUnsaved && msg.mediaUrl) {
+        const r2Key = extractR2Key(msg.mediaUrl);
+        if (r2Key) {
+          const deleted = await deleteR2Object(r2Key);
+          if (deleted) {
+            reactions._mediaDeleted = true;
+            mediaUrlToPersist = null;
+          }
+        }
+      }
+
+      const updated = await prisma.chatMessage.update({
+        where: { id: messageId },
+        data: {
+          mediaUrl: mediaUrlToPersist,
+          readBy: JSON.stringify(readBy),
+          reactions: JSON.stringify(reactions),
+        },
+        include: {
+          sender: { select: { id: true, username: true, fullName: true, avatarUrl: true } },
+        },
+      });
+
+      // Also update channel last message summary
+      try {
+        await prisma.chatChannel.update({
+          where: { id: updated.channelId },
+          data: {
+            lastMessage: (snapViews[userId] || 0) >= 2 ? 'Opened Snap' : 'Opened · Replay available',
+          },
+        });
+      } catch (_) {}
+
+      // Emit real-time updates tailored to each member's permissions
+      for (const mId of members) {
+        const memberFormatted = formatMessage(updated, mId);
+        emitToUsers([mId], 'message:updated', { message: memberFormatted });
+      }
+
+      const formatted = formatMessage(updated, userId);
+      return res.json({ success: true, data: formatted });
+    } catch (error) {
+      console.error('Failed to mark snap viewed:', error);
+      return res.status(500).json({ error: 'Failed to mark snap viewed' });
     }
-
-    const updated = await prisma.chatMessage.update({
-      where: { id: String(req.params.id) },
-      data: { readBy: JSON.stringify(readBy) },
-    });
-    const formatted = formatMessage(updated);
-    emitToChannel(updated.channelId, 'message:updated', { message: formatted });
-    return res.json({ success: true, data: formatted });
-  } catch (error) {
-    console.error('Failed to mark snap viewed:', error);
-    return res.status(500).json({ error: 'Failed to mark snap viewed' });
-  }
+  });
 });
 
 export default router;

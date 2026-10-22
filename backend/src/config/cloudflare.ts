@@ -35,6 +35,52 @@ export async function generateR2UploadUrl(key: string, contentType: string, expi
 }
 
 /**
+ * Generate a short-lived pre-signed download URL for Cloudflare R2 storage
+ */
+export async function generateR2GetUrl(key: string, expiresInSeconds = 3600): Promise<string> {
+  const command = new GetObjectCommand({
+    Bucket: r2BucketName,
+    Key: key,
+  });
+  return getSignedUrl(r2Client, command, { expiresIn: expiresInSeconds });
+}
+
+/**
+ * Extract the R2 object storage key from a full URL or storage path
+ */
+export function extractR2Key(urlOrKey: string): string | null {
+  if (!urlOrKey || typeof urlOrKey !== 'string') return null;
+  const trimmed = urlOrKey.trim();
+  if (trimmed.startsWith('uploads/')) return trimmed;
+  if (trimmed.includes('/uploads/')) {
+    const parts = trimmed.split('/uploads/');
+    if (parts.length > 1 && parts[1]) {
+      return `uploads/${parts[1].split('?')[0]}`;
+    }
+  }
+  return null;
+}
+
+/**
+ * Permanently delete an object from Cloudflare R2 storage
+ */
+export async function deleteR2Object(key: string): Promise<boolean> {
+  if (!key) return false;
+  try {
+    const command = new DeleteObjectCommand({
+      Bucket: r2BucketName,
+      Key: key,
+    });
+    await r2Client.send(command);
+    return true;
+  } catch (error) {
+    console.error(`Failed to delete R2 object for key "${key}":`, error);
+    return false;
+  }
+}
+
+
+/**
  * Helper to call Cloudflare Workers AI REST API endpoint
  */
 export async function runCloudflareAI(

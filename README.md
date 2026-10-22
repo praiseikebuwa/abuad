@@ -197,14 +197,8 @@ flutter run
 
 ---
 
-## 🗄️ Database & Firestore Indexes
-
-If you encounter `[cloud_firestore/failed-precondition]` or missing index errors, deploy the project indexes:
-
-```bash
-firebase deploy --only firestore:indexes
-```
-
+## 🗄️ Database 
+*postgres sql*
 ---
 
 <!-- Animated Footer Wave -->

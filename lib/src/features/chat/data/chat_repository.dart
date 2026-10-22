@@ -368,6 +368,8 @@ class ChatRepository {
       if (replyToContent != null) payload['replyToContent'] = replyToContent;
       if (replyToSenderId != null) payload['replyToSenderId'] = replyToSenderId;
       if (isSnap != null) payload['isSnap'] = isSnap;
+      if (duration != null) payload['duration'] = duration;
+      payload['mediaType'] = type;
 
       final res = await ApiClient.post('/chat/send', payload);
 
@@ -460,6 +462,7 @@ class ChatRepository {
     try {
       await ApiClient.post('/chat/messages/$messageId/view-snap', {});
       _fetchMessages(channelId);
+      _fetchChannels();
     } catch (e) {
       debugPrint('Error viewing snap: $e');
     }

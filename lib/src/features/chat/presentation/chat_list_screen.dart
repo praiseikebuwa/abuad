@@ -622,6 +622,82 @@ class _SnapchatListItem extends ConsumerWidget {
       final content = msg['content'] ?? '';
       final senderName = msg['sender_name'] ?? (isGroup ? 'Member' : '');
 
+      final isSnap = type == 'snap' || content.contains('Snap') || msg['isSnap'] == true;
+      if (isSnap) {
+        final isSentByMe = msg['sender_id'] == currentUserId;
+        final isVideoSnap = content.contains('Video') || msg['mediaType'] == 'video';
+        final Color snapColor = isVideoSnap ? const Color(0xFF8B5CF6) : const Color(0xFFFF0044);
+
+        if (isSentByMe) {
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.near_me_outlined,
+                size: 14,
+                color: isDark ? Colors.white54 : const Color(0xFF64748B),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                'Delivered',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: isDark ? Colors.white54 : const Color(0xFF64748B),
+                ),
+              ),
+            ],
+          );
+        } else {
+          // Received
+          if (isUnread) {
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 11,
+                  height: 11,
+                  decoration: BoxDecoration(
+                    color: snapColor,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  isVideoSnap ? 'New Video Snap' : 'New Snap',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: snapColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            );
+          } else {
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 11,
+                  height: 11,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: snapColor, width: 1.8),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Opened',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: isDark ? Colors.white54 : const Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            );
+          }
+        }
+      }
+
       String text = content;
       if (type == 'voice') {
         text = '🎙️ Voice message (0:14)';

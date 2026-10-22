@@ -18,9 +18,12 @@ class ChatMessage {
   final String? replyToId;
   final String? replyToContent;
   final String? replyToSenderId;
-  final Map<String, String> reactions;
+  final Map<String, dynamic> reactions;
   final List<String> mentions;
   final bool isSnap;
+  final Map<String, int> snapViews;
+  final int snapDuration;
+  final String snapMediaType;
   final bool isEdited;
   final bool isDeleted;
   final bool isPinned;
@@ -49,6 +52,9 @@ class ChatMessage {
     this.reactions = const {},
     this.mentions = const [],
     this.isSnap = false,
+    this.snapViews = const {},
+    this.snapDuration = 10,
+    this.snapMediaType = 'image',
     this.isEdited = false,
     this.isDeleted = false,
     this.isPinned = false,
@@ -56,6 +62,34 @@ class ChatMessage {
     this.forwardedFrom,
     this.sharedPostId,
   });
+
+  bool get isVideoSnap =>
+      type == 'video' ||
+      snapMediaType == 'video' ||
+      (imageUrl != null && (imageUrl!.contains('.mp4') || imageUrl!.contains('video'))) ||
+      content.contains('Video');
+
+  int getViewCountFor(String? userId) {
+    if (userId == null) return 0;
+    if (snapViews.containsKey(userId)) {
+      return snapViews[userId]!;
+    }
+    return readBy.contains(userId) ? 1 : 0;
+  }
+
+  bool isSavedBy(String? userId) => userId != null && savedBy.contains(userId);
+
+  bool canReplay(String? userId) {
+    if (userId == null) return false;
+    if (isSavedBy(userId)) return true;
+    return getViewCountFor(userId) == 1;
+  }
+
+  bool isSnapExpiredFor(String? userId) {
+    if (userId == null) return false;
+    if (isSavedBy(userId)) return false;
+    return getViewCountFor(userId) >= 2;
+  }
 
   Map<String, dynamic> toMap() {
     return {
@@ -78,6 +112,9 @@ class ChatMessage {
       'reactions': reactions,
       'mentions': mentions,
       'is_snap': isSnap,
+      'snap_views': snapViews,
+      'snap_duration': snapDuration,
+      'snap_media_type': snapMediaType,
       'is_edited': isEdited,
       'is_deleted': isDeleted,
       'is_pinned': isPinned,
@@ -124,9 +161,37 @@ class ChatMessage {
       } catch (_) {}
     }
 
+    Map<String, dynamic> reactionsMap = {};
+    final reactionsRaw = map['reactions'];
+    if (reactionsRaw is Map) {
+      reactionsMap = Map<String, dynamic>.from(reactionsRaw);
+    } else if (reactionsRaw is String && reactionsRaw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(reactionsRaw);
+        if (decoded is Map) {
+          reactionsMap = Map<String, dynamic>.from(decoded);
+        }
+      } catch (_) {}
+    }
+
+    Map<String, int> snapViewsMap = {};
+    final rawViews = map['snap_views'] ?? map['snapViews'] ?? reactionsMap['_snapViews'];
+    if (rawViews is Map) {
+      rawViews.forEach((key, val) {
+        if (val is num) {
+          snapViewsMap[key.toString()] = val.toInt();
+        }
+      });
+    }
+
+    final snapDurationVal = (map['snap_duration'] ?? map['snapDuration'] ?? reactionsMap['_snapDuration'] ?? map['duration'] ?? 10);
+    final parsedDuration = snapDurationVal is num ? snapDurationVal.toInt() : 10;
+    final snapMediaTypeVal = (map['snap_media_type'] ?? map['snapMediaType'] ?? reactionsMap['_snapMediaType'] ?? (map['type'] == 'video' ? 'video' : 'image')).toString();
+
     final isSnapVal = map['is_snap'] == true ||
         map['isSnap'] == true ||
-        map['type'] == 'snap';
+        map['type'] == 'snap' ||
+        reactionsMap['_isSnap'] == true;
 
     return ChatMessage(
       id: map['id'] ?? '',
@@ -146,9 +211,12 @@ class ChatMessage {
       replyToId: map['reply_to_id'],
       replyToContent: map['reply_to_content'],
       replyToSenderId: map['reply_to_sender_id'],
-      reactions: Map<String, String>.from(map['reactions'] ?? {}),
+      reactions: reactionsMap,
       mentions: List<String>.from(map['mentions'] ?? []),
       isSnap: isSnapVal,
+      snapViews: snapViewsMap,
+      snapDuration: parsedDuration,
+      snapMediaType: snapMediaTypeVal,
       isEdited: map['is_edited'] ?? false,
       isDeleted: map['is_deleted'] ?? false,
       isPinned: map['is_pinned'] ?? false,

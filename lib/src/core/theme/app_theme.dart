@@ -147,11 +147,11 @@ class AppTheme {
       colorScheme: const ColorScheme.dark(
         primary: AppColors.accentAmber,
         secondary: AppColors.secondaryTeal,
-        surface: AppColors.surfaceDarkSecondary,
+        surface: Color.fromARGB(255, 0, 0, 0),
         onSurface: Colors.white,
         error: AppColors.error,
       ),
-      scaffoldBackgroundColor: AppColors.surfaceDark,
+      scaffoldBackgroundColor: const Color.fromARGB(255, 0, 0, 0),
 
       // Typography
       fontFamily: GoogleFonts.spaceGrotesk().fontFamily,
@@ -160,7 +160,7 @@ class AppTheme {
       // AppBar
       appBarTheme: const AppBarTheme(
         centerTitle: true,
-        backgroundColor: AppColors.surfaceDark,
+        backgroundColor: Color.fromARGB(255, 0, 0, 0),
         elevation: 0,
         scrolledUnderElevation: 0,
         foregroundColor: Colors.white,
@@ -169,7 +169,7 @@ class AppTheme {
       // Cards
       cardTheme: CardThemeData(
         elevation: 0,
-        color: AppColors.surfaceDarkElevated,
+        color: const Color.fromARGB(255, 0, 0, 0),
         margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),

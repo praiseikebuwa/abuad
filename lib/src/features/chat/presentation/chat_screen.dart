@@ -33,6 +33,7 @@ import './widgets/shared_post_preview.dart';
 import '../../../core/services/media_saver.dart';
 import '../../marketplace/data/marketplace_repository.dart';
 import '../../../shared/widgets/abuad_markdown.dart';
+import '../../stories/presentation/snap_viewer_screen.dart';
 import '../../feed/presentation/widgets/full_screen_image_view.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
@@ -1029,44 +1030,45 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
-  Future<void> _handleCameraMedia(XFile file, CameraMode mode) async {
+  Future<void> _handleCameraMedia(
+    XFile file,
+    CameraMode mode, {
+    String? otherUserId,
+  }) async {
     try {
       final imageService = ref.read(imageUploadServiceProvider);
-      final isSnap =
-          mode == CameraMode.photo; // In chat, treat photos as snaps (optional)
+      final isVideo = mode == CameraMode.video;
 
       // Show loading
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            mode == CameraMode.photo
-                ? 'Sending Photo...'
-                : 'Uploading Video...',
+            isVideo ? 'Sending Video Snap...' : 'Sending Snap...',
           ),
+          duration: const Duration(seconds: 15),
         ),
       );
 
-      final result = await (mode == CameraMode.photo
-          ? imageService.uploadImage(
+      final result = await (isVideo
+          ? imageService.uploadVideo(
               file,
-              path: 'chat_media/${widget.channelId}/',
+              path: 'chat_snaps/${widget.channelId}/',
             )
-          : imageService.uploadVideo(
+          : imageService.uploadImage(
               file,
-              path: 'chat_media/${widget.channelId}/',
+              path: 'chat_snaps/${widget.channelId}/',
             ));
 
-      await ref
-          .read(chatRepositoryProvider)
-          .sendMessage(
+      await ref.read(chatRepositoryProvider).sendMessage(
             widget.channelId,
-            mode == CameraMode.photo ? '📷 Photo' : '🎥 Video',
-            type: mode == CameraMode.photo ? 'image' : 'video',
+            isVideo ? '🎥 Video Snap' : '📸 Snap',
+            type: isVideo ? 'video' : 'image',
             imageUrl: result.url,
             imageWidth: result.width,
             imageHeight: result.height,
-            isSnap: isSnap,
+            isSnap: true,
+            receiverId: otherUserId,
             replyToId: _replyingTo?.id,
             replyToContent: _replyingTo?.content,
             replyToSenderId: _replyingTo?.senderId,
@@ -1076,9 +1078,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error uploading media: $e')));
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error sending snap: $e')),
+      );
     }
   }
 
@@ -1169,249 +1172,40 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Future<void> _viewSnap(ChatMessage message, ChatRepository repo) async {
     if (message.imageUrl == null) return;
 
-    bool isSavedInChat = message.savedBy.contains(repo.currentUserId);
+    final currentUserId = repo.currentUserId;
+    final isMe = message.senderId == currentUserId;
+
+    // Check expiration before opening for recipients
+    if (!isMe && message.isSnapExpiredFor(currentUserId)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This Snap has expired after 1 replay.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
 
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => StatefulBuilder(
-          builder: (context, setSnapState) {
-            return Scaffold(
-              backgroundColor: Colors.black,
-              appBar: AppBar(
-                backgroundColor: Colors.transparent,
-                elevation: 0,
-                leading: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white, size: 28),
-                  onPressed: () => Navigator.pop(context),
-                ),
-                actions: [
-                  TextButton.icon(
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      backgroundColor: isSavedInChat
-                          ? AppColors.secondaryTeal
-                          : Colors.white.withValues(alpha: 0.2),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 6,
-                      ),
-                    ),
-                    icon: Icon(
-                      isSavedInChat
-                          ? Icons.bookmark
-                          : Icons.bookmark_add_outlined,
-                      size: 18,
-                      color: Colors.white,
-                    ),
-                    label: Text(
-                      isSavedInChat ? 'Saved in Chat' : 'Save in Chat',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                      ),
-                    ),
-                    onPressed: () async {
-                      await repo.toggleSaveMessage(widget.channelId, message.id);
-                      setSnapState(() {
-                        isSavedInChat = !isSavedInChat;
-                      });
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              isSavedInChat
-                                  ? '📌 Snap saved in chat'
-                                  : 'Snap removed from saved',
-                            ),
-                            duration: const Duration(seconds: 2),
-                          ),
-                        );
-                      }
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.download_rounded,
-                      color: Colors.white,
-                      size: 26,
-                    ),
-                    tooltip: 'Save to Gallery',
-                    onPressed: () => _saveImageToGallery(message.imageUrl!),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-              ),
-              body: Stack(
-                children: [
-                  Center(
-                    child: InteractiveViewer(
-                      minScale: 1.0,
-                      maxScale: 4.0,
-                      child: CachedNetworkImage(
-                        imageUrl: message.imageUrl!,
-                        fit: BoxFit.contain,
-                        width: double.infinity,
-                        height: double.infinity,
-                        placeholder: (context, url) => const Center(
-                          child: CircularProgressIndicator(color: Colors.white),
-                        ),
-                        errorWidget: (context, url, error) => const Center(
-                          child: Icon(
-                            Icons.broken_image,
-                            color: Colors.white54,
-                            size: 64,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 30,
-                    left: 20,
-                    right: 20,
-                    child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black54,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.white24, width: 0.8),
-                        ),
-                        child: Text(
-                          isSavedInChat
-                              ? '📌 Saved in chat • Accessible anytime'
-                              : '📸 Tap "Save in Chat" to keep this snap in the conversation',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
+        builder: (context) => SnapViewerScreen.directSnap(
+          directMessage: message,
+          channelId: widget.channelId,
+          senderName: isMe ? 'You' : null,
+          onSnapConsumed: () {
+            if (mounted) setState(() {});
           },
         ),
       ),
     );
 
-    // After closing, mark as read/viewed
-    if (message.senderId != repo.currentUserId) {
-      await repo.viewSnap(widget.channelId, message.id);
-    }
+    if (mounted) setState(() {});
   }
 
   Future<void> _viewSnapDirectly(
     ChatMessage message,
     ChatRepository repo,
-  ) async {
-    if (message.imageUrl == null) return;
-    bool isSavedInChat = message.savedBy.contains(repo.currentUserId);
-
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => StatefulBuilder(
-          builder: (context, setSnapState) {
-            return Scaffold(
-              backgroundColor: Colors.black,
-              appBar: AppBar(
-                backgroundColor: Colors.transparent,
-                elevation: 0,
-                leading: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white),
-                  onPressed: () => Navigator.pop(context),
-                ),
-                actions: [
-                  TextButton.icon(
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      backgroundColor: isSavedInChat
-                          ? AppColors.secondaryTeal
-                          : Colors.white.withValues(alpha: 0.2),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 6,
-                      ),
-                    ),
-                    icon: Icon(
-                      isSavedInChat
-                          ? Icons.bookmark
-                          : Icons.bookmark_add_outlined,
-                      size: 18,
-                      color: Colors.white,
-                    ),
-                    label: Text(
-                      isSavedInChat ? 'Saved in Chat' : 'Save in Chat',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                      ),
-                    ),
-                    onPressed: () async {
-                      await repo.toggleSaveMessage(widget.channelId, message.id);
-                      setSnapState(() {
-                        isSavedInChat = !isSavedInChat;
-                      });
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              isSavedInChat
-                                  ? '📌 Snap saved in chat'
-                                  : 'Snap removed from saved',
-                            ),
-                            duration: const Duration(seconds: 2),
-                          ),
-                        );
-                      }
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.download_rounded, color: Colors.white),
-                    tooltip: 'Save to Gallery',
-                    onPressed: () => _saveImageToGallery(message.imageUrl!),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-              ),
-              body: Center(
-                child: InteractiveViewer(
-                  minScale: 1.0,
-                  maxScale: 4.0,
-                  child: CachedNetworkImage(
-                    imageUrl: message.imageUrl!,
-                    fit: BoxFit.contain,
-                    placeholder: (context, url) => const Center(
-                      child: CircularProgressIndicator(color: Colors.white),
-                    ),
-                    errorWidget: (context, url, error) => const Center(
-                      child: Icon(
-                        Icons.broken_image,
-                        color: Colors.white54,
-                        size: 64,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
+  ) => _viewSnap(message, repo);
 
   Widget _buildImageMessage(
     ChatMessage message,
@@ -1461,18 +1255,34 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     bool isDark,
     ChatRepository repo,
   ) {
-    final isReadByMe = message.readBy.contains(repo.currentUserId);
-    final isOpened = isMe ? message.readBy.length > 1 : isReadByMe;
-    final isSaved = message.savedBy.isNotEmpty;
+    final currentUserId = repo.currentUserId;
+    final viewCount = message.getViewCountFor(currentUserId);
+    final isSaved = message.isSavedBy(currentUserId);
+    final isExpired = message.isSnapExpiredFor(currentUserId);
+    final canReplay = message.canReplay(currentUserId);
 
-    // Status text & icon
     final String statusText;
     final IconData statusIcon;
     final bool isHollow;
+    Color statusColor = const Color(0xFFEF4444);
 
     if (isMe) {
-      if (isOpened) {
+      final isOpenedByRecipient = message.readBy.length > 1;
+      final otherViews = message.snapViews.entries
+          .where((e) => e.key != currentUserId)
+          .fold<int>(0, (sum, e) => sum + e.value);
+
+      if (isSaved) {
+        statusText = 'Saved in chat';
+        statusIcon = Icons.bookmark_rounded;
+        isHollow = false;
+        statusColor = const Color(0xFF6366F1);
+      } else if (otherViews >= 2) {
         statusText = 'Opened';
+        statusIcon = Icons.arrow_outward_rounded;
+        isHollow = true;
+      } else if (isOpenedByRecipient || otherViews >= 1) {
+        statusText = 'Opened · Replay available';
         statusIcon = Icons.arrow_outward_rounded;
         isHollow = true;
       } else {
@@ -1481,35 +1291,56 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         isHollow = false;
       }
     } else {
-      if (isOpened) {
+      if (isSaved) {
+        statusText = 'Saved in Chat';
+        statusIcon = Icons.bookmark_rounded;
+        isHollow = false;
+        statusColor = const Color(0xFF6366F1);
+      } else if (isExpired) {
+        statusText = 'Expired';
+        statusIcon = Icons.lock_clock_rounded;
+        isHollow = true;
+        statusColor = isDark ? Colors.white38 : Colors.grey;
+      } else if (canReplay) {
         statusText = 'Opened · Tap to replay';
         statusIcon = Icons.replay_rounded;
         isHollow = true;
       } else {
-        statusText = 'Tap to view';
-        statusIcon = Icons.camera_alt_rounded;
+        statusText = message.isVideoSnap ? 'Tap to view video' : 'Tap to view';
+        statusIcon = message.isVideoSnap
+            ? Icons.videocam_rounded
+            : Icons.camera_alt_rounded;
         isHollow = false;
       }
     }
 
-    const Color snapRed = Color(0xFFEF4444);
-
     return GestureDetector(
-      onTap: () => _viewSnap(message, repo),
+      onTap: () {
+        if (isExpired && !isMe) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('This Snap has expired after 1 replay.'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+          return;
+        }
+        _viewSnap(message, repo);
+      },
       onLongPress: () => _showSnapOptionsSheet(message, repo),
       child: Container(
-        constraints: const BoxConstraints(minWidth: 180, maxWidth: 240),
+        constraints: const BoxConstraints(minWidth: 180, maxWidth: 250),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E293B) : Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: snapRed.withValues(alpha: isHollow ? 0.35 : 0.8),
+            color: statusColor.withValues(alpha: isHollow ? 0.35 : 0.8),
             width: 1.5,
           ),
           boxShadow: [
             BoxShadow(
-              color: snapRed.withValues(alpha: isHollow ? 0.06 : 0.22),
+              color: statusColor.withValues(alpha: isHollow ? 0.06 : 0.22),
               blurRadius: 10,
               offset: const Offset(0, 3),
             ),
@@ -1518,28 +1349,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // 🟥 Red square box (solid when new, hollow when opened)
             Container(
               width: 38,
               height: 38,
               decoration: BoxDecoration(
-                color: isHollow ? Colors.transparent : snapRed,
+                color: isHollow ? Colors.transparent : statusColor,
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: snapRed,
+                  color: statusColor,
                   width: 2.2,
                 ),
               ),
               child: Center(
                 child: Icon(
                   statusIcon,
-                  color: isHollow ? snapRed : Colors.white,
+                  color: isHollow ? statusColor : Colors.white,
                   size: 19,
                 ),
               ),
             ),
             const SizedBox(width: 12),
-            // Text Column: "Snap" & Status
             Flexible(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1549,7 +1378,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'Snap',
+                        message.isVideoSnap ? 'Video Snap' : 'Snap',
                         style: TextStyle(
                           color: isDark ? Colors.white : Colors.black87,
                           fontWeight: FontWeight.w800,
@@ -1601,7 +1430,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _showSnapOptionsSheet(ChatMessage message, ChatRepository repo) {
-    final isSavedInChat = message.savedBy.contains(repo.currentUserId);
+    final currentUserId = repo.currentUserId;
+    final isSavedInChat = message.isSavedBy(currentUserId);
+    final isExpired = message.isSnapExpiredFor(currentUserId);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     showModalBottomSheet(
@@ -1627,26 +1458,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                ListTile(
-                  leading: const Icon(
-                    Icons.remove_red_eye_rounded,
-                    color: Color(0xFFEF4444),
+                if (!isExpired || isSavedInChat)
+                  ListTile(
+                    leading: const Icon(
+                      Icons.remove_red_eye_rounded,
+                      color: Color(0xFFEF4444),
+                    ),
+                    title: const Text(
+                      'View Snap',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _viewSnap(message, repo);
+                    },
                   ),
-                  title: const Text(
-                    'View Snap',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _viewSnap(message, repo);
-                  },
-                ),
                 ListTile(
                   leading: Icon(
                     isSavedInChat
                         ? Icons.bookmark_remove_rounded
                         : Icons.bookmark_add_rounded,
-                    color: const Color(0xFFEF4444),
+                    color: const Color(0xFF6366F1),
                   ),
                   title: Text(
                     isSavedInChat ? 'Remove from Saved' : 'Save in Chat',
@@ -1669,21 +1501,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     }
                   },
                 ),
-                if (message.imageUrl != null)
-                  ListTile(
-                    leading: const Icon(
-                      Icons.download_rounded,
-                      color: Color(0xFF6366F1),
-                    ),
-                    title: const Text(
-                      'Save to Gallery',
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      _saveImageToGallery(message.imageUrl!);
-                    },
-                  ),
               ],
             ),
           ),
@@ -3258,7 +3075,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                               ],
                                               Flexible(
                                                 child:
-                                                    message.type == 'image' &&
+                                                    (message.isSnap || message.type == 'snap')
+                                                    ? _buildSnapCard(
+                                                        message,
+                                                        isMe,
+                                                        isDark,
+                                                        repo,
+                                                      )
+                                                    : message.type == 'image' &&
                                                         message.imageUrl != null
                                                     ? _buildImageMessage(
                                                         message,
@@ -3876,7 +3700,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                                 ),
                                               ),
                                               _buildEmojiToggle(isDark),
-                                              _buildCameraButton(isDark),
+                                              _buildCameraButton(isDark, otherUserId: otherUserId, displayName: displayName),
                                             ],
                                           ),
                                         ),
@@ -4059,19 +3883,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  Widget _buildCameraButton(bool isDark) {
+  Widget _buildCameraButton(
+    bool isDark, {
+    String? otherUserId,
+    String? displayName,
+  }) {
     return GestureDetector(
       onTap: () async {
         final result = await Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => const CameraScreen(isForStory: false),
+            builder: (context) => CameraScreen(
+              isForStory: false,
+              cameraContext: CameraContext.snap,
+              directRecipientId: otherUserId,
+              directRecipientName: displayName,
+            ),
           ),
         );
         if (result != null && result is Map) {
           _handleCameraMedia(
             result['file'] as XFile,
             result['mode'] as CameraMode,
+            otherUserId: otherUserId,
           );
         }
       },

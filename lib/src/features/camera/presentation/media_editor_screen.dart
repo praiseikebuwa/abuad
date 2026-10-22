@@ -382,6 +382,7 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
             imageWidth: result.width,
             imageHeight: result.height,
             isSnap: true,
+            duration: 10,
             receiverId: recipient.uid,
           );
         } catch (err) {
@@ -430,9 +431,14 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => _SendToSheet(
-        onRecipientsSelected: (recipients) {
+        onSend: (recipients, postToStory) {
           Navigator.pop(ctx);
-          _sendSnapToRecipients(recipients);
+          if (postToStory) {
+            _handleMyStory();
+          }
+          if (recipients.isNotEmpty) {
+            _sendSnapToRecipients(recipients);
+          }
         },
       ),
     );
@@ -1360,9 +1366,9 @@ class _StickerOverlayItem {
 // ── Send to Friends Bottom Sheet ─────────────────────────────────────────────
 
 class _SendToSheet extends ConsumerStatefulWidget {
-  final Function(List<AppUser> recipients) onRecipientsSelected;
+  final Function(List<AppUser> recipients, bool postToStory) onSend;
 
-  const _SendToSheet({required this.onRecipientsSelected});
+  const _SendToSheet({required this.onSend});
 
   @override
   ConsumerState<_SendToSheet> createState() => _SendToSheetState();
@@ -1371,6 +1377,7 @@ class _SendToSheet extends ConsumerStatefulWidget {
 class _SendToSheetState extends ConsumerState<_SendToSheet> {
   final TextEditingController _searchCtrl = TextEditingController();
   final Map<String, AppUser> _selectedUsers = {};
+  bool _postToMyStory = false;
   String _query = '';
   List<AppUser> _directoryResults = [];
   bool _isSearchingDirectory = false;
@@ -1452,7 +1459,7 @@ class _SendToSheetState extends ConsumerState<_SendToSheet> {
                   style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const Spacer(),
-                if (_selectedUsers.isNotEmpty)
+                if (_selectedUsers.isNotEmpty || _postToMyStory)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
@@ -1460,7 +1467,11 @@ class _SendToSheetState extends ConsumerState<_SendToSheet> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      '${_selectedUsers.length} selected',
+                      _postToMyStory && _selectedUsers.isNotEmpty
+                          ? 'Story + ${_selectedUsers.length} Friends'
+                          : _postToMyStory
+                              ? 'My Story'
+                              : '${_selectedUsers.length} selected',
                       style: const TextStyle(
                         color: Color(0xFF8B5CF6),
                         fontWeight: FontWeight.bold,
@@ -1470,7 +1481,77 @@ class _SendToSheetState extends ConsumerState<_SendToSheet> {
                   ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
+            // My Story 24h Destination Tile
+            InkWell(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                setState(() => _postToMyStory = !_postToMyStory);
+              },
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: _postToMyStory
+                      ? const Color(0xFF8B5CF6).withValues(alpha: 0.15)
+                      : const Color(0xFF27272A),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: _postToMyStory ? const Color(0xFF8B5CF6) : Colors.transparent,
+                    width: 1.5,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)],
+                        ),
+                      ),
+                      child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'My Story (24h)',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Separate 24-hour expiration for all friends',
+                            style: TextStyle(color: Colors.white54, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: 26,
+                      height: 26,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _postToMyStory ? const Color(0xFF8B5CF6) : Colors.transparent,
+                        border: Border.all(
+                          color: _postToMyStory ? const Color(0xFF8B5CF6) : Colors.white38,
+                          width: 2,
+                        ),
+                      ),
+                      child: _postToMyStory
+                          ? const Icon(Icons.check_rounded, color: Colors.white, size: 16)
+                          : null,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
             // Search field
             TextField(
               controller: _searchCtrl,
@@ -1637,7 +1718,7 @@ class _SendToSheetState extends ConsumerState<_SendToSheet> {
                 ),
               ),
             ),
-            if (_selectedUsers.isNotEmpty)
+            if (_selectedUsers.isNotEmpty || _postToMyStory)
               Container(
                 padding: const EdgeInsets.only(top: 12, bottom: 6),
                 child: SizedBox(
@@ -1652,11 +1733,15 @@ class _SendToSheetState extends ConsumerState<_SendToSheet> {
                     ),
                     icon: const Icon(Icons.send_rounded, size: 20),
                     label: Text(
-                      'Send Snap to ${_selectedUsers.length} ${_selectedUsers.length == 1 ? "Friend" : "Friends"} 🔥',
+                      _postToMyStory && _selectedUsers.isNotEmpty
+                          ? 'Send Snap & Add to Story 🔥'
+                          : _postToMyStory
+                              ? 'Add to My Story (24h) 🔥'
+                              : 'Send Snap to ${_selectedUsers.length} ${_selectedUsers.length == 1 ? "Friend" : "Friends"} 🔥',
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                     ),
                     onPressed: () {
-                      widget.onRecipientsSelected(_selectedUsers.values.toList());
+                      widget.onSend(_selectedUsers.values.toList(), _postToMyStory);
                     },
                   ),
                 ),
