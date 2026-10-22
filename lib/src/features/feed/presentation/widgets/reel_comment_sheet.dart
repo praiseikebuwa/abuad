@@ -110,11 +110,11 @@ class _ReelCommentSheetState extends ConsumerState<ReelCommentSheet> {
     final isDark = theme.brightness == Brightness.dark;
     final currentUser = ref.watch(currentUserProvider).value;
 
-    final sheetBg = isDark ? const Color(0xFF0F172A) : Colors.white;
+    final sheetBg = isDark ? Colors.black : Colors.white;
     final textPrimary = isDark ? Colors.white : const Color(0xFF0F172A);
     final textSecondary = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
-    final cardBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9);
-    final borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+    final cardBg = isDark ? const Color(0xFF121212) : const Color(0xFFF1F5F9);
+    final borderColor = isDark ? Colors.white12 : const Color(0xFFE2E8F0);
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.75,

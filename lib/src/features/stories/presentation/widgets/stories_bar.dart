@@ -93,7 +93,7 @@ class StoriesBar extends ConsumerWidget {
                               child: Container(
                                 padding: const EdgeInsets.all(2),
                                 decoration: BoxDecoration(
-                                  color: isDark ? const Color(0xFF0F1115) : Colors.white,
+                                  color: isDark ? Colors.black : Colors.white,
                                   shape: BoxShape.circle,
                                 ),
                                 child: CircleAvatar(
@@ -126,7 +126,7 @@ class StoriesBar extends ConsumerWidget {
                                   color: const Color(0xFF00E5FF),
                                   shape: BoxShape.circle,
                                   border: Border.all(
-                                    color: isDark ? const Color(0xFF0F1115) : Colors.white,
+                                    color: isDark ? Colors.black : Colors.white,
                                     width: 2,
                                   ),
                                 ),
@@ -201,7 +201,7 @@ class StoriesBar extends ConsumerWidget {
                               child: Container(
                                 padding: const EdgeInsets.all(2),
                                 decoration: BoxDecoration(
-                                  color: isDark ? const Color(0xFF0F1115) : Colors.white,
+                                  color: isDark ? Colors.black : Colors.white,
                                   shape: BoxShape.circle,
                                 ),
                                 child: CircleAvatar(
@@ -276,7 +276,7 @@ class StoriesBar extends ConsumerWidget {
       builder: (context) {
         return Container(
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+            color: isDark ? const Color(0xFF101010) : Colors.white,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
           padding: const EdgeInsets.symmetric(vertical: 20),

@@ -160,7 +160,7 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
             gradient: LinearGradient(
               colors: isDark
                   ? [
-                      const Color(0xFF04060E),
+                      Colors.black,
                       AppColors.surfaceDarkSecondary,
                       AppColors.surfaceDark,
                     ]

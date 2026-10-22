@@ -77,7 +77,7 @@ class UserAvatar extends ConsumerWidget {
             child: Container(
               padding: EdgeInsets.all(radius * 0.08),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF0F1115) : Colors.white,
+                color: isDark ? Colors.black : Colors.white,
                 shape: BoxShape.circle,
               ),
               child: _buildAvatar(context, internalTap: true),
@@ -104,7 +104,7 @@ class UserAvatar extends ConsumerWidget {
       builder: (context) {
         return Container(
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+            color: isDark ? const Color(0xFF101010) : Colors.white,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
           padding: const EdgeInsets.symmetric(vertical: 20),
