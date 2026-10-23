@@ -1,30 +1,108 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:gal/gal.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:photo_manager/photo_manager.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class MediaSaver {
   /// Save a local captured XFile directly to gallery (for photo or video)
   static Future<bool> saveLocalFile(XFile file, {bool isVideo = false}) async {
-    if (kIsWeb) return true;
+    // 1. Web fallback: trigger browser download
+    if (kIsWeb) {
+      try {
+        final ext = isVideo ? 'mp4' : 'png';
+        await file.saveTo('abuad_${DateTime.now().millisecondsSinceEpoch}.$ext');
+        return true;
+      } catch (e) {
+        debugPrint('MediaSaver web save error: $e');
+        return false;
+      }
+    }
+
+    // 2. Prepare file with guaranteed extension on mobile
+    String filePath = file.path;
+    try {
+      final ext = isVideo ? '.mp4' : '.png';
+      final lower = filePath.toLowerCase();
+      final hasExt = lower.endsWith('.png') ||
+          lower.endsWith('.jpg') ||
+          lower.endsWith('.jpeg') ||
+          lower.endsWith('.mp4') ||
+          lower.endsWith('.mov') ||
+          lower.endsWith('.webp');
+
+      if (!hasExt) {
+        final tempDir = await getTemporaryDirectory();
+        final safePath =
+            '${tempDir.path}/abuad_export_${DateTime.now().millisecondsSinceEpoch}$ext';
+        final bytes = await file.readAsBytes();
+        final safeFile = File(safePath);
+        await safeFile.writeAsBytes(bytes);
+        filePath = safeFile.path;
+      }
+    } catch (e) {
+      debugPrint('MediaSaver prepare file error: $e');
+    }
+
+    // 3. Request permissions via Gal and permission_handler if needed
     try {
       final hasAccess = await Gal.hasAccess();
       if (!hasAccess) {
         final granted = await Gal.requestAccess();
-        if (!granted) return false;
+        if (!granted) {
+          if (isVideo) {
+            await Permission.videos.request();
+          } else {
+            await Permission.photos.request();
+          }
+          await Permission.storage.request();
+        }
       }
+    } catch (e) {
+      debugPrint('MediaSaver permission request error: $e');
+    }
+
+    // 4. Primary attempt: save using Gal
+    try {
       if (isVideo) {
-        await Gal.putVideo(file.path);
+        await Gal.putVideo(filePath);
       } else {
-        await Gal.putImage(file.path);
+        final bytes = await file.readAsBytes();
+        await Gal.putImageBytes(
+          bytes,
+          name: 'abuad_${DateTime.now().millisecondsSinceEpoch}',
+        );
       }
       return true;
-    } catch (e) {
-      debugPrint('MediaSaver.saveLocalFile error: $e');
-      return false;
+    } catch (galError) {
+      debugPrint('Gal save failed ($galError), attempting PhotoManager fallback...');
     }
+
+    // 5. Secondary fallback: save using PhotoManager
+    try {
+      if (isVideo) {
+        await PhotoManager.editor.saveVideo(
+          File(filePath),
+          title: 'abuad_${DateTime.now().millisecondsSinceEpoch}.mp4',
+        );
+        return true;
+      } else {
+        final bytes = await file.readAsBytes();
+        await PhotoManager.editor.saveImage(
+          bytes,
+          filename: 'abuad_${DateTime.now().millisecondsSinceEpoch}.png',
+        );
+        return true;
+      }
+    } catch (pmError) {
+      debugPrint('PhotoManager fallback failed: $pmError');
+    }
+
+    return false;
   }
 
   /// Save an image URL to gallery or download via browser if on Web/Desktop without Gal channel

@@ -177,11 +177,26 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
       return widget.mediaFile;
     }
 
+    // Fast-path: if no overlays exist, the captured mediaFile is already complete
+    if (_strokes.isEmpty && _stickers.isEmpty && _textOverlays.isEmpty) {
+      return widget.mediaFile;
+    }
+
     try {
       final boundary = _previewStackKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
       if (boundary == null) return widget.mediaFile;
 
-      final ui.Image image = await boundary.toImage(pixelRatio: 2.5);
+      // If render boundary is dirty from setState, wait until the frame has finished painting
+      if (boundary.debugNeedsPaint) {
+        final completer = Completer<void>();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          completer.complete();
+        });
+        await completer.future;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      final ui.Image image = await boundary.toImage(pixelRatio: 2.0);
       final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return widget.mediaFile;
 
@@ -210,6 +225,12 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
   Future<void> _handleSave() async {
     if (_isSaving) return;
     HapticFeedback.mediumImpact();
+
+    // If text editing is active, commit it before capturing
+    if (_isTextEditing) {
+      _submitText();
+    }
+
     setState(() => _isSaving = true);
 
     try {
@@ -233,11 +254,13 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
                   color: Colors.white,
                 ),
                 const SizedBox(width: 10),
-                Text(
-                  success
-                      ? (widget.isVideo ? 'Video saved to Gallery' : 'Photo saved to Gallery')
-                      : 'Could not save to Gallery',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+                Expanded(
+                  child: Text(
+                    success
+                        ? (widget.isVideo ? 'Video saved to Gallery' : 'Photo saved to Gallery')
+                        : 'Could not save to Gallery. Please grant storage permission in Settings.',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
                 ),
               ],
             ),
@@ -248,6 +271,7 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
         );
       }
     } catch (e) {
+      debugPrint('MediaEditorScreen _handleSave error: $e');
       if (mounted) {
         setState(() => _isSaving = false);
         ScaffoldMessenger.of(context).showSnackBar(
