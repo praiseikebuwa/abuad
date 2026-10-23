@@ -731,13 +731,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ),
         // Mic Button with Lock Animation
         GestureDetector(
+          onVerticalDragUpdate: (details) {
+            if (details.primaryDelta != null && details.primaryDelta! < -4) {
+              _lockRecording();
+            }
+          },
           onLongPressMoveUpdate: (details) {
             // dy is negative when dragging up
             final dragY = details.localPosition.dy;
             final dragX = details.localPosition.dx;
 
             // Drag Up to Lock
-            if (dragY < -60) {
+            if (dragY < -40) {
               _lockRecording();
             } else {
               setState(() {
@@ -747,7 +752,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             }
 
             // Drag Left to Cancel threshold
-            if (dragX < -150) {
+            if (dragX < -100) {
               _cancelRecording();
             }
           },
@@ -1214,6 +1219,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     ChatRepository repo,
   ) {
     if (message.isSnap) {
+      if (message.savedBy.isNotEmpty) {
+        return _buildSavedSnapInChat(message, isMe, isDark, repo);
+      }
       return _buildSnapCard(message, isMe, isDark, repo);
     }
 
@@ -1245,6 +1253,241 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             child: const Icon(Icons.error, color: Colors.red),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildSavedSnapInChat(
+    ChatMessage message,
+    bool isMe,
+    bool isDark,
+    ChatRepository repo,
+  ) {
+    final currentUserId = repo.currentUserId;
+    final isSavedByMe = message.isSavedBy(currentUserId);
+
+    return GestureDetector(
+      onTap: () {
+        if (message.isVideoSnap) {
+          _viewSnap(message, repo);
+        } else if (message.imageUrl != null) {
+          _viewImage(message.imageUrl!);
+        }
+      },
+      onLongPress: () => _showSnapOptionsSheet(message, repo),
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: min(MediaQuery.of(context).size.width * 0.72, 260.0),
+        ),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: const Color(0xFF6366F1).withValues(alpha: 0.5),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF6366F1).withValues(alpha: 0.18),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(15),
+          child: Stack(
+            children: [
+              if (message.imageUrl != null)
+                CachedNetworkImage(
+                  imageUrl: message.imageUrl!,
+                  width: min(MediaQuery.of(context).size.width * 0.72, 260.0),
+                  height: 280,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => Container(
+                    height: 240,
+                    color: isDark ? Colors.black45 : Colors.grey[200],
+                    child: const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                  errorWidget: (context, url, error) => Container(
+                    height: 180,
+                    color: isDark ? Colors.black45 : Colors.grey[200],
+                    child: const Center(
+                      child: Icon(Icons.broken_image_rounded, color: Colors.grey),
+                    ),
+                  ),
+                )
+              else
+                Container(
+                  height: 180,
+                  color: isDark ? const Color(0xFF1E293B) : Colors.grey[200],
+                  child: const Center(child: Icon(Icons.photo, size: 40)),
+                ),
+
+              // Gradient Overlay at top and bottom for readability
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.4),
+                        Colors.transparent,
+                        Colors.transparent,
+                        Colors.black.withValues(alpha: 0.55),
+                      ],
+                      stops: const [0.0, 0.25, 0.7, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+
+              // Top pill: "Saved in chat"
+              Positioned(
+                top: 8,
+                left: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.65),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: const Color(0xFF6366F1).withValues(alpha: 0.6),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.bookmark_rounded,
+                        size: 12,
+                        color: Color(0xFF818CF8),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        isSavedByMe ? 'Saved by you' : 'Saved in chat',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // If video, show center play icon
+              if (message.isVideoSnap)
+                Positioned.fill(
+                  child: Center(
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white70, width: 2),
+                      ),
+                      child: const Icon(
+                        Icons.play_arrow_rounded,
+                        color: Colors.white,
+                        size: 30,
+                      ),
+                    ),
+                  ),
+                ),
+
+              // Bottom row: Time and fullscreen icon
+              Positioned(
+                bottom: 6,
+                right: 8,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _formatTime(message.timestamp),
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(
+                      Icons.fullscreen_rounded,
+                      size: 15,
+                      color: Colors.white70,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSnapSavedNoticePill(
+    ChatMessage message,
+    bool isMe,
+    bool isDark,
+    ChatChannel? channel,
+    ChatRepository repo,
+  ) {
+    final currentUserId = repo.currentUserId;
+    final savedByMe = message.isSavedBy(currentUserId);
+    final otherSavers =
+        message.savedBy.where((id) => id != currentUserId).toList();
+
+    String noticeText;
+    if (savedByMe && otherSavers.isNotEmpty) {
+      final otherName = channel?.memberNames[otherSavers.first] ?? 'Friend';
+      noticeText = 'You & $otherName saved a snap in chat';
+    } else if (savedByMe) {
+      noticeText = 'You saved a snap in chat';
+    } else if (otherSavers.isNotEmpty) {
+      final otherName = channel?.memberNames[otherSavers.first] ?? 'Friend';
+      noticeText = '$otherName saved a snap in chat';
+    } else {
+      noticeText = 'Snap saved in chat';
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6, top: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.08)
+            : Colors.black.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: const Color(0xFF6366F1).withValues(alpha: 0.35),
+          width: 0.8,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.bookmark_rounded,
+            size: 13,
+            color: Color(0xFF818CF8),
+          ),
+          const SizedBox(width: 5),
+          Text(
+            noticeText,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: isDark ? Colors.white70 : const Color(0xFF475569),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2871,6 +3114,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                           : CrossAxisAlignment.start,
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
+                                        if (message.isSnap && message.savedBy.isNotEmpty)
+                                          _buildSnapSavedNoticePill(
+                                            message,
+                                            isMe,
+                                            isDark,
+                                            channel,
+                                            repo,
+                                          ),
                                         if (message.forwardedFrom != null)
                                           Padding(
                                             padding: const EdgeInsets.only(
@@ -3076,12 +3327,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                               Flexible(
                                                 child:
                                                     (message.isSnap || message.type == 'snap')
-                                                    ? _buildSnapCard(
-                                                        message,
-                                                        isMe,
-                                                        isDark,
-                                                        repo,
-                                                      )
+                                                    ? (message.savedBy.isNotEmpty
+                                                        ? _buildSavedSnapInChat(
+                                                            message,
+                                                            isMe,
+                                                            isDark,
+                                                            repo,
+                                                          )
+                                                        : _buildSnapCard(
+                                                            message,
+                                                            isMe,
+                                                            isDark,
+                                                            repo,
+                                                          ))
                                                     : message.type == 'image' &&
                                                         message.imageUrl != null
                                                     ? _buildImageMessage(
@@ -3922,37 +4180,77 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Widget _buildMainActionButton(bool isDark) {
     return GestureDetector(
-      onTap: _hasText ? _sendMessage : null,
+      onTap: _hasText
+          ? _sendMessage
+          : () {
+              HapticFeedback.mediumImpact();
+              _startRecording();
+              _lockRecording();
+            },
       onLongPressStart: !_hasText
           ? (_) {
               HapticFeedback.heavyImpact();
               _startRecording();
             }
           : null,
-      onLongPressEnd: !_hasText ? (_) => _stopRecording(send: !_isLocked) : null,
-      child: Container(
+      onLongPressMoveUpdate: !_hasText
+          ? (details) {
+              final dy = details.localOffsetFromOrigin.dy;
+              final dx = details.localOffsetFromOrigin.dx;
+              if (dy < -45) {
+                _lockRecording();
+              } else if (dx < -100) {
+                _cancelRecording();
+              } else {
+                setState(() {
+                  _dragOffset = dy.clamp(-60.0, 20.0);
+                  _horizontalDragOffset = dx;
+                });
+              }
+            }
+          : null,
+      onLongPressEnd: !_hasText
+          ? (_) {
+              if (!_isLocked) {
+                _stopRecording(send: true);
+              }
+            }
+          : null,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
         height: 42,
         width: 42,
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF6366F1), Color(0xFF4F46E5)],
+          gradient: LinearGradient(
+            colors: _hasText
+                ? const [Color(0xFF6366F1), Color(0xFF4F46E5)]
+                : const [Color(0xFF3B82F6), Color(0xFF2563EB)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF6366F1).withValues(alpha: 0.35),
+              color: (_hasText
+                      ? const Color(0xFF6366F1)
+                      : const Color(0xFF2563EB))
+                  .withValues(alpha: 0.35),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
           ],
         ),
         child: Center(
-          child: Icon(
-            _hasText ? Icons.send_rounded : Icons.near_me_rounded,
-            color: Colors.white,
-            size: 20,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            transitionBuilder: (child, anim) =>
+                ScaleTransition(scale: anim, child: child),
+            child: Icon(
+              _hasText ? Icons.send_rounded : Icons.mic_rounded,
+              key: ValueKey<bool>(_hasText),
+              color: Colors.white,
+              size: 20,
+            ),
           ),
         ),
       ),

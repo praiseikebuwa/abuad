@@ -59,8 +59,9 @@ class ChatRepository {
     });
 
     SocketService.instance.onMessageUpdated.listen((data) {
-      final channelId = data['channelId']?.toString();
       final msgMap = data['message'];
+      final channelId = data['channelId']?.toString() ??
+          (msgMap is Map ? (msgMap['channelId'] ?? msgMap['channel_id'])?.toString() : null);
       if (channelId != null && msgMap is Map) {
         final updatedMsg = ChatMessage.fromMap(Map<String, dynamic>.from(msgMap));
         final list = _cachedMessages[channelId];
@@ -73,6 +74,13 @@ class ChatRepository {
             }
           }
         }
+      }
+    });
+
+    SocketService.instance.onSnapSaved.listen((data) {
+      final channelId = data['channelId']?.toString();
+      if (channelId != null) {
+        _fetchMessages(channelId);
       }
     });
 
@@ -301,6 +309,45 @@ class ChatRepository {
     } catch (e) {
       debugPrint('Error fetching messages for $channelId: $e');
     }
+  }
+
+  List<ChatMessage> getCachedMessages(String channelId) {
+    return _cachedMessages[channelId] ?? [];
+  }
+
+  Future<List<ChatMessage>> fetchMessagesOnce(String channelId) async {
+    await _fetchMessages(channelId);
+    return _cachedMessages[channelId] ?? [];
+  }
+
+  ChatMessage? getLatestUnreadSnap(String channelId, String? currentUserId) {
+    final list = _cachedMessages[channelId];
+    if (list == null || currentUserId == null) return null;
+    for (final msg in list.reversed) {
+      if (msg.isSnap && msg.senderId != currentUserId && !msg.isSnapExpiredFor(currentUserId)) {
+        return msg;
+      }
+    }
+    return null;
+  }
+
+  ({int unreadSnaps, int unreadMessages}) getUnreadBreakdown(String channelId, String? currentUserId) {
+    final list = _cachedMessages[channelId];
+    if (list == null || currentUserId == null) {
+      return (unreadSnaps: 0, unreadMessages: 0);
+    }
+    int snaps = 0;
+    int msgs = 0;
+    for (final m in list) {
+      if (m.senderId != currentUserId && !m.readBy.contains(currentUserId)) {
+        if (m.isSnap && !m.isSnapExpiredFor(currentUserId)) {
+          snaps++;
+        } else {
+          msgs++;
+        }
+      }
+    }
+    return (unreadSnaps: snaps, unreadMessages: msgs);
   }
 
   Future<String> createOrGetChannel(

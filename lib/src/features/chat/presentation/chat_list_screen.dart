@@ -16,6 +16,7 @@ import '../../stories/domain/story.dart';
 import '../../stories/presentation/create_story_screen.dart';
 import '../../stories/presentation/my_story_screen.dart';
 import '../../stories/presentation/story_viewer_screen.dart';
+import '../../stories/presentation/snap_viewer_screen.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../../../core/utils/url_validator.dart';
 import '../../camera/presentation/camera_screen.dart';
@@ -576,6 +577,26 @@ class _SnapchatListItem extends ConsumerWidget {
     final isPinned = channel.pinnedBy.contains(currentUserId);
     final isMuted = channel.id.contains('developer') || channel.displayName?.toLowerCase().contains('developer') == true;
 
+    final chatRepo = ref.read(chatRepositoryProvider);
+    final unreadBreakdown = chatRepo.getUnreadBreakdown(channel.id, currentUserId);
+    final msg = channel.lastMessage;
+    final type = msg['type'] ?? 'text';
+    final content = msg['content'] ?? '';
+    final isSnapLast = type == 'snap' || content.contains('Snap') || msg['isSnap'] == true;
+    final isLastSentByMe = msg['sender_id'] == currentUserId;
+    final isVideoSnap = content.contains('Video') || msg['mediaType'] == 'video';
+    final Color snapColor = isVideoSnap ? const Color(0xFF8B5CF6) : const Color(0xFFFF0044);
+
+    final unreadSnapsCount = unreadBreakdown.unreadSnaps > 0
+        ? unreadBreakdown.unreadSnaps
+        : (isUnread && isSnapLast && !isLastSentByMe ? 1 : 0);
+    final unreadMessagesCount = unreadBreakdown.unreadMessages > 0
+        ? unreadBreakdown.unreadMessages
+        : (isUnread && (!isSnapLast || isLastSentByMe)
+            ? unreadCount
+            : (unreadCount > unreadSnapsCount ? unreadCount - unreadSnapsCount : 0));
+    final hasUnreadSnap = unreadSnapsCount > 0;
+
     // Format Timestamp like "9:42 AM", "Yesterday", "Monday", "Just now"
     String formatTime(DateTime time) {
       final now = DateTime.now();
@@ -607,7 +628,6 @@ class _SnapchatListItem extends ConsumerWidget {
         );
       }
 
-      final msg = channel.lastMessage;
       if (msg.isEmpty) {
         return Text(
           'Tap to chat',
@@ -618,17 +638,74 @@ class _SnapchatListItem extends ConsumerWidget {
         );
       }
 
-      final type = msg['type'] ?? 'text';
-      final content = msg['content'] ?? '';
       final senderName = msg['sender_name'] ?? (isGroup ? 'Member' : '');
 
-      final isSnap = type == 'snap' || content.contains('Snap') || msg['isSnap'] == true;
-      if (isSnap) {
-        final isSentByMe = msg['sender_id'] == currentUserId;
-        final isVideoSnap = content.contains('Video') || msg['mediaType'] == 'video';
-        final Color snapColor = isVideoSnap ? const Color(0xFF8B5CF6) : const Color(0xFFFF0044);
+      // Check for unread snaps or mixed unread messages
+      if (hasUnreadSnap) {
+        final snapText = unreadSnapsCount > 1
+            ? '$unreadSnapsCount Snaps'
+            : (isVideoSnap ? 'New Video Snap' : 'New Snap');
 
-        if (isSentByMe) {
+        if (unreadMessagesCount > 0) {
+          final msgText = unreadMessagesCount == 1 ? '1 Message' : '$unreadMessagesCount Messages';
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 11,
+                height: 11,
+                decoration: BoxDecoration(
+                  color: snapColor,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  '$snapText · $msgText',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: snapColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          );
+        } else {
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 11,
+                height: 11,
+                decoration: BoxDecoration(
+                  color: snapColor,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  snapText,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: snapColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
+      }
+
+      if (isSnapLast) {
+        if (isLastSentByMe) {
           return Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -648,53 +725,27 @@ class _SnapchatListItem extends ConsumerWidget {
             ],
           );
         } else {
-          // Received
-          if (isUnread) {
-            return Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 11,
-                  height: 11,
-                  decoration: BoxDecoration(
-                    color: snapColor,
-                    borderRadius: BorderRadius.circular(3),
-                  ),
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 11,
+                height: 11,
+                decoration: BoxDecoration(
+                  border: Border.all(color: snapColor, width: 1.8),
+                  borderRadius: BorderRadius.circular(3),
                 ),
-                const SizedBox(width: 6),
-                Text(
-                  isVideoSnap ? 'New Video Snap' : 'New Snap',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: snapColor,
-                    fontWeight: FontWeight.bold,
-                  ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Opened',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: isDark ? Colors.white54 : const Color(0xFF64748B),
                 ),
-              ],
-            );
-          } else {
-            return Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 11,
-                  height: 11,
-                  decoration: BoxDecoration(
-                    border: Border.all(color: snapColor, width: 1.8),
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'Opened',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: isDark ? Colors.white54 : const Color(0xFF64748B),
-                  ),
-                ),
-              ],
-            );
-          }
+              ),
+            ],
+          );
         }
       }
 
@@ -892,7 +943,7 @@ class _SnapchatListItem extends ConsumerWidget {
 
               const SizedBox(width: 10),
 
-              // Trailing Column: Timestamp & Badge / Checkmark
+              // Trailing Column: Timestamp & Badge / Quick-view snap / Checkmark
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 mainAxisSize: MainAxisSize.min,
@@ -903,12 +954,52 @@ class _SnapchatListItem extends ConsumerWidget {
                       fontSize: 12,
                       fontWeight: isUnread ? FontWeight.w600 : FontWeight.normal,
                       color: isUnread
-                          ? const Color(0xFF3B49DF)
+                          ? (hasUnreadSnap ? snapColor : const Color(0xFF3B49DF))
                           : (isDark ? Colors.white38 : Colors.grey[400]),
                     ),
                   ),
                   const SizedBox(height: 5),
-                  if (isUnread)
+                  if (hasUnreadSnap)
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => _openQuickSnap(context, ref, channel, displayName, displayAvatar),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
+                        decoration: BoxDecoration(
+                          color: snapColor,
+                          borderRadius: BorderRadius.circular(6),
+                          boxShadow: [
+                            BoxShadow(
+                              color: snapColor.withValues(alpha: 0.45),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              isVideoSnap ? Icons.play_arrow_rounded : Icons.camera_alt_rounded,
+                              size: 13,
+                              color: Colors.white,
+                            ),
+                            if (unreadSnapsCount > 1) ...[
+                              const SizedBox(width: 3),
+                              Text(
+                                '$unreadSnapsCount',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    )
+                  else if (isUnread)
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                       decoration: BoxDecoration(
@@ -939,6 +1030,42 @@ class _SnapchatListItem extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _openQuickSnap(
+    BuildContext context,
+    WidgetRef ref,
+    ChatChannel channel,
+    String displayName,
+    String? displayAvatar,
+  ) async {
+    HapticFeedback.mediumImpact();
+    final repo = ref.read(chatRepositoryProvider);
+    var snap = repo.getLatestUnreadSnap(channel.id, currentUserId);
+    if (snap == null) {
+      await repo.fetchMessagesOnce(channel.id);
+      snap = repo.getLatestUnreadSnap(channel.id, currentUserId);
+    }
+
+    if (!context.mounted) return;
+
+    if (snap != null && snap.imageUrl != null) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => SnapViewerScreen.directSnap(
+            directMessage: snap!,
+            channelId: channel.id,
+            senderName: displayName,
+            senderAvatar: displayAvatar,
+            onSnapConsumed: () {},
+          ),
+        ),
+      );
+    } else {
+      context.push(
+        '/chat/${channel.id}?name=${Uri.encodeComponent(displayName)}&avatar=${Uri.encodeComponent(displayAvatar ?? '')}',
+      );
+    }
   }
 
   void _showDeleteConfirmation(BuildContext context, WidgetRef ref, String displayName) {

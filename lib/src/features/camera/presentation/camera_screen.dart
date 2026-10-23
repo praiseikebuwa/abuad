@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../music/domain/audio_track.dart';
@@ -17,8 +18,25 @@ import '../../music/presentation/music_picker_sheet.dart';
 import 'media_editor_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-enum CameraMode { directors, photo, video, night, focus }
-enum GridType { thirds, golden, crosshair }
+class CameraLensEffect {
+  final String id;
+  final String name;
+  final String category;
+  final IconData icon;
+  final List<Color> previewGradient;
+  final List<double>? colorMatrix;
+
+  const CameraLensEffect({
+    required this.id,
+    required this.name,
+    required this.category,
+    required this.icon,
+    required this.previewGradient,
+    this.colorMatrix,
+  });
+}
+
+enum CameraMode { photo, video }
 enum CameraContext { post, story, snap }
 enum CameraAspectRatio {
   full('Full', null),
@@ -69,6 +87,167 @@ class _CameraScreenState extends State<CameraScreen>
   bool _isCaptureOperationInProgress = false;
   FlashMode _flashMode = FlashMode.off;
   AudioTrack? _selectedAudioTrack;
+  AudioPlayer? _bgMusicPlayer;
+
+  // Real-time Aesthetic Lenses & Effects
+  CameraLensEffect? _selectedLens;
+  bool _showLensesCarousel = false;
+  String? _attachedLink;
+  int? _snapDurationSeconds;
+
+  static const List<CameraLensEffect> _builtinLenses = [
+    CameraLensEffect(
+      id: 'none',
+      name: 'Original',
+      category: 'Natural',
+      icon: Icons.block_rounded,
+      previewGradient: [Color(0xFF4B5563), Color(0xFF1F2937)],
+      colorMatrix: null,
+    ),
+    CameraLensEffect(
+      id: 'golden',
+      name: 'Golden Hour',
+      category: 'Aesthetic',
+      icon: Icons.wb_sunny_rounded,
+      previewGradient: [Color(0xFFFF9900), Color(0xFFFF5E36)],
+      colorMatrix: [
+        1.20, 0.05, 0.00, 0.00, 15.0,
+        0.05, 1.08, 0.00, 0.00, 8.0,
+        0.00, 0.00, 0.82, 0.00, -12.0,
+        0.00, 0.00, 0.00, 1.00, 0.0,
+      ],
+    ),
+    CameraLensEffect(
+      id: 'noir',
+      name: 'Noir B&W',
+      category: 'Classic',
+      icon: Icons.filter_b_and_w_rounded,
+      previewGradient: [Color(0xFF374151), Color(0xFF111827)],
+      colorMatrix: [
+        0.33, 0.59, 0.11, 0.00, -5.0,
+        0.33, 0.59, 0.11, 0.00, -5.0,
+        0.33, 0.59, 0.11, 0.00, -5.0,
+        0.00, 0.00, 0.00, 1.00, 0.0,
+      ],
+    ),
+    CameraLensEffect(
+      id: 'cyberpunk',
+      name: 'Cyberpunk',
+      category: 'Vibrant',
+      icon: Icons.electric_bolt_rounded,
+      previewGradient: [Color(0xFF8B5CF6), Color(0xFF06B6D4)],
+      colorMatrix: [
+        1.25, 0.00, 0.35, 0.00, 20.0,
+        0.00, 0.90, 0.15, 0.00, -8.0,
+        0.30, 0.00, 1.45, 0.00, 35.0,
+        0.00, 0.00, 0.00, 1.00, 0.0,
+      ],
+    ),
+    CameraLensEffect(
+      id: 'vintage',
+      name: "Vintage '90s",
+      category: 'Retro',
+      icon: Icons.camera_roll_rounded,
+      previewGradient: [Color(0xFFD97706), Color(0xFF78350F)],
+      colorMatrix: [
+        1.08, 0.02, 0.00, 0.00, 16.0,
+        0.02, 1.02, 0.00, 0.00, 10.0,
+        0.00, 0.00, 0.82, 0.00, -10.0,
+        0.00, 0.00, 0.00, 1.00, 0.0,
+      ],
+    ),
+    CameraLensEffect(
+      id: 'beauty',
+      name: 'Soft Beauty',
+      category: 'Beauty',
+      icon: Icons.face_retouching_natural_rounded,
+      previewGradient: [Color(0xFFF472B6), Color(0xFFFDA4AF)],
+      colorMatrix: [
+        1.12, 0.00, 0.00, 0.00, 18.0,
+        0.00, 1.06, 0.00, 0.00, 12.0,
+        0.00, 0.00, 1.04, 0.00, 12.0,
+        0.00, 0.00, 0.00, 1.00, 0.0,
+      ],
+    ),
+    CameraLensEffect(
+      id: 'aqua',
+      name: 'Aqua Marine',
+      category: 'Cinematic',
+      icon: Icons.water_drop_rounded,
+      previewGradient: [Color(0xFF0D9488), Color(0xFF0284C7)],
+      colorMatrix: [
+        1.08, 0.00, 0.00, 0.00, 4.0,
+        0.00, 1.18, 0.10, 0.00, 12.0,
+        0.00, 0.15, 1.30, 0.00, 24.0,
+        0.00, 0.00, 0.00, 1.00, 0.0,
+      ],
+    ),
+    CameraLensEffect(
+      id: 'emerald',
+      name: 'Emerald Lush',
+      category: 'Nature',
+      icon: Icons.forest_rounded,
+      previewGradient: [Color(0xFF059669), Color(0xFF047857)],
+      colorMatrix: [
+        0.88, 0.10, 0.00, 0.00, -8.0,
+        0.00, 1.28, 0.00, 0.00, 18.0,
+        0.00, 0.10, 0.90, 0.00, -2.0,
+        0.00, 0.00, 0.00, 1.00, 0.0,
+      ],
+    ),
+    CameraLensEffect(
+      id: 'crimson',
+      name: 'Crimson Mood',
+      category: 'Aesthetic',
+      icon: Icons.favorite_rounded,
+      previewGradient: [Color(0xFFE11D48), Color(0xFF881337)],
+      colorMatrix: [
+        1.30, 0.00, 0.15, 0.00, 22.0,
+        0.00, 0.92, 0.08, 0.00, -4.0,
+        0.10, 0.00, 1.12, 0.00, 12.0,
+        0.00, 0.00, 0.00, 1.00, 0.0,
+      ],
+    ),
+    CameraLensEffect(
+      id: 'pop',
+      name: 'Vibrant Pop',
+      category: 'Vibrant',
+      icon: Icons.palette_rounded,
+      previewGradient: [Color(0xFFEC4899), Color(0xFFF59E0B)],
+      colorMatrix: [
+        1.25, -0.10, -0.10, 0.00, 0.0,
+        -0.10, 1.25, -0.10, 0.00, 0.0,
+        -0.10, -0.10, 1.25, 0.00, 0.0,
+        0.00, 0.00, 0.00, 1.00, 0.0,
+      ],
+    ),
+    CameraLensEffect(
+      id: 'sepia',
+      name: 'Sepia Dream',
+      category: 'Retro',
+      icon: Icons.history_edu_rounded,
+      previewGradient: [Color(0xFFB45309), Color(0xFF78350F)],
+      colorMatrix: [
+        0.393, 0.769, 0.189, 0.00, 0.0,
+        0.349, 0.686, 0.168, 0.00, 0.0,
+        0.272, 0.534, 0.131, 0.00, 0.0,
+        0.000, 0.000, 0.000, 1.00, 0.0,
+      ],
+    ),
+    CameraLensEffect(
+      id: 'moonlight',
+      name: 'Moonlight',
+      category: 'Cinematic',
+      icon: Icons.nightlight_round,
+      previewGradient: [Color(0xFF3B82F6), Color(0xFF1E1B4B)],
+      colorMatrix: [
+        0.85, 0.00, 0.10, 0.00, -10.0,
+        0.00, 0.95, 0.15, 0.00, 0.0,
+        0.10, 0.15, 1.35, 0.00, 25.0,
+        0.00, 0.00, 0.00, 1.00, 0.0,
+      ],
+    ),
+  ];
 
   // Global key for exact preview viewfinder coordinate calculation
   final GlobalKey _previewKey = GlobalKey();
@@ -85,13 +264,7 @@ class _CameraScreenState extends State<CameraScreen>
   double _maxExposureOffset = 2.0;
   double _minExposureOffset = -2.0;
   bool _showExposureSlider = false;
-  bool _isNightMode = false;
   Offset? _focusPoint;
-
-  // Grid & Composition
-  bool _showGrid = false;
-  GridType _gridType = GridType.thirds;
-  final bool _isMirrored = true;
 
   // Gallery Asset
   Uint8List? _latestGallerImage;
@@ -200,6 +373,8 @@ class _CameraScreenState extends State<CameraScreen>
     _recordingTimer?.cancel();
     _countdownTimer?.cancel();
     _pulseController.dispose();
+    _bgMusicPlayer?.stop();
+    _bgMusicPlayer?.dispose();
     _controller?.dispose();
     super.dispose();
   }
@@ -207,9 +382,13 @@ class _CameraScreenState extends State<CameraScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+      _stopBackgroundMusic();
       _releaseCamera();
     } else if (state == AppLifecycleState.resumed) {
       _restoreCamera();
+      if (_selectedAudioTrack != null) {
+        _playBackgroundMusic(_selectedAudioTrack!);
+      }
     }
   }
 
@@ -375,15 +554,7 @@ class _CameraScreenState extends State<CameraScreen>
     } catch (_) {}
   }
 
-  void _toggleNightMode() {
-    HapticFeedback.mediumImpact();
-    setState(() => _isNightMode = !_isNightMode);
-    if (_isNightMode) {
-      _setExposureOffset(_maxExposureOffset);
-    } else {
-      _setExposureOffset(0.0);
-    }
-  }
+
 
   void _setFocusPoint(Offset globalPosition) {
     final renderObject = _previewKey.currentContext?.findRenderObject();
@@ -416,75 +587,7 @@ class _CameraScreenState extends State<CameraScreen>
     } catch (_) {}
   }
 
-  void _openGridTypeSelector() {
-    HapticFeedback.lightImpact();
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1E1E24),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(width: 36, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
-              const SizedBox(height: 16),
-              const Text('Composition Grid', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              ListTile(
-                leading: const Icon(Icons.grid_3x3_rounded, color: Colors.white),
-                title: const Text('Rule of Thirds (3x3)', style: TextStyle(color: Colors.white)),
-                trailing: _showGrid && _gridType == GridType.thirds ? const Icon(Icons.check, color: AppColors.secondaryTeal) : null,
-                onTap: () {
-                  setState(() {
-                    _showGrid = true;
-                    _gridType = GridType.thirds;
-                  });
-                  Navigator.pop(ctx);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.crop_rotate_rounded, color: Colors.white),
-                title: const Text('Golden Ratio', style: TextStyle(color: Colors.white)),
-                trailing: _showGrid && _gridType == GridType.golden ? const Icon(Icons.check, color: AppColors.secondaryTeal) : null,
-                onTap: () {
-                  setState(() {
-                    _showGrid = true;
-                    _gridType = GridType.golden;
-                  });
-                  Navigator.pop(ctx);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.filter_center_focus_rounded, color: Colors.white),
-                title: const Text('Center Crosshair', style: TextStyle(color: Colors.white)),
-                trailing: _showGrid && _gridType == GridType.crosshair ? const Icon(Icons.check, color: AppColors.secondaryTeal) : null,
-                onTap: () {
-                  setState(() {
-                    _showGrid = true;
-                    _gridType = GridType.crosshair;
-                  });
-                  Navigator.pop(ctx);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.grid_off_rounded, color: Colors.white54),
-                title: const Text('Disable Grid', style: TextStyle(color: Colors.white70)),
-                trailing: !_showGrid ? const Icon(Icons.check, color: Colors.white54) : null,
-                onTap: () {
-                  setState(() => _showGrid = false);
-                  Navigator.pop(ctx);
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+
 
   void _openAspectRatioSelector() {
     HapticFeedback.lightImpact();
@@ -628,17 +731,346 @@ class _CameraScreenState extends State<CameraScreen>
     HapticFeedback.selectionClick();
   }
 
+  void _toggleLensesCarousel() {
+    HapticFeedback.lightImpact();
+    setState(() {
+      _showLensesCarousel = !_showLensesCarousel;
+    });
+  }
+
+  Future<void> _capturePhotoWithInitialTool(String tool) async {
+    final controller = _controller;
+    if (!_isCameraInitialized || _isRecording || _isCaptureOperationInProgress || controller == null || !controller.value.isInitialized) {
+      return;
+    }
+    _isCaptureOperationInProgress = true;
+    HapticFeedback.mediumImpact();
+    try {
+      final XFile file = await controller.takePicture();
+      _handleMediaCapture(file, CameraMode.photo, initialTool: tool);
+    } catch (e) {
+      debugPrint('Error capturing photo for tool $tool: $e');
+    } finally {
+      _isCaptureOperationInProgress = false;
+    }
+  }
+
+  void _openDurationSelector() {
+    HapticFeedback.lightImpact();
+    final durations = [
+      (1, '1s'),
+      (2, '2s'),
+      (3, '3s'),
+      (5, '5s'),
+      (10, '10s'),
+      (null, 'No Limit (∞)'),
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.8),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              border: Border.all(color: Colors.white24, width: 0.5),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+                const SizedBox(height: 16),
+                const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.av_timer_rounded, color: AppColors.secondaryTeal, size: 22),
+                    SizedBox(width: 8),
+                    Text('Snap View Duration', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                const Text('Choose how long recipients can view your snap', style: TextStyle(color: Colors.white60, fontSize: 12)),
+                const SizedBox(height: 20),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  alignment: WrapAlignment.center,
+                  children: durations.map((d) {
+                    final isSelected = _snapDurationSeconds == d.$1;
+                    return GestureDetector(
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        setState(() => _snapDurationSeconds = d.$1);
+                        Navigator.pop(ctx);
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: isSelected ? AppColors.secondaryTeal : Colors.white.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: isSelected ? AppColors.secondaryTeal : Colors.white24,
+                            width: 1,
+                          ),
+                        ),
+                        child: Text(
+                          d.$2,
+                          style: TextStyle(
+                            color: isSelected ? Colors.black : Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 16),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openLinkAttachmentDialog() {
+    HapticFeedback.lightImpact();
+    final textController = TextEditingController(text: _attachedLink ?? '');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: Colors.white24),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.link_rounded, color: AppColors.secondaryTeal),
+            SizedBox(width: 10),
+            Text('Attach Link', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Add a website URL or link for friends to swipe up on your snap.',
+              style: TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: textController,
+              autofocus: true,
+              style: const TextStyle(color: Colors.white),
+              keyboardType: TextInputType.url,
+              decoration: InputDecoration(
+                hintText: 'https://...',
+                hintStyle: const TextStyle(color: Colors.white38),
+                filled: true,
+                fillColor: Colors.white.withValues(alpha: 0.08),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.secondaryTeal)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          if (_attachedLink != null)
+            TextButton(
+              onPressed: () {
+                HapticFeedback.selectionClick();
+                setState(() => _attachedLink = null);
+                Navigator.pop(ctx);
+              },
+              child: const Text('Remove', style: TextStyle(color: Colors.redAccent)),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.secondaryTeal,
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () {
+              final raw = textController.text.trim();
+              if (raw.isNotEmpty) {
+                final formatted = (raw.startsWith('http://') || raw.startsWith('https://')) ? raw : 'https://$raw';
+                setState(() => _attachedLink = formatted);
+              } else {
+                setState(() => _attachedLink = null);
+              }
+              Navigator.pop(ctx);
+            },
+            child: const Text('Attach', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openLensesSearchSheet() {
+    HapticFeedback.lightImpact();
+    String searchQuery = '';
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) {
+          final filtered = _builtinLenses.where((lens) {
+            if (searchQuery.isEmpty) return true;
+            return lens.name.toLowerCase().contains(searchQuery.toLowerCase()) ||
+                lens.category.toLowerCase().contains(searchQuery.toLowerCase());
+          }).toList();
+
+          return ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              child: Container(
+                height: MediaQuery.of(context).size.height * 0.65,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.85),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                  border: Border.all(color: Colors.white24, width: 0.5),
+                ),
+                child: Column(
+                  children: [
+                    Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+                    const SizedBox(height: 12),
+                    const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.auto_awesome, color: AppColors.secondaryTeal, size: 20),
+                        SizedBox(width: 8),
+                        Text('Lenses & Effects', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.search, color: Colors.white60),
+                        hintText: 'Search filters & effects...',
+                        hintStyle: const TextStyle(color: Colors.white38),
+                        filled: true,
+                        fillColor: Colors.white.withValues(alpha: 0.1),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                      ),
+                      onChanged: (q) {
+                        setSheetState(() => searchQuery = q);
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    Expanded(
+                      child: GridView.builder(
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          childAspectRatio: 0.95,
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 10,
+                        ),
+                        itemCount: filtered.length,
+                        itemBuilder: (context, i) {
+                          final lens = filtered[i];
+                          final isSelected = _selectedLens?.id == lens.id || (_selectedLens == null && lens.id == 'none');
+                          return GestureDetector(
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              setState(() {
+                                _selectedLens = lens.id == 'none' ? null : lens;
+                                _showLensesCarousel = true;
+                              });
+                              Navigator.pop(ctx);
+                            },
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(16),
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: lens.previewGradient,
+                                ),
+                                border: Border.all(
+                                  color: isSelected ? Colors.white : Colors.white24,
+                                  width: isSelected ? 2.5 : 1,
+                                ),
+                              ),
+                              padding: const EdgeInsets.all(8),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(lens.icon, color: Colors.white, size: 26),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    lens.name,
+                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                                    textAlign: TextAlign.center,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(
+                                    lens.category,
+                                    style: const TextStyle(color: Colors.white70, fontSize: 10),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: const BorderSide(color: Colors.white24),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                      icon: const Icon(Icons.camera_alt_outlined, size: 18),
+                      label: const Text('Snapchat AR Camera (Live Lenses)'),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _openSnapchatLenses();
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   void _openSnapchatLenses() async {
     if (kIsWeb) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Snapchat Lenses are supported on mobile devices (Android/iOS).'),
-        ),
-      );
+      _openLensesSearchSheet();
       return;
     }
     try {
       HapticFeedback.mediumImpact();
+      // Safely pause camera stream to avoid hardware conflict crash on Android
+      await _controller?.pausePreview();
       await _cameraKitFlutterImpl.openCameraKit(
         groupIds: [_snapLensGroupId],
         isHideCloseButton: false,
@@ -646,17 +1078,13 @@ class _CameraScreenState extends State<CameraScreen>
     } catch (e) {
       debugPrint('Error launching Snapchat Camera Kit: $e');
       if (mounted) {
-        final isMissingPlugin = e.toString().contains('MissingPluginException');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              isMissingPlugin
-                  ? 'Please do a full app rebuild to compile native Snapchat SDK.'
-                  : 'Could not launch Snapchat Lenses: $e',
-            ),
-            duration: const Duration(seconds: 4),
-          ),
-        );
+        _openLensesSearchSheet();
+      }
+    } finally {
+      if (mounted) {
+        try {
+          await _controller?.resumePreview();
+        } catch (_) {}
       }
     }
   }
@@ -699,9 +1127,6 @@ class _CameraScreenState extends State<CameraScreen>
     if (_isCaptureOperationInProgress) return;
     switch (_currentMode) {
       case CameraMode.photo:
-      case CameraMode.focus:
-      case CameraMode.directors:
-      case CameraMode.night:
         await _takePhoto();
         break;
       case CameraMode.video:
@@ -810,7 +1235,14 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
-  void _handleMediaCapture(XFile file, CameraMode mode) async {
+  void _handleMediaCapture(
+    XFile file,
+    CameraMode mode, {
+    String? initialTool,
+    String? attachedLink,
+    int? snapDurationSeconds,
+  }) async {
+    _stopBackgroundMusic();
     if (!mounted) return;
     final result = await Navigator.of(context).push(
       MaterialPageRoute(
@@ -825,11 +1257,17 @@ class _CameraScreenState extends State<CameraScreen>
           initialAudioTrack: _selectedAudioTrack,
           aspectRatio: _aspectRatio.ratio,
           aspectRatioLabel: _aspectRatio.label,
+          initialTool: initialTool,
+          attachedLink: attachedLink ?? _attachedLink,
+          snapDurationSeconds: snapDurationSeconds ?? _snapDurationSeconds,
+          colorMatrix: _selectedLens?.colorMatrix,
         ),
       ),
     );
     if (result != null && mounted) {
       Navigator.of(context).pop(result);
+    } else if (mounted && _selectedAudioTrack != null) {
+      _playBackgroundMusic(_selectedAudioTrack!);
     }
   }
 
@@ -852,7 +1290,25 @@ class _CameraScreenState extends State<CameraScreen>
       setState(() {
         _selectedAudioTrack = track;
       });
+      _playBackgroundMusic(track);
     }
+  }
+
+  Future<void> _playBackgroundMusic(AudioTrack track) async {
+    try {
+      _bgMusicPlayer ??= AudioPlayer();
+      await _bgMusicPlayer!.stop();
+      await _bgMusicPlayer!.setReleaseMode(ReleaseMode.loop);
+      await _bgMusicPlayer!.play(UrlSource(track.audioUrl));
+    } catch (e) {
+      debugPrint('Error playing background audio on camera: $e');
+    }
+  }
+
+  Future<void> _stopBackgroundMusic() async {
+    try {
+      await _bgMusicPlayer?.stop();
+    } catch (_) {}
   }
 
   @override
@@ -979,6 +1435,7 @@ class _CameraScreenState extends State<CameraScreen>
                                   GestureDetector(
                                     onTap: () {
                                       HapticFeedback.lightImpact();
+                                      _stopBackgroundMusic();
                                       setState(() => _selectedAudioTrack = null);
                                     },
                                     child: const Icon(Icons.close, color: Colors.white70, size: 16),
@@ -1138,23 +1595,8 @@ class _CameraScreenState extends State<CameraScreen>
                             _buildToolbarIcon(
                               icon: _timerModeActive ? Icons.timer_rounded : Icons.timer_outlined,
                               isActive: _timerModeActive,
+                              activeColor: AppColors.secondaryTeal,
                               onTap: _toggleTimerMode,
-                            ),
-                            const SizedBox(height: 12),
-                            // Night Mode (Crescent Moon)
-                            _buildToolbarIcon(
-                              icon: _isNightMode ? Icons.nightlight_round : Icons.dark_mode_outlined,
-                              isActive: _isNightMode,
-                              activeColor: Colors.amberAccent,
-                              onTap: _toggleNightMode,
-                            ),
-                            const SizedBox(height: 12),
-                            // Grid Mode (4 squares - tap to toggle, long-press to choose grid style)
-                            _buildToolbarIcon(
-                              icon: _showGrid ? Icons.grid_view_rounded : Icons.grid_view,
-                              isActive: _showGrid,
-                              onTap: () => setState(() => _showGrid = !_showGrid),
-                              onLongPress: _openGridTypeSelector,
                             ),
                             const SizedBox(height: 10),
                             Container(width: 20, height: 1, color: Colors.white24),
@@ -1162,46 +1604,35 @@ class _CameraScreenState extends State<CameraScreen>
                             // Text Tool (Aa)
                             _buildToolbarIcon(
                               label: 'Aa',
-                              onTap: () {
-                                HapticFeedback.lightImpact();
-                                _takePhoto();
-                              },
+                              onTap: () => _capturePhotoWithInitialTool('text'),
                             ),
                             const SizedBox(height: 12),
                             // Pen / Draw Tool
                             _buildToolbarIcon(
                               icon: Icons.edit_outlined,
-                              onTap: () {
-                                HapticFeedback.lightImpact();
-                                _takePhoto();
-                              },
+                              onTap: () => _capturePhotoWithInitialTool('draw'),
                             ),
                             const SizedBox(height: 12),
                             // Sticker Tool
                             _buildToolbarIcon(
                               icon: Icons.sticky_note_2_outlined,
-                              onTap: () {
-                                HapticFeedback.lightImpact();
-                                _openSnapchatLenses();
-                              },
-                            ),
-                            const SizedBox(height: 12),
-                            // Scissors Tool
-                            _buildToolbarIcon(
-                              icon: Icons.content_cut_rounded,
-                              onTap: () => HapticFeedback.lightImpact(),
+                              onTap: () => _capturePhotoWithInitialTool('sticker'),
                             ),
                             const SizedBox(height: 12),
                             // Paperclip Link Tool
                             _buildToolbarIcon(
                               icon: Icons.link_rounded,
-                              onTap: () => HapticFeedback.lightImpact(),
+                              isActive: _attachedLink != null,
+                              activeColor: AppColors.secondaryTeal,
+                              onTap: _openLinkAttachmentDialog,
                             ),
                             const SizedBox(height: 12),
                             // Stopwatch Duration
                             _buildToolbarIcon(
                               icon: Icons.av_timer_rounded,
-                              onTap: () => HapticFeedback.lightImpact(),
+                              isActive: _snapDurationSeconds != null,
+                              activeColor: AppColors.secondaryTeal,
+                              onTap: _openDurationSelector,
                             ),
                           ],
                         ),
@@ -1384,6 +1815,12 @@ class _CameraScreenState extends State<CameraScreen>
 
                   const SizedBox(height: 16),
 
+                  // Lenses / Effects Horizontal Carousel ("cycle cycle cycle")
+                  if (_showLensesCarousel) ...[
+                    _buildLensesCarousel(),
+                    const SizedBox(height: 12),
+                  ],
+
                   // Shutter Row: Gallery | Big Shutter Button | Lenses/Effects
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -1429,7 +1866,7 @@ class _CameraScreenState extends State<CameraScreen>
 
                         // Right: Lenses / Effects
                         GestureDetector(
-                          onTap: _openSnapchatLenses,
+                          onTap: _toggleLensesCarousel,
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -1441,22 +1878,35 @@ class _CameraScreenState extends State<CameraScreen>
                                     width: 54,
                                     height: 54,
                                     decoration: BoxDecoration(
-                                      color: Colors.black.withValues(alpha: 0.35),
+                                      color: _showLensesCarousel || _selectedLens != null
+                                          ? AppColors.secondaryTeal.withValues(alpha: 0.35)
+                                          : Colors.black.withValues(alpha: 0.35),
                                       borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(color: Colors.white30, width: 1.5),
+                                      border: Border.all(
+                                        color: _showLensesCarousel || _selectedLens != null
+                                            ? AppColors.secondaryTeal
+                                            : Colors.white30,
+                                        width: 1.5,
+                                      ),
                                     ),
-                                    child: const Icon(
+                                    child: Icon(
                                       Icons.sentiment_satisfied_alt_rounded,
-                                      color: Colors.white,
+                                      color: _showLensesCarousel || _selectedLens != null
+                                          ? AppColors.secondaryTeal
+                                          : Colors.white,
                                       size: 30,
                                     ),
                                   ),
                                 ),
                               ),
                               const SizedBox(height: 6),
-                              const Text(
-                                'Lenses / Effects',
-                                style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                              Text(
+                                _selectedLens != null ? _selectedLens!.name : 'Lenses',
+                                style: TextStyle(
+                                  color: _selectedLens != null ? AppColors.secondaryTeal : Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ],
                           ),
@@ -1509,43 +1959,46 @@ class _CameraScreenState extends State<CameraScreen>
       }
     }
 
+    Widget cameraTexture = CameraPreview(_controller!);
+    if (_selectedLens?.colorMatrix != null) {
+      cameraTexture = ColorFiltered(
+        colorFilter: ColorFilter.matrix(_selectedLens!.colorMatrix!),
+        child: cameraTexture,
+      );
+    }
+
     return Container(
       color: Colors.black,
       width: screenSize.width,
       height: screenSize.height,
       child: Center(
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
+          duration: const Duration(milliseconds: 280),
           curve: Curves.easeInOutCubic,
           width: targetWidth,
           height: targetHeight,
-          child: ClipRect(
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                OverflowBox(
-                  alignment: Alignment.center,
-                  child: FittedBox(
-                    fit: BoxFit.cover,
-                    child: SizedBox(
-                      width: previewWidth,
-                      height: previewHeight,
-                      child: Transform(
-                        alignment: Alignment.center,
-                        transform: isFrontCamera && _isMirrored
-                            ? Matrix4.diagonal3Values(-1.0, 1.0, 1.0)
-                            : Matrix4.identity(),
-                        child: CameraPreview(_controller!),
-                      ),
-                    ),
+          decoration: BoxDecoration(
+            borderRadius: _aspectRatio != CameraAspectRatio.full
+                ? BorderRadius.circular(20)
+                : BorderRadius.zero,
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              SizedBox(
+                width: targetWidth,
+                height: targetHeight,
+                child: FittedBox(
+                  fit: BoxFit.cover,
+                  child: SizedBox(
+                    width: previewWidth,
+                    height: previewHeight,
+                    child: cameraTexture,
                   ),
                 ),
-                if (_showGrid)
-                  IgnorePointer(
-                    child: CustomPaint(painter: GridPainter(_gridType)),
-                  ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -1663,11 +2116,8 @@ class _CameraScreenState extends State<CameraScreen>
   // Mode Carousel
   Widget _buildModeCarousel() {
     final modes = [
-      (CameraMode.directors, 'Directors Mode'),
       (CameraMode.photo, 'Camera'),
       (CameraMode.video, 'Video'),
-      (CameraMode.night, 'Night'),
-      (CameraMode.focus, 'Focus'),
     ];
 
     return ClipRRect(
@@ -1676,53 +2126,205 @@ class _CameraScreenState extends State<CameraScreen>
         filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
         child: Container(
           height: 38,
-          margin: const EdgeInsets.symmetric(horizontal: 16),
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
             color: Colors.black.withValues(alpha: 0.35),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: Colors.white12, width: 0.5),
           ),
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            shrinkWrap: true,
-            itemCount: modes.length,
-            separatorBuilder: (context, index) => const SizedBox(width: 16),
-            itemBuilder: (context, index) {
-              final mode = modes[index].$1;
-              final label = modes[index].$2;
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: modes.map((item) {
+              final mode = item.$1;
+              final label = item.$2;
               final isSelected = _currentMode == mode;
 
-              return GestureDetector(
-                onTap: () {
-                  HapticFeedback.selectionClick();
-                  setState(() => _currentMode = mode);
-                  if (mode == CameraMode.night && !_isNightMode) {
-                    _toggleNightMode();
-                  }
-                },
-                child: Center(
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: GestureDetector(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    setState(() => _currentMode = mode);
+                  },
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          label,
+                          style: TextStyle(
+                            color: isSelected ? Colors.white : Colors.white54,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                            fontSize: 14,
+                          ),
+                        ),
+                        if (isSelected)
+                          Container(
+                            margin: const EdgeInsets.only(top: 2),
+                            width: 22,
+                            height: 2.5,
+                            decoration: BoxDecoration(
+                              color: AppColors.secondaryTeal,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLensesCarousel() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (_selectedLens != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: GestureDetector(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                setState(() => _selectedLens = null);
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.secondaryTeal, width: 0.8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.auto_awesome, color: AppColors.secondaryTeal, size: 12),
+                    const SizedBox(width: 4),
+                    Text(
+                      _selectedLens!.name,
+                      style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(width: 6),
+                    const Icon(Icons.close_rounded, color: Colors.white70, size: 14),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        SizedBox(
+          height: 82,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: _builtinLenses.length + 1,
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                return Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: GestureDetector(
+                    onTap: _openLensesSearchSheet,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ClipOval(
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                            child: Container(
+                              width: 52,
+                              height: 52,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.black.withValues(alpha: 0.45),
+                                border: Border.all(color: Colors.white30, width: 1.5),
+                              ),
+                              child: const Icon(Icons.search_rounded, color: Colors.white, size: 22),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Search',
+                          style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              final lens = _builtinLenses[index - 1];
+              final isSelected = _selectedLens?.id == lens.id || (_selectedLens == null && lens.id == 'none');
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: GestureDetector(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    setState(() {
+                      _selectedLens = lens.id == 'none' ? null : lens;
+                    });
+                  },
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        label,
-                        style: TextStyle(
-                          color: isSelected ? Colors.white : Colors.white54,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                          fontSize: 13,
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        width: isSelected ? 56 : 50,
+                        height: isSelected ? 56 : 50,
+                        padding: const EdgeInsets.all(2.5),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: isSelected
+                              ? const SweepGradient(
+                                  colors: [
+                                    Color(0xFF8B5CF6),
+                                    Color(0xFFEC4899),
+                                    Color(0xFF38BDF8),
+                                    Color(0xFF8B5CF6),
+                                  ],
+                                )
+                              : null,
+                          border: isSelected ? null : Border.all(color: Colors.white30, width: 1.5),
+                          boxShadow: isSelected
+                              ? [
+                                  BoxShadow(
+                                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.5),
+                                    blurRadius: 10,
+                                    spreadRadius: 2,
+                                  ),
+                                ]
+                              : null,
                         ),
-                      ),
-                      if (isSelected)
-                        Container(
-                          margin: const EdgeInsets.only(top: 2),
-                          width: 18,
-                          height: 2,
+                        child: Container(
                           decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: lens.previewGradient,
+                            ),
+                          ),
+                          child: Icon(
+                            lens.icon,
                             color: Colors.white,
-                            borderRadius: BorderRadius.circular(1),
+                            size: isSelected ? 22 : 18,
                           ),
                         ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        lens.name,
+                        style: TextStyle(
+                          color: isSelected ? Colors.white : Colors.white60,
+                          fontSize: 10,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1730,7 +2332,7 @@ class _CameraScreenState extends State<CameraScreen>
             },
           ),
         ),
-      ),
+      ],
     );
   }
 
@@ -1821,42 +2423,4 @@ class _CameraScreenState extends State<CameraScreen>
     String twoDigits(int n) => n.toString().padLeft(2, '0');
     return "${twoDigits(d.inMinutes.remainder(60))}:${twoDigits(d.inSeconds.remainder(60))}";
   }
-}
-
-class GridPainter extends CustomPainter {
-  final GridType type;
-  GridPainter(this.type);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white30
-      ..strokeWidth = 1.0;
-
-    switch (type) {
-      case GridType.thirds:
-        canvas.drawLine(Offset(size.width / 3, 0), Offset(size.width / 3, size.height), paint);
-        canvas.drawLine(Offset(size.width * 2 / 3, 0), Offset(size.width * 2 / 3, size.height), paint);
-        canvas.drawLine(Offset(0, size.height / 3), Offset(size.width, size.height / 3), paint);
-        canvas.drawLine(Offset(0, size.height * 2 / 3), Offset(size.width, size.height * 2 / 3), paint);
-        break;
-      case GridType.golden:
-        const phi = 1.618;
-        final w = size.width / phi;
-        final h = size.height / phi;
-        canvas.drawLine(Offset(w, 0), Offset(w, size.height), paint);
-        canvas.drawLine(Offset(size.width - w, 0), Offset(size.width - w, size.height), paint);
-        canvas.drawLine(Offset(0, h), Offset(size.width, h), paint);
-        canvas.drawLine(Offset(0, size.height - h), Offset(size.width, size.height - h), paint);
-        break;
-      case GridType.crosshair:
-        canvas.drawLine(Offset(size.width / 2, 0), Offset(size.width / 2, size.height), paint);
-        canvas.drawLine(Offset(0, size.height / 2), Offset(size.width, size.height / 2), paint);
-        canvas.drawCircle(Offset(size.width / 2, size.height / 2), 30, paint..style = PaintingStyle.stroke);
-        break;
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant GridPainter oldDelegate) => oldDelegate.type != type;
 }

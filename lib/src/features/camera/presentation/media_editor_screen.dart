@@ -39,6 +39,10 @@ class MediaEditorScreen extends ConsumerStatefulWidget {
   final AudioTrack? initialAudioTrack;
   final double? aspectRatio;
   final String? aspectRatioLabel;
+  final String? initialTool;
+  final String? attachedLink;
+  final int? snapDurationSeconds;
+  final List<double>? colorMatrix;
 
   const MediaEditorScreen({
     super.key,
@@ -52,6 +56,10 @@ class MediaEditorScreen extends ConsumerStatefulWidget {
     this.initialAudioTrack,
     this.aspectRatio,
     this.aspectRatioLabel,
+    this.initialTool,
+    this.attachedLink,
+    this.snapDurationSeconds,
+    this.colorMatrix,
   });
 
   @override
@@ -112,6 +120,19 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
     if (widget.initialAudioTrack != null) {
       _selectedAudioTrack = widget.initialAudioTrack;
       _playBackgroundMusic(widget.initialAudioTrack!);
+    }
+    if (widget.initialTool == 'text') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openTextDialog();
+      });
+    } else if (widget.initialTool == 'draw') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _isDrawingMode = true);
+      });
+    } else if (widget.initialTool == 'sticker') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openStickerSheet();
+      });
     }
   }
 
@@ -845,9 +866,10 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
   // ── Media View Widget ─────────────────────────────────────────────────────
 
   Widget _buildMediaView(Size screenSize) {
+    Widget content;
     if (widget.isVideo) {
       if (_isVideoInitialized && _videoController != null) {
-        return SizedBox.expand(
+        content = SizedBox.expand(
           child: FittedBox(
             fit: BoxFit.cover,
             child: SizedBox(
@@ -857,33 +879,38 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
             ),
           ),
         );
+      } else {
+        return const Center(
+          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+        );
       }
-      return const Center(
-        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-      );
-    }
-
-    if (_mediaBytes != null) {
-      return Image.memory(
+    } else if (_mediaBytes != null) {
+      content = Image.memory(
         _mediaBytes!,
         fit: BoxFit.cover,
         width: screenSize.width,
         height: screenSize.height,
       );
-    }
-
-    if (!kIsWeb && File(widget.mediaFile.path).existsSync()) {
-      return Image.file(
+    } else if (!kIsWeb && File(widget.mediaFile.path).existsSync()) {
+      content = Image.file(
         File(widget.mediaFile.path),
         fit: BoxFit.cover,
         width: screenSize.width,
         height: screenSize.height,
       );
+    } else {
+      return const Center(
+        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+      );
     }
 
-    return const Center(
-      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-    );
+    if (widget.colorMatrix != null) {
+      return ColorFiltered(
+        colorFilter: ColorFilter.matrix(widget.colorMatrix!),
+        child: content,
+      );
+    }
+    return content;
   }
 
   // ── Floating Editor Toolbar (Right Side) ──────────────────────────────────
