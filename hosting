@@ -63,3 +63,12 @@ pm2 restart abuad-backend || pm2 start dist/index.js --name "abuad-backend"
 # Save PM2 state so it restarts automatically on server reboot
 pm2 save
 pm2 startup
+
+
+
+
+cd ~/abuad/backend
+git checkout -- dist/
+git pull
+npm run build
+pm2 restart abuad-backend
