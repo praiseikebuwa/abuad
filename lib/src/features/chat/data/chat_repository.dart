@@ -202,7 +202,7 @@ class ChatRepository {
 
   Stream<List<ChatChannel>> watchChannels() {
     _fetchChannels();
-    _channelsTimer ??= Timer.periodic(const Duration(seconds: 4), (_) {
+    _channelsTimer ??= Timer.periodic(const Duration(seconds: 15), (_) {
       _fetchChannels();
     });
     return _channelsController.stream;
@@ -210,7 +210,7 @@ class ChatRepository {
 
   Future<void> _fetchChannels() async {
     try {
-      final response = await ApiClient.get('/chat/channels').timeout(const Duration(seconds: 4));
+      final response = await ApiClient.get('/chat/channels').timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true && data['data'] is List) {
@@ -260,10 +260,10 @@ class ChatRepository {
       
       // Try direct lookup with timeout
       var response = await ApiClient.get('/chat/channels/$channelId')
-          .timeout(const Duration(seconds: 3));
+          .timeout(const Duration(seconds: 12));
       if (response.statusCode != 200 && cleanId != channelId) {
         response = await ApiClient.get('/chat/channels/$cleanId')
-            .timeout(const Duration(seconds: 3));
+            .timeout(const Duration(seconds: 12));
       }
 
       if (response.statusCode == 200) {
@@ -278,7 +278,7 @@ class ChatRepository {
       // If it's a direct user ID, find/create direct DM
       final directRes = await ApiClient.post('/chat/direct', {
         'targetUserId': cleanId,
-      }).timeout(const Duration(seconds: 3));
+      }).timeout(const Duration(seconds: 12));
       if (directRes.statusCode == 200 || directRes.statusCode == 201) {
         final directData = jsonDecode(directRes.body);
         if (directData['success'] == true && directData['data'] != null) {
@@ -372,7 +372,8 @@ class ChatRepository {
     final list = _cachedMessages[channelId];
     if (list == null || currentUserId == null) return null;
     for (final msg in list.reversed) {
-      if (msg.isSnap && msg.senderId != currentUserId && !msg.isSnapExpiredFor(currentUserId)) {
+      final isSnapMsg = msg.isSnap || msg.type == 'snap' || msg.content.contains('Snap');
+      if (isSnapMsg && msg.senderId != currentUserId && !msg.isSnapExpiredFor(currentUserId)) {
         return msg;
       }
     }
@@ -630,10 +631,79 @@ class ChatRepository {
     }
   }
 
+  Future<bool> addMembersToGroup(String channelId, List<String> userIds) async {
+    try {
+      final cleanId = channelId.startsWith('channel_') ? channelId.substring(8) : channelId;
+      final res = await ApiClient.post('/chat/channels/$cleanId/members', {
+        'userIds': userIds,
+      });
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        _fetchChannel(channelId);
+        _fetchChannels();
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Error adding members to group: $e');
+    }
+    return false;
+  }
+
   Future<void> toggleAdminStatus(String channelId, String userId) async {}
-  Future<void> removeMember(String channelId, String userId) async {}
-  Future<void> updateGroupSettings(String channelId, {bool? restrictInfoUpdates, bool? restrictMessaging, Map<String, dynamic>? settings}) async {}
+
+  Future<bool> removeMember(String channelId, String userId) async {
+    try {
+      final cleanId = channelId.startsWith('channel_') ? channelId.substring(8) : channelId;
+      final res = await ApiClient.delete('/chat/channels/$cleanId/members/$userId');
+      if (res.statusCode == 200) {
+        _fetchChannel(channelId);
+        _fetchChannels();
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Error removing member: $e');
+    }
+    return false;
+  }
+
+  Future<void> updateGroupWallpaper(String channelId, String wallpaperUrl) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('chat_wallpaper_$channelId', wallpaperUrl);
+      final cleanId = channelId.startsWith('channel_') ? channelId.substring(8) : channelId;
+      await ApiClient.post('/chat/channels/$cleanId/wallpaper', {
+        'wallpaperUrl': wallpaperUrl,
+      });
+    } catch (e) {
+      debugPrint('Error setting group wallpaper: $e');
+    }
+  }
+
+  Future<void> updateGroupSettings(
+    String channelId, {
+    bool? restrictInfoUpdates,
+    bool? restrictMessaging,
+    Map<String, dynamic>? settings,
+  }) async {
+    try {
+      final cleanId = channelId.startsWith('channel_') ? channelId.substring(8) : channelId;
+      final payload = <String, dynamic>{};
+      if (restrictInfoUpdates != null) payload['restrictInfoUpdates'] = restrictInfoUpdates;
+      if (restrictMessaging != null) payload['restrictMessaging'] = restrictMessaging;
+      if (settings != null) payload.addAll(settings);
+      await ApiClient.patch('/chat/channels/$cleanId', payload);
+      _fetchChannel(channelId);
+      _fetchChannels();
+    } catch (e) {
+      debugPrint('Error updating group settings: $e');
+    }
+  }
+
   Future<void> leaveGroup(String channelId) async {
+    final cleanId = channelId.startsWith('channel_') ? channelId.substring(8) : channelId;
+    final currentUserId = ref.read(currentUserIdProvider);
+    if (currentUserId != null) {
+      await removeMember(cleanId, currentUserId);
+    }
     _fetchChannels();
   }
 

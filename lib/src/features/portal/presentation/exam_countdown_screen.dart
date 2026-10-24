@@ -333,7 +333,7 @@ class _ExamCountdownScreenState extends State<ExamCountdownScreen>
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        color: isDark ? Colors.black : Colors.white,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: isDark ? Colors.white10 : const Color(0xFFE2E8F0)),
       ),
@@ -408,7 +408,7 @@ class _ExamCountdownScreenState extends State<ExamCountdownScreen>
                   decoration: BoxDecoration(
                     color: isSelected
                         ? const Color(0xFF8B5CF6)
-                        : (isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0)),
+                        : (isDark ? Colors.black : const Color(0xFFE2E8F0)),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
@@ -498,7 +498,7 @@ class _ExamCountdownScreenState extends State<ExamCountdownScreen>
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+                  color: isDark ? Colors.black : const Color(0xFFE2E8F0),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
@@ -520,7 +520,7 @@ class _ExamCountdownScreenState extends State<ExamCountdownScreen>
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E293B) : Colors.white,
+              color: isDark ? Colors.black : Colors.white,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: isDark ? Colors.white10 : const Color(0xFFE2E8F0)),
             ),
@@ -556,7 +556,7 @@ class _ExamCountdownScreenState extends State<ExamCountdownScreen>
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            color: isDark ? Colors.black : Colors.white,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: isDark ? Colors.white10 : const Color(0xFFE2E8F0)),
           ),
@@ -602,7 +602,7 @@ class _ExamCountdownScreenState extends State<ExamCountdownScreen>
                   hintText: 'Add revision topic...',
                   hintStyle: GoogleFonts.inter(color: Colors.white38),
                   filled: true,
-                  fillColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                  fillColor: isDark ? Colors.black : Colors.white,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
@@ -630,7 +630,7 @@ class _ExamCountdownScreenState extends State<ExamCountdownScreen>
         ..._tasks.map((task) => Container(
               margin: const EdgeInsets.only(bottom: 8),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                color: isDark ? Colors.black : Colors.white,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: isDark ? Colors.white10 : const Color(0xFFE2E8F0)),
               ),

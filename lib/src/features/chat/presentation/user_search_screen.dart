@@ -125,7 +125,7 @@ class _UserSearchScreenState extends ConsumerState<UserSearchScreen> {
     // Filter out current user from the list
     final filteredUsers = _users.where((u) => u.uid != currentUserId).toList();
 
-    final cardBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9);
+    final cardBg = isDark ? Colors.black : const Color(0xFFF1F5F9);
     final textPrimary = isDark ? Colors.white : const Color(0xFF0F172A);
     final textSecondary = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
 
@@ -310,7 +310,7 @@ class _UserSearchScreenState extends ConsumerState<UserSearchScreen> {
                           separatorBuilder: (context, index) => Divider(
                             height: 1,
                             indent: 72,
-                            color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                            color: isDark ? Colors.black : const Color(0xFFF1F5F9),
                           ),
                           itemBuilder: (context, index) {
                             final user = filteredUsers[index];
@@ -442,7 +442,7 @@ class _UserSearchScreenState extends ConsumerState<UserSearchScreen> {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                color: isDark ? Colors.black : const Color(0xFFF1F5F9),
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -481,7 +481,7 @@ class _UserSearchScreenState extends ConsumerState<UserSearchScreen> {
   }
 
   Widget _buildShimmerLoading(bool isDark) {
-    final baseColor = isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0);
+    final baseColor = isDark ? Colors.black : const Color(0xFFE2E8F0);
     final highlightColor = isDark ? const Color(0xFF334155) : const Color(0xFFF8FAFC);
 
     return Shimmer.fromColors(

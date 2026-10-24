@@ -202,7 +202,7 @@ class MarketplaceDetailScreen extends ConsumerWidget {
                         return const Text('Seller info unavailable');
                       }
                       return GestureDetector(
-                        onTap: () => context.push('/user/${item.sellerId}'),
+                        onTap: () => _showSellerOptionsSheet(context, seller, item),
                         child: Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
@@ -250,18 +250,32 @@ class MarketplaceDetailScreen extends ConsumerWidget {
                                       ],
                                     ),
                                     Text(
-                                      '@${seller.handle}',
+                                      '@${seller.handle} · Tap to view store or profile',
                                       style: TextStyle(
-                                        color: Colors.grey[600],
-                                        fontSize: 13,
+                                        color: Colors.grey[500],
+                                        fontSize: 12,
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
-                              Icon(
-                                Icons.chevron_right,
-                                color: Colors.grey[400],
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: AppColors.secondaryTeal.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.storefront_rounded, size: 14, color: AppColors.secondaryTeal),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'Store',
+                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.secondaryTeal),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ],
                           ),
@@ -437,5 +451,90 @@ class MarketplaceDetailScreen extends ConsumerWidget {
         }
       }
     }
+  }
+
+  void _showSellerOptionsSheet(BuildContext context, AppUser seller, MarketplaceItem item) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? Colors.black : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  seller.displayName,
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+                ),
+                Text(
+                  '@${seller.handle} · Campus Marketplace Seller',
+                  style: const TextStyle(color: Colors.grey, fontSize: 13),
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  leading: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppColors.secondaryTeal.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.storefront_rounded, color: AppColors.secondaryTeal),
+                  ),
+                  title: const Text('View Storefront & Clothes / Items', style: TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: Text('See all active products listed by ${seller.displayName}', style: const TextStyle(fontSize: 12)),
+                  trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    context.push(
+                      '/marketplace/seller/${item.sellerId}',
+                      extra: {'name': seller.displayName, 'avatar': seller.avatarUrl},
+                    );
+                  },
+                ),
+                const SizedBox(height: 6),
+                ListTile(
+                  leading: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppColors.accentAmber.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.person_outline_rounded, color: AppColors.accentAmber),
+                  ),
+                  title: const Text('View Student Profile', style: TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: const Text('View bio, posts, and campus activities', style: TextStyle(fontSize: 12)),
+                  trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    context.push('/user/${item.sellerId}');
+                  },
+                ),
+                const SizedBox(height: 10),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 }

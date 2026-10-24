@@ -144,7 +144,7 @@ class _StickerCreatorScreenState extends State<StickerCreatorScreen> with Single
           child: Container(
             margin: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF141923) : const Color(0xFFF1F5F9),
+              color: isDark ? Colors.black : const Color(0xFFF1F5F9),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: Colors.grey.withOpacity(0.3)),
             ),
@@ -232,7 +232,7 @@ class _StickerCreatorScreenState extends State<StickerCreatorScreen> with Single
         // Color palette & stroke width
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          color: isDark ? const Color(0xFF1E222A) : Colors.white,
+          color: isDark ? Colors.black : Colors.white,
           child: Column(
             children: [
               SingleChildScrollView(
@@ -312,7 +312,7 @@ class _StickerCreatorScreenState extends State<StickerCreatorScreen> with Single
             width: 140,
             height: 140,
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E222A) : Colors.grey[200],
+              color: isDark ? Colors.black : Colors.grey[200],
               borderRadius: BorderRadius.circular(20),
               border: _hasWhiteOutline
                   ? Border.all(color: Colors.white, width: 4)

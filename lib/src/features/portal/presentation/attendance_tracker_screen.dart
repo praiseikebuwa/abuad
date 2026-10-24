@@ -74,7 +74,7 @@ class _AttendanceTrackerScreenState extends State<AttendanceTrackerScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: Colors.black,
         title: Text('Track New Course', style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.bold)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -245,7 +245,7 @@ class _AttendanceTrackerScreenState extends State<AttendanceTrackerScreen> {
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        color: isDark ? Colors.black : Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: isSafe ? (isDark ? Colors.white10 : const Color(0xFFE2E8F0)) : Colors.redAccent.withValues(alpha: 0.6),

@@ -237,7 +237,7 @@ class _CampusSosScreenState extends State<CampusSosScreen> {
           // Medical Profile Card
           Card(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            color: isDark ? const Color(0xFF1E222A) : Colors.white,
+            color: isDark ? Colors.black : Colors.white,
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -299,7 +299,7 @@ class _CampusSosScreenState extends State<CampusSosScreen> {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      color: isDark ? const Color(0xFF1E222A) : Colors.white,
+      color: isDark ? Colors.black : Colors.white,
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: color.withOpacity(0.15),

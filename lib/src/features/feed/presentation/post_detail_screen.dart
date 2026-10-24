@@ -297,7 +297,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     final isOwnPost = post.authorId == currentUserId;
 
     final isDark = Theme.of(parentContext).brightness == Brightness.dark;
-    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final cardBg = isDark ? Colors.black : Colors.white;
     final textPrimary = isDark ? Colors.white : const Color(0xFF0F172A);
 
     showModalBottomSheet(
@@ -1314,7 +1314,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                   top: false,
                   child: Container(
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                      color: isDark ? Colors.black : Colors.white,
                       border: Border(
                         top: BorderSide(
                           color: isDark ? Colors.grey[900]! : Colors.grey[200]!,

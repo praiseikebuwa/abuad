@@ -8,6 +8,7 @@ import '../../../user/data/user_repository.dart';
 import '../create_story_screen.dart';
 import '../my_story_screen.dart';
 import '../story_viewer_screen.dart';
+import '../../../advertisements/data/advertisement_repository.dart';
 
 class StoriesBar extends ConsumerWidget {
   const StoriesBar({super.key});
@@ -152,6 +153,126 @@ class StoriesBar extends ConsumerWidget {
                     ),
                   ),
                 ),
+
+              // Sponsored Story Ads (stays active as paid ads)
+              ...ref.watch(storyAdsProvider).maybeWhen(
+                    data: (ads) => ads.map<Widget>((ad) {
+                      final adStory = Story(
+                        id: 'ad_${ad.id}',
+                        authorId: 'ad_user_${ad.id}',
+                        userName: ad.advertiserName,
+                        userAvatar: ad.advertiserAvatarUrl ?? '',
+                        content: ad.mediaUrl,
+                        type: 'image',
+                        caption: ad.title,
+                        linkUrl: ad.targetUrl,
+                        createdAt: ad.createdAt,
+                        expiresAt: ad.expiresAt,
+                      );
+                      final grouped = {'ad_user_${ad.id}': [adStory]};
+
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 14),
+                        child: GestureDetector(
+                          onTap: () {
+                            ref
+                                .read(advertisementRepositoryProvider)
+                                .recordImpression(ad.id);
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => StoryViewerScreen(
+                                  storiesGrouped: grouped,
+                                  initialUserId: 'ad_user_${ad.id}',
+                                  singleUserMode: true,
+                                ),
+                              ),
+                            );
+                          },
+                          child: Column(
+                            children: [
+                              Stack(
+                                children: [
+                                  Container(
+                                    width: 62,
+                                    height: 62,
+                                    padding: const EdgeInsets.all(2.5),
+                                    decoration: const BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          Color(0xFFF59E0B),
+                                          Color(0xFFEF4444),
+                                        ],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      ),
+                                    ),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(2),
+                                      decoration: BoxDecoration(
+                                        color: isDark ? Colors.black : Colors.white,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: CircleAvatar(
+                                        backgroundColor: const Color(0xFFF59E0B),
+                                        backgroundImage: (ad.advertiserAvatarUrl != null &&
+                                                UrlValidator.isValidUrl(ad.advertiserAvatarUrl!))
+                                            ? CachedNetworkImageProvider(ad.advertiserAvatarUrl!)
+                                            : null,
+                                        child: (ad.advertiserAvatarUrl == null ||
+                                                !UrlValidator.isValidUrl(ad.advertiserAvatarUrl!))
+                                            ? const Icon(Icons.campaign, color: Colors.white, size: 20)
+                                            : null,
+                                      ),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    bottom: 0,
+                                    right: 0,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF59E0B),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(
+                                          color: isDark ? Colors.black : Colors.white,
+                                          width: 1.5,
+                                        ),
+                                      ),
+                                      child: const Text(
+                                        'AD',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 8.5,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              SizedBox(
+                                width: 66,
+                                child: Text(
+                                  ad.advertiserName,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: isDark ? Colors.amber[300] : Colors.amber[800],
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                    orElse: () => <Widget>[],
+                  ),
 
               // Active Stories from other users
               ...authorStories.entries.map<Widget>((entry) {

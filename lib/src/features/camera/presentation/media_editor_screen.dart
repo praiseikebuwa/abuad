@@ -224,41 +224,145 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
       return widget.mediaFile;
     }
 
+    // 1. First attempt: RenderRepaintBoundary toImage
     try {
       final boundary = _previewStackKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-      if (boundary == null) return widget.mediaFile;
-
-      // If render boundary is dirty from setState, wait until the frame has finished painting
-      if (boundary.debugNeedsPaint) {
-        final completer = Completer<void>();
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          completer.complete();
-        });
-        await completer.future;
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 30));
-
-      final ui.Image image = await boundary.toImage(pixelRatio: 2.0);
-      final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      if (byteData == null) return widget.mediaFile;
-
-      final pngBytes = byteData.buffer.asUint8List();
-
-      if (kIsWeb) {
-        return XFile.fromData(
-          pngBytes,
-          mimeType: 'image/png',
-          name: 'snap_${DateTime.now().millisecondsSinceEpoch}.png',
-        );
-      } else {
-        final tempDir = await getTemporaryDirectory();
-        final file = File('${tempDir.path}/snap_${DateTime.now().millisecondsSinceEpoch}.png');
-        await file.writeAsBytes(pngBytes);
-        return XFile(file.path);
+      if (boundary != null && !boundary.debugNeedsPaint) {
+        final ui.Image image = await boundary.toImage(pixelRatio: 2.0);
+        final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+        if (byteData != null) {
+          final pngBytes = byteData.buffer.asUint8List();
+          return _createExportedXFile(pngBytes);
+        }
       }
     } catch (e) {
-      debugPrint('Error compositing media: $e');
-      return widget.mediaFile;
+      debugPrint('Boundary compositing exception: $e (Falling back to Canvas compositor)');
+    }
+
+    // 2. Guaranteed fallback: Canvas & PictureRecorder Compositor
+    try {
+      final compositedBytes = await _compositeOverlaysUsingCanvas();
+      if (compositedBytes != null) {
+        return _createExportedXFile(compositedBytes);
+      }
+    } catch (e) {
+      debugPrint('Canvas compositor exception: $e');
+    }
+
+    return widget.mediaFile;
+  }
+
+  Future<XFile> _createExportedXFile(Uint8List pngBytes) async {
+    if (kIsWeb) {
+      return XFile.fromData(
+        pngBytes,
+        mimeType: 'image/png',
+        name: 'snap_${DateTime.now().millisecondsSinceEpoch}.png',
+      );
+    } else {
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/snap_${DateTime.now().millisecondsSinceEpoch}.png');
+      await file.writeAsBytes(pngBytes);
+      return XFile(file.path);
+    }
+  }
+
+  /// Pure-memory Canvas compositor that renders strokes, text overlays, and stickers onto base image bytes
+  Future<Uint8List?> _compositeOverlaysUsingCanvas() async {
+    try {
+      final baseBytes = _mediaBytes ?? await widget.mediaFile.readAsBytes();
+      final codec = await ui.instantiateImageCodec(baseBytes);
+      final frameInfo = await codec.getNextFrame();
+      final baseImage = frameInfo.image;
+
+      final double width = baseImage.width.toDouble();
+      final double height = baseImage.height.toDouble();
+
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, width, height));
+
+      // 1. Draw base photo
+      canvas.drawImage(baseImage, Offset.zero, Paint());
+
+      // Scale factors from viewport to actual image resolution
+      final renderSize = _previewStackKey.currentContext?.size ?? Size(width, height);
+      final scaleX = renderSize.width > 0 ? (width / renderSize.width) : 1.0;
+      final scaleY = renderSize.height > 0 ? (height / renderSize.height) : 1.0;
+
+      // 2. Draw brush / doodle strokes
+      for (final stroke in _strokes) {
+        if (stroke.points.length < 2) continue;
+        final paint = Paint()
+          ..color = stroke.color
+          ..strokeWidth = stroke.strokeWidth * (width / 400.0).clamp(1.0, 4.0)
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..style = PaintingStyle.stroke;
+
+        final path = Path();
+        path.moveTo(stroke.points[0].dx * scaleX, stroke.points[0].dy * scaleY);
+        for (int i = 1; i < stroke.points.length; i++) {
+          path.lineTo(stroke.points[i].dx * scaleX, stroke.points[i].dy * scaleY);
+        }
+        canvas.drawPath(path, paint);
+      }
+
+      // 3. Draw text overlays
+      for (final item in _textOverlays) {
+        if (item.text.trim().isEmpty) continue;
+        final style = item.getTextStyle().copyWith(
+          fontSize: (item.getTextStyle().fontSize ?? 22) * scaleX,
+        );
+        final tp = TextPainter(
+          text: TextSpan(text: item.text, style: style),
+          textAlign: item.align,
+          textDirection: TextDirection.ltr,
+        )..layout(maxWidth: width * 0.9);
+
+        final textOffset = Offset(
+          item.position.dx * scaleX,
+          item.position.dy * scaleY,
+        );
+
+        // Optional background badge for text
+        final bgRect = Rect.fromLTWH(
+          textOffset.dx - 8 * scaleX,
+          textOffset.dy - 4 * scaleY,
+          tp.width + 16 * scaleX,
+          tp.height + 8 * scaleY,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(bgRect, Radius.circular(8 * scaleX)),
+          Paint()..color = Colors.black.withValues(alpha: 0.55),
+        );
+
+        tp.paint(canvas, textOffset);
+      }
+
+      // 4. Draw stickers
+      for (final sticker in _stickers) {
+        final tp = TextPainter(
+          text: TextSpan(
+            text: sticker.content,
+            style: TextStyle(fontSize: 48 * scaleX),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+
+        final stickerOffset = Offset(
+          sticker.position.dx * scaleX,
+          sticker.position.dy * scaleY,
+        );
+        tp.paint(canvas, stickerOffset);
+      }
+
+      final picture = recorder.endRecording();
+      final compositeImg = await picture.toImage(width.toInt(), height.toInt());
+      final byteData = await compositeImg.toByteData(format: ui.ImageByteFormat.png);
+      return byteData?.buffer.asUint8List();
+    } catch (e) {
+      debugPrint('Error in _compositeOverlaysUsingCanvas: $e');
+      return null;
     }
   }
 
@@ -323,35 +427,64 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
     }
   }
 
-  // ── My Story Publish ───────────────────────────────────────────────────────
+  // ── My Story Publish (Non-Blocking Background) ─────────────────────────
 
-  Future<void> _handleMyStory() async {
+  Future<void> _handleMyStory([XFile? preExportedFile]) async {
     if (_isPostingStory) return;
     HapticFeedback.mediumImpact();
-    setState(() => _isPostingStory = true);
 
-    try {
-      final exportedFile = await _exportCompositedMedia();
-      final storyRepo = ref.read(storyRepositoryProvider);
-      await storyRepo.createStory(
-        mediaFile: exportedFile,
-        content: '',
-        type: widget.isVideo ? 'video' : 'image',
-        caption: _textOverlays.isNotEmpty ? _textOverlays.first.text : null,
-        audioUrl: _selectedAudioTrack?.audioUrl,
-        musicTitle: _selectedAudioTrack?.title,
-        musicArtist: _selectedAudioTrack?.artist,
-      ).timeout(const Duration(seconds: 60));
+    final messenger = ScaffoldMessenger.of(context);
+    final storyRepo = ref.read(storyRepositoryProvider);
+    final caption = _textOverlays.isNotEmpty ? _textOverlays.first.text : null;
+    final audioTrack = _selectedAudioTrack;
+    final isVideo = widget.isVideo;
 
-      if (mounted) {
-        setState(() => _isPostingStory = false);
-        ScaffoldMessenger.of(context).showSnackBar(
+    // Immediately export composited media and dismiss editor screen
+    final exportedFile = preExportedFile ?? await _exportCompositedMedia();
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+            ),
+            SizedBox(width: 12),
+            Text('Publishing to Story in background...'),
+          ],
+        ),
+        backgroundColor: Color(0xFF8B5CF6),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 4),
+      ),
+    );
+
+    // Background upload & publish
+    unawaited(() async {
+      try {
+        await storyRepo.createStory(
+          mediaFile: exportedFile,
+          content: '',
+          type: isVideo ? 'video' : 'image',
+          caption: caption,
+          audioUrl: audioTrack?.audioUrl,
+          musicTitle: audioTrack?.title,
+          musicArtist: audioTrack?.artist,
+        ).timeout(const Duration(seconds: 60));
+
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(
           SnackBar(
             content: const Row(
               children: [
-                Icon(Icons.auto_awesome_rounded, color: Colors.white),
+                Icon(Icons.check_circle_rounded, color: Colors.greenAccent),
                 SizedBox(width: 10),
-                Text('Added to Your Story!', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text('Added to Your Story! ✨', style: TextStyle(fontWeight: FontWeight.bold)),
               ],
             ),
             backgroundColor: const Color(0xFF8B5CF6),
@@ -359,20 +492,18 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         );
-        Navigator.of(context).pop(); // Return to previous flow
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isPostingStory = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to publish story: $e')),
+      } catch (e) {
+        debugPrint('Background story upload failed: $e');
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Failed to publish story: $e'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
-    } finally {
-      if (mounted && _isPostingStory) {
-        setState(() => _isPostingStory = false);
-      }
-    }
+    }());
   }
 
   // ── Add To Post Flow ───────────────────────────────────────────────────────
@@ -392,73 +523,84 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
     }
   }
 
-  // ── Send to Multi-Recipient Sheet & Direct Snaps ──────────────────────────
+  // ── Send to Multi-Recipient Sheet & Direct Snaps (Non-Blocking) ───────────
 
   Future<void> _sendSnapToRecipient(AppUser recipient) => _sendSnapToRecipients([recipient]);
 
-  Future<void> _sendSnapToRecipients(List<AppUser> recipients) async {
+  Future<void> _sendSnapToRecipients(List<AppUser> recipients, [XFile? preExportedFile]) async {
     if (recipients.isEmpty) return;
-    try {
-      final label = recipients.length == 1
-          ? '@${recipients.first.handle}'
-          : '${recipients.length} friends';
+    HapticFeedback.mediumImpact();
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-              ),
-              const SizedBox(width: 12),
-              Text('Sending Snap to $label...'),
-            ],
-          ),
-          backgroundColor: const Color(0xFF6366F1),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 30),
+    final label = recipients.length == 1
+        ? '@${recipients.first.handle}'
+        : '${recipients.length} friends';
+
+    final messenger = ScaffoldMessenger.of(context);
+    final chatRepo = ref.read(chatRepositoryProvider);
+    final imageService = ref.read(imageUploadServiceProvider);
+    final isVideo = widget.isVideo;
+    final snapDuration = _snapDurationSeconds > 0 ? _snapDurationSeconds : 10;
+
+    // Immediately export composited media and dismiss editor screen
+    final exportedFile = preExportedFile ?? await _exportCompositedMedia();
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+
+    messenger.showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+            ),
+            const SizedBox(width: 12),
+            Text('Sending Snap to $label in background...'),
+          ],
         ),
-      );
+        backgroundColor: const Color(0xFF6366F1),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 4),
+      ),
+    );
 
-      final exportedFile = await _exportCompositedMedia();
-      final chatRepo = ref.read(chatRepositoryProvider);
-      final imageService = ref.read(imageUploadServiceProvider);
+    // Background upload & dispatch
+    unawaited(() async {
+      try {
+        // Upload media once to optimize speed and network bandwidth
+        final result = await (isVideo
+            ? imageService.uploadVideo(exportedFile, path: 'chat_snaps/multi/')
+            : imageService.uploadImage(exportedFile, path: 'chat_snaps/multi/'));
 
-      // Upload media once to optimize speed and network bandwidth
-      final result = await (widget.isVideo
-          ? imageService.uploadVideo(exportedFile, path: 'chat_snaps/multi/')
-          : imageService.uploadImage(exportedFile, path: 'chat_snaps/multi/'));
+        // Dispatch snaps concurrently to each recipient channel
+        await Future.wait(recipients.map((recipient) async {
+          try {
+            final channelId = await chatRepo.createOrGetChannel(
+              recipient.uid,
+              otherUserName: recipient.displayName,
+              otherUserAvatar: recipient.avatarUrl,
+            );
 
-      // Dispatch snaps concurrently to each recipient channel
-      await Future.wait(recipients.map((recipient) async {
-        try {
-          final channelId = await chatRepo.createOrGetChannel(
-            recipient.uid,
-            otherUserName: recipient.displayName,
-            otherUserAvatar: recipient.avatarUrl,
-          );
+            await chatRepo.sendMessage(
+              channelId,
+              isVideo ? '🎥 Video Snap' : '📸 Snap',
+              type: isVideo ? 'video' : 'image',
+              imageUrl: result.url,
+              imageWidth: result.width,
+              imageHeight: result.height,
+              isSnap: true,
+              duration: snapDuration,
+              receiverId: recipient.uid,
+            );
+          } catch (err) {
+            debugPrint('Error delivering snap to ${recipient.uid}: $err');
+          }
+        }));
 
-          await chatRepo.sendMessage(
-            channelId,
-            widget.isVideo ? '🎥 Video Snap' : '📸 Snap',
-            type: widget.isVideo ? 'video' : 'image',
-            imageUrl: result.url,
-            imageWidth: result.width,
-            imageHeight: result.height,
-            isSnap: true,
-            duration: _snapDurationSeconds > 0 ? _snapDurationSeconds : 10,
-            receiverId: recipient.uid,
-          );
-        } catch (err) {
-          debugPrint('Error delivering snap to ${recipient.uid}: $err');
-        }
-      }));
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(
           SnackBar(
             content: Row(
               children: [
@@ -474,17 +616,18 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
             behavior: SnackBarBehavior.floating,
           ),
         );
-        Navigator.of(context).pop();
-      }
-    } catch (e) {
-      debugPrint('Error delivering direct snap: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to send snap: $e')),
+      } catch (e) {
+        debugPrint('Error delivering direct snap in background: $e');
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Failed to send snap to $label: $e'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
-    }
+    }());
   }
 
   void _openSendToSheet() {
@@ -497,13 +640,14 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => _SendToSheet(
-        onSend: (recipients, postToStory) {
+        onSend: (recipients, postToStory) async {
           Navigator.pop(ctx);
+          final exportedFile = await _exportCompositedMedia();
           if (postToStory) {
-            _handleMyStory();
+            _handleMyStory(exportedFile);
           }
           if (recipients.isNotEmpty) {
-            _sendSnapToRecipients(recipients);
+            _sendSnapToRecipients(recipients, exportedFile);
           }
         },
       ),

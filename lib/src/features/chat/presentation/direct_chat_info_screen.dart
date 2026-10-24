@@ -126,7 +126,7 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final backgroundColor = isDark ? const Color(0xFF0F172A) : const Color(0xFFF2F2F7);
-    final cardColor = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final cardColor = isDark ? Colors.black : Colors.white;
     final cardBorderColor = isDark ? Colors.white10 : const Color(0xFFE2E8F0);
     final textPrimary = isDark ? Colors.white : const Color(0xFF0F172A);
     final textSecondary = isDark ? Colors.white60 : const Color(0xFF64748B);

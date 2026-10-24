@@ -154,7 +154,7 @@ class _CgpaSimulatorScreenState extends State<CgpaSimulatorScreen> {
                     decoration: BoxDecoration(
                       color: isSelected
                           ? tier.color.withValues(alpha: 0.2)
-                          : (isDark ? const Color(0xFF1E293B) : Colors.white),
+                          : (isDark ? Colors.black : Colors.white),
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
                         color: isSelected ? tier.color : (isDark ? Colors.white10 : const Color(0xFFCBD5E1)),
@@ -195,7 +195,7 @@ class _CgpaSimulatorScreenState extends State<CgpaSimulatorScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E293B) : Colors.white,
+              color: isDark ? Colors.black : Colors.white,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: isDark ? Colors.white10 : const Color(0xFFE2E8F0)),
             ),
@@ -371,7 +371,7 @@ class _CgpaSimulatorScreenState extends State<CgpaSimulatorScreen> {
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                color: isDark ? Colors.black : Colors.white,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: isDark ? Colors.white10 : const Color(0xFFE2E8F0)),
               ),

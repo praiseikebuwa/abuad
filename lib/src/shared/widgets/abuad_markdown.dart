@@ -375,7 +375,18 @@ class AbuadMarkdownContent extends ConsumerWidget {
         continue;
       }
 
-      // Default text
+      // Default text / whitespace
+      if (raw.trim().isEmpty) {
+        final cleanSpaces = raw.contains('\n') ? raw : ' ';
+        spans.add(
+          TextSpan(
+            text: cleanSpaces,
+            style: baseStyle,
+          ),
+        );
+        continue;
+      }
+
       spans.add(
         TextSpan(
           text: raw,
@@ -756,19 +767,17 @@ class AbuadMarkdownContent extends ConsumerWidget {
     bool isDark,
   ) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2.5),
+      padding: const EdgeInsets.symmetric(vertical: 1.5),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 22,
             margin: const EdgeInsets.only(right: 6),
-            alignment: Alignment.topRight,
             child: Text(
               '$number.',
               style: baseStyle.copyWith(
-                fontWeight: FontWeight.bold,
-                color: linkColor,
+                fontWeight: FontWeight.w600,
+                color: baseStyle.color,
               ),
             ),
           ),

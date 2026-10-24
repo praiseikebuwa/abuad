@@ -214,7 +214,7 @@ class _ShuttleBoardScreenState extends State<ShuttleBoardScreen>
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        color: isDark ? Colors.black : Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: isDark ? Colors.white10 : const Color(0xFFE2E8F0)),
       ),
@@ -292,7 +292,7 @@ class _ShuttleBoardScreenState extends State<ShuttleBoardScreen>
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            color: isDark ? Colors.black : Colors.white,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: isDark ? Colors.white10 : const Color(0xFFE2E8F0)),
           ),
@@ -354,7 +354,7 @@ class _ShuttleBoardScreenState extends State<ShuttleBoardScreen>
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        color: isDark ? Colors.black : Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: isDark ? Colors.white10 : const Color(0xFFE2E8F0)),
       ),

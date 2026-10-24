@@ -115,7 +115,7 @@ class _CampusPollsScreenState extends State<CampusPollsScreen> with SingleTicker
                 bottom: MediaQuery.of(modalCtx).viewInsets.bottom + 20,
               ),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E1E2C) : Colors.white,
+                color: isDark ? Colors.black : Colors.white,
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
               ),
               child: SingleChildScrollView(
@@ -149,9 +149,16 @@ class _CampusPollsScreenState extends State<CampusPollsScreen> with SingleTicker
                       maxLines: 2,
                       decoration: InputDecoration(
                         hintText: 'What is your debate or question topic?',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: isDark ? Colors.white12 : const Color(0xFFCBD5E1)),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: isDark ? Colors.white12 : const Color(0xFFCBD5E1)),
+                        ),
                         filled: true,
-                        fillColor: isDark ? const Color(0xFF2A2A3C) : Colors.grey[100],
+                        fillColor: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -319,11 +326,23 @@ class _CampusPollsScreenState extends State<CampusPollsScreen> with SingleTicker
         final userVotedIdx = poll['userVotedIndex'] as int;
         final options = poll['options'] as List;
 
-        return Card(
+        return Container(
           margin: const EdgeInsets.only(bottom: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          elevation: 2,
-          color: isDark ? const Color(0xFF1E1E2C) : Colors.white,
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF111827) : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isDark ? Colors.white.withValues(alpha: 0.1) : const Color(0xFFE2E8F0),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: isDark ? Colors.black45 : Colors.black.withValues(alpha: 0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -335,7 +354,7 @@ class _CampusPollsScreenState extends State<CampusPollsScreen> with SingleTicker
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: Colors.indigoAccent.withOpacity(0.15),
+                        color: Colors.indigoAccent.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
@@ -352,7 +371,12 @@ class _CampusPollsScreenState extends State<CampusPollsScreen> with SingleTicker
                 const SizedBox(height: 10),
                 Text(
                   poll['question'],
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, height: 1.3),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    height: 1.3,
+                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  ),
                 ),
                 const SizedBox(height: 14),
                 ...List.generate(options.length, (optIdx) {
@@ -375,10 +399,14 @@ class _CampusPollsScreenState extends State<CampusPollsScreen> with SingleTicker
                             height: 48,
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(12),
-                              color: isDark ? const Color(0xFF2B2B3E) : Colors.grey[100],
+                              color: isSelected
+                                  ? Colors.indigoAccent.withValues(alpha: isDark ? 0.22 : 0.12)
+                                  : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
                               border: Border.all(
-                                color: isSelected ? Colors.indigoAccent : Colors.transparent,
-                                width: 2,
+                                color: isSelected
+                                    ? Colors.indigoAccent
+                                    : (isDark ? Colors.white.withValues(alpha: 0.1) : const Color(0xFFE2E8F0)),
+                                width: isSelected ? 2 : 1,
                               ),
                             ),
                           ),

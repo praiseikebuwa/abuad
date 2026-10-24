@@ -116,6 +116,7 @@ class MarketplaceRepository {
   Stream<List<MarketplaceItem>> watchItems({
     String? category,
     String? searchQuery,
+    String? sellerId,
     double? minPrice,
     double? maxPrice,
     String sortBy = 'newest',
@@ -123,15 +124,21 @@ class MarketplaceRepository {
     return _watchItemsInternal(
       category: category,
       searchQuery: searchQuery,
+      sellerId: sellerId,
       minPrice: minPrice,
       maxPrice: maxPrice,
       sortBy: sortBy,
     ).asBroadcastStream();
   }
 
+  Stream<List<MarketplaceItem>> watchItemsBySeller(String sellerId) {
+    return watchItems(sellerId: sellerId);
+  }
+
   Stream<List<MarketplaceItem>> _watchItemsInternal({
     String? category,
     String? searchQuery,
+    String? sellerId,
     double? minPrice,
     double? maxPrice,
     String sortBy = 'newest',
@@ -144,7 +151,18 @@ class MarketplaceRepository {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true && data['data'] is List) {
-          yield (data['data'] as List).map((x) => MarketplaceItem.fromMap(x)).toList();
+          var items = (data['data'] as List).map((x) => MarketplaceItem.fromMap(x)).toList();
+          if (sellerId != null && sellerId.isNotEmpty) {
+            items = items.where((x) => x.sellerId == sellerId).toList();
+          }
+          if (searchQuery != null && searchQuery.isNotEmpty) {
+            final q = searchQuery.toLowerCase();
+            items = items.where((x) => x.title.toLowerCase().contains(q) || x.description.toLowerCase().contains(q)).toList();
+          }
+          if (maxPrice != null) {
+            items = items.where((x) => x.price <= maxPrice).toList();
+          }
+          yield items;
           return;
         }
       }

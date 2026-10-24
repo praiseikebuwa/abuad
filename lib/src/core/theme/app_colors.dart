@@ -25,9 +25,9 @@ class AppColors {
   static const Color surfaceLight = Color(0xFFF9F6F1); // Updated warm off-white
   static const Color surfaceLightAlt = Color(0xFFFDFBF7);
   static const Color surfaceElevated = Color(0xFFFFFFFF);
-  static const Color surfaceDark = Color(0xFF000000);
-  static const Color surfaceDarkSecondary = Color(0xFF0A0A0A);
-  static const Color surfaceDarkElevated = Color(0xFF121212);
+  static const Color surfaceDark = Color(0xFF000000); // True OLED black
+  static const Color surfaceDarkSecondary = Color(0xFF000000); // True OLED black
+  static const Color surfaceDarkElevated = Color(0xFF000000); // True OLED black
 
   // Text
   static const Color textPrimary = Color(0xFF0F172A);

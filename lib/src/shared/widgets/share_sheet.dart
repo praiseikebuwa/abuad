@@ -396,9 +396,7 @@ class _ShareSheetState extends ConsumerState<ShareSheet> {
           ref.read(currentUserProvider).value ?? ref.read(authRepositoryProvider).currentUser;
       if (currentUser == null) throw Exception('Please log in to share posts');
 
-      final shareContent = widget.post.content.trim().isNotEmpty
-          ? widget.post.content.trim()
-          : 'Shared a post with you';
+      const shareContent = 'Shared a post with you';
 
       for (final entry in _selectedRecipients.values) {
         String channelId;

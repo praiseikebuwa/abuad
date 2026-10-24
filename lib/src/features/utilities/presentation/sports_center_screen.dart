@@ -146,7 +146,7 @@ class _SportsCenterScreenState extends State<SportsCenterScreen> with SingleTick
             margin: const EdgeInsets.only(bottom: 16),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             elevation: 3,
-            color: isDark ? const Color(0xFF1E222A) : Colors.white,
+            color: isDark ? Colors.black : Colors.white,
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -248,7 +248,7 @@ class _SportsCenterScreenState extends State<SportsCenterScreen> with SingleTick
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          color: isDark ? const Color(0xFF1E222A) : Colors.white,
+          color: isDark ? Colors.black : Colors.white,
           child: ListTile(
             contentPadding: const EdgeInsets.all(14),
             leading: CircleAvatar(
@@ -284,7 +284,7 @@ class _SportsCenterScreenState extends State<SportsCenterScreen> with SingleTick
       children: [
         Card(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          color: isDark ? const Color(0xFF1E222A) : Colors.white,
+          color: isDark ? Colors.black : Colors.white,
           child: Padding(
             padding: const EdgeInsets.all(12.0),
             child: Column(

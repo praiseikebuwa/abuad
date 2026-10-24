@@ -110,7 +110,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                 Theme(
                   data: Theme.of(context).copyWith(
                     popupMenuTheme: PopupMenuThemeData(
-                      color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                      color: isDark ? Colors.black : Colors.white,
                       surfaceTintColor: Colors.transparent,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
@@ -133,7 +133,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                       height: 38,
                       decoration: BoxDecoration(
                         color: isDark
-                            ? const Color(0xFF1E293B)
+                            ? Colors.black
                             : const Color(0xFFF1F5F9),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
@@ -215,7 +215,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
             child: Container(
               height: 44,
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                color: isDark ? Colors.black : const Color(0xFFF1F5F9),
                 borderRadius: BorderRadius.circular(22),
               ),
               child: TextField(
@@ -618,8 +618,12 @@ class _SnapchatListItem extends ConsumerWidget {
     // Get Message Preview line
     Widget buildMessagePreview() {
       if (isTyping) {
+        final activeTypingCount = channel.typingUsers.values.where((v) => v == true).length;
+        final typingLabel = isGroup
+            ? (activeTypingCount > 1 ? '$activeTypingCount people typing...' : 'Someone is typing...')
+            : 'typing...';
         return Text(
-          isGroup ? '3 people are typing...' : 'typing...',
+          typingLabel,
           style: const TextStyle(
             color: Color(0xFF6366F1),
             fontWeight: FontWeight.w600,
@@ -857,7 +861,13 @@ class _SnapchatListItem extends ConsumerWidget {
         ],
       ),
       child: InkWell(
-        onTap: () => context.push('/chat/${channel.id}'),
+        onTap: () {
+          if (hasUnreadSnap) {
+            _openQuickSnap(context, ref, channel, displayName, displayAvatar);
+          } else {
+            context.push('/chat/${channel.id}');
+          }
+        },
         onLongPress: () => _showQuickActionsBottomSheet(context, ref, displayName, isPinned, isArchived, isUnread),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
@@ -1043,13 +1053,22 @@ class _SnapchatListItem extends ConsumerWidget {
     final repo = ref.read(chatRepositoryProvider);
     var snap = repo.getLatestUnreadSnap(channel.id, currentUserId);
     if (snap == null) {
-      await repo.fetchMessagesOnce(channel.id);
+      final msgs = await repo.fetchMessagesOnce(channel.id);
       snap = repo.getLatestUnreadSnap(channel.id, currentUserId);
+      if (snap == null && msgs.isNotEmpty) {
+        for (final m in msgs.reversed) {
+          final isSnapMsg = m.isSnap || m.type == 'snap' || m.content.contains('Snap');
+          if (isSnapMsg && m.senderId != currentUserId) {
+            snap = m;
+            break;
+          }
+        }
+      }
     }
 
     if (!context.mounted) return;
 
-    if (snap != null && snap.imageUrl != null) {
+    if (snap != null && (snap.imageUrl != null || snap.content.contains('http'))) {
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) => SnapViewerScreen.directSnap(
@@ -1072,7 +1091,7 @@ class _SnapchatListItem extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+        backgroundColor: isDark ? Colors.black : Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(
           'Delete Conversation',
@@ -1137,7 +1156,7 @@ class _SnapchatListItem extends ConsumerWidget {
     HapticFeedback.mediumImpact();
     showModalBottomSheet(
       context: context,
-      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+      backgroundColor: isDark ? Colors.black : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -1281,7 +1300,7 @@ class _SnapchatListItem extends ConsumerWidget {
             CircleAvatar(
               radius: 25,
               backgroundImage: NetworkImage(displayAvatar),
-              backgroundColor: const Color(0xFF1E293B),
+              backgroundColor: Colors.black,
             ),
             Positioned(
               right: -2,
@@ -1381,7 +1400,7 @@ class _ModernFilterPill extends StatelessWidget {
         decoration: BoxDecoration(
           color: isSelected
               ? const Color(0xFF3B49DF)
-              : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
+              : (isDark ? Colors.black : const Color(0xFFF1F5F9)),
           borderRadius: BorderRadius.circular(20),
         ),
         child: Row(

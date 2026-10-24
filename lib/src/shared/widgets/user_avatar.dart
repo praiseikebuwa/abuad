@@ -173,7 +173,14 @@ class UserAvatar extends ConsumerWidget {
                   subtitle: const Text('Watch active stories'),
                   onTap: () {
                     Navigator.pop(context);
-                    context.push('/stories/$userId', extra: groups);
+                    final userStories = groups[userId] ?? [];
+                    context.push(
+                      '/stories/$userId',
+                      extra: {
+                        'storiesGrouped': {userId: userStories},
+                        'singleUserMode': true,
+                      },
+                    );
                   },
                 ),
                 if (isSelf) ...[

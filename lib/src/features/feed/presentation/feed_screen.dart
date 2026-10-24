@@ -12,6 +12,8 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'providers/feed_provider.dart';
 import '../../notifications/data/notification_repository.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../advertisements/data/advertisement_repository.dart';
+import '../../advertisements/presentation/widgets/sponsored_ad_card.dart';
 
 class FeedScreen extends ConsumerStatefulWidget {
   const FeedScreen({super.key});
@@ -275,6 +277,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                   onSelected: (value) {
                     if (value == 'notifications') {
                       context.push('/notifications');
+                    } else if (value == 'advertisements') {
+                      context.push('/advertisements');
                     } else if (value == 'settings') {
                       context.push('/settings');
                     } else if (value == 'accessibility') {
@@ -282,6 +286,20 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                     }
                   },
                   itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: 'advertisements',
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.campaign_outlined,
+                            size: 20,
+                            color: Color(0xFF00E5FF),
+                          ),
+                          const SizedBox(width: 12),
+                          const Text('Advertise / Promo'),
+                        ],
+                      ),
+                    ),
                     PopupMenuItem(
                       value: 'notifications',
                       child: Row(
@@ -589,6 +607,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                       final displayPosts = injectSystemPosts(channelPosts, injections);
 
                       final isLoadingMore = ref.watch(isLoadingMoreProvider);
+                      final feedAds = ref.watch(feedAdsProvider).value ?? [];
 
                       return Column(
                         children: [
@@ -669,13 +688,23 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                                         },
                                       );
 
-                                if (showPeopleCarousel) {
+                                final showAd = feedAds.isNotEmpty &&
+                                    (index > 0 && index % 6 == 3);
+                                final adWidget = showAd
+                                    ? SponsoredAdCard(
+                                        ad: feedAds[(index ~/ 6) % feedAds.length],
+                                      )
+                                    : null;
+
+                                if (showPeopleCarousel || showAd) {
                                   return Column(
                                     mainAxisSize: MainAxisSize.min,
                                     crossAxisAlignment: CrossAxisAlignment.stretch,
                                     children: [
                                       postWidget,
-                                      const PeopleYouMayKnowCarousel(),
+                                      if (showAd && adWidget != null) adWidget,
+                                      if (showPeopleCarousel)
+                                        const PeopleYouMayKnowCarousel(),
                                     ],
                                   );
                                 }

@@ -37,6 +37,7 @@ import '../../features/search/presentation/search_screen.dart';
 import '../../features/search/presentation/hashtag_screen.dart';
 import '../../features/marketplace/presentation/marketplace_screen.dart';
 import '../../features/marketplace/presentation/marketplace_detail_screen.dart';
+import '../../features/marketplace/presentation/seller_storefront_screen.dart';
 import '../../features/marketplace/data/marketplace_repository.dart';
 import '../../features/feed/presentation/reels_screen.dart';
 import '../../features/feed/presentation/audio_track_screen.dart';
@@ -44,6 +45,8 @@ import '../../features/feed/domain/post.dart';
 import '../../features/user/presentation/user_list_screen.dart';
 import '../../features/stories/domain/story.dart';
 import '../../features/stories/presentation/story_viewer_screen.dart';
+import '../../features/advertisements/presentation/advertisements_screen.dart';
+import '../../features/advertisements/presentation/create_advertisement_screen.dart';
 import '../../features/chat/presentation/qr_scanner_screen.dart';
 import '../../features/chat/presentation/broadcast_search_screen.dart';
 import '../../features/chat/presentation/broadcast_message_screen.dart';
@@ -263,12 +266,36 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         parentNavigatorKey: rootNavigatorKey,
         builder: (context, state) {
           final userId = state.pathParameters['userId']!;
-          final storiesGrouped = state.extra as Map<String, List<Story>>? ?? {};
+          Map<String, List<Story>> storiesGrouped = {};
+          bool singleUserMode = false;
+
+          if (state.extra is Map<String, dynamic>) {
+            final extraMap = state.extra as Map<String, dynamic>;
+            storiesGrouped =
+                (extraMap['storiesGrouped'] as Map<String, List<Story>>?) ?? {};
+            singleUserMode = extraMap['singleUserMode'] == true;
+          } else if (state.extra is Map<String, List<Story>>) {
+            storiesGrouped = state.extra as Map<String, List<Story>>;
+          }
+
           return StoryViewerScreen(
             storiesGrouped: storiesGrouped,
             initialUserId: userId,
+            singleUserMode: singleUserMode,
           );
         },
+      ),
+      GoRoute(
+        path: '/advertisements',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) => const AdvertisementsScreen(),
+        routes: [
+          GoRoute(
+            path: 'create',
+            parentNavigatorKey: rootNavigatorKey,
+            builder: (context, state) => const CreateAdvertisementScreen(),
+          ),
+        ],
       ),
       GoRoute(
         path: '/user/:userId',
@@ -773,6 +800,19 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                         return const MarketplaceScreen();
                       }
                       return MarketplaceDetailScreen(item: item);
+                    },
+                  ),
+                  GoRoute(
+                    path: 'seller/:sellerId',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) {
+                      final sellerId = state.pathParameters['sellerId']!;
+                      final extra = state.extra as Map<String, dynamic>?;
+                      return SellerStorefrontScreen(
+                        sellerId: sellerId,
+                        initialSellerName: extra?['name'],
+                        initialSellerAvatar: extra?['avatar'],
+                      );
                     },
                   ),
                 ],

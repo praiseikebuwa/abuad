@@ -213,7 +213,7 @@ class _ChatSettingsScreenState extends ConsumerState<ChatSettingsScreen> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: isDark
-                      ? [const Color(0xFF0F172A), const Color(0xFF1E293B)]
+                      ? [const Color(0xFF0F172A), Colors.black]
                       : [const Color(0xFFF1F5F9), const Color(0xFFE2E8F0)],
                 ),
               ),
@@ -718,7 +718,7 @@ class _ChatSettingsScreenState extends ConsumerState<ChatSettingsScreen> {
       } else {
         bgDecoration = BoxDecoration(
           borderRadius: BorderRadius.circular(20),
-          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+          color: isDark ? Colors.black : const Color(0xFFF1F5F9),
         );
       }
     } else {
@@ -728,7 +728,7 @@ class _ChatSettingsScreenState extends ConsumerState<ChatSettingsScreen> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: isDark
-              ? [const Color(0xFF0F172A), const Color(0xFF1E293B)]
+              ? [const Color(0xFF0F172A), Colors.black]
               : [const Color(0xFFE2E8F0), const Color(0xFFCBD5E1)],
         ),
       );
@@ -898,7 +898,7 @@ class _ChatSettingsScreenState extends ConsumerState<ChatSettingsScreen> {
         child: Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            color: isDark ? Colors.black : Colors.white,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
           ),
           child: Column(

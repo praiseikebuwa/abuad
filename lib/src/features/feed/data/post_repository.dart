@@ -318,8 +318,23 @@ class PostRepository {
   }
 
   Stream<List<Map<String, dynamic>>> watchComments(String postId) async* {
+    // 1. Instant Cache-First: yield immediately if comments already cached in memory
+    final cached = _localComments[postId];
+    if (cached != null && cached.isNotEmpty) {
+      final seenIds = <String>{};
+      final list = <Map<String, dynamic>>[];
+      for (final c in cached) {
+        final id = c['id']?.toString() ?? '';
+        if (id.isNotEmpty && !seenIds.contains(id)) {
+          seenIds.add(id);
+          list.add(_normalizeCommentMap(c));
+        }
+      }
+      yield list;
+    }
+
     try {
-      final res = await ApiClient.get('/posts/$postId/comments');
+      final res = await ApiClient.get('/posts/$postId/comments').timeout(const Duration(seconds: 8));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true && data['data'] is List) {
@@ -346,7 +361,7 @@ class PostRepository {
       }
     } catch (_) {}
 
-    // Yield deduplicated list
+    // Yield updated deduplicated list
     final seenIds = <String>{};
     final initialList = <Map<String, dynamic>>[];
     for (final c in (_localComments[postId] ?? [])) {

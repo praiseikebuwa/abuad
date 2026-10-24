@@ -1594,28 +1594,30 @@ router.get('/:id/comments', optionalAuth, async (req: AuthenticatedRequest, res:
   try {
     const postId = String(req.params.id);
 
-    // Fetch the post authorId to prioritize creator replies
-    const targetPost = await prisma.post.findUnique({
-      where: { id: postId },
-      select: { authorId: true },
-    });
-    const postAuthorId = targetPost?.authorId;
-
-    const comments = await prisma.postComment.findMany({
-      where: { postId },
-      take: 100,
-      include: {
-        author: {
-          select: { id: true, username: true, fullName: true, avatarUrl: true, isVerified: true, verificationType: true },
-        },
-        replies: {
-          take: 20,
-          include: {
-            author: { select: { id: true, username: true, fullName: true, avatarUrl: true, isVerified: true, verificationType: true } },
+    // Fetch post author and comments concurrently in parallel
+    const [targetPost, comments] = await Promise.all([
+      prisma.post.findUnique({
+        where: { id: postId },
+        select: { authorId: true },
+      }),
+      prisma.postComment.findMany({
+        where: { postId },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+        include: {
+          author: {
+            select: { id: true, username: true, fullName: true, avatarUrl: true, isVerified: true, verificationType: true },
+          },
+          replies: {
+            take: 20,
+            include: {
+              author: { select: { id: true, username: true, fullName: true, avatarUrl: true, isVerified: true, verificationType: true } },
+            },
           },
         },
-      },
-    });
+      }),
+    ]);
+    const postAuthorId = targetPost?.authorId;
 
     const getWeight = (comment: any) => {
       if (!comment || !comment.author) return 0;

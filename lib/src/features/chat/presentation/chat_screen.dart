@@ -95,6 +95,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final AudioPlayer _audioPlayer = AudioPlayer();
   String? _currentlyPlayingUrl;
   bool _isPlaying = false;
+  String? _highlightedMessageId;
 
   // Swipeable Reaction Emojis
   List<String> _recentEmojis = ['❤️', '😂', '😮', '😢', '😡', '👍', '🔥', '🎉'];
@@ -322,10 +323,110 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _jumpToMatch(next, totalItems);
   }
 
-  void _previousMatch(int totalItems) {
-    if (_matchingMessageIndices.isEmpty) return;
-    final prev = (_currentMatchIndex - 1 + _matchingMessageIndices.length) % _matchingMessageIndices.length;
-    _jumpToMatch(prev, totalItems);
+  void _scrollToMessage(String? replyToId, List<dynamic> items) {
+    if (replyToId == null || replyToId.isEmpty) return;
+    final targetIndex = items.indexWhere((item) => item is ChatMessage && item.id == replyToId);
+    if (targetIndex == -1) return;
+
+    if (_scrollController.hasClients) {
+      final approxOffset = (targetIndex * 90.0).clamp(0.0, _scrollController.position.maxScrollExtent);
+      _scrollController.animateTo(
+        approxOffset,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeOutCubic,
+      );
+    }
+
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _highlightedMessageId = replyToId;
+    });
+
+    Future.delayed(const Duration(milliseconds: 1800), () {
+      if (mounted && _highlightedMessageId == replyToId) {
+        setState(() {
+          _highlightedMessageId = null;
+        });
+      }
+    });
+  }
+
+  Widget _buildReplyQuoteInsideBubble({
+    required ChatMessage message,
+    required bool isMe,
+    required bool isDark,
+    required ChatRepository repo,
+    required ChatChannel? channel,
+    required Color themeColor,
+    required List<dynamic> items,
+  }) {
+    if (message.replyToContent == null) return const SizedBox.shrink();
+
+    final replySenderName = message.replyToSenderId == repo.currentUserId
+        ? 'You'
+        : (channel?.memberNames[message.replyToSenderId] != null &&
+                channel!.memberNames[message.replyToSenderId]!.isNotEmpty
+            ? channel.memberNames[message.replyToSenderId]!
+            : 'Friend');
+
+    return GestureDetector(
+      onTap: () => _scrollToMessage(message.replyToId, items),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isMe
+              ? Colors.white.withValues(alpha: 0.16)
+              : (isDark
+                  ? Colors.white.withValues(alpha: 0.08)
+                  : Colors.black.withValues(alpha: 0.05)),
+          borderRadius: BorderRadius.circular(8),
+          border: Border(
+            left: BorderSide(
+              color: isMe ? Colors.white : themeColor,
+              width: 3.5,
+            ),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.reply_rounded,
+                  size: 13,
+                  color: isMe ? Colors.white70 : themeColor,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  replySenderName,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11.5,
+                    color: isMe ? Colors.white : themeColor,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(
+              message.replyToContent!,
+              style: TextStyle(
+                fontSize: 12,
+                color: isMe
+                    ? Colors.white.withValues(alpha: 0.9)
+                    : (isDark ? Colors.white70 : Colors.black87),
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildChromeSearchBar(bool isDark, List<dynamic> items) {
@@ -522,7 +623,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       handle: 'all',
     );
 
-    final suggestions = [everyone, ...members]
+    final aiBot = AppUser(
+      uid: 'abuad_ai',
+      displayName: 'ABUAD AI',
+      email: 'ai@abuad.edu.ng',
+      handle: 'ai',
+      avatarUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80',
+      isVerified: true,
+      verificationType: 'GOLD',
+    );
+
+    final suggestions = [aiBot, everyone, ...members]
         .where((u) {
           final nameMatches = u.displayName.toLowerCase().contains(
             query.toLowerCase(),
@@ -873,8 +984,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _sendMessage() {
-    final content = _messageController.text.trim();
-    if (content.isEmpty) return;
+    final rawContent = _messageController.text.trim();
+    if (rawContent.isEmpty) return;
+
+    String content = rawContent;
+    if (_inquiryProduct != null) {
+      content = '🛍️ Inquiring about "${_inquiryProduct!.title}" (₦${_inquiryProduct!.price.toStringAsFixed(0)})\n$rawContent';
+    }
 
     if (_editingMessage != null) {
       ref
@@ -926,11 +1042,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             : 'chat_media/${widget.channelId}/',
       );
 
+      final caption = _messageController.text.trim();
+      if (caption.isNotEmpty) {
+        _messageController.clear();
+        setState(() => _hasText = false);
+      }
+
       await ref
           .read(chatRepositoryProvider)
           .sendMessage(
             widget.channelId,
-            isSnap ? '📸 Snap' : '📷 Photo',
+            isSnap ? '📸 Snap' : (caption.isNotEmpty ? caption : '📷 Photo'),
             type: 'image',
             imageUrl: result.url,
             imageWidth: result.width,
@@ -1163,11 +1285,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       spacing: 8,
       runSpacing: 2,
       children: [
-        _buildRichText(
-          message.content,
-          isMe,
-          isDark,
-        ),
+        if (message.content.isNotEmpty)
+          _buildRichText(
+            message.content,
+            isMe,
+            isDark,
+          ),
         Padding(
           padding: const EdgeInsets.only(bottom: 1),
           child: statusWidget,
@@ -1238,33 +1361,49 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
 
     // Regular image
+    final hasCaption = message.content.isNotEmpty &&
+        message.content != '📷 Photo' &&
+        message.content != '📸 Snap' &&
+        message.content != '🎥 Video Snap';
+
     return GestureDetector(
       onTap: () => _viewImage(message.imageUrl!),
       onLongPress: () => _saveImageToGallery(message.imageUrl!),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: CachedNetworkImage(
-          imageUrl: message.imageUrl!,
-          width: message.imageWidth != null
-              ? min(message.imageWidth!.toDouble(), 250.0)
-              : 250.0,
-          height: message.imageHeight != null
-              ? min(message.imageHeight!.toDouble(), 300.0)
-              : null,
-          fit: BoxFit.cover,
-          placeholder: (context, url) => Container(
-            width: 250,
-            height: 200,
-            color: isDark ? Colors.black38 : Colors.grey[100],
-            child: const Center(child: CircularProgressIndicator()),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: CachedNetworkImage(
+              imageUrl: message.imageUrl!,
+              width: message.imageWidth != null
+                  ? min(message.imageWidth!.toDouble(), 250.0)
+                  : 250.0,
+              height: message.imageHeight != null
+                  ? min(message.imageHeight!.toDouble(), 300.0)
+                  : null,
+              fit: BoxFit.cover,
+              placeholder: (context, url) => Container(
+                width: 250,
+                height: 200,
+                color: isDark ? Colors.black38 : Colors.grey[100],
+                child: const Center(child: CircularProgressIndicator()),
+              ),
+              errorWidget: (context, url, error) => Container(
+                width: 250,
+                height: 200,
+                color: isDark ? Colors.black38 : Colors.grey[100],
+                child: const Icon(Icons.error, color: Colors.red),
+              ),
+            ),
           ),
-          errorWidget: (context, url, error) => Container(
-            width: 250,
-            height: 200,
-            color: isDark ? Colors.black38 : Colors.grey[100],
-            child: const Icon(Icons.error, color: Colors.red),
-          ),
-        ),
+          if (hasCaption)
+            Padding(
+              padding: const EdgeInsets.only(top: 8, left: 4, right: 4),
+              child: _buildRichText(message.content, isMe, isDark),
+            ),
+        ],
       ),
     );
   }
@@ -1333,7 +1472,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               else
                 Container(
                   height: 180,
-                  color: isDark ? const Color(0xFF1E293B) : Colors.grey[200],
+                  color: isDark ? Colors.black : Colors.grey[200],
                   child: const Center(child: Icon(Icons.photo, size: 40)),
                 ),
 
@@ -1587,7 +1726,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         constraints: const BoxConstraints(minWidth: 180, maxWidth: 250),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E293B) : Colors.white,
+          color: isDark ? Colors.black : Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: statusColor.withValues(alpha: isHollow ? 0.35 : 0.8),
@@ -1697,7 +1836,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            color: isDark ? Colors.black : Colors.white,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: SafeArea(
@@ -1782,7 +1921,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           decoration: BoxDecoration(
             color: isMe
                 ? const Color(0xFF4F46E5)
-                : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
+                : (isDark ? Colors.black : const Color(0xFFF1F5F9)),
             borderRadius: BorderRadius.only(
               topLeft: const Radius.circular(20),
               topRight: const Radius.circular(20),
@@ -2799,7 +2938,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             colors: isDark
                                 ? [
                                     const Color(0xFF0F172A),
-                                    const Color(0xFF1E293B),
+                                    Colors.black,
                                     const Color(0xFF0F172A),
                                   ]
                                 : [
@@ -2866,7 +3005,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ),
               Column(
                 children: [
-                  if (isGroup) _buildAnnouncementBanner(channel, isDark),
+                  // Dummy announcement banner removed per user request
                   Expanded(
                     child: StreamBuilder<List<ChatMessage>>(
                       stream: messagesStream,
@@ -3241,12 +3380,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                             ),
                                           )
                                         else ...[
-                                          // Reply Preview in Bubble
-                                          if (message.replyToContent != null)
-                                            Container(
-                                              margin: const EdgeInsets.only(
-                                                bottom: 6,
-                                              ),
                                               padding: const EdgeInsets.symmetric(
                                                 horizontal: 10,
                                                 vertical: 6,
@@ -3593,7 +3726,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                                             color: isMe
                                                                 ? null
                                                                 : (isDark
-                                                                      ? const Color(0xFF1E293B)
+                                                                      ? Colors.black
                                                                       : const Color(0xFFF1F5F9)),
                                                             borderRadius: BorderRadius.only(
                                                               topLeft: const Radius.circular(20),
@@ -3601,16 +3734,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                                               bottomLeft: Radius.circular(isMe ? 20 : 4),
                                                               bottomRight: Radius.circular(isMe ? 4 : 20),
                                                             ),
-                                                            border: isSearchMatch
+                                                            border: _highlightedMessageId == message.id
                                                                 ? Border.all(
-                                                                    color: isCurrentSearchFocus
-                                                                        ? const Color(0xFFF59E0B)
-                                                                        : const Color(0xFFF59E0B).withValues(alpha: 0.45),
-                                                                    width: isCurrentSearchFocus ? 2.5 : 1.5,
+                                                                    color: const Color(0xFF6366F1),
+                                                                    width: 2.2,
                                                                   )
-                                                                : null,
+                                                                : (isSearchMatch
+                                                                    ? Border.all(
+                                                                        color: isCurrentSearchFocus
+                                                                            ? const Color(0xFFF59E0B)
+                                                                            : const Color(0xFFF59E0B).withValues(alpha: 0.45),
+                                                                        width: isCurrentSearchFocus ? 2.5 : 1.5,
+                                                                      )
+                                                                    : (isMe ? null : Border.all(color: isDark ? Colors.white12 : const Color(0xFFE2E8F0)))),
                                                             boxShadow: [
-                                                              if (isCurrentSearchFocus)
+                                                              if (_highlightedMessageId == message.id)
+                                                                BoxShadow(
+                                                                  color: const Color(0xFF6366F1).withValues(alpha: 0.6),
+                                                                  blurRadius: 16,
+                                                                  spreadRadius: 2,
+                                                                )
+                                                              else if (isCurrentSearchFocus)
                                                                 BoxShadow(
                                                                   color: const Color(0xFFF59E0B).withValues(alpha: 0.45),
                                                                   blurRadius: 12,
@@ -3681,6 +3825,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                                                   },
                                                                 ),
 
+                                                              // Inside-bubble reply quote
+                                                              if (message.replyToContent != null)
+                                                                _buildReplyQuoteInsideBubble(
+                                                                  message: message,
+                                                                  isMe: isMe,
+                                                                  isDark: isDark,
+                                                                  repo: repo,
+                                                                  channel: channel,
+                                                                  themeColor: _themeColor,
+                                                                  items: items,
+                                                                ),
+
                                                               // Shared Post Preview
                                                               if (message.sharedPostId != null)
                                                                 Padding(
@@ -3691,12 +3847,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                                                 ),
 
                                                               // Dynamic Message Content with Inline / Auto-wrapping Timestamp
-                                                              _buildMessageContentWithTimestamp(
-                                                                message: message,
-                                                                isMe: isMe,
-                                                                isDark: isDark,
-                                                                isRead: isRead,
-                                                              ),
+                                                              if (message.sharedPostId == null ||
+                                                                  (message.content.isNotEmpty &&
+                                                                   message.content != 'Shared a post with you' &&
+                                                                   !message.content.startsWith('post:')))
+                                                                _buildMessageContentWithTimestamp(
+                                                                  message: message,
+                                                                  isMe: isMe,
+                                                                  isDark: isDark,
+                                                                  isRead: isRead,
+                                                                )
+                                                              else
+                                                                Align(
+                                                                  alignment: Alignment.bottomRight,
+                                                                  child: Padding(
+                                                                    padding: const EdgeInsets.only(top: 2),
+                                                                    child: _buildMessageContentWithTimestamp(
+                                                                      message: message.copyWith(content: ''),
+                                                                      isMe: isMe,
+                                                                      isDark: isDark,
+                                                                      isRead: isRead,
+                                                                    ),
+                                                                  ),
+                                                                ),
                                                             ],
                                                           ),
                                                         ),
@@ -3871,6 +4044,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           _buildLiveTypingBanner(channel, displayName, isDark),
+                          if (_inquiryProduct != null)
+                            _buildProductInquiryBanner(_inquiryProduct!, isDark),
                           if (_replyingTo != null)
                             _buildReplyPreview(
                               isDark,
@@ -4463,7 +4638,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 onTap: () => _sendSticker(stk.emojiOrText ?? stk.title, imageUrl: stk.localPath),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1E222A) : Colors.grey[100],
+                    color: isDark ? Colors.black : Colors.grey[100],
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
                       color: isDark ? Colors.white12 : Colors.grey.withOpacity(0.2),
@@ -4526,15 +4701,78 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
+  void _showSaveStickerDialog(ChatMessage message) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.star_rounded, color: Color(0xFFF59E0B), size: 28),
+                  title: const Text('Save to My Stickers', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Add this sticker to your custom stickers keyboard'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    final newItem = CreatedStickerItem(
+                      id: message.id.isNotEmpty ? message.id : DateTime.now().millisecondsSinceEpoch.toString(),
+                      title: message.content.isNotEmpty ? message.content : 'Sticker',
+                      type: message.imageUrl != null ? 'photo' : 'text',
+                      localPath: message.imageUrl,
+                      emojiOrText: message.content,
+                      isFavorite: true,
+                    );
+                    setState(() {
+                      _customStickers.removeWhere((s) => s.id == newItem.id || (s.localPath != null && s.localPath == newItem.localPath));
+                      _customStickers.insert(0, newItem);
+                    });
+                    HapticFeedback.lightImpact();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Saved to your stickers! ⭐'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildCompactStickerBubble(ChatMessage message, bool isMe, bool isDark) {
     final hasImg = message.imageUrl != null && message.imageUrl!.isNotEmpty;
-    return Container(
+    return GestureDetector(
+      onTap: () => _showSaveStickerDialog(message),
+      onLongPress: () => _showSaveStickerDialog(message),
+      child: Container(
       constraints: const BoxConstraints(maxWidth: 140, maxHeight: 140),
       margin: const EdgeInsets.symmetric(vertical: 2),
       decoration: BoxDecoration(
         color: hasImg
             ? Colors.transparent
-            : (isMe ? const Color(0xFF4F46E5) : (isDark ? const Color(0xFF1E222A) : const Color(0xFFF1F5F9))),
+            : (isMe ? const Color(0xFF4F46E5) : (isDark ? Colors.black : const Color(0xFFF1F5F9))),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isDark ? Colors.white12 : Colors.black.withOpacity(0.08),
@@ -4584,6 +4822,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ),
               ),
       ),
+    ),
     );
   }
 
@@ -4724,6 +4963,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Widget _buildAnnouncementBanner(ChatChannel? channel, bool isDark) {
+    return const SizedBox.shrink();
     if (_hideAnnouncement) return const SizedBox.shrink();
     const text = "Midterm on Friday, Room 402 @ 10 AM — Liam (Class Rep)";
 
@@ -4732,7 +4972,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 6),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF),
+        color: isDark ? Colors.black : const Color(0xFFEFF6FF),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isDark ? Colors.white12 : const Color(0xFFBFDBFE),
@@ -4899,7 +5139,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           color: Colors.white,
         ),
       ),
-      backgroundColor: const Color(0xFF1E293B).withValues(alpha: 0.8),
+      backgroundColor: Colors.black.withValues(alpha: 0.8),
       side: BorderSide(
         color: const Color(0xFF14B8A6).withValues(alpha: 0.4),
         width: 1,
@@ -5117,6 +5357,90 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         SnackBar(content: Text('Error sharing document: $e')),
       );
     }
+  }
+
+  Widget _buildProductInquiryBanner(MarketplaceItem item, bool isDark) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: AppColors.accentAmber.withValues(alpha: 0.6),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: item.imageUrl.isNotEmpty
+                  ? CachedNetworkImage(
+                      imageUrl: UrlValidator.formatImageUrl(item.imageUrl),
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => Container(color: Colors.grey[800]),
+                      errorWidget: (_, __, ___) => const Icon(Icons.shopping_bag_outlined, size: 24),
+                    )
+                  : const Icon(Icons.shopping_bag_outlined, size: 24),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: const [
+                    Icon(Icons.storefront_rounded, size: 12, color: AppColors.accentAmber),
+                    SizedBox(width: 4),
+                    Text(
+                      'PRODUCT INQUIRY',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.accentAmber,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  item.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : Colors.black,
+                  ),
+                ),
+                Text(
+                  '₦${item.price.toStringAsFixed(0)} · ${item.category}',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.secondaryTeal,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close_rounded, size: 18),
+            onPressed: () => setState(() => _inquiryProduct = null),
+            color: isDark ? Colors.white60 : Colors.black54,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildLiveTypingBanner(ChatChannel? channel, String otherUserName, bool isDark) {
@@ -5500,7 +5824,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        color: isDark ? Colors.black : Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         boxShadow: [
           BoxShadow(

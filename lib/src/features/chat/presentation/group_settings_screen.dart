@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:share_plus/share_plus.dart';
 import '../data/chat_repository.dart';
 import '../domain/chat_channel.dart';
 import '../../../core/utils/url_validator.dart';
@@ -36,7 +37,7 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final backgroundColor = isDark ? const Color(0xFF0F172A) : const Color(0xFFF2F2F7);
-    final cardColor = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final cardColor = isDark ? Colors.black : Colors.white;
     final cardBorderColor = isDark ? Colors.white10 : const Color(0xFFE2E8F0);
     final textPrimary = isDark ? Colors.white : const Color(0xFF0F172A);
     final textSecondary = isDark ? Colors.white60 : const Color(0xFF64748B);
@@ -142,7 +143,10 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
                       title: 'Add Other Members',
                       subtitle: 'Allow all members to add new students.',
                       value: _addOtherMembers,
-                      onChanged: (val) => setState(() => _addOtherMembers = val),
+                      onChanged: (val) {
+                        setState(() => _addOtherMembers = val);
+                        repo.updateGroupSettings(widget.channelId, settings: {'addOtherMembers': val});
+                      },
                       textPrimary: textPrimary,
                       textSecondary: textSecondary,
                       isDark: isDark,
@@ -163,7 +167,10 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
                       title: 'Approve New Members',
                       subtitle: 'Admins must approve requests to join via link.',
                       value: _approveNewMembers,
-                      onChanged: (val) => setState(() => _approveNewMembers = val),
+                      onChanged: (val) {
+                        setState(() => _approveNewMembers = val);
+                        repo.updateGroupSettings(widget.channelId, settings: {'approveNewMembers': val});
+                      },
                       textPrimary: textPrimary,
                       textSecondary: textSecondary,
                       isDark: isDark,
@@ -173,7 +180,10 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
                       title: 'Participant History',
                       subtitle: 'New members can see past messages.',
                       value: _participantHistory,
-                      onChanged: (val) => setState(() => _participantHistory = val),
+                      onChanged: (val) {
+                        setState(() => _participantHistory = val);
+                        repo.updateGroupSettings(widget.channelId, settings: {'participantHistory': val});
+                      },
                       textPrimary: textPrimary,
                       textSecondary: textSecondary,
                       isDark: isDark,
@@ -717,13 +727,25 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.link, color: Color(0xFF3B82F6)),
+                      const Icon(Icons.link_rounded, color: Color(0xFF3B82F6)),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'https://abuad.edu.ng/join/$channelId',
-                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                          'https://abuadapp.com.ng/join/group/$channelId',
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                         ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.share_rounded, size: 20, color: Color(0xFF3B82F6)),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          SharePlus.instance.share(
+                            ShareParams(
+                              text: 'Join our ABUAD campus group on ABUAD Life:\nhttps://abuadapp.com.ng/join/group/$channelId',
+                              subject: 'Join ABUAD Group',
+                            ),
+                          );
+                        },
                       ),
                       IconButton(
                         icon: const Icon(Icons.copy, size: 20),
@@ -855,11 +877,14 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Group history deleted successfully.')),
-              );
+              await ref.read(chatRepositoryProvider).clearChannelMessages(widget.channelId);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Group history deleted successfully.')),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
             child: const Text('Delete History'),

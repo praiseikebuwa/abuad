@@ -198,7 +198,7 @@ class _StudentGigsScreenState extends State<StudentGigsScreen> {
                     decoration: BoxDecoration(
                       color: isSelected
                           ? const Color(0xFF8B5CF6)
-                          : (isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0)),
+                          : (isDark ? Colors.black : const Color(0xFFE2E8F0)),
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Text(
@@ -233,7 +233,7 @@ class _StudentGigsScreenState extends State<StudentGigsScreen> {
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        color: isDark ? Colors.black : Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: isDark ? Colors.white10 : const Color(0xFFE2E8F0)),
       ),

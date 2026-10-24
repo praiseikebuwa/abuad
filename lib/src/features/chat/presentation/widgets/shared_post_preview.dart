@@ -107,47 +107,66 @@ class SharedPostPreview extends ConsumerWidget {
                         ),
 
                       // Media Thumbnail
-                      if (post.mediaUrl.isNotEmpty && UrlValidator.isValidUrl(post.mediaUrl))
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              CachedNetworkImage(
-                                imageUrl: post.mediaUrl,
-                                height: 120,
-                                width: double.infinity,
-                                fit: BoxFit.cover,
-                                placeholder: (context, url) => Container(
-                                  height: 120,
-                                  color: isDark ? Colors.black26 : Colors.grey[200],
-                                  child: const Center(
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  ),
-                                ),
-                                errorWidget: (context, url, error) => Container(
+                      Builder(
+                        builder: (context) {
+                          String? effectiveMediaUrl;
+                          if (post.mediaUrl.isNotEmpty) {
+                            effectiveMediaUrl = UrlValidator.formatImageUrl(post.mediaUrl);
+                          } else if (post.mediaUrls.isNotEmpty) {
+                            effectiveMediaUrl = UrlValidator.formatImageUrl(post.mediaUrls.first);
+                          } else if (post.repostData != null) {
+                            final repMedia = post.repostData!['media_url'] ?? post.repostData!['mediaUrl'];
+                            if (repMedia != null && repMedia.toString().isNotEmpty) {
+                              effectiveMediaUrl = UrlValidator.formatImageUrl(repMedia.toString());
+                            }
+                          }
+
+                          if (effectiveMediaUrl == null || effectiveMediaUrl.isEmpty) {
+                            return const SizedBox.shrink();
+                          }
+
+                          return ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                CachedNetworkImage(
+                                  imageUrl: effectiveMediaUrl,
                                   height: 120,
                                   width: double.infinity,
-                                  color: isDark ? Colors.black26 : Colors.grey[200],
-                                  child: const Icon(Icons.broken_image_rounded, size: 30, color: Colors.grey),
-                                ),
-                              ),
-                              if (post.mediaType == MediaType.video)
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withValues(alpha: 0.4),
-                                    shape: BoxShape.circle,
+                                  fit: BoxFit.cover,
+                                  placeholder: (context, url) => Container(
+                                    height: 120,
+                                    color: isDark ? Colors.black26 : Colors.grey[200],
+                                    child: const Center(
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    ),
                                   ),
-                                  child: const Icon(
-                                    Icons.play_arrow_rounded,
-                                    color: Colors.white,
-                                    size: 30,
+                                  errorWidget: (context, url, error) => Container(
+                                    height: 120,
+                                    width: double.infinity,
+                                    color: isDark ? Colors.black26 : Colors.grey[200],
+                                    child: const Icon(Icons.broken_image_rounded, size: 30, color: Colors.grey),
                                   ),
                                 ),
-                            ],
-                          ),
-                        ),
+                                if (post.mediaType == MediaType.video)
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withValues(alpha: 0.4),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.play_arrow_rounded,
+                                      color: Colors.white,
+                                      size: 30,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
                       
                       const SizedBox(height: 8),
                       

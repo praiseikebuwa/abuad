@@ -259,7 +259,7 @@ class _StudyLoungesScreenState extends State<StudyLoungesScreen> {
                         width: 2,
                       ),
                     ),
-                    color: isDark ? const Color(0xFF1E1C2B) : Colors.white,
+                    color: isDark ? Colors.black : Colors.white,
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Column(
@@ -342,7 +342,7 @@ class _StudyLoungesScreenState extends State<StudyLoungesScreen> {
                           Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: isDark ? const Color(0xFF2B283A) : Colors.grey[100],
+                              color: isDark ? Colors.black : Colors.grey[100],
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Row(

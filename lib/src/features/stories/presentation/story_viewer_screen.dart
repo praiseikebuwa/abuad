@@ -25,12 +25,14 @@ class StoryViewerScreen extends ConsumerStatefulWidget {
   final Map<String, List<Story>> storiesGrouped;
   final String initialUserId;
   final int initialStoryIndex;
+  final bool singleUserMode;
 
   const StoryViewerScreen({
     super.key,
     required this.storiesGrouped,
     required this.initialUserId,
     this.initialStoryIndex = 0,
+    this.singleUserMode = false,
   });
 
   @override
@@ -58,7 +60,13 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
   @override
   void initState() {
     super.initState();
-    _userIds = widget.storiesGrouped.keys.toList();
+    if (widget.singleUserMode) {
+      _userIds = widget.storiesGrouped.containsKey(widget.initialUserId)
+          ? [widget.initialUserId]
+          : widget.storiesGrouped.keys.take(1).toList();
+    } else {
+      _userIds = widget.storiesGrouped.keys.toList();
+    }
 
     // Find initial user index
     _currentUserIndex = _userIds.indexOf(widget.initialUserId);
@@ -249,22 +257,23 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
       _markCurrentStoryViewed();
       _setupStoryMedia();
     } else {
-      // Next user's stories
-      if (_currentUserIndex < _userIds.length - 1) {
+      // Reached the end of current user's stories
+      if (widget.singleUserMode || _currentUserIndex >= _userIds.length - 1) {
+        // Stop here and return directly to the screen where the user came from
+        _safePop();
+      } else {
+        // Next user's stories
         setState(() {
           _currentUserIndex++;
           _currentStoryIndex = 0;
         });
         _userPageController.animateToPage(
           _currentUserIndex,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
+          duration: const Duration(milliseconds: 380),
+          curve: Curves.easeOutCubic,
         );
         _markCurrentStoryViewed();
         _setupStoryMedia();
-      } else {
-        // End of all stories
-        _safePop();
       }
     }
   }
@@ -277,6 +286,10 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
       });
       _setupStoryMedia();
     } else {
+      if (widget.singleUserMode) {
+        // Stay within this user's story in singleUserMode
+        return;
+      }
       // Previous user's stories
       if (_currentUserIndex > 0) {
         setState(() {
@@ -287,8 +300,8 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
         });
         _userPageController.animateToPage(
           _currentUserIndex,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
+          duration: const Duration(milliseconds: 380),
+          curve: Curves.easeOutCubic,
         );
         _setupStoryMedia();
       }
@@ -379,16 +392,111 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
 
   void _reshareStory(Story story) {
     _pauseStory();
+    _showReshareOptionsSheet(story);
+  }
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => CreateStoryScreen(resharedStory: story),
-      ),
+  void _showReshareOptionsSheet(Story story) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFF111827),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Share Status / Story',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  leading: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.repeat_rounded, color: Color(0xFF8B5CF6)),
+                  ),
+                  title: const Text('Repost to My Story', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                  subtitle: const Text('Share this status to your story with attribution', style: TextStyle(color: Colors.white60, fontSize: 12)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => CreateStoryScreen(resharedStory: story),
+                      ),
+                    ).then((_) {
+                      if (mounted) _resumeStory();
+                    });
+                  },
+                ),
+                ListTile(
+                  leading: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2563EB).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.send_rounded, color: Color(0xFF3B82F6)),
+                  ),
+                  title: const Text('Send in Chat', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                  subtitle: const Text('Share status directly with friends or groups', style: TextStyle(color: Colors.white60, fontSize: 12)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _resumeStory();
+                    context.push('/chat');
+                  },
+                ),
+                ListTile(
+                  leading: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: Colors.teal.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.ios_share_rounded, color: Colors.tealAccent),
+                  ),
+                  title: const Text('Share via...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                  subtitle: const Text('Share external link via WhatsApp, X, etc.', style: TextStyle(color: Colors.white60, fontSize: 12)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _shareStory(story);
+                  },
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
     ).then((_) {
-      if (mounted) {
-        _resumeStory();
-      }
+      if (mounted) _resumeStory();
     });
   }
 
@@ -396,8 +504,13 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
     _pauseStory();
 
     final text =
-        'Check out this story on Abuad life! ${story.caption ?? ""}\n\nhttps://abuadapp.com.ng/post/${story.id}';
-    Share.share(text).then((_) {
+        'Check out this story on Abuad App! ${story.caption ?? ""}\n\nhttps://abuadapp.com.ng/story/${story.id}';
+    SharePlus.instance.share(
+      ShareParams(
+        text: text,
+        subject: 'Story from ${story.userName}',
+      ),
+    ).then((_) {
       if (mounted) {
         _resumeStory();
       }
@@ -531,9 +644,9 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
         body: GestureDetector(
           onTapDown: (details) {
             final width = MediaQuery.of(context).size.width;
-            if (details.globalPosition.dx < width / 3) {
+            if (details.globalPosition.dx < width * 0.35) {
               _previousStory();
-            } else if (details.globalPosition.dx > 2 * width / 3) {
+            } else {
               _nextStory();
             }
           },
@@ -550,15 +663,19 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
           },
           child: PageView.builder(
             controller: _userPageController,
-            physics: const NeverScrollableScrollPhysics(),
+            physics: widget.singleUserMode
+                ? const NeverScrollableScrollPhysics()
+                : const BouncingScrollPhysics(),
             itemCount: _userIds.length,
             onPageChanged: (index) {
-              setState(() {
-                _currentUserIndex = index;
-                _currentStoryIndex = 0;
-              });
-              _markCurrentStoryViewed();
-              _setupStoryMedia();
+              if (index != _currentUserIndex) {
+                setState(() {
+                  _currentUserIndex = index;
+                  _currentStoryIndex = 0;
+                });
+                _markCurrentStoryViewed();
+                _setupStoryMedia();
+              }
             },
             itemBuilder: (context, userIndex) {
               final userId = _userIds[userIndex];
@@ -571,7 +688,37 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
                   : 0;
               final story = stories[actualStoryIndex];
 
-              return Consumer(
+              return AnimatedBuilder(
+                animation: _userPageController,
+                builder: (context, child) {
+                  double position = 0.0;
+                  if (_userPageController.position.haveDimensions) {
+                    position = (userIndex -
+                        (_userPageController.page ?? _currentUserIndex.toDouble()));
+                  } else {
+                    position = (userIndex - _currentUserIndex).toDouble();
+                  }
+
+                  // 3D Cube Rotation Transition
+                  final isLeaving = position < 0;
+                  final rotationY = (position * 0.6).clamp(-1.2, 1.2);
+                  final opacity =
+                      (1.0 - (position.abs() * 0.3)).clamp(0.2, 1.0);
+
+                  return Transform(
+                    transform: Matrix4.identity()
+                      ..setEntry(3, 2, 0.001)
+                      ..rotateY(rotationY),
+                    alignment: isLeaving
+                        ? Alignment.centerRight
+                        : Alignment.centerLeft,
+                    child: Opacity(
+                      opacity: opacity,
+                      child: child,
+                    ),
+                  );
+                },
+                child: Consumer(
                 builder: (context, ref, child) {
                   final viewerId = ref.watch(currentUserProvider).value?.uid;
                   final userAsync = ref.watch(userProvider(userId));
@@ -1498,10 +1645,11 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
                     ),
                   );
                 },
-              );
-            },
-          ),
+              ),
+            );
+          },
         ),
+      ),
       ),
     );
   }

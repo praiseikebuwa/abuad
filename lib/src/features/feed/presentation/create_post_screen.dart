@@ -152,12 +152,12 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
 
     if (lastWordMatch != null) {
       final word = lastWordMatch.group(1)!;
-      if (word.startsWith('@') && word.length > 1) {
-        _mentionQuery = word.substring(1);
+      if (word.startsWith('@')) {
+        _mentionQuery = word.length > 1 ? word.substring(1) : '';
         _hashtagQuery = null;
         _fetchUserSuggestions(_mentionQuery!);
-      } else if (word.startsWith('#') && word.length > 1) {
-        _hashtagQuery = word.substring(1).toLowerCase();
+      } else if (word.startsWith('#')) {
+        _hashtagQuery = word.length > 1 ? word.substring(1).toLowerCase() : '';
         _mentionQuery = null;
       } else {
         _mentionQuery = null;
@@ -172,9 +172,25 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   Future<void> _fetchUserSuggestions(String query) async {
     try {
       final results = await ref.read(userRepositoryProvider).searchUsers(query);
-      setState(() {
-        _userSuggestions = results.take(5).toList();
-      });
+      if (results.isNotEmpty) {
+        setState(() {
+          _userSuggestions = results.take(6).toList();
+        });
+      } else {
+        // Fallback to followed users so @ autocomplete always populates
+        final currentUserId = ref.read(currentUserProvider).value?.uid ?? 'me';
+        final following = await ref.read(userRepositoryProvider).getFollowing(currentUserId);
+        final filtered = (following.isNotEmpty ? following : results)
+            .where((u) =>
+                query.isEmpty ||
+                u.handle.toLowerCase().contains(query.toLowerCase()) ||
+                u.displayName.toLowerCase().contains(query.toLowerCase()))
+            .take(6)
+            .toList();
+        setState(() {
+          _userSuggestions = filtered;
+        });
+      }
     } catch (e) {
       debugPrint("Error fetching suggestions: $e");
     }
@@ -188,8 +204,9 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
 
     final lastWordMatch = RegExp(r"(\S+)$").firstMatch(textBeforeCursor);
     if (lastWordMatch != null) {
+      final trailingSpace = textAfterCursor.startsWith(' ') ? '' : ' ';
       final newTextBefore =
-          "${textBeforeCursor.substring(0, lastWordMatch.start)}@${user.handle} ";
+          "${textBeforeCursor.substring(0, lastWordMatch.start)}@${user.handle}$trailingSpace";
       _contentController.text = newTextBefore + textAfterCursor;
       _contentController.selection = TextSelection.collapsed(
         offset: newTextBefore.length,
@@ -210,8 +227,9 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
 
     final lastWordMatch = RegExp(r"(\S+)$").firstMatch(textBeforeCursor);
     if (lastWordMatch != null) {
+      final trailingSpace = textAfterCursor.startsWith(' ') ? '' : ' ';
       final newTextBefore =
-          "${textBeforeCursor.substring(0, lastWordMatch.start)}#$tag ";
+          "${textBeforeCursor.substring(0, lastWordMatch.start)}#$tag$trailingSpace";
       _contentController.text = newTextBefore + textAfterCursor;
       _contentController.selection = TextSelection.collapsed(
         offset: newTextBefore.length,
@@ -894,7 +912,8 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     final storage = CloudStorageService();
     final container = ref.container;
 
-    final content = _contentController.text.trim();
+    final content =
+        _contentController.text.trim().replaceAll(RegExp(r'[ \t]{2,}'), ' ');
     final linkUrl = _detectedLinkUrl;
     final channelId = _channelId;
     final isAnonymous = _isAnonymous;

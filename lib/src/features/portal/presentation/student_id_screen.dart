@@ -377,7 +377,7 @@ class _StudentIdScreenState extends ConsumerState<StudentIdScreen>
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: Colors.white24, width: 1.5),
-                          color: const Color(0xFF1E293B),
+                          color: Colors.black,
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(10),
@@ -623,7 +623,7 @@ class _StudentIdScreenState extends ConsumerState<StudentIdScreen>
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        color: isDark ? Colors.black : Colors.white,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: isDark ? Colors.white10 : const Color(0xFFE2E8F0),

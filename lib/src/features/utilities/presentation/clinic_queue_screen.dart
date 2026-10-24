@@ -79,7 +79,7 @@ class _ClinicQueueScreenState extends State<ClinicQueueScreen> with SingleTicker
               Card(
                 elevation: 3,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                color: isDark ? const Color(0xFF162A29) : const Color(0xFFE6F7F5),
+                color: isDark ? Colors.black : const Color(0xFFE6F7F5),
                 child: Padding(
                   padding: const EdgeInsets.all(20),
                   child: Column(
@@ -206,7 +206,7 @@ class _ClinicQueueScreenState extends State<ClinicQueueScreen> with SingleTicker
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                color: isDark ? const Color(0xFF1E222A) : Colors.white,
+                color: isDark ? Colors.black : Colors.white,
                 child: ListTile(
                   leading: CircleAvatar(
                     backgroundColor: inStock ? Colors.green.withOpacity(0.15) : Colors.red.withOpacity(0.15),
@@ -243,7 +243,7 @@ class _ClinicQueueScreenState extends State<ClinicQueueScreen> with SingleTicker
             children: [
               Card(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                color: isDark ? const Color(0xFF1E222A) : Colors.white,
+                color: isDark ? Colors.black : Colors.white,
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(

@@ -106,11 +106,21 @@ class _PollWidgetState extends State<PollWidget> {
 
     final String? question = pollData['question'] as String?;
 
-    // Sophisticated dark styling matching social media feeds
-    final cardBorderColor = isDark ? Colors.white.withValues(alpha: 0.15) : const Color(0xFF334155);
-    final cardBgColor = isDark ? const Color(0xFF0F172A) : const Color(0xFF1E293B);
-    const accentBlue = Color(0xFF38BDF8);
-    const primaryBlue = Color(0xFF2563EB);
+    // Theme-adaptive styling matching feed design system
+    final cardBorderColor = isDark
+        ? Colors.white.withValues(alpha: 0.12)
+        : const Color(0xFFE2E8F0);
+    final cardBgColor = isDark
+        ? const Color(0xFF0F172A)
+        : Colors.white;
+    final textColor = isDark
+        ? Colors.white
+        : const Color(0xFF0F172A);
+    final secondaryTextColor = isDark
+        ? Colors.white.withValues(alpha: 0.6)
+        : const Color(0xFF64748B);
+    const accentBlue = Color(0xFF2563EB);
+    const primaryBlue = Color(0xFF3B82F6);
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
@@ -119,11 +129,11 @@ class _PollWidgetState extends State<PollWidget> {
         color: cardBgColor,
         border: Border.all(color: cardBorderColor, width: 1.0),
         borderRadius: BorderRadius.circular(16),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Colors.black38,
-            blurRadius: 12,
-            offset: Offset(0, 4),
+            color: isDark ? Colors.black45 : Colors.black.withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -137,19 +147,19 @@ class _PollWidgetState extends State<PollWidget> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: accentBlue.withValues(alpha: 0.15),
+                  color: primaryBlue.withValues(alpha: isDark ? 0.2 : 0.1),
                   borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: accentBlue.withValues(alpha: 0.35), width: 0.8),
+                  border: Border.all(color: primaryBlue.withValues(alpha: 0.35), width: 0.8),
                 ),
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.poll_rounded, color: accentBlue, size: 14),
+                    Icon(Icons.poll_rounded, color: primaryBlue, size: 14),
                     SizedBox(width: 4),
                     Text(
                       'Poll',
                       style: TextStyle(
-                        color: accentBlue,
+                        color: primaryBlue,
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
                       ),
@@ -161,7 +171,7 @@ class _PollWidgetState extends State<PollWidget> {
               Text(
                 pollStatusText,
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.6),
+                  color: secondaryTextColor,
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                 ),
@@ -173,10 +183,10 @@ class _PollWidgetState extends State<PollWidget> {
           if (question != null && question.trim().isNotEmpty) ...[
             Text(
               question,
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 16,
-                color: Colors.white,
+                color: textColor,
                 height: 1.3,
               ),
             ),
@@ -189,6 +199,13 @@ class _PollWidgetState extends State<PollWidget> {
             final percentage = totalVotes == 0 ? 0.0 : (voteCount / totalVotes);
             final isUserVoted = userVoteIndex == index;
             final isSelectedPending = _selectedPendingIndex == index;
+
+            final optionBg = isUserVoted
+                ? primaryBlue.withValues(alpha: isDark ? 0.22 : 0.12)
+                : (isDark ? const Color(0xFF161E2E) : const Color(0xFFF8FAFC));
+            final optionBorder = isUserVoted || isSelectedPending
+                ? primaryBlue
+                : (isDark ? Colors.white.withValues(alpha: 0.12) : const Color(0xFFE2E8F0));
 
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
@@ -215,14 +232,10 @@ class _PollWidgetState extends State<PollWidget> {
                   duration: const Duration(milliseconds: 200),
                   height: 50,
                   decoration: BoxDecoration(
-                    color: isUserVoted
-                        ? primaryBlue.withValues(alpha: 0.2)
-                        : const Color(0xFF090D16), // Deep dark surface
+                    color: optionBg,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: isUserVoted || isSelectedPending
-                          ? accentBlue
-                          : Colors.white.withValues(alpha: 0.18),
+                      color: optionBorder,
                       width: isUserVoted || isSelectedPending ? 1.5 : 1.0,
                     ),
                   ),
@@ -244,12 +257,12 @@ class _PollWidgetState extends State<PollWidget> {
                                     gradient: LinearGradient(
                                       colors: isUserVoted
                                           ? [
-                                              primaryBlue.withValues(alpha: 0.5),
-                                              accentBlue.withValues(alpha: 0.45),
+                                              primaryBlue.withValues(alpha: isDark ? 0.45 : 0.25),
+                                              primaryBlue.withValues(alpha: isDark ? 0.6 : 0.35),
                                             ]
                                           : [
-                                              Colors.white.withValues(alpha: 0.08),
-                                              Colors.white.withValues(alpha: 0.14),
+                                              isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.04),
+                                              isDark ? Colors.white.withValues(alpha: 0.14) : Colors.black.withValues(alpha: 0.08),
                                             ],
                                     ),
                                   ),
@@ -274,10 +287,12 @@ class _PollWidgetState extends State<PollWidget> {
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
                                       border: Border.all(
-                                        color: isSelectedPending ? accentBlue : Colors.white54,
+                                        color: isSelectedPending
+                                            ? primaryBlue
+                                            : (isDark ? Colors.white38 : const Color(0xFF94A3B8)),
                                         width: isSelectedPending ? 5 : 1.6,
                                       ),
-                                      color: isSelectedPending ? accentBlue : Colors.transparent,
+                                      color: isSelectedPending ? primaryBlue : Colors.transparent,
                                     ),
                                   ),
                                   const SizedBox(width: 12),
@@ -287,20 +302,20 @@ class _PollWidgetState extends State<PollWidget> {
                                 if (showResults && isUserVoted) ...[
                                   const Icon(
                                     Icons.check_circle_rounded,
-                                    color: accentBlue,
+                                    color: primaryBlue,
                                     size: 19,
                                   ),
                                   const SizedBox(width: 10),
                                 ],
 
-                                // Option text (White, perfectly vertically centered)
+                                // Option text (adaptive text color)
                                 Expanded(
                                   child: Text(
                                     optionText,
                                     style: TextStyle(
                                       fontSize: 14.5,
                                       fontWeight: isUserVoted ? FontWeight.bold : FontWeight.w500,
-                                      color: Colors.white,
+                                      color: isUserVoted && !isDark ? primaryBlue : textColor,
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
@@ -315,7 +330,7 @@ class _PollWidgetState extends State<PollWidget> {
                                     style: TextStyle(
                                       fontSize: 14,
                                       fontWeight: isUserVoted ? FontWeight.w800 : FontWeight.w600,
-                                      color: isUserVoted ? accentBlue : Colors.white70,
+                                      color: isUserVoted ? primaryBlue : secondaryTextColor,
                                     ),
                                   ),
                                 ],
@@ -337,7 +352,7 @@ class _PollWidgetState extends State<PollWidget> {
             child: Text(
               '$totalVotes ${totalVotes == 1 ? 'vote' : 'votes'}${hasVoted || isEnded ? '' : ' • Tap to vote'}',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.6),
+                color: secondaryTextColor,
                 fontSize: 12.5,
                 fontWeight: FontWeight.w500,
               ),

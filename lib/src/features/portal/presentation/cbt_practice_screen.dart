@@ -273,7 +273,7 @@ class _CbtPracticeScreenState extends State<CbtPracticeScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        color: isDark ? Colors.black : Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: isDark ? Colors.white10 : const Color(0xFFE2E8F0)),
       ),
@@ -368,7 +368,7 @@ class _CbtPracticeScreenState extends State<CbtPracticeScreen> {
                     decoration: BoxDecoration(
                       color: isCurrent
                           ? const Color(0xFF8B5CF6)
-                          : (isAnswered ? const Color(0xFF10B981) : (isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0))),
+                          : (isAnswered ? const Color(0xFF10B981) : (isDark ? Colors.black : const Color(0xFFE2E8F0))),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Center(
@@ -391,7 +391,7 @@ class _CbtPracticeScreenState extends State<CbtPracticeScreen> {
           Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E293B) : Colors.white,
+              color: isDark ? Colors.black : Colors.white,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: isDark ? Colors.white10 : const Color(0xFFE2E8F0)),
             ),
@@ -430,7 +430,7 @@ class _CbtPracticeScreenState extends State<CbtPracticeScreen> {
                     decoration: BoxDecoration(
                       color: isSelected
                           ? const Color(0xFF8B5CF6).withValues(alpha: 0.18)
-                          : (isDark ? const Color(0xFF1E293B) : Colors.white),
+                          : (isDark ? Colors.black : Colors.white),
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
                         color: isSelected ? const Color(0xFF8B5CF6) : (isDark ? Colors.white10 : const Color(0xFFE2E8F0)),
@@ -563,7 +563,7 @@ class _CbtPracticeScreenState extends State<CbtPracticeScreen> {
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E293B) : Colors.white,
+              color: isDark ? Colors.black : Colors.white,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: isCorrect ? const Color(0xFF10B981) : Colors.redAccent.withValues(alpha: 0.5),

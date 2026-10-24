@@ -63,6 +63,70 @@ class ChatMessage {
     this.sharedPostId,
   });
 
+  ChatMessage copyWith({
+    String? id,
+    String? senderId,
+    String? content,
+    String? type,
+    DateTime? timestamp,
+    bool? isRead,
+    List<String>? readBy,
+    String? imageUrl,
+    double? imageWidth,
+    double? imageHeight,
+    String? audioUrl,
+    int? duration,
+    double? latitude,
+    double? longitude,
+    String? replyToId,
+    String? replyToContent,
+    String? replyToSenderId,
+    Map<String, dynamic>? reactions,
+    List<String>? mentions,
+    bool? isSnap,
+    Map<String, int>? snapViews,
+    int? snapDuration,
+    String? snapMediaType,
+    bool? isEdited,
+    bool? isDeleted,
+    bool? isPinned,
+    List<String>? savedBy,
+    String? forwardedFrom,
+    String? sharedPostId,
+  }) {
+    return ChatMessage(
+      id: id ?? this.id,
+      senderId: senderId ?? this.senderId,
+      content: content ?? this.content,
+      type: type ?? this.type,
+      timestamp: timestamp ?? this.timestamp,
+      isRead: isRead ?? this.isRead,
+      readBy: readBy ?? this.readBy,
+      imageUrl: imageUrl ?? this.imageUrl,
+      imageWidth: imageWidth ?? this.imageWidth,
+      imageHeight: imageHeight ?? this.imageHeight,
+      audioUrl: audioUrl ?? this.audioUrl,
+      duration: duration ?? this.duration,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      replyToId: replyToId ?? this.replyToId,
+      replyToContent: replyToContent ?? this.replyToContent,
+      replyToSenderId: replyToSenderId ?? this.replyToSenderId,
+      reactions: reactions ?? this.reactions,
+      mentions: mentions ?? this.mentions,
+      isSnap: isSnap ?? this.isSnap,
+      snapViews: snapViews ?? this.snapViews,
+      snapDuration: snapDuration ?? this.snapDuration,
+      snapMediaType: snapMediaType ?? this.snapMediaType,
+      isEdited: isEdited ?? this.isEdited,
+      isDeleted: isDeleted ?? this.isDeleted,
+      isPinned: isPinned ?? this.isPinned,
+      savedBy: savedBy ?? this.savedBy,
+      forwardedFrom: forwardedFrom ?? this.forwardedFrom,
+      sharedPostId: sharedPostId ?? this.sharedPostId,
+    );
+  }
+
   bool get isVideoSnap =>
       type == 'video' ||
       snapMediaType == 'video' ||
@@ -191,7 +255,14 @@ class ChatMessage {
     final isSnapVal = map['is_snap'] == true ||
         map['isSnap'] == true ||
         map['type'] == 'snap' ||
-        reactionsMap['_isSnap'] == true;
+        reactionsMap['_isSnap'] == true ||
+        (map['content']?.toString().contains('Snap') == true) ||
+        (map['text']?.toString().contains('Snap') == true);
+
+    final resolvedImageUrl = map['image_url'] ??
+        map['imageUrl'] ??
+        map['media_url'] ??
+        map['mediaUrl'];
 
     return ChatMessage(
       id: map['id'] ?? '',
@@ -201,7 +272,7 @@ class ChatMessage {
       timestamp: ts,
       isRead: isReadVal,
       readBy: readByList,
-      imageUrl: map['image_url'] ?? map['mediaUrl'],
+      imageUrl: resolvedImageUrl,
       imageWidth: (map['image_width'] as num?)?.toDouble(),
       imageHeight: (map['image_height'] as num?)?.toDouble(),
       audioUrl: map['audio_url'],
