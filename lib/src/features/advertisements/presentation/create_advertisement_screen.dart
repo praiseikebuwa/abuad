@@ -114,25 +114,27 @@ class _CreateAdvertisementScreenState
           ],
         ),
         content: const Text(
-          'Live campaign creation & payment processing are paused for now and will be unlocked in an upcoming update! Your placement preview is ready.',
+          'Live paid advertising is paused for now. You can save this campaign as a local demo preview or close.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Continue Previewing'),
+            child: const Text('Close'),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(ctx);
-              Navigator.pop(context);
+              _publishDemoAd(mediaPath);
             },
-            child: const Text('OK'),
+            child: const Text('Save Local Demo'),
           ),
         ],
       ),
     );
-    return;
+  }
 
+  Future<void> _publishDemoAd(String mediaPath) async {
+    setState(() => _isPublishing = true);
     try {
       final user = ref.read(authRepositoryProvider).currentUser;
       final appUser = user != null
