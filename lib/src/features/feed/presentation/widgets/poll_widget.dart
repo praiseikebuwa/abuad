@@ -46,8 +46,14 @@ class _PollWidgetState extends State<PollWidget> {
     final List<dynamic> votesRaw = pollData['votes'] ?? [];
     final voters = Map<String, dynamic>.from(pollData['voters'] ?? {});
     final currentUserId = widget.repo.currentUserId;
-    final serverVotedIndex = (pollData['userVotedIndex'] as num?)?.toInt() ??
-        (currentUserId != null ? (voters[currentUserId] as num?)?.toInt() : null);
+    int? serverVotedIndex;
+    if (currentUserId != null && currentUserId.isNotEmpty) {
+      if (voters.containsKey(currentUserId)) {
+        serverVotedIndex = (voters[currentUserId] as num?)?.toInt();
+      }
+    } else if (pollData['userVotedIndex'] != null) {
+      serverVotedIndex = (pollData['userVotedIndex'] as num?)?.toInt();
+    }
 
     final userVoteIndex = _optimisticVotedIndex ?? serverVotedIndex;
     final hasVoted = userVoteIndex != null;
@@ -59,9 +65,10 @@ class _PollWidgetState extends State<PollWidget> {
       } else if (i < optionsRaw.length && optionsRaw[i] is Map) {
         baseCount = (optionsRaw[i]['votes'] as num?)?.toInt() ?? 0;
       }
-      // Apply optimistic vote delta if newly voted locally and server hasn't counted it yet
-      if (_optimisticVotedIndex != null && serverVotedIndex == null && _optimisticVotedIndex == i) {
-        baseCount += 1;
+      // Apply optimistic vote delta if newly voted or changed vote locally
+      if (_optimisticVotedIndex != null && serverVotedIndex != _optimisticVotedIndex) {
+        if (_optimisticVotedIndex == i) baseCount += 1;
+        if (serverVotedIndex != null && serverVotedIndex == i) baseCount = (baseCount - 1).clamp(0, 999999);
       }
       return baseCount;
     });
@@ -187,7 +194,7 @@ class _PollWidgetState extends State<PollWidget> {
               padding: const EdgeInsets.only(bottom: 10),
               child: GestureDetector(
                 onTap: () async {
-                  if (showResults || isEnded) return;
+                  if (isEnded || userVoteIndex == index) return;
 
                   HapticFeedback.lightImpact();
                   setState(() {

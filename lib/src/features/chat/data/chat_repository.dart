@@ -30,9 +30,36 @@ class ChatRepository {
   final Map<String, Timer> _messageTimers = {};
 
   final Map<String, List<ChatMessage>> _cachedMessages = {};
+  final Map<String, ChatChannel> _cachedChannels = {};
   final Map<String, StreamController<Map<String, bool>>> _typingControllers = {};
   final Map<String, Map<String, bool>> _typingStatus = {};
   bool _socketInitialized = false;
+
+  ChatChannel? getCachedChannel(String channelId) {
+    if (_cachedChannels.containsKey(channelId)) {
+      return _cachedChannels[channelId];
+    }
+    final cleanId = channelId.startsWith('channel_') ? channelId.substring(8) : channelId;
+    if (_cachedChannels.containsKey(cleanId)) {
+      return _cachedChannels[cleanId];
+    }
+    if (_cachedChannels.containsKey('channel_$cleanId')) {
+      return _cachedChannels['channel_$cleanId'];
+    }
+    for (final channel in _cachedChannels.values) {
+      if (channel.id == channelId || channel.id == cleanId || channel.id == 'channel_$cleanId') {
+        return channel;
+      }
+    }
+    return null;
+  }
+
+  void _updateChannelCache(ChatChannel channel) {
+    _cachedChannels[channel.id] = channel;
+    final cleanId = channel.id.startsWith('channel_') ? channel.id.substring(8) : channel.id;
+    _cachedChannels[cleanId] = channel;
+    _cachedChannels['channel_$cleanId'] = channel;
+  }
 
   ChatRepository([this._ref, dynamic _]) {
     _initSocketListeners();
@@ -183,26 +210,29 @@ class ChatRepository {
 
   Future<void> _fetchChannels() async {
     try {
-      final response = await ApiClient.get('/chat/channels');
+      final response = await ApiClient.get('/chat/channels').timeout(const Duration(seconds: 4));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true && data['data'] is List) {
           final channels = (data['data'] as List)
               .map((x) => ChatChannel.fromMap(x))
               .toList();
+          for (final ch in channels) {
+            _updateChannelCache(ch);
+          }
           if (!_channelsController.isClosed) {
             _channelsController.add(channels);
           }
           return;
         }
       }
-      if (!_channelsController.isClosed) {
-        _channelsController.add([]);
+      if (!_channelsController.isClosed && _cachedChannels.isNotEmpty) {
+        _channelsController.add(_cachedChannels.values.toSet().toList());
       }
     } catch (e) {
       debugPrint('Error fetching chat channels: $e');
-      if (!_channelsController.isClosed) {
-        _channelsController.add([]);
+      if (!_channelsController.isClosed && _cachedChannels.isNotEmpty) {
+        _channelsController.add(_cachedChannels.values.toSet().toList());
       }
     }
   }
@@ -211,48 +241,66 @@ class ChatRepository {
     if (!_channelControllers.containsKey(channelId) || _channelControllers[channelId]!.isClosed) {
       _channelControllers[channelId] = StreamController<ChatChannel?>.broadcast();
     }
+    final cached = getCachedChannel(channelId);
+    if (cached != null) {
+      scheduleMicrotask(() {
+        if (_channelControllers.containsKey(channelId) && !_channelControllers[channelId]!.isClosed) {
+          _channelControllers[channelId]!.add(cached);
+        }
+      });
+    }
     _fetchChannel(channelId);
     return _channelControllers[channelId]!.stream;
   }
 
   Future<ChatChannel?> getChannel(String channelId) async {
+    final cached = getCachedChannel(channelId);
     try {
       final cleanId = channelId.startsWith('channel_') ? channelId.substring(8) : channelId;
       
-      // Try direct lookup
-      var response = await ApiClient.get('/chat/channels/$channelId');
+      // Try direct lookup with timeout
+      var response = await ApiClient.get('/chat/channels/$channelId')
+          .timeout(const Duration(seconds: 3));
       if (response.statusCode != 200 && cleanId != channelId) {
-        response = await ApiClient.get('/chat/channels/$cleanId');
+        response = await ApiClient.get('/chat/channels/$cleanId')
+            .timeout(const Duration(seconds: 3));
       }
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true && data['data'] != null) {
-          return ChatChannel.fromMap(data['data']);
+          final channel = ChatChannel.fromMap(data['data']);
+          _updateChannelCache(channel);
+          return channel;
         }
       }
 
       // If it's a direct user ID, find/create direct DM
       final directRes = await ApiClient.post('/chat/direct', {
         'targetUserId': cleanId,
-      });
+      }).timeout(const Duration(seconds: 3));
       if (directRes.statusCode == 200 || directRes.statusCode == 201) {
         final directData = jsonDecode(directRes.body);
         if (directData['success'] == true && directData['data'] != null) {
-          return ChatChannel.fromMap(directData['data']);
+          final channel = ChatChannel.fromMap(directData['data']);
+          _updateChannelCache(channel);
+          return channel;
         }
       }
     } catch (e) {
       debugPrint('Error getChannel: $e');
     }
-    return null;
+    return cached;
   }
 
   Future<void> _fetchChannel(String channelId) async {
     try {
       final channel = await getChannel(channelId);
-      if (channel != null && _channelControllers.containsKey(channelId) && !_channelControllers[channelId]!.isClosed) {
-        _channelControllers[channelId]!.add(channel);
+      if (channel != null) {
+        _updateChannelCache(channel);
+        if (_channelControllers.containsKey(channelId) && !_channelControllers[channelId]!.isClosed) {
+          _channelControllers[channelId]!.add(channel);
+        }
       }
     } catch (e) {
       debugPrint('Error fetching channel $channelId: $e');
@@ -400,7 +448,9 @@ class ChatRepository {
       final effectiveType = sharedPostId != null ? 'post' : type;
       final effectiveMediaUrl = mediaUrl ?? imageUrl ?? audioUrl ?? (sharedPostId != null ? 'post:$sharedPostId' : null);
 
+      final clientMsgId = 'msg_${DateTime.now().microsecondsSinceEpoch}_${channelId.hashCode}';
       final payload = <String, dynamic>{
+        'clientMsgId': clientMsgId,
         'channelId': channelId,
         'text': content,
         'mediaUrl': effectiveMediaUrl,

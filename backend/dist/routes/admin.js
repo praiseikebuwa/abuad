@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const auth_1 = require("../middleware/auth");
+const audit_1 = require("../middleware/audit");
 const db_1 = require("../config/db");
 const router = (0, express_1.Router)();
 const adminOnly = (req, res, next) => {
@@ -131,7 +132,7 @@ router.get(['/', '/reports'], auth_1.authenticateToken, adminOnly, async (req, r
  * PATCH /api/admin/reports/:id
  * Admin only: update report status
  */
-router.patch('/reports/:id', auth_1.authenticateToken, adminOnly, async (req, res) => {
+router.patch('/reports/:id', auth_1.authenticateToken, adminOnly, (0, audit_1.auditAction)('UPDATE_REPORT_STATUS'), async (req, res) => {
     try {
         const { status } = req.body;
         if (!status)
@@ -151,7 +152,7 @@ router.patch('/reports/:id', auth_1.authenticateToken, adminOnly, async (req, re
  * POST /api/admin/reports/:id/action
  * Admin moderation actions: DELETE_CONTENT, BAN_USER, UNBAN_USER, WARN_USER, DISMISS
  */
-router.post('/reports/:id/action', auth_1.authenticateToken, adminOnly, async (req, res) => {
+router.post('/reports/:id/action', auth_1.authenticateToken, adminOnly, (0, audit_1.auditAction)('REPORT_MODERATION_ACTION'), async (req, res) => {
     try {
         const { action, notes } = req.body;
         const reportId = String(req.params.id);
@@ -237,17 +238,6 @@ router.post('/reports/:id/action', auth_1.authenticateToken, adminOnly, async (r
             });
             message = 'Report marked resolved';
         }
-        // Create Audit Log
-        try {
-            await db_1.prisma.auditLog.create({
-                data: {
-                    adminId: req.user.id,
-                    action: `REPORT_ACTION_${action}`,
-                    details: `Report ${report.id} target ${report.targetId} (${report.targetType}): ${message}`,
-                },
-            });
-        }
-        catch (_) { }
         return res.json({ success: true, message });
     }
     catch (error) {
@@ -346,7 +336,7 @@ router.get('/users', auth_1.authenticateToken, adminOnly, async (req, res) => {
  * POST /api/admin/users/:id/ban
  * Ban or unban a user
  */
-router.post('/users/:id/ban', auth_1.authenticateToken, adminOnly, async (req, res) => {
+router.post('/users/:id/ban', auth_1.authenticateToken, adminOnly, (0, audit_1.auditAction)('BAN_USER'), async (req, res) => {
     try {
         const { isBanned } = req.body;
         const targetId = String(req.params.id);
@@ -358,13 +348,6 @@ router.post('/users/:id/ban', auth_1.authenticateToken, adminOnly, async (req, r
             data: { isBlocked: isBanned === true },
             select: { id: true, username: true, fullName: true, isBlocked: true },
         });
-        await db_1.prisma.auditLog.create({
-            data: {
-                adminId: req.user.id,
-                action: isBanned ? 'BAN_USER' : 'UNBAN_USER',
-                details: `User ${updated.username} (${updated.id}) isBlocked set to ${isBanned}`,
-            },
-        });
         return res.json({ success: true, data: updated, message: isBanned ? 'User has been banned' : 'User unbanned' });
     }
     catch (error) {
@@ -375,7 +358,7 @@ router.post('/users/:id/ban', auth_1.authenticateToken, adminOnly, async (req, r
  * POST /api/admin/users/:id/verify
  * Grant or revoke user verification badge
  */
-router.post('/users/:id/verify', auth_1.authenticateToken, adminOnly, async (req, res) => {
+router.post('/users/:id/verify', auth_1.authenticateToken, adminOnly, (0, audit_1.auditAction)('VERIFY_USER'), async (req, res) => {
     try {
         const { isVerified, verificationType } = req.body;
         const targetId = String(req.params.id);
@@ -397,7 +380,7 @@ router.post('/users/:id/verify', auth_1.authenticateToken, adminOnly, async (req
  * POST /api/admin/users/:id/role
  * Change user role
  */
-router.post('/users/:id/role', auth_1.authenticateToken, adminOnly, async (req, res) => {
+router.post('/users/:id/role', auth_1.authenticateToken, adminOnly, (0, audit_1.auditAction)('CHANGE_USER_ROLE'), async (req, res) => {
     try {
         const { role } = req.body;
         if (!['STUDENT', 'STAFF', 'ADMIN'].includes(String(role).toUpperCase())) {
@@ -441,7 +424,7 @@ router.get('/confessions', auth_1.authenticateToken, adminOnly, async (req, res)
  * DELETE /api/admin/posts/:id
  * Direct admin deletion of any post
  */
-router.delete('/posts/:id', auth_1.authenticateToken, adminOnly, async (req, res) => {
+router.delete('/posts/:id', auth_1.authenticateToken, adminOnly, (0, audit_1.auditAction)('DELETE_POST'), async (req, res) => {
     try {
         const postId = String(req.params.id);
         await db_1.prisma.post.delete({ where: { id: postId } });
@@ -455,7 +438,7 @@ router.delete('/posts/:id', auth_1.authenticateToken, adminOnly, async (req, res
  * POST /api/admin/broadcast
  * Send a campus announcement + system notification to everyone
  */
-router.post('/broadcast', auth_1.authenticateToken, adminOnly, async (req, res) => {
+router.post('/broadcast', auth_1.authenticateToken, adminOnly, (0, audit_1.auditAction)('BROADCAST_ANNOUNCEMENT'), async (req, res) => {
     try {
         const { title, body, target } = req.body;
         if (!title || !body)
@@ -507,7 +490,7 @@ router.get(['/config', '/system/config'], auth_1.authenticateToken, async (req, 
         return res.json({ success: true, data: { maintenanceMode: false, appVersion: '1.0.0' } });
     }
 });
-router.post(['/config', '/system/config'], auth_1.authenticateToken, adminOnly, async (req, res) => {
+router.post(['/config', '/system/config'], auth_1.authenticateToken, adminOnly, (0, audit_1.auditAction)('UPDATE_SYSTEM_CONFIG'), async (req, res) => {
     try {
         const { key, value } = req.body;
         if (!key)
@@ -533,7 +516,7 @@ router.get('/announcements', auth_1.authenticateToken, async (req, res) => {
         return res.status(500).json({ error: 'Failed to fetch announcements' });
     }
 });
-router.post('/announcements', auth_1.authenticateToken, adminOnly, async (req, res) => {
+router.post('/announcements', auth_1.authenticateToken, adminOnly, (0, audit_1.auditAction)('CREATE_ANNOUNCEMENT'), async (req, res) => {
     try {
         const { title, body, target } = req.body;
         const item = await db_1.prisma.announcement.create({
@@ -582,7 +565,7 @@ router.get(['/settings/ai-posting', '/ai-posting'], auth_1.authenticateToken, ad
  * POST /api/admin/settings/ai-posting
  * Toggle autonomous ABUAD AI posting to the feed ON or OFF
  */
-router.post(['/settings/ai-posting', '/ai-posting'], auth_1.authenticateToken, adminOnly, async (req, res) => {
+router.post(['/settings/ai-posting', '/ai-posting'], auth_1.authenticateToken, adminOnly, (0, audit_1.auditAction)('TOGGLE_AI_POSTING'), async (req, res) => {
     try {
         const { enabled } = req.body;
         const isEnabled = enabled === true || enabled === 'true' || enabled === 1 || enabled === '1';
@@ -604,7 +587,7 @@ router.post(['/settings/ai-posting', '/ai-posting'], auth_1.authenticateToken, a
  * POST /api/admin/ai-posts/clean
  * Clean up existing autonomous ABUAD AI posts from the feed
  */
-router.post('/ai-posts/clean', auth_1.authenticateToken, adminOnly, async (req, res) => {
+router.post('/ai-posts/clean', auth_1.authenticateToken, adminOnly, (0, audit_1.auditAction)('CLEAN_AI_POSTS'), async (req, res) => {
     try {
         const aiUser = await db_1.prisma.user.findFirst({
             where: {

@@ -20,6 +20,13 @@ class GroupInfoScreen extends ConsumerStatefulWidget {
 class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
   bool _isMuted = false;
   String _notificationSetting = 'On / Custom';
+  Future<ChatChannel?>? _channelFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _channelFuture = ref.read(chatRepositoryProvider).getChannel(widget.channelId);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,17 +40,21 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
     final textSecondary = isDark ? Colors.white60 : const Color(0xFF64748B);
     final actionButtonBg = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
 
+    final cached = repo.getCachedChannel(widget.channelId);
+    _channelFuture ??= repo.getChannel(widget.channelId);
+
     return FutureBuilder<ChatChannel?>(
-      future: repo.getChannel(widget.channelId),
+      future: _channelFuture,
+      initialData: cached,
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        final channel = snapshot.data ?? cached;
+        if (channel == null && snapshot.connectionState == ConnectionState.waiting) {
           return Scaffold(
             backgroundColor: backgroundColor,
             body: const Center(child: CircularProgressIndicator()),
           );
         }
 
-        final channel = snapshot.data;
         if (channel == null) {
           return Scaffold(
             backgroundColor: backgroundColor,

@@ -8,7 +8,6 @@ import '../../auth/data/auth_repository.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/utils/profanity_filter.dart';
-import '../../../core/services/moderation_service.dart';
 
 final postRepositoryProvider = Provider<PostRepository>((ref) {
   final authRepo = ref.watch(authRepositoryProvider);
@@ -452,12 +451,20 @@ class PostRepository {
   }
 
   Future<void> addPost(Post post) async {
-    bool isSafe = !ProfanityFilter.hasProfanity(post.content);
-    if (isSafe && post.content.isNotEmpty) {
-      isSafe = await ModerationService.isContentSafe(post.content);
+    bool isSafe = true;
+    if (post.content.isNotEmpty) {
+      isSafe = await ProfanityFilter.isTextSafe(post.content);
     }
     if (isSafe && post.mediaUrl.isNotEmpty) {
-      isSafe = await ModerationService.isMediaSafe(post.mediaUrl, mediaType: post.mediaType.name);
+      isSafe = await ProfanityFilter.isMediaSafe(post.mediaUrl, mediaType: post.mediaType.name);
+    }
+    if (isSafe && post.allMediaUrls.isNotEmpty) {
+      for (final mUrl in post.allMediaUrls) {
+        if (!isSafe) break;
+        if (mUrl.isNotEmpty) {
+          isSafe = await ProfanityFilter.isMediaSafe(mUrl, mediaType: post.mediaType.name);
+        }
+      }
     }
 
     if (!isSafe && AppConfig.blockFlaggedPosts) {
@@ -487,6 +494,14 @@ class PostRepository {
         }
       } catch (_) {}
     } else {
+      try {
+        final errData = jsonDecode(res.body);
+        if (errData is Map && errData['error'] != null) {
+          throw Exception(errData['error']);
+        }
+      } catch (e) {
+        if (e is Exception && !e.toString().contains('Failed to create post')) rethrow;
+      }
       throw Exception('Failed to create post: ${res.body}');
     }
   }
@@ -522,6 +537,13 @@ class PostRepository {
     } catch (e) {
       debugPrint('Error toggling like: $e');
     }
+  }
+
+  /// Record user behavioral interaction signals (view, like, save, share, watch_complete, skip, not_interested)
+  Future<void> recordInteraction(String postId, String action) async {
+    try {
+      await ApiClient.post('/posts/$postId/interact', {'action': action});
+    } catch (_) {}
   }
 
   Future<void> addComment(String postId, String text, {String? parentId, String? parentCommentId}) async {

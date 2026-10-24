@@ -34,11 +34,13 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
   bool _isUserBlocked = false;
 
   final List<String> _themeOptions = ['Indigo', 'Teal', 'Blue', 'Purple', 'Rose', 'Emerald'];
+  Future<ChatChannel?>? _channelFuture;
 
   @override
   void initState() {
     super.initState();
     _loadSettings();
+    _channelFuture = ref.read(chatRepositoryProvider).getChannel(widget.channelId);
   }
 
   Future<void> _loadSettings() async {
@@ -130,10 +132,14 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
     final textSecondary = isDark ? Colors.white60 : const Color(0xFF64748B);
     final actionButtonBg = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
 
+    final cached = repo.getCachedChannel(widget.channelId);
+    _channelFuture ??= repo.getChannel(widget.channelId);
+
     return FutureBuilder<ChatChannel?>(
-      future: repo.getChannel(widget.channelId),
+      future: _channelFuture,
+      initialData: cached,
       builder: (context, snapshot) {
-        final channel = snapshot.data;
+        final channel = snapshot.data ?? cached;
         final currentUserId = repo.currentUserId;
 
         final targetUserId = widget.otherUserId ??
@@ -1373,10 +1379,11 @@ class _DirectChatInfoScreenState extends ConsumerState<DirectChatInfoScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
+              final messenger = ScaffoldMessenger.of(context);
               Navigator.pop(context);
               await ref.read(chatRepositoryProvider).clearChannelMessages(widget.channelId);
               if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
+                messenger.showSnackBar(
                   const SnackBar(content: Text('Chat history cleared.')),
                 );
               }

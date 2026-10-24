@@ -182,7 +182,7 @@ Use clean markdown formatting and light emojis where helpful.`;
   if (geminiApiKey) {
     try {
       const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-      const model = 'gemini-2.0-flash';
+      const model = process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
 
       const parts: any[] = [{ text: `${systemPrompt}\n\nUser Question & Context:\n${promptText}` }];
 

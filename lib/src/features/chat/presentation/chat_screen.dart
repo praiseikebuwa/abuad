@@ -4651,28 +4651,32 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     bool isDark,
   ) {
     final titleColor = isDark ? Colors.white : AppColors.primaryInk;
-    return Row(
-      children: [
-        _buildGroupAvatarCluster(channel, displayAvatar, displayName),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                displayName,
-                style: TextStyle(
-                  fontSize: 16,
-                  color: titleColor,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.2,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => context.push('/chat/${widget.channelId}/info'),
+      child: Row(
+        children: [
+          _buildGroupAvatarCluster(channel, displayAvatar, displayName),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  displayName,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: titleColor,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.2,
+                  ),
                 ),
-              ),
-              _buildTypingIndicator(repo, channel, isGroup: true, isDark: isDark),
-            ],
+                _buildTypingIndicator(repo, channel, isGroup: true, isDark: isDark),
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 

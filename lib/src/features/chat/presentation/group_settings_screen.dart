@@ -22,6 +22,13 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
   bool _participantHistory = true;
   int _activeInviteLinks = 1;
   final int _bannedUsersCount = 0;
+  Future<ChatChannel?>? _channelFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _channelFuture = ref.read(chatRepositoryProvider).getChannel(widget.channelId);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,10 +42,14 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
     final textSecondary = isDark ? Colors.white60 : const Color(0xFF64748B);
     final sectionHeaderColor = isDark ? Colors.white54 : const Color(0xFF64748B);
 
+    final cached = repo.getCachedChannel(widget.channelId);
+    _channelFuture ??= repo.getChannel(widget.channelId);
+
     return FutureBuilder<ChatChannel?>(
-      future: repo.getChannel(widget.channelId),
+      future: _channelFuture,
+      initialData: cached,
       builder: (context, snapshot) {
-        final channel = snapshot.data;
+        final channel = snapshot.data ?? cached;
         final displayName = channel?.displayName?.isNotEmpty == true ? channel!.displayName! : 'Group';
         final memberCount = channel?.memberIds.length ?? 0;
         final adminIds = channel?.adminIds ?? [];

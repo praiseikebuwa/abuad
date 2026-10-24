@@ -50,6 +50,11 @@ import '../../features/chat/presentation/broadcast_message_screen.dart';
 import '../../features/settings/presentation/support_screens.dart';
 import '../../features/settings/presentation/legal_screen.dart';
 import '../../features/ai/presentation/ai_screen.dart';
+import '../../features/portal/presentation/portal_screen.dart';
+import '../../features/portal/presentation/student_id_screen.dart';
+import '../../features/portal/presentation/gpa_calculator_screen.dart';
+import '../../features/portal/presentation/timetable_screen.dart';
+import '../../features/utilities/presentation/lost_found_screen.dart';
 
 final rootNavigatorKey = GlobalKey<NavigatorState>();
 final _feedNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'feed');
@@ -366,6 +371,60 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           context: context,
           state: state,
           child: const GroupsScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/portal',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const PortalScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/student-id',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const StudentIdScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/id',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const StudentIdScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/gpa',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const GPACalculatorScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/timetable',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const TimetableScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/lost-found',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const LostFoundScreen(),
         ),
       ),
       GoRoute(

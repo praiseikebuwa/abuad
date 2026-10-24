@@ -16,6 +16,7 @@ import '../../feed/domain/post.dart';
 import '../../feed/presentation/widgets/post_card.dart';
 import '../data/search_history_service.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 
 class SearchScreen extends ConsumerStatefulWidget {
@@ -76,13 +77,15 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
               children: [
                 _buildSearchHeader(isDark),
 
-                // Content View (Discover, Autocomplete suggestions, or Full Search Results)
+                // Content View (Discover, Dot Commands, Autocomplete, or Search Results)
                 Expanded(
                   child: _query.isEmpty
                       ? _buildDiscoverView(isDark)
-                      : (_hasSubmitted
-                          ? _buildSearchResultsView(isDark)
-                          : _buildAutocompleteSuggestionsView(isDark)),
+                      : (_query.trim().startsWith('.')
+                          ? _buildDotCommandsView(isDark)
+                          : (_hasSubmitted
+                              ? _buildSearchResultsView(isDark)
+                              : _buildAutocompleteSuggestionsView(isDark))),
                 ),
               ],
             ),
@@ -147,6 +150,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
                           }
                         },
                         onSubmitted: (value) {
+                          final trimmed = value.trim();
+                          if (trimmed.startsWith('.')) {
+                            _handleDotCommandSubmit(trimmed);
+                            return;
+                          }
                           if (value.isNotEmpty) {
                             ref.read(searchHistoryProvider.notifier).addQuery(value.trim());
                             setState(() => _hasSubmitted = true);
@@ -154,10 +162,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
                         },
                         style: const TextStyle(fontSize: 16),
                         decoration: InputDecoration(
-                          hintText: 'Search Nest, people, groups...',
+                          hintText: 'Search or type . for screens (.portal, .id)...',
                           hintStyle: TextStyle(
                             color: isDark ? Colors.grey[400] : Colors.grey[600],
-                            fontSize: 15,
+                            fontSize: 14.5,
                           ),
                           prefixIcon: Icon(
                             Icons.search_rounded,
@@ -292,6 +300,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
         // Recent History
         _buildHistorySection(isDark),
 
+        // Quick Jump Commands Carousel (Type .)
+        _buildQuickJumpCommandsSection(isDark),
+
         // Suggested Users Carousel
         const _SuggestedUsersCarousel(),
 
@@ -328,6 +339,422 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
 
         const SizedBox(height: 100), // Bottom navigation space
       ],
+    );
+  }
+
+  void _executeDotCommand(DotCommand command) {
+    HapticFeedback.mediumImpact();
+    ref.read(searchHistoryProvider.notifier).addQuery(command.trigger);
+    _searchController.clear();
+    setState(() {
+      _query = '';
+      _hasSubmitted = false;
+    });
+    context.push(command.route);
+  }
+
+  void _handleDotCommandSubmit(String rawQuery) {
+    final clean = rawQuery.trim().toLowerCase();
+    final match = _allDotCommands.firstWhere(
+      (c) =>
+          c.trigger.toLowerCase() == clean ||
+          c.aliases.any((a) => a.toLowerCase() == clean),
+      orElse: () {
+        return _allDotCommands.firstWhere(
+          (c) =>
+              c.trigger.toLowerCase().startsWith(clean) ||
+              clean.startsWith(c.trigger.toLowerCase()) ||
+              c.title.toLowerCase().contains(clean.replaceAll('.', '')),
+          orElse: () => _allDotCommands.first,
+        );
+      },
+    );
+    _executeDotCommand(match);
+  }
+
+  Widget _buildQuickJumpCommandsSection(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: AppColors.secondaryTeal.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.flash_on_rounded, size: 14, color: AppColors.secondaryTeal),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Quick Jump Commands',
+                style: GoogleFonts.outfit(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  'TYPE . IN SEARCH',
+                  style: GoogleFonts.robotoMono(
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white70 : Colors.black54,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 40,
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            itemCount: _allDotCommands.length,
+            separatorBuilder: (context, index) => const SizedBox(width: 8),
+            itemBuilder: (context, index) {
+              final cmd = _allDotCommands[index];
+              return InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: () => _executeDotCommand(cmd),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isDark ? Colors.white12 : const Color(0xFFCBD5E1),
+                    ),
+                    boxShadow: isDark
+                        ? []
+                        : [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.03),
+                              blurRadius: 4,
+                              offset: const Offset(0, 1),
+                            ),
+                          ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(cmd.icon, size: 15, color: cmd.gradient.first),
+                      const SizedBox(width: 6),
+                      Text(
+                        cmd.trigger,
+                        style: GoogleFonts.robotoMono(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: cmd.gradient.first,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        cmd.title,
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.white70 : Colors.black87,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDotCommandsView(bool isDark) {
+    final queryText = _query.trim().toLowerCase();
+    final filter = queryText.startsWith('.') ? queryText.substring(1) : queryText;
+
+    final matching = _allDotCommands.where((cmd) {
+      if (filter.isEmpty) return true;
+      final cleanTrigger = cmd.trigger.replaceAll('.', '').toLowerCase();
+      final titleMatch = cmd.title.toLowerCase().contains(filter);
+      final triggerMatch = cleanTrigger.contains(filter);
+      final aliasMatch = cmd.aliases.any((a) => a.replaceAll('.', '').toLowerCase().contains(filter));
+      final catMatch = cmd.category.toLowerCase().contains(filter);
+      return triggerMatch || titleMatch || aliasMatch || catMatch;
+    }).toList();
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      children: [
+        // Command Palette Header Banner
+        Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: isDark
+                  ? [const Color(0xFF1E293B), const Color(0xFF0F172A)]
+                  : [const Color(0xFFE2E8F0), const Color(0xFFF1F5F9)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: AppColors.secondaryTeal.withValues(alpha: 0.35),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.secondaryTeal.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.terminal_rounded,
+                  color: AppColors.secondaryTeal,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          'Quick Jump',
+                          style: GoogleFonts.outfit(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppColors.secondaryTeal.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            'COMMAND PALETTE',
+                            style: GoogleFonts.inter(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.secondaryTeal,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      filter.isEmpty
+                          ? 'Tap any command to jump to that screen instantly'
+                          : 'Showing screens matching ".$filter"',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: isDark ? Colors.white60 : Colors.black54,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        if (matching.isEmpty) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+            child: Column(
+              children: [
+                Icon(Icons.search_off_rounded, size: 48, color: isDark ? Colors.white30 : Colors.black26),
+                const SizedBox(height: 12),
+                Text(
+                  'No command matching "$_query"',
+                  style: GoogleFonts.outfit(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white70 : Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Try popular commands like .portal, .id, .resources, .events, .gpa, .timetable, .map',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: isDark ? Colors.white38 : Colors.black45,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ] else ...[
+          ...matching.map((cmd) => _buildDotCommandTile(cmd, isDark)),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildDotCommandTile(DotCommand cmd, bool isDark) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark ? Colors.white10 : const Color(0xFFE2E8F0),
+        ),
+        boxShadow: isDark
+            ? []
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => _executeDotCommand(cmd),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                // Icon with gradient
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: cmd.gradient,
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: cmd.gradient.first.withValues(alpha: 0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Icon(cmd.icon, color: Colors.white, size: 22),
+                ),
+                const SizedBox(width: 14),
+
+                // Title, badge, subtitle
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: cmd.gradient.first.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: cmd.gradient.first.withValues(alpha: 0.4),
+                                width: 0.8,
+                              ),
+                            ),
+                            child: Text(
+                              cmd.trigger,
+                              style: GoogleFonts.robotoMono(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.bold,
+                                color: cmd.gradient.first,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              cmd.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.outfit(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: isDark ? Colors.white : const Color(0xFF0F172A),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        cmd.subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          color: isDark ? Colors.white60 : const Color(0xFF64748B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(width: 8),
+
+                // Trailing jump pill
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Open',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.white70 : Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(width: 3),
+                      Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        size: 10,
+                        color: isDark ? Colors.white70 : Colors.black87,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -1660,3 +2087,188 @@ class _SearchSkeleton extends StatelessWidget {
     );
   }
 }
+
+class DotCommand {
+  final String trigger;
+  final List<String> aliases;
+  final String title;
+  final String subtitle;
+  final String route;
+  final IconData icon;
+  final List<Color> gradient;
+  final String category;
+
+  const DotCommand({
+    required this.trigger,
+    this.aliases = const [],
+    required this.title,
+    required this.subtitle,
+    required this.route,
+    required this.icon,
+    required this.gradient,
+    required this.category,
+  });
+}
+
+const List<DotCommand> _allDotCommands = [
+  DotCommand(
+    trigger: '.portal',
+    aliases: ['.studentportal', '.myportal', '.portal'],
+    title: 'Student Portal',
+    subtitle: 'Academic profile, grades, registrations & records',
+    route: '/portal',
+    icon: Icons.school_rounded,
+    gradient: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
+    category: 'Academic',
+  ),
+  DotCommand(
+    trigger: '.id',
+    aliases: ['.idcard', '.studentid', '.badge', '.identity'],
+    title: 'Digital Student ID',
+    subtitle: 'Official smart student identity card & barcode',
+    route: '/student-id',
+    icon: Icons.badge_rounded,
+    gradient: [Color(0xFF06B6D4), Color(0xFF0891B2)],
+    category: 'Academic',
+  ),
+  DotCommand(
+    trigger: '.resources',
+    aliases: ['.resource', '.library', '.notes', '.handouts', '.materials'],
+    title: 'Academic Resources',
+    subtitle: 'Lecture notes, handouts, slides & past questions',
+    route: '/resources',
+    icon: Icons.menu_book_rounded,
+    gradient: [Color(0xFF10B981), Color(0xFF047857)],
+    category: 'Academic',
+  ),
+  DotCommand(
+    trigger: '.events',
+    aliases: ['.event', '.calendar', '.campus-events'],
+    title: 'Campus Events',
+    subtitle: 'Concerts, academic seminars, sports & hall events',
+    route: '/events',
+    icon: Icons.celebration_rounded,
+    gradient: [Color(0xFFEC4899), Color(0xFFBE185D)],
+    category: 'Campus Life',
+  ),
+  DotCommand(
+    trigger: '.gpa',
+    aliases: ['.cgpa', '.grades', '.calculator', '.calculate-gpa'],
+    title: 'GPA / CGPA Calculator',
+    subtitle: 'Compute semester GPA & target academic honors',
+    route: '/gpa',
+    icon: Icons.calculate_rounded,
+    gradient: [Color(0xFFF59E0B), Color(0xFFD97706)],
+    category: 'Academic',
+  ),
+  DotCommand(
+    trigger: '.timetable',
+    aliases: ['.time', '.schedule', '.classes', '.lectures'],
+    title: 'Class Timetable',
+    subtitle: 'Weekly lecture schedule, halls & time slots',
+    route: '/timetable',
+    icon: Icons.schedule_rounded,
+    gradient: [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
+    category: 'Academic',
+  ),
+  DotCommand(
+    trigger: '.map',
+    aliases: ['.campusmap', '.directions', '.locations', '.navigate'],
+    title: 'Campus Map & GPS',
+    subtitle: 'Interactive map of colleges, hostels & landmarks',
+    route: '/map',
+    icon: Icons.map_rounded,
+    gradient: [Color(0xFF14B8A6), Color(0xFF0F766E)],
+    category: 'Campus Life',
+  ),
+  DotCommand(
+    trigger: '.marketplace',
+    aliases: ['.market', '.store', '.buy', '.sell', '.items'],
+    title: 'Campus Marketplace',
+    subtitle: 'Student deals for textbooks, appliances & gadgets',
+    route: '/marketplace',
+    icon: Icons.storefront_rounded,
+    gradient: [Color(0xFFF97316), Color(0xFFC2410C)],
+    category: 'Campus Life',
+  ),
+  DotCommand(
+    trigger: '.lost',
+    aliases: ['.lostandfound', '.lostfound', '.found'],
+    title: 'Lost & Found',
+    subtitle: 'Report or recover lost ID cards, keys & valuables',
+    route: '/lost-found',
+    icon: Icons.find_in_page_rounded,
+    gradient: [Color(0xFFEF4444), Color(0xFFB91C1C)],
+    category: 'Campus Life',
+  ),
+  DotCommand(
+    trigger: '.groups',
+    aliases: ['.clubs', '.community', '.fellowship', '.societies'],
+    title: 'Student Groups & Clubs',
+    subtitle: 'Departmental associations, sports & religious clubs',
+    route: '/groups',
+    icon: Icons.groups_rounded,
+    gradient: [Color(0xFF0EA5E9), Color(0xFF0284C7)],
+    category: 'Campus Life',
+  ),
+  DotCommand(
+    trigger: '.ai',
+    aliases: ['.bot', '.companion', '.assistant', '.ask'],
+    title: 'ABUAD AI Companion',
+    subtitle: '24/7 intelligent campus tutor & course assistant',
+    route: '/ai',
+    icon: Icons.auto_awesome_rounded,
+    gradient: [Color(0xFF6366F1), Color(0xFF4338CA)],
+    category: 'Connect & Tools',
+  ),
+  DotCommand(
+    trigger: '.chat',
+    aliases: ['.messages', '.dm', '.inbox', '.conversations'],
+    title: 'Chats & Messages',
+    subtitle: 'Direct messages, class groups & ephemeral snaps',
+    route: '/chat',
+    icon: Icons.chat_bubble_rounded,
+    gradient: [Color(0xFF10B981), Color(0xFF059669)],
+    category: 'Connect & Tools',
+  ),
+  DotCommand(
+    trigger: '.scanner',
+    aliases: ['.qr', '.scan', '.barcode'],
+    title: 'QR Scanner',
+    subtitle: 'Scan student profile codes, gate passes & event tickets',
+    route: '/chat/scanner',
+    icon: Icons.qr_code_scanner_rounded,
+    gradient: [Color(0xFFA855F7), Color(0xFF9333EA)],
+    category: 'Connect & Tools',
+  ),
+  DotCommand(
+    trigger: '.profile',
+    aliases: ['.me', '.myprofile', '.user'],
+    title: 'My Student Profile',
+    subtitle: 'Personal bio, department, verification & posts',
+    route: '/profile',
+    icon: Icons.person_rounded,
+    gradient: [Color(0xFF3B82F6), Color(0xFF2563EB)],
+    category: 'Connect & Tools',
+  ),
+  DotCommand(
+    trigger: '.notifications',
+    aliases: ['.alerts', '.notifs', '.updates'],
+    title: 'Alerts & Notifications',
+    subtitle: 'Official announcements, course alerts & mentions',
+    route: '/notifications',
+    icon: Icons.notifications_rounded,
+    gradient: [Color(0xFFE11D48), Color(0xFFBE123C)],
+    category: 'Connect & Tools',
+  ),
+  DotCommand(
+    trigger: '.settings',
+    aliases: ['.config', '.preferences', '.theme'],
+    title: 'Settings & Privacy',
+    subtitle: 'Appearance, notifications, security & legal',
+    route: '/settings',
+    icon: Icons.settings_rounded,
+    gradient: [Color(0xFF64748B), Color(0xFF475569)],
+    category: 'Connect & Tools',
+  ),
+];

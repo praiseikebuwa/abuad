@@ -1,11 +1,51 @@
 import { Router, Response } from 'express';
 import { authenticateToken, AuthenticatedRequest } from '../middleware/auth';
 import { prisma } from '../config/db';
-import { getOrCreateAiUser, triggerAiDirectChatReply } from '../services/aiBotService';
+import { getOrCreateAiUser, triggerAiDirectChatReply, isContentInappropriate } from '../services/aiBotService';
 import { emitToChannel, emitToUsers } from '../realtime/socket';
 import { deleteR2Object, extractR2Key } from '../config/cloudflare';
 
 const router = Router();
+
+// 1. In-memory Deduplication Cache for client-generated message IDs (60s TTL)
+const recentClientMsgIds = new Map<string, { message: any; timestamp: number }>();
+setInterval(() => {
+  const cutoff = Date.now() - 60000;
+  for (const [k, v] of recentClientMsgIds.entries()) {
+    if (v.timestamp < cutoff) recentClientMsgIds.delete(k);
+  }
+}, 30000);
+
+// 2. Chat Spam Velocity Protection (sliding window per user)
+const userMessageTimestamps = new Map<string, number[]>();
+const userRecentTexts = new Map<string, string[]>();
+
+function verifyChatSpamAndRateLimit(userId: string, text: string): { isSpam: boolean; message?: string } {
+  const now = Date.now();
+  let timestamps = userMessageTimestamps.get(userId) || [];
+  timestamps = timestamps.filter(t => now - t < 10000); // 10s window
+
+  if (timestamps.length >= 12) {
+    return { isSpam: true, message: 'You are sending messages too quickly. Please slow down.' };
+  }
+
+  const cleanText = text.trim().toLowerCase();
+  if (cleanText.length > 2) {
+    let recent = userRecentTexts.get(userId) || [];
+    recent.push(cleanText);
+    if (recent.length > 5) recent.shift();
+    userRecentTexts.set(userId, recent);
+
+    const identicalCount = recent.filter(t => t === cleanText).length;
+    if (identicalCount >= 4) {
+      return { isSpam: true, message: 'Identical message spam detected. Please do not flood chat.' };
+    }
+  }
+
+  timestamps.push(now);
+  userMessageTimestamps.set(userId, timestamps);
+  return { isSpam: false };
+}
 
 // Per-message async lock queue to eliminate concurrent race conditions
 const messageLocks = new Map<string, Promise<any>>();
@@ -614,9 +654,29 @@ router.get('/messages', authenticateToken, async (req: AuthenticatedRequest, res
  */
 router.post('/send', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { receiverId, channelId, text, mediaUrl, type, sharedPostId, replyToId, replyToContent, replyToSenderId, isSnap, duration, mediaType } = req.body;
+    const { clientMsgId, receiverId, channelId, text, mediaUrl, type, sharedPostId, replyToId, replyToContent, replyToSenderId, isSnap, duration, mediaType } = req.body;
     if (!text && !mediaUrl && !sharedPostId) {
       return res.status(400).json({ error: 'Message content or media required' });
+    }
+
+    // 1. Deduplication: Return existing message if clientMsgId was already processed
+    if (clientMsgId && recentClientMsgIds.has(clientMsgId)) {
+      const cached = recentClientMsgIds.get(clientMsgId)!;
+      return res.status(200).json({ success: true, data: cached.message, duplicatePrevented: true });
+    }
+
+    // 2. Chat Spam Velocity Protection (sliding window)
+    const spamCheck = verifyChatSpamAndRateLimit(req.user!.id, text || '');
+    if (spamCheck.isSpam) {
+      return res.status(429).json({ error: spamCheck.message, code: 'CHAT_RATE_LIMITED' });
+    }
+
+    // 3. Community Safety & Toxicity Check
+    if (text) {
+      const safetyCheck = isContentInappropriate(text);
+      if (safetyCheck.flagged) {
+        return res.status(400).json({ error: safetyCheck.reason, code: 'CHAT_SAFETY_VIOLATION' });
+      }
     }
 
     let targetChannelId = channelId;
@@ -728,6 +788,12 @@ router.post('/send', authenticateToken, async (req: AuthenticatedRequest, res: R
     } catch (_) {}
 
     const formattedMessage = formatMessage(message);
+
+    // Save to clientMsgId idempotency cache
+    if (clientMsgId && typeof clientMsgId === 'string') {
+      recentClientMsgIds.set(clientMsgId, { message: formattedMessage, timestamp: Date.now() });
+    }
+
     // Push to all channel members in real time (sender's other devices included)
     emitToChannel(targetChannelId, 'message:new', { message: formattedMessage });
 

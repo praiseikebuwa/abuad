@@ -5,6 +5,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.r2Client = exports.r2PublicDomain = exports.r2BucketName = void 0;
 exports.generateR2UploadUrl = generateR2UploadUrl;
+exports.generateR2GetUrl = generateR2GetUrl;
+exports.extractR2Key = extractR2Key;
+exports.deleteR2Object = deleteR2Object;
 exports.runCloudflareAI = runCloudflareAI;
 exports.runCloudflareAIVision = runCloudflareAIVision;
 const client_s3_1 = require("@aws-sdk/client-s3");
@@ -36,6 +39,52 @@ async function generateR2UploadUrl(key, contentType, expiresInSeconds = 3600) {
         ContentType: contentType,
     });
     return (0, s3_request_presigner_1.getSignedUrl)(exports.r2Client, command, { expiresIn: expiresInSeconds });
+}
+/**
+ * Generate a short-lived pre-signed download URL for Cloudflare R2 storage
+ */
+async function generateR2GetUrl(key, expiresInSeconds = 3600) {
+    const command = new client_s3_1.GetObjectCommand({
+        Bucket: exports.r2BucketName,
+        Key: key,
+    });
+    return (0, s3_request_presigner_1.getSignedUrl)(exports.r2Client, command, { expiresIn: expiresInSeconds });
+}
+/**
+ * Extract the R2 object storage key from a full URL or storage path
+ */
+function extractR2Key(urlOrKey) {
+    if (!urlOrKey || typeof urlOrKey !== 'string')
+        return null;
+    const trimmed = urlOrKey.trim();
+    if (trimmed.startsWith('uploads/'))
+        return trimmed;
+    if (trimmed.includes('/uploads/')) {
+        const parts = trimmed.split('/uploads/');
+        if (parts.length > 1 && parts[1]) {
+            return `uploads/${parts[1].split('?')[0]}`;
+        }
+    }
+    return null;
+}
+/**
+ * Permanently delete an object from Cloudflare R2 storage
+ */
+async function deleteR2Object(key) {
+    if (!key)
+        return false;
+    try {
+        const command = new client_s3_1.DeleteObjectCommand({
+            Bucket: exports.r2BucketName,
+            Key: key,
+        });
+        await exports.r2Client.send(command);
+        return true;
+    }
+    catch (error) {
+        console.error(`Failed to delete R2 object for key "${key}":`, error);
+        return false;
+    }
 }
 /**
  * Helper to call Cloudflare Workers AI REST API endpoint

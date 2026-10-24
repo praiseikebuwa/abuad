@@ -188,7 +188,7 @@ Use clean markdown formatting and light emojis where helpful.`;
     if (geminiApiKey) {
         try {
             const ai = new genai_1.GoogleGenAI({ apiKey: geminiApiKey });
-            const model = 'gemini-2.0-flash';
+            const model = process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
             const parts = [{ text: `${systemPrompt}\n\nUser Question & Context:\n${promptText}` }];
             if (imageUrl && imageUrl.trim()) {
                 const imageBuf = await getImageBuffer(imageUrl.trim());
@@ -221,7 +221,11 @@ Use clean markdown formatting and light emojis where helpful.`;
             console.warn('Gemini API call failed, falling back to Cloudflare AI:', gErr);
         }
     }
-    // 2. Fallback to Cloudflare AI / Vision
+    2.;
+    Fallback;
+    to;
+    Cloudflare;
+    AI / Vision;
     try {
         if (imageUrl && imageUrl.trim()) {
             const imageBuffer = await getImageBuffer(imageUrl.trim());

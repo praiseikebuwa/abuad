@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { authenticateToken, AuthenticatedRequest } from '../middleware/auth';
 import { prisma } from '../config/db';
+import { isContentInappropriate } from '../services/aiBotService';
 
 const router = Router();
 
@@ -93,6 +94,16 @@ router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Respo
     const finalMediaUrl = mediaUrl || content || (type === 'text' || mediaType === 'text' ? 'text' : '');
     if (!finalMediaUrl && type !== 'text' && mediaType !== 'text') {
       return res.status(400).json({ error: 'Media URL is required for story' });
+    }
+
+    if (caption && typeof caption === 'string') {
+      const captionCheck = isContentInappropriate(caption);
+      if (captionCheck.flagged) {
+        return res.status(400).json({
+          error: `Story caption blocked: ${captionCheck.reason || 'Violates community guidelines.'}`,
+          code: 'CONTENT_MODERATION_BLOCKED',
+        });
+      }
     }
 
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 Hours duration
