@@ -35,6 +35,7 @@ import '../../marketplace/data/marketplace_repository.dart';
 import '../../../shared/widgets/abuad_markdown.dart';
 import '../../stories/presentation/snap_viewer_screen.dart';
 import '../../feed/presentation/widgets/full_screen_image_view.dart';
+import 'sticker_creator_screen.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String channelId;
@@ -103,6 +104,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     '😍', '🙏', '😭', '🤯', '🥰', '💪', '🤝', '😎',
     '🤩', '🎯', '⚡', '💡', '💔', '😴', '🤤', '🤮',
     '🤫', '🫡', '😇', '💩', '💀', '🤡', '🌟', '🏆'
+  ];
+
+  // Campus & User Created Stickers
+  final List<CreatedStickerItem> _customStickers = [
+    const CreatedStickerItem(id: 'cs1', title: 'ABUAD Law ⚖️', type: 'preset', emojiOrText: 'ABUAD LAW ⚖️'),
+    const CreatedStickerItem(id: 'cs2', title: 'Talent Cafe 🍗', type: 'preset', emojiOrText: 'TALENT CAFE 🔥'),
+    const CreatedStickerItem(id: 'cs3', title: '75% Checked 🎓', type: 'preset', emojiOrText: '75% ATTENDANCE 🎓'),
+    const CreatedStickerItem(id: 'cs4', title: 'Exam Cram 😭', type: 'preset', emojiOrText: 'CRAMMING MODE 📚'),
+    const CreatedStickerItem(id: 'cs5', title: 'Curfew Dash 🏃‍♂️', type: 'preset', emojiOrText: 'CURFEW RUN 💨'),
+    const CreatedStickerItem(id: 'cs6', title: 'Sunday Chapel 🙏', type: 'preset', emojiOrText: 'SUNDAY CHAPEL 👔'),
+    const CreatedStickerItem(id: 'cs7', title: 'VC Cup Goal ⚽', type: 'preset', emojiOrText: 'VC CUP GOAL ⚽🔥'),
   ];
 
   @override
@@ -3352,6 +3364,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                                     ? _buildDocumentCard(message, isMe, isDark)
                                                     : (message.type == 'poll' || message.content.startsWith('{"question"'))
                                                     ? _buildPollCard(message, isMe, isDark)
+                                                    : message.type == 'sticker'
+                                                    ? _buildCompactStickerBubble(message, isMe, isDark)
                                                     : message.type == 'giphy'
                                                     ? ClipRRect(
                                                         borderRadius:
@@ -4133,7 +4147,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4),
         child: Icon(
-          _showEmojiPicker ? Icons.keyboard_rounded : Icons.sentiment_satisfied_alt_rounded,
+          _showEmojiPicker ? Icons.keyboard_rounded : Icons.sticky_note_2_rounded,
           color: isDark ? Colors.white54 : Colors.grey[500],
           size: 22,
         ),
@@ -4268,8 +4282,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           children: [
             TabBar(
               tabs: const [
-                Tab(icon: Icon(Icons.sentiment_satisfied_rounded)),
-                Tab(icon: Icon(Icons.sticky_note_2_rounded)),
+                Tab(icon: Icon(Icons.sticky_note_2_rounded), text: "Stickers & GIFs"),
+                Tab(icon: Icon(Icons.sentiment_satisfied_rounded), text: "Emojis"),
               ],
               labelColor: AppColors.secondaryTeal,
               unselectedLabelColor: Colors.grey,
@@ -4277,7 +4291,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ),
             Expanded(
               child: TabBarView(
-                children: [_buildEmojiGrid(isDark), _buildStickerGrid(isDark)],
+                children: [_buildStickerGrid(isDark), _buildEmojiGrid(isDark)],
               ),
             ),
           ],
@@ -4405,52 +4419,171 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           child: Row(
             children: [
               Expanded(
                 child: Text(
-                  "Recent Stickers",
+                  "Campus & Saved Stickers",
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     color: isDark ? Colors.white70 : Colors.black87,
+                    fontSize: 13,
                   ),
                 ),
               ),
-              TextButton.icon(
-                onPressed: _showStickerCreatorComingSoon,
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text("Create"),
-                style: TextButton.styleFrom(
+              FilledButton.tonalIcon(
+                onPressed: _openStickerCreator,
+                icon: const Icon(Icons.add, size: 14),
+                label: const Text("Create Sticker", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.secondaryTeal.withOpacity(0.18),
                   foregroundColor: AppColors.secondaryTeal,
                   visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 ),
               ),
             ],
           ),
         ),
         Expanded(
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.sticky_note_2_outlined,
-                  size: 48,
-                  color: isDark ? Colors.white24 : Colors.grey[300],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  "No stickers yet",
-                  style: TextStyle(
-                    color: isDark ? Colors.white38 : Colors.grey[500],
+          child: GridView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: 1.15,
+            ),
+            itemCount: _customStickers.length,
+            itemBuilder: (context, index) {
+              final stk = _customStickers[index];
+              return InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () => _sendSticker(stk.emojiOrText ?? stk.title, imageUrl: stk.localPath),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E222A) : Colors.grey[100],
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: isDark ? Colors.white12 : Colors.grey.withOpacity(0.2),
+                    ),
+                  ),
+                  padding: const EdgeInsets.all(8),
+                  child: Center(
+                    child: stk.localPath != null
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: Image.file(
+                              File(stk.localPath!),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Text(stk.title),
+                            ),
+                          )
+                        : Text(
+                            stk.emojiOrText ?? stk.title,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
                   ),
                 ),
-              ],
-            ),
+              );
+            },
           ),
         ),
       ],
+    );
+  }
+
+  Future<void> _openStickerCreator() async {
+    final created = await Navigator.push<CreatedStickerItem>(
+      context,
+      MaterialPageRoute(builder: (context) => const StickerCreatorScreen()),
+    );
+    if (created != null && mounted) {
+      setState(() {
+        _customStickers.insert(0, created);
+      });
+      _sendSticker(created.emojiOrText ?? created.title, imageUrl: created.localPath);
+    }
+  }
+
+  void _sendSticker(String content, {String? imageUrl}) {
+    ref.read(chatRepositoryProvider).sendMessage(
+      widget.channelId,
+      content,
+      type: 'sticker',
+      imageUrl: imageUrl,
+      imageWidth: 130,
+      imageHeight: 130,
+      replyToId: _replyingTo?.id,
+      replyToContent: _replyingTo?.content,
+      replyToSenderId: _replyingTo?.senderId,
+    );
+    setState(() {
+      _replyingTo = null;
+      _showEmojiPicker = false;
+    });
+  }
+
+  Widget _buildCompactStickerBubble(ChatMessage message, bool isMe, bool isDark) {
+    final hasImg = message.imageUrl != null && message.imageUrl!.isNotEmpty;
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 140, maxHeight: 140),
+      margin: const EdgeInsets.symmetric(vertical: 2),
+      decoration: BoxDecoration(
+        color: hasImg
+            ? Colors.transparent
+            : (isMe ? const Color(0xFF4F46E5) : (isDark ? const Color(0xFF1E222A) : const Color(0xFFF1F5F9))),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark ? Colors.white12 : Colors.black.withOpacity(0.08),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Center(
+        child: hasImg
+            ? (message.imageUrl!.startsWith('http')
+                ? CachedNetworkImage(
+                    imageUrl: message.imageUrl!,
+                    width: 130,
+                    height: 130,
+                    fit: BoxFit.contain,
+                  )
+                : Image.file(
+                    File(message.imageUrl!),
+                    width: 130,
+                    height: 130,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Text(
+                        message.content,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                    ),
+                  ))
+            : Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(
+                  message.content,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: isMe ? Colors.white : (isDark ? Colors.white : const Color(0xFF0F172A)),
+                  ),
+                ),
+              ),
+      ),
     );
   }
 

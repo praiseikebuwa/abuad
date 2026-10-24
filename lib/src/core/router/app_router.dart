@@ -54,7 +54,20 @@ import '../../features/portal/presentation/portal_screen.dart';
 import '../../features/portal/presentation/student_id_screen.dart';
 import '../../features/portal/presentation/gpa_calculator_screen.dart';
 import '../../features/portal/presentation/timetable_screen.dart';
+import '../../features/portal/presentation/exam_countdown_screen.dart';
+import '../../features/portal/presentation/cgpa_simulator_screen.dart';
+import '../../features/portal/presentation/cbt_practice_screen.dart';
+import '../../features/portal/presentation/attendance_tracker_screen.dart';
 import '../../features/utilities/presentation/lost_found_screen.dart';
+import '../../features/utilities/presentation/hostel_hub_screen.dart';
+import '../../features/utilities/presentation/shuttle_board_screen.dart';
+import '../../features/utilities/presentation/student_gigs_screen.dart';
+import '../../features/utilities/presentation/campus_polls_screen.dart';
+import '../../features/utilities/presentation/sports_center_screen.dart';
+import '../../features/utilities/presentation/study_lounges_screen.dart';
+import '../../features/utilities/presentation/campus_sos_screen.dart';
+import '../../features/utilities/presentation/clinic_queue_screen.dart';
+import '../../features/chat/presentation/sticker_creator_screen.dart';
 
 final rootNavigatorKey = GlobalKey<NavigatorState>();
 final _feedNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'feed');
@@ -425,6 +438,123 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           context: context,
           state: state,
           child: const LostFoundScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/exam-countdown',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const ExamCountdownScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/cgpa-simulator',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const CgpaSimulatorScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/cbt-practice',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const CbtPracticeScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/attendance-tracker',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const AttendanceTrackerScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/hostel-hub',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const HostelHubScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/shuttle-board',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const ShuttleBoardScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/student-gigs',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const StudentGigsScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/campus-polls',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const CampusPollsScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/sports-center',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const SportsCenterScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/study-lounges',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const StudyLoungesScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/campus-sos',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const CampusSosScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/clinic-queue',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const ClinicQueueScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/sticker-creator',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const StickerCreatorScreen(),
         ),
       ),
       GoRoute(

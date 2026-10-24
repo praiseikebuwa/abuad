@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
 class CampusPollsScreen extends StatefulWidget {
   const CampusPollsScreen({super.key});
@@ -251,8 +250,6 @@ class _CampusPollsScreenState extends State<CampusPollsScreen> with SingleTicker
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Scaffold(
       appBar: AppBar(
         title: const Row(
