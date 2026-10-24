@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const auth_1 = require("../middleware/auth");
 const db_1 = require("../config/db");
+const aiBotService_1 = require("../services/aiBotService");
 const router = (0, express_1.Router)();
 function formatStory(s) {
     let viewers = [];
@@ -90,6 +91,15 @@ router.post('/', auth_1.authenticateToken, async (req, res) => {
         const finalMediaUrl = mediaUrl || content || (type === 'text' || mediaType === 'text' ? 'text' : '');
         if (!finalMediaUrl && type !== 'text' && mediaType !== 'text') {
             return res.status(400).json({ error: 'Media URL is required for story' });
+        }
+        if (caption && typeof caption === 'string') {
+            const captionCheck = (0, aiBotService_1.isContentInappropriate)(caption);
+            if (captionCheck.flagged) {
+                return res.status(400).json({
+                    error: `Story caption blocked: ${captionCheck.reason || 'Violates community guidelines.'}`,
+                    code: 'CONTENT_MODERATION_BLOCKED',
+                });
+            }
         }
         const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 Hours duration
         const mentionsJson = Array.isArray(mentions) ? JSON.stringify(mentions) : (typeof mentions === 'string' ? mentions : '[]');

@@ -7,6 +7,41 @@ const aiBotService_1 = require("../services/aiBotService");
 const socket_1 = require("../realtime/socket");
 const cloudflare_1 = require("../config/cloudflare");
 const router = (0, express_1.Router)();
+// 1. In-memory Deduplication Cache for client-generated message IDs (60s TTL)
+const recentClientMsgIds = new Map();
+setInterval(() => {
+    const cutoff = Date.now() - 60000;
+    for (const [k, v] of recentClientMsgIds.entries()) {
+        if (v.timestamp < cutoff)
+            recentClientMsgIds.delete(k);
+    }
+}, 30000);
+// 2. Chat Spam Velocity Protection (sliding window per user)
+const userMessageTimestamps = new Map();
+const userRecentTexts = new Map();
+function verifyChatSpamAndRateLimit(userId, text) {
+    const now = Date.now();
+    let timestamps = userMessageTimestamps.get(userId) || [];
+    timestamps = timestamps.filter(t => now - t < 10000); // 10s window
+    if (timestamps.length >= 12) {
+        return { isSpam: true, message: 'You are sending messages too quickly. Please slow down.' };
+    }
+    const cleanText = text.trim().toLowerCase();
+    if (cleanText.length > 2) {
+        let recent = userRecentTexts.get(userId) || [];
+        recent.push(cleanText);
+        if (recent.length > 5)
+            recent.shift();
+        userRecentTexts.set(userId, recent);
+        const identicalCount = recent.filter(t => t === cleanText).length;
+        if (identicalCount >= 4) {
+            return { isSpam: true, message: 'Identical message spam detected. Please do not flood chat.' };
+        }
+    }
+    timestamps.push(now);
+    userMessageTimestamps.set(userId, timestamps);
+    return { isSpam: false };
+}
 // Per-message async lock queue to eliminate concurrent race conditions
 const messageLocks = new Map();
 async function runWithMessageLock(messageId, fn) {
@@ -25,17 +60,23 @@ async function runWithMessageLock(messageId, fn) {
         }
     }
 }
-async function formatChannel(ch, currentUserId) {
+async function formatChannel(ch, currentUserId, userCache) {
     let memberIds = [];
     try {
         memberIds = typeof ch.memberIds === 'string' ? JSON.parse(ch.memberIds || '[]') : (ch.memberIds || []);
     }
     catch { }
-    // Fetch all members from User table
-    const members = await db_1.prisma.user.findMany({
-        where: { id: { in: memberIds } },
-        select: { id: true, username: true, fullName: true, avatarUrl: true, verificationType: true },
-    });
+    // Fetch all members from User table (use preloaded cache if available)
+    let members = [];
+    if (userCache) {
+        members = memberIds.map(id => userCache.get(id)).filter(Boolean);
+    }
+    else {
+        members = await db_1.prisma.user.findMany({
+            where: { id: { in: memberIds } },
+            select: { id: true, username: true, fullName: true, avatarUrl: true, verificationType: true },
+        });
+    }
     const memberNames = {};
     const memberAvatars = {};
     const verificationTypes = {};
@@ -229,7 +270,24 @@ router.get(['/', '/channels'], auth_1.authenticateToken, async (req, res) => {
                 return false;
             }
         });
-        const formattedChannels = await Promise.all(userChannels.map(ch => formatChannel(ch, userId)));
+        // Bulk preload all unique members across all userChannels in a single query
+        const allMemberIds = new Set();
+        for (const ch of userChannels) {
+            try {
+                const ids = typeof ch.memberIds === 'string' ? JSON.parse(ch.memberIds || '[]') : (ch.memberIds || []);
+                for (const id of ids)
+                    allMemberIds.add(id);
+            }
+            catch { }
+        }
+        const allUsers = allMemberIds.size > 0
+            ? await db_1.prisma.user.findMany({
+                where: { id: { in: Array.from(allMemberIds) } },
+                select: { id: true, username: true, fullName: true, avatarUrl: true, verificationType: true },
+            })
+            : [];
+        const userCache = new Map(allUsers.map(u => [u.id, u]));
+        const formattedChannels = await Promise.all(userChannels.map(ch => formatChannel(ch, userId, userCache)));
         return res.json({ success: true, data: formattedChannels });
     }
     catch (error) {
@@ -395,6 +453,143 @@ router.patch('/channels/:id', auth_1.authenticateToken, async (req, res) => {
     }
     catch (error) {
         return res.status(500).json({ error: 'Failed to update channel' });
+    }
+});
+/**
+ * POST /api/chat/channels/:id/members - Add members to group channel
+ */
+router.post('/channels/:id/members', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const channelId = String(req.params.id);
+        const { userIds } = req.body;
+        if (!Array.isArray(userIds) || userIds.length === 0) {
+            return res.status(400).json({ error: 'User IDs array is required' });
+        }
+        const channel = await db_1.prisma.chatChannel.findUnique({ where: { id: channelId } });
+        if (!channel)
+            return res.status(404).json({ error: 'Channel not found' });
+        let memberIds = [];
+        try {
+            memberIds = JSON.parse(channel.memberIds || '[]');
+        }
+        catch { }
+        const newMembers = userIds.filter((id) => !memberIds.includes(id));
+        if (newMembers.length === 0) {
+            const formatted = await formatChannel(channel, req.user.id);
+            return res.json({ success: true, data: formatted, addedCount: 0 });
+        }
+        const updatedMemberIds = [...memberIds, ...newMembers];
+        // Fetch added users' names for system notification
+        const addedUsers = await db_1.prisma.user.findMany({
+            where: { id: { in: newMembers } },
+            select: { id: true, fullName: true, username: true }
+        });
+        const addedNames = addedUsers.map(u => u.fullName || u.username).join(', ');
+        const updatedChannel = await db_1.prisma.chatChannel.update({
+            where: { id: channelId },
+            data: {
+                memberIds: JSON.stringify(updatedMemberIds),
+                lastMessage: `${req.user?.fullName || req.user?.username || 'Admin'} added ${addedNames || `${newMembers.length} member(s)`}`,
+                lastMessageTime: new Date(),
+            }
+        });
+        // Create system message for transparency
+        const systemMsg = await db_1.prisma.chatMessage.create({
+            data: {
+                senderId: req.user.id,
+                channelId,
+                text: `📌 ${req.user?.fullName || req.user?.username || 'Admin'} added ${addedNames || `${newMembers.length} member(s)`} to the group.`,
+                type: 'system',
+            },
+            include: {
+                sender: { select: { id: true, username: true, fullName: true, avatarUrl: true } }
+            }
+        });
+        const formattedSystemMsg = formatMessage(systemMsg);
+        (0, socket_1.emitToChannel)(channelId, 'message:new', { message: formattedSystemMsg });
+        (0, socket_1.emitToChannel)(channelId, 'channel:updated', { memberIds: updatedMemberIds });
+        (0, socket_1.emitToUsers)(updatedMemberIds, 'channel:updated', { channelId });
+        const formatted = await formatChannel(updatedChannel, req.user.id);
+        return res.json({ success: true, data: formatted, addedCount: newMembers.length });
+    }
+    catch (error) {
+        console.error('Error adding members to channel:', error);
+        return res.status(500).json({ error: 'Failed to add members' });
+    }
+});
+/**
+ * DELETE /api/chat/channels/:id/members/:userId - Remove member or leave group
+ */
+router.delete('/channels/:id/members/:userId', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const channelId = String(req.params.id);
+        const targetUserId = String(req.params.userId);
+        const channel = await db_1.prisma.chatChannel.findUnique({ where: { id: channelId } });
+        if (!channel)
+            return res.status(404).json({ error: 'Channel not found' });
+        let memberIds = [];
+        try {
+            memberIds = JSON.parse(channel.memberIds || '[]');
+        }
+        catch { }
+        if (!memberIds.includes(targetUserId)) {
+            return res.status(400).json({ error: 'User is not in this group' });
+        }
+        const updatedMemberIds = memberIds.filter(id => id !== targetUserId);
+        const targetUser = await db_1.prisma.user.findUnique({
+            where: { id: targetUserId },
+            select: { fullName: true, username: true }
+        });
+        const targetName = targetUser?.fullName || targetUser?.username || 'Member';
+        const isSelfLeave = targetUserId === req.user.id;
+        const actionText = isSelfLeave
+            ? `👋 ${targetName} left the group.`
+            : `🚫 ${req.user?.fullName || req.user?.username || 'Admin'} removed ${targetName} from the group.`;
+        const updatedChannel = await db_1.prisma.chatChannel.update({
+            where: { id: channelId },
+            data: {
+                memberIds: JSON.stringify(updatedMemberIds),
+                lastMessage: actionText,
+                lastMessageTime: new Date(),
+            }
+        });
+        const systemMsg = await db_1.prisma.chatMessage.create({
+            data: {
+                senderId: req.user.id,
+                channelId,
+                text: actionText,
+                type: 'system',
+            },
+            include: {
+                sender: { select: { id: true, username: true, fullName: true, avatarUrl: true } }
+            }
+        });
+        (0, socket_1.emitToChannel)(channelId, 'message:new', { message: formatMessage(systemMsg) });
+        (0, socket_1.emitToChannel)(channelId, 'channel:updated', { memberIds: updatedMemberIds });
+        (0, socket_1.emitToUsers)(memberIds, 'channel:updated', { channelId });
+        return res.json({ success: true, data: await formatChannel(updatedChannel, req.user.id) });
+    }
+    catch (error) {
+        console.error('Error removing member from channel:', error);
+        return res.status(500).json({ error: 'Failed to remove member' });
+    }
+});
+/**
+ * POST /api/chat/channels/:id/wallpaper - Update group wallpaper
+ */
+router.post('/channels/:id/wallpaper', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const channelId = String(req.params.id);
+        const { wallpaperUrl } = req.body;
+        const channel = await db_1.prisma.chatChannel.findUnique({ where: { id: channelId } });
+        if (!channel)
+            return res.status(404).json({ error: 'Channel not found' });
+        // Store wallpaper in metadata or update channel
+        (0, socket_1.emitToChannel)(channelId, 'channel:wallpaper_updated', { channelId, wallpaperUrl });
+        return res.json({ success: true, wallpaperUrl });
+    }
+    catch (error) {
+        return res.status(500).json({ error: 'Failed to update wallpaper' });
     }
 });
 /**
@@ -596,9 +791,26 @@ router.get('/messages', auth_1.authenticateToken, async (req, res) => {
  */
 router.post('/send', auth_1.authenticateToken, async (req, res) => {
     try {
-        const { receiverId, channelId, text, mediaUrl, type, sharedPostId, replyToId, replyToContent, replyToSenderId, isSnap, duration, mediaType } = req.body;
+        const { clientMsgId, receiverId, channelId, text, mediaUrl, type, sharedPostId, replyToId, replyToContent, replyToSenderId, isSnap, duration, mediaType } = req.body;
         if (!text && !mediaUrl && !sharedPostId) {
             return res.status(400).json({ error: 'Message content or media required' });
+        }
+        // 1. Deduplication: Return existing message if clientMsgId was already processed
+        if (clientMsgId && recentClientMsgIds.has(clientMsgId)) {
+            const cached = recentClientMsgIds.get(clientMsgId);
+            return res.status(200).json({ success: true, data: cached.message, duplicatePrevented: true });
+        }
+        // 2. Chat Spam Velocity Protection (sliding window)
+        const spamCheck = verifyChatSpamAndRateLimit(req.user.id, text || '');
+        if (spamCheck.isSpam) {
+            return res.status(429).json({ error: spamCheck.message, code: 'CHAT_RATE_LIMITED' });
+        }
+        // 3. Community Safety & Toxicity Check
+        if (text) {
+            const safetyCheck = (0, aiBotService_1.isContentInappropriate)(text);
+            if (safetyCheck.flagged) {
+                return res.status(400).json({ error: safetyCheck.reason, code: 'CHAT_SAFETY_VIOLATION' });
+            }
         }
         let targetChannelId = channelId;
         let inferredReceiverId = receiverId;
@@ -704,31 +916,58 @@ router.post('/send', auth_1.authenticateToken, async (req, res) => {
         }
         catch (_) { }
         const formattedMessage = formatMessage(message);
+        // Save to clientMsgId idempotency cache
+        if (clientMsgId && typeof clientMsgId === 'string') {
+            recentClientMsgIds.set(clientMsgId, { message: formattedMessage, timestamp: Date.now() });
+        }
         // Push to all channel members in real time (sender's other devices included)
         (0, socket_1.emitToChannel)(targetChannelId, 'message:new', { message: formattedMessage });
         // Asynchronously check and trigger AI response if chatting with ABUAD AI
         try {
             const aiUser = await (0, aiBotService_1.getOrCreateAiUser)();
-            let isAiChannel = false;
+            let shouldTriggerAi = false;
+            let isGroup = false;
+            let groupName = 'ABUAD Campus Group';
             if (inferredReceiverId === aiUser.id || inferredReceiverId === 'abuad_ai') {
-                isAiChannel = true;
+                // Direct 1-on-1 chat with AI
+                shouldTriggerAi = true;
             }
             else if (targetChannelId) {
                 const ch = await db_1.prisma.chatChannel.findUnique({ where: { id: targetChannelId } });
                 if (ch) {
+                    isGroup = ch.isGroup || ch.type === 'group';
+                    groupName = ch.name || 'ABUAD Campus Group';
+                    let members = [];
                     try {
-                        const members = JSON.parse(ch.memberIds);
-                        if (members.includes(aiUser.id) || members.includes('abuad_ai')) {
-                            isAiChannel = true;
-                        }
+                        members = JSON.parse(ch.memberIds || '[]');
                     }
                     catch { }
+                    const aiInChannel = members.includes(aiUser.id) || members.includes('abuad_ai');
+                    if (aiInChannel) {
+                        if (!isGroup) {
+                            // Direct channel with AI
+                            shouldTriggerAi = true;
+                        }
+                        else {
+                            // Group channel: ONLY respond if tagged/mentioned OR replied to Abuad AI!
+                            const hasTag = (0, aiBotService_1.containsAiMention)(text || '');
+                            const isReplyingToAi = replyToSenderId === aiUser.id;
+                            if (hasTag || isReplyingToAi) {
+                                shouldTriggerAi = true;
+                            }
+                        }
+                    }
                 }
             }
-            if (isAiChannel && req.user.id !== aiUser.id) {
+            if (shouldTriggerAi && req.user.id !== aiUser.id) {
                 // Trigger conversational reply after 400ms
                 setTimeout(() => {
-                    (0, aiBotService_1.triggerAiDirectChatReply)(targetChannelId, text || 'Shared media', mediaUrl, req.user?.fullName || req.user?.username || 'User').catch(e => console.error('AI direct chat reply error:', e));
+                    (0, aiBotService_1.triggerAiDirectChatReply)(targetChannelId, text || (effectiveMediaUrl ? 'Shared media' : 'Hello'), mediaUrl || undefined, req.user?.fullName || req.user?.username || 'User', {
+                        replyToMessageId: message.id,
+                        replyToContent: text || 'Tagged message',
+                        isGroup,
+                        groupName,
+                    }).catch(e => console.error('AI direct chat reply error:', e));
                 }, 400);
             }
         }

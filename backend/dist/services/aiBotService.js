@@ -36,7 +36,7 @@ function isUserVerified(user) {
 function containsAiMention(text) {
     if (!text || typeof text !== 'string')
         return false;
-    return /(@ai|#ai)\b/i.test(text);
+    return /(@ai\b|#ai\b|@abuad_ai\b|@abuadai\b|@abuad\s+ai\b|abuad\s+ai\b)/i.test(text);
 }
 exports.AI_AVATAR_URL = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80';
 exports.AI_BANNER_URL = 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=1200&q=80';
@@ -75,7 +75,7 @@ async function getOrCreateAiUser() {
                 avatarUrl: exports.AI_AVATAR_URL,
                 bannerUrl: exports.AI_BANNER_URL,
                 isVerified: true,
-                verificationType: 'GOLD',
+                verificationType: 'GOLD'
             }
         });
     }
@@ -221,11 +221,7 @@ Use clean markdown formatting and light emojis where helpful.`;
             console.warn('Gemini API call failed, falling back to Cloudflare AI:', gErr);
         }
     }
-    2.;
-    Fallback;
-    to;
-    Cloudflare;
-    AI / Vision;
+    // 2. Fallback to Cloudflare AI / Vision
     try {
         if (imageUrl && imageUrl.trim()) {
             const imageBuffer = await getImageBuffer(imageUrl.trim());
@@ -332,7 +328,7 @@ async function triggerAiCommentReply(postId, commentContent, parentCommentId, au
 /**
  * Handle AI Bot response when user chats directly with ABUAD AI in a direct message channel
  */
-async function triggerAiDirectChatReply(channelId, userMessage, mediaUrl, userName) {
+async function triggerAiDirectChatReply(channelId, userMessage, mediaUrl, userName, options) {
     try {
         const aiUser = await getOrCreateAiUser();
         // Fetch recent chat history in this channel for natural contextual conversation (last 6 messages)
@@ -346,7 +342,26 @@ async function triggerAiDirectChatReply(channelId, userMessage, mediaUrl, userNa
             const sender = m.senderId === aiUser.id ? 'ABUAD AI' : (userName || 'Student');
             return `${sender}: ${m.text}`;
         }).join('\n');
-        const conversationPrompt = `You are ABUAD AI, the intelligent, friendly, and helpful campus AI companion for Afe Babalola University (ABUAD).
+        const isGroup = options?.isGroup === true;
+        const groupName = options?.groupName || 'ABUAD Campus Group';
+        const conversationPrompt = isGroup
+            ? `You are ABUAD AI, the intelligent, friendly, and helpful campus AI companion for Afe Babalola University (ABUAD).
+You are inside an ABUAD student group chat named "${groupName}".
+Student ${userName || 'A student'} tagged you or replied to you with this message: "${userMessage || 'Hello'}".
+
+CRITICAL INSTRUCTIONS FOR GROUP CHAT:
+1. Speak in a natural, friendly, concise tone — just like a smart student or mentor texting back.
+2. Keep your replies SHORT and CLEAR (1 to 2 sentences max). Do NOT spam the group chat with long essays.
+3. If an image is provided, comment on it or analyze it directly.
+4. Reply directly to help the student who tagged you.
+
+Recent Group Chat History:
+${history}
+
+Student's Latest Message: "${userMessage || 'Hello'}"
+
+Reply concisely as ABUAD AI:`
+            : `You are ABUAD AI, the intelligent, friendly, and helpful campus AI companion for Afe Babalola University (ABUAD).
 You are having a direct 1-on-1 chat conversation with ${userName || 'a student'}.
 
 CRITICAL INSTRUCTIONS FOR DIRECT CHAT:
@@ -362,6 +377,14 @@ Student's Latest Message: "${userMessage || 'Hello'}"
 
 Reply as ABUAD AI:`;
         const aiReply = await generateAiReply(conversationPrompt, mediaUrl, userMessage);
+        const initialReactions = {};
+        if (options?.replyToMessageId) {
+            initialReactions._reply = {
+                id: options.replyToMessageId,
+                content: options.replyToContent || (userMessage ? userMessage.substring(0, 100) : ''),
+                senderId: '',
+            };
+        }
         // Save message from AI bot
         const createdMsg = await db_1.prisma.chatMessage.create({
             data: {
@@ -369,6 +392,7 @@ Reply as ABUAD AI:`;
                 channelId,
                 text: aiReply,
                 type: 'text',
+                reactions: JSON.stringify(initialReactions),
             },
             include: {
                 sender: { select: { id: true, username: true, fullName: true, avatarUrl: true } }
@@ -387,7 +411,11 @@ Reply as ABUAD AI:`;
                 ...createdMsg,
                 sender_id: createdMsg.senderId,
                 content: createdMsg.text,
-                reactions: {},
+                reactions: initialReactions,
+                replyToId: options?.replyToMessageId,
+                reply_to_id: options?.replyToMessageId,
+                replyToContent: options?.replyToContent,
+                reply_to_content: options?.replyToContent,
                 readBy: [aiUser.id],
                 read_by: [aiUser.id],
                 saved_by: [],

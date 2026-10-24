@@ -17,8 +17,12 @@ function sanitizePost(post, userRole, currentUserId) {
                 pollData = JSON.parse(pollData);
             }
             if (pollData && typeof pollData === 'object') {
+                pollData = { ...pollData };
                 if (currentUserId && pollData.voters && pollData.voters[currentUserId] !== undefined) {
                     pollData.userVotedIndex = Number(pollData.voters[currentUserId]);
+                }
+                else {
+                    delete pollData.userVotedIndex;
                 }
             }
         }
@@ -44,6 +48,101 @@ function sanitizePost(post, userRole, currentUserId) {
             verificationType: 'none',
         },
     };
+}
+const SEARCH_STOP_WORDS = new Set([
+    'a', 'about', 'above', 'after', 'again', 'against', 'all', 'am', 'an', 'and', 'any', 'are', 'as', 'at',
+    'be', 'because', 'been', 'before', 'being', 'below', 'between', 'both', 'but', 'by',
+    'can', 'cannot', 'could', 'did', 'do', 'does', 'doing', 'down', 'during',
+    'each', 'few', 'for', 'from', 'further',
+    'had', 'has', 'have', 'having', 'he', 'her', 'here', 'hers', 'him', 'his', 'how',
+    'i', 'if', 'in', 'into', 'is', 'it', 'its',
+    'me', 'more', 'most', 'my',
+    'no', 'nor', 'not', 'of', 'off', 'on', 'once', 'only', 'or', 'other', 'our', 'ours', 'out', 'over', 'own',
+    'same', 'she', 'should', 'so', 'some', 'such',
+    'than', 'that', 'the', 'their', 'theirs', 'them', 'then', 'there', 'these', 'they', 'this', 'those', 'through', 'to', 'too',
+    'under', 'until', 'up', 'very',
+    'was', 'we', 'were', 'what', 'when', 'where', 'which', 'while', 'who', 'whom', 'why', 'with', 'would', 'you', 'your', 'yours'
+]);
+/**
+ * Smart notification grouping to avoid spam/fatigue for likes, comments, and reposts.
+ * Groups events within a 24-hour window on the same post.
+ */
+async function sendOrGroupNotification(params) {
+    const { userId, senderId, type, relatedId, senderName, commentSnippet } = params;
+    if (!userId || !senderId || userId === senderId)
+        return;
+    try {
+        const recentWindow = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24h grouping window
+        const existing = await db_1.prisma.notification.findFirst({
+            where: {
+                userId,
+                relatedId,
+                type,
+                isRead: false,
+                createdAt: { gte: recentWindow },
+            },
+            orderBy: { createdAt: 'desc' },
+        });
+        if (type === 'like') {
+            const totalLikes = await db_1.prisma.postLike.count({ where: { postId: relatedId } });
+            const title = totalLikes > 1 ? `${totalLikes} Likes ❤️` : 'New Like ❤️';
+            const body = totalLikes > 1
+                ? `${senderName} and ${totalLikes - 1} other${totalLikes - 1 > 1 ? 's' : ''} liked your post`
+                : `${senderName} liked your post`;
+            if (existing) {
+                await db_1.prisma.notification.update({
+                    where: { id: existing.id },
+                    data: { senderId, title, body, createdAt: new Date() },
+                });
+            }
+            else {
+                await db_1.prisma.notification.create({
+                    data: { userId, senderId, title, body, type, relatedId },
+                });
+            }
+        }
+        else if (type === 'comment') {
+            const totalComments = await db_1.prisma.postComment.count({ where: { postId: relatedId } });
+            const title = totalComments > 1 ? `${totalComments} Comments 💬` : 'New Comment 💬';
+            const snippet = commentSnippet ? `"${commentSnippet.length > 50 ? commentSnippet.slice(0, 47) + '...' : commentSnippet}"` : '';
+            const body = totalComments > 1
+                ? `${senderName} and ${totalComments - 1} other${totalComments - 1 > 1 ? 's' : ''} commented on your post`
+                : `${senderName} commented: ${snippet}`;
+            if (existing) {
+                await db_1.prisma.notification.update({
+                    where: { id: existing.id },
+                    data: { senderId, title, body, createdAt: new Date() },
+                });
+            }
+            else {
+                await db_1.prisma.notification.create({
+                    data: { userId, senderId, title, body, type, relatedId },
+                });
+            }
+        }
+        else if (type === 'repost') {
+            const targetPost = await db_1.prisma.post.findUnique({ where: { id: relatedId }, select: { repostCount: true } });
+            const totalReposts = targetPost?.repostCount ?? 1;
+            const title = totalReposts > 1 ? `${totalReposts} Reposts 🔄` : 'Post Reposted 🔄';
+            const body = totalReposts > 1
+                ? `${senderName} and ${totalReposts - 1} other${totalReposts - 1 > 1 ? 's' : ''} reposted your post`
+                : `${senderName} reposted your post`;
+            if (existing) {
+                await db_1.prisma.notification.update({
+                    where: { id: existing.id },
+                    data: { senderId, title, body, createdAt: new Date() },
+                });
+            }
+            else {
+                await db_1.prisma.notification.create({
+                    data: { userId, senderId, title, body, type, relatedId },
+                });
+            }
+        }
+    }
+    catch (err) {
+        console.error(`Failed to send/group notification (${type}):`, err);
+    }
 }
 /**
  * GET /api/posts - Discovery / For You Feed with Personalized Ranking & Cursor Pagination
@@ -165,8 +264,12 @@ router.get('/', auth_1.optionalAuth, async (req, res) => {
         });
         // Sort by recommendation score descending
         scoredPosts.sort((a, b) => b.score - a.score);
-        const hasMore = scoredPosts.length > limit;
-        const selected = (hasMore ? scoredPosts.slice(0, limit) : scoredPosts).map(s => s.post);
+        // Exclude posts marked 'not interested' or from muted creators (score <= -9000)
+        const validScored = scoredPosts.filter(s => s.score > -9000);
+        // Apply feed diversity algorithm so no author/channel monopolizes consecutive cards
+        const diversified = (0, recommendationService_1.applyFeedDiversity)(validScored);
+        const hasMore = diversified.length > limit;
+        const selected = (hasMore ? diversified.slice(0, limit) : diversified).map(s => s.post);
         const formatted = selected.map(p => {
             const { likes, savedBy, _count, ...rest } = p;
             return sanitizePost({
@@ -227,8 +330,10 @@ router.get('/videos', auth_1.optionalAuth, async (req, res) => {
             return { post: p, score };
         });
         scored.sort((a, b) => b.score - a.score);
-        const hasMore = scored.length > limit;
-        const resultPosts = (hasMore ? scored.slice(0, limit) : scored).map(s => s.post);
+        const validScored = scored.filter(s => s.score > -9000);
+        const diversified = (0, recommendationService_1.applyFeedDiversity)(validScored);
+        const hasMore = diversified.length > limit;
+        const resultPosts = (hasMore ? diversified.slice(0, limit) : diversified).map(s => s.post);
         const formatted = resultPosts.map(p => {
             const { likes, savedBy, _count, ...rest } = p;
             return {
@@ -752,6 +857,16 @@ router.get('/search', auth_1.optionalAuth, async (req, res) => {
             return res.json({ success: true, data: [] });
         }
         const rawTag = q.replace(/^#/, '');
+        const cleanQuery = q.replace(/^[#@]/, '').trim();
+        // Tokenize multi-word query into distinct keywords (ignore trivial stop words)
+        const rawTokens = q
+            .toLowerCase()
+            .replace(/[^a-z0-9#@_\s]/g, ' ')
+            .split(/\s+/)
+            .map(t => t.trim())
+            .filter(t => t.length >= 2);
+        const filteredTokens = rawTokens.filter(t => !SEARCH_STOP_WORDS.has(t));
+        const effectiveTokens = filteredTokens.length > 0 ? filteredTokens : rawTokens;
         const searchConditions = [
             { content: { contains: q, mode: 'insensitive' } },
             { hashtags: { contains: q, mode: 'insensitive' } },
@@ -762,12 +877,26 @@ router.get('/search', auth_1.optionalAuth, async (req, res) => {
             searchConditions.push({ content: { contains: rawTag, mode: 'insensitive' } });
             searchConditions.push({ hashtags: { contains: rawTag, mode: 'insensitive' } });
         }
+        if (cleanQuery !== q && cleanQuery.length > 0) {
+            searchConditions.push({ author: { username: { contains: cleanQuery, mode: 'insensitive' } } });
+            searchConditions.push({ author: { fullName: { contains: cleanQuery, mode: 'insensitive' } } });
+        }
+        // Add token matching for multi-word queries
+        for (const token of effectiveTokens.slice(0, 6)) {
+            const cleanToken = token.replace(/^[#@]/, '');
+            if (!cleanToken)
+                continue;
+            searchConditions.push({ content: { contains: cleanToken, mode: 'insensitive' } });
+            searchConditions.push({ hashtags: { contains: cleanToken, mode: 'insensitive' } });
+            searchConditions.push({ author: { username: { contains: cleanToken, mode: 'insensitive' } } });
+            searchConditions.push({ author: { fullName: { contains: cleanToken, mode: 'insensitive' } } });
+        }
         const posts = await db_1.prisma.post.findMany({
             where: {
                 status: 'active',
                 OR: searchConditions,
             },
-            take: 40,
+            take: 60,
             orderBy: { createdAt: 'desc' },
             include: {
                 author: {
@@ -785,15 +914,91 @@ router.get('/search', auth_1.optionalAuth, async (req, res) => {
                 _count: { select: { comments: true, likes: true } },
             },
         });
-        const formatted = posts.map(p => {
+        // Check blocked users if user is authenticated
+        const blockedUserIds = new Set();
+        if (userId) {
+            const blocks = await db_1.prisma.blockedUser.findMany({
+                where: {
+                    OR: [
+                        { blockerId: userId },
+                        { blockedId: userId },
+                    ],
+                },
+                select: { blockerId: true, blockedId: true },
+            });
+            for (const b of blocks) {
+                if (b.blockerId === userId)
+                    blockedUserIds.add(b.blockedId);
+                if (b.blockedId === userId)
+                    blockedUserIds.add(b.blockerId);
+            }
+        }
+        // Rank candidates by relevance
+        const qLower = q.toLowerCase();
+        const cleanLower = cleanQuery.toLowerCase();
+        const scored = posts
+            .filter(p => !blockedUserIds.has(p.authorId))
+            .map(p => {
+            let score = 0;
+            const contentLower = (p.content || '').toLowerCase();
+            const hashtagsLower = (p.hashtags || '').toLowerCase();
+            const authorUserLower = (p.author?.username || '').toLowerCase();
+            const authorFullLower = (p.author?.fullName || '').toLowerCase();
+            // 1. Exact full query matches
+            if (contentLower.includes(qLower))
+                score += 50;
+            if (hashtagsLower.includes(rawTag.toLowerCase()) || hashtagsLower.includes(qLower))
+                score += 45;
+            if (authorUserLower === cleanLower || authorFullLower === cleanLower)
+                score += 60;
+            else if (authorUserLower.includes(cleanLower) || authorFullLower.includes(cleanLower))
+                score += 30;
+            // 2. Multi-token keyword matches
+            for (const token of effectiveTokens) {
+                const cleanToken = token.replace(/^[#@]/, '');
+                if (!cleanToken)
+                    continue;
+                if (hashtagsLower.includes(cleanToken))
+                    score += 20;
+                if (authorUserLower.includes(cleanToken) || authorFullLower.includes(cleanToken))
+                    score += 15;
+                if (contentLower.includes(cleanToken))
+                    score += 10;
+            }
+            // 3. Creator verification boost
+            if (p.author?.isVerified) {
+                if (p.author?.verificationType === 'GOLD')
+                    score += 15;
+                else if (p.author?.verificationType === 'VIOLET')
+                    score += 12;
+                else
+                    score += 8;
+            }
+            // 4. Social engagement & popularity
+            const likes = p._count?.likes ?? 0;
+            const comments = p._count?.comments ?? 0;
+            score += Math.min(25, likes * 0.5 + comments * 1.0);
+            // 5. Recency boost
+            const ageHours = (Date.now() - new Date(p.createdAt).getTime()) / (1000 * 60 * 60);
+            if (ageHours < 24)
+                score += 15;
+            else if (ageHours < 72)
+                score += 10;
+            else if (ageHours < 168)
+                score += 5;
+            return { post: p, score };
+        });
+        // Sort by computed relevance descending
+        scored.sort((a, b) => b.score - a.score);
+        const formatted = scored.slice(0, 40).map(({ post: p }) => {
             const { likes, savedBy, _count, ...rest } = p;
-            return {
+            return sanitizePost({
                 ...rest,
                 commentsCount: _count?.comments ?? 0,
                 likesCount: _count?.likes ?? 0,
                 isLiked: Array.isArray(likes) ? likes.length > 0 : false,
                 isSaved: Array.isArray(savedBy) ? savedBy.length > 0 : false,
-            };
+            }, req.user?.role, userId);
         });
         return res.json({ success: true, data: formatted });
     }
@@ -848,9 +1053,17 @@ router.post('/', auth_1.authenticateToken, async (req, res) => {
         if (!content && (!mediaUrls || mediaUrls.length === 0) && !mediaUrl) {
             return res.status(400).json({ error: 'Post must contain text content or media' });
         }
+        // 1. AI Content Moderation Gate: Keyword and context check
         const checkMod = (0, aiBotService_1.isContentInappropriate)(content || '');
         if (checkMod.flagged) {
-            return res.status(400).json({ error: checkMod.reason });
+            return res.status(400).json({ error: checkMod.reason, code: 'CONTENT_MODERATION_BLOCKED' });
+        }
+        // Determine initial publication status (active vs held for review)
+        let postStatus = 'active';
+        const reviewTriggers = ['threat', 'suicide', 'harass', 'leak', 'bomb', 'weapon'];
+        const lowerText = (content || '').toLowerCase();
+        if (reviewTriggers.some(t => lowerText.includes(t))) {
+            postStatus = 'review';
         }
         const effectiveIsAnonymous = isAnonymous === true || channelId === 'confessions';
         const rawTags = [];
@@ -882,6 +1095,7 @@ router.post('/', auth_1.authenticateToken, async (req, res) => {
                 mentions: JSON.stringify(mentions || []),
                 visibility: visibility || 'everyone',
                 channelId: channelId || 'general',
+                status: postStatus,
                 isAnonymous: effectiveIsAnonymous,
                 replyPermission: replyPermission || 'everyone',
                 pollData: pollData ? JSON.stringify(pollData) : null,
@@ -1006,6 +1220,42 @@ router.post('/', auth_1.authenticateToken, async (req, res) => {
     }
 });
 /**
+ * POST /api/posts/:id/interact
+ * Records student behavioral interaction signals to train the feed personalization engine:
+ * actions: 'view', 'like', 'save', 'share', 'watch_complete', 'skip', 'not_interested', 'mute_author', 'mute_topic'
+ */
+router.post('/:id/interact', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const postId = String(req.params.id);
+        const { action } = req.body;
+        if (!action) {
+            return res.status(400).json({ error: 'Interaction action is required' });
+        }
+        const post = await db_1.prisma.post.findUnique({
+            where: { id: postId },
+            select: { authorId: true, hashtags: true, channelId: true },
+        });
+        if (post) {
+            let tags = [];
+            try {
+                tags = JSON.parse(post.hashtags || '[]');
+            }
+            catch { }
+            await (0, recommendationService_1.recordUserInteraction)(userId, postId, action, {
+                authorId: post.authorId,
+                tags,
+                channelId: post.channelId,
+            });
+        }
+        return res.json({ success: true, action, postId });
+    }
+    catch (error) {
+        console.error('Error recording post interaction:', error);
+        return res.status(500).json({ error: 'Failed to record interaction' });
+    }
+});
+/**
  * GET /api/posts/:id - Get single post by ID
  */
 router.get('/:id', auth_1.optionalAuth, async (req, res) => {
@@ -1083,16 +1333,14 @@ router.post('/:id/like', auth_1.authenticateToken, async (req, res) => {
             const post = await db_1.prisma.post.findUnique({ where: { id: postId }, select: { authorId: true } });
             if (post && post.authorId && post.authorId !== userId) {
                 const liker = await db_1.prisma.user.findUnique({ where: { id: userId }, select: { fullName: true, username: true } });
-                await db_1.prisma.notification.create({
-                    data: {
-                        userId: post.authorId,
-                        senderId: userId,
-                        title: 'New Like',
-                        body: `${liker?.fullName || liker?.username || 'Someone'} liked your post`,
-                        type: 'like',
-                        relatedId: postId,
-                    },
-                }).catch(() => { });
+                const senderName = liker?.fullName || liker?.username || 'Someone';
+                sendOrGroupNotification({
+                    userId: post.authorId,
+                    senderId: userId,
+                    type: 'like',
+                    relatedId: postId,
+                    senderName,
+                });
             }
             return res.json({ success: true, isLiked: true });
         }
@@ -1195,16 +1443,14 @@ router.post('/:id/repost', auth_1.authenticateToken, async (req, res) => {
         ]);
         if (originalPost.authorId && originalPost.authorId !== userId) {
             const reposter = await db_1.prisma.user.findUnique({ where: { id: userId }, select: { fullName: true, username: true } });
-            await db_1.prisma.notification.create({
-                data: {
-                    userId: originalPost.authorId,
-                    senderId: userId,
-                    title: 'Post Reposted',
-                    body: `${reposter?.fullName || reposter?.username || 'Someone'} reposted your post`,
-                    type: 'repost',
-                    relatedId: postId,
-                },
-            }).catch(() => { });
+            const senderName = reposter?.fullName || reposter?.username || 'Someone';
+            sendOrGroupNotification({
+                userId: originalPost.authorId,
+                senderId: userId,
+                type: 'repost',
+                relatedId: postId,
+                senderName,
+            });
         }
         return res.status(201).json({ success: true, data: createdRepost });
     }
@@ -1256,62 +1502,101 @@ router.post('/:id/watch', auth_1.authenticateToken, async (req, res) => {
     }
 });
 /**
- * GET /api/posts/:id/comments - Get comments sorted by verification tier
+ * GET /api/posts/:id/comments - Get comments sorted by creator priority, verification tier, and engagement
  */
 router.get('/:id/comments', auth_1.optionalAuth, async (req, res) => {
     try {
-        const comments = await db_1.prisma.postComment.findMany({
-            where: { postId: String(req.params.id) },
-            take: 100,
-            include: {
-                author: {
-                    select: { id: true, username: true, fullName: true, avatarUrl: true, isVerified: true, verificationType: true },
-                },
-                replies: {
-                    take: 10,
-                    include: {
-                        author: { select: { id: true, username: true, fullName: true, avatarUrl: true, isVerified: true, verificationType: true } },
+        const postId = String(req.params.id);
+        // Fetch post author and comments concurrently in parallel
+        const [targetPost, comments] = await Promise.all([
+            db_1.prisma.post.findUnique({
+                where: { id: postId },
+                select: { authorId: true },
+            }),
+            db_1.prisma.postComment.findMany({
+                where: { postId },
+                orderBy: { createdAt: 'desc' },
+                take: 100,
+                include: {
+                    author: {
+                        select: { id: true, username: true, fullName: true, avatarUrl: true, isVerified: true, verificationType: true },
+                    },
+                    replies: {
+                        take: 20,
+                        include: {
+                            author: { select: { id: true, username: true, fullName: true, avatarUrl: true, isVerified: true, verificationType: true } },
+                        },
                     },
                 },
-            },
-        });
-        const getWeight = (author) => {
-            if (!author)
+            }),
+        ]);
+        const postAuthorId = targetPost?.authorId;
+        const getWeight = (comment) => {
+            if (!comment || !comment.author)
                 return 0;
-            const vType = String(author.verificationType || '').toUpperCase();
+            // 1. Post creator priority
+            if (postAuthorId && comment.authorId === postAuthorId)
+                return 10;
+            // 2. Verified badges
+            const vType = String(comment.author.verificationType || '').toUpperCase();
             if (vType === 'GOLD')
-                return 3;
+                return 4;
             if (vType === 'VIOLET')
+                return 3;
+            if (vType === 'BLUE' || comment.author.isVerified)
                 return 2;
-            if (vType === 'BLUE' || author.isVerified)
-                return 1;
-            return 0;
+            return 1;
         };
         comments.sort((a, b) => {
-            const weightA = getWeight(a.author);
-            const weightB = getWeight(b.author);
+            const weightA = getWeight(a);
+            const weightB = getWeight(b);
             if (weightA !== weightB) {
-                return weightB - weightA; // Gold (3) > Violet (2) > Blue (1) > None (0) at top
+                return weightB - weightA; // Creator (10) > Gold (4) > Violet (3) > Blue (2) > Student (1)
             }
             return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
         });
+        // Also prioritize creator replies inside each reply thread
+        for (const c of comments) {
+            if (Array.isArray(c.replies) && c.replies.length > 1) {
+                c.replies.sort((rA, rB) => {
+                    const isCreatorA = postAuthorId && rA.authorId === postAuthorId ? 1 : 0;
+                    const isCreatorB = postAuthorId && rB.authorId === postAuthorId ? 1 : 0;
+                    if (isCreatorA !== isCreatorB)
+                        return isCreatorB - isCreatorA;
+                    return new Date(rA.createdAt).getTime() - new Date(rB.createdAt).getTime();
+                });
+            }
+        }
         return res.json({ success: true, data: comments });
     }
     catch (error) {
         return res.status(500).json({ error: 'Failed to fetch comments' });
     }
 });
+// Comment velocity tracker for anti-spam rate limiting
+const userCommentTimestamps = new Map();
 /**
- * POST /api/posts/:id/comment - Add a comment
+ * POST /api/posts/:id/comment - Add a comment with toxicity & spam protection
  */
 router.post('/:id/comment', auth_1.authenticateToken, async (req, res) => {
     try {
+        const userId = req.user.id;
         const { content, parentCommentId } = req.body;
-        if (!content)
+        if (!content || !String(content).trim())
             return res.status(400).json({ error: 'Comment content is required' });
+        // 1. Spam Velocity Rate Limit (max 6 comments per 15s)
+        const now = Date.now();
+        let timestamps = userCommentTimestamps.get(userId) || [];
+        timestamps = timestamps.filter(t => now - t < 15000);
+        if (timestamps.length >= 6) {
+            return res.status(429).json({ error: 'You are commenting too quickly. Please wait a moment.' });
+        }
+        timestamps.push(now);
+        userCommentTimestamps.set(userId, timestamps);
+        // 2. Toxicity & Inappropriate Content Filter
         const checkMod = (0, aiBotService_1.isContentInappropriate)(content);
         if (checkMod.flagged) {
-            return res.status(400).json({ error: checkMod.reason });
+            return res.status(400).json({ error: checkMod.reason, code: 'COMMENT_SAFETY_VIOLATION' });
         }
         if (parentCommentId) {
             // It's a reply
@@ -1353,16 +1638,15 @@ router.post('/:id/comment', auth_1.authenticateToken, async (req, res) => {
         }
         const targetPost = await db_1.prisma.post.findUnique({ where: { id: String(req.params.id) }, select: { authorId: true } });
         if (targetPost && targetPost.authorId && targetPost.authorId !== req.user.id) {
-            await db_1.prisma.notification.create({
-                data: {
-                    userId: targetPost.authorId,
-                    senderId: req.user.id,
-                    title: 'New Comment',
-                    body: `${comment.author.fullName || comment.author.username || 'Someone'} commented: "${content.length > 50 ? content.slice(0, 47) + '...' : content}"`,
-                    type: 'comment',
-                    relatedId: String(req.params.id),
-                },
-            }).catch(() => { });
+            const senderName = comment.author.fullName || comment.author.username || 'Someone';
+            sendOrGroupNotification({
+                userId: targetPost.authorId,
+                senderId: req.user.id,
+                type: 'comment',
+                relatedId: String(req.params.id),
+                senderName,
+                commentSnippet: content,
+            });
         }
         return res.status(201).json({ success: true, data: comment });
     }
@@ -1450,13 +1734,15 @@ router.post('/:id/poll-vote', auth_1.authenticateToken, async (req, res) => {
         // Increment newly voted option
         poll.votes[optionIndex] = (poll.votes[optionIndex] || 0) + 1;
         poll.voters[userId] = optionIndex;
-        poll.userVotedIndex = optionIndex;
+        // Crucial: remove userVotedIndex before saving to shared DB column so other users can vote!
+        delete poll.userVotedIndex;
         await db_1.prisma.post.update({
             where: { id: postId },
             data: { pollData: JSON.stringify(poll) },
         });
         console.log(`🗳️ User ${userId} voted option ${optionIndex} on poll post ${postId}`);
-        return res.json({ success: true, data: poll, pollData: poll });
+        const clientPollData = { ...poll, userVotedIndex: optionIndex };
+        return res.json({ success: true, data: clientPollData, pollData: clientPollData });
     }
     catch (error) {
         console.error('Error voting on poll:', error);
