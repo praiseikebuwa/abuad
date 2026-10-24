@@ -67,8 +67,11 @@ pm2 startup
 
 
 
+# If server runs out of memory (512MB VPS), enable 2GB swap once:
+# sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile && echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+
+# Fast deployment (pre-built dist):
 cd ~/abuad/backend
 git checkout -- dist/
 git pull
-npm run build
 pm2 restart abuad-backend
