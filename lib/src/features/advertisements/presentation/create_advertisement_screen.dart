@@ -351,7 +351,7 @@ class _CreateAdvertisementScreenState
                       const Divider(height: 20),
                       Consumer(
                         builder: (context, ref, child) {
-                          final itemsAsync = ref.watch(watchItemsProvider());
+                          final itemsAsync = ref.watch(marketplaceItemsProvider);
                           return itemsAsync.when(
                             data: (items) {
                               if (items.isEmpty) {

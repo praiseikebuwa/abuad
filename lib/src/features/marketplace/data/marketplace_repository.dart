@@ -110,6 +110,11 @@ final marketplaceRepositoryProvider = Provider<MarketplaceRepository>((ref) {
   return MarketplaceRepository();
 });
 
+final marketplaceItemsProvider =
+    StreamProvider.autoDispose<List<MarketplaceItem>>((ref) {
+  return ref.watch(marketplaceRepositoryProvider).watchItems();
+});
+
 class MarketplaceRepository {
   MarketplaceRepository([dynamic _]);
 
