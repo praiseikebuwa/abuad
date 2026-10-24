@@ -700,7 +700,7 @@ class ChatRepository {
 
   Future<void> leaveGroup(String channelId) async {
     final cleanId = channelId.startsWith('channel_') ? channelId.substring(8) : channelId;
-    final currentUserId = ref.read(currentUserIdProvider);
+    final currentUserId = _ref?.read(currentUserIdProvider);
     if (currentUserId != null) {
       await removeMember(cleanId, currentUserId);
     }

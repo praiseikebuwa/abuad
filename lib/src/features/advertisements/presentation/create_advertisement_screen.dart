@@ -103,7 +103,35 @@ class _CreateAdvertisementScreenState
       return;
     }
 
-    setState(() => _isPublishing = true);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.stars_rounded, color: AppColors.secondaryTeal),
+            SizedBox(width: 8),
+            Text('Coming Soon'),
+          ],
+        ),
+        content: const Text(
+          'Live campaign creation & payment processing are paused for now and will be unlocked in an upcoming update! Your placement preview is ready.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Continue Previewing'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.pop(context);
+            },
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+    return;
 
     try {
       final user = ref.read(authRepositoryProvider).currentUser;
@@ -245,6 +273,36 @@ class _CreateAdvertisementScreenState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Preview / Coming Soon notice
+              Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFFEF3C7),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: const Color(0xFFF59E0B).withValues(alpha: 0.4),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline_rounded,
+                        color: Color(0xFFF59E0B), size: 22),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Campaign Creation & Payments are paused and coming soon in an upcoming update! Feel free to design and preview your placements.',
+                        style: TextStyle(
+                          color: isDark ? const Color(0xFFFDE68A) : const Color(0xFF92400E),
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
               // Placement Selection Header
               Text(
                 'Where would you like to advertise?',
@@ -746,7 +804,7 @@ class _CreateAdvertisementScreenState
                   label: Text(
                     _isPublishing
                         ? 'Publishing Campaign...'
-                        : 'Launch Advertisement Now',
+                        : 'Publish Advertisement (Coming Soon)',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,

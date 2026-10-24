@@ -22,6 +22,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/widgets/verification_badge.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/url_validator.dart';
 import '../data/chat_repository.dart';
 import '../domain/chat_channel.dart';
 import '../domain/chat_message.dart';
@@ -321,6 +322,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (_matchingMessageIndices.isEmpty) return;
     final next = (_currentMatchIndex + 1) % _matchingMessageIndices.length;
     _jumpToMatch(next, totalItems);
+  }
+
+  void _previousMatch(int totalItems) {
+    if (_matchingMessageIndices.isEmpty) return;
+    final prev = (_currentMatchIndex - 1 + _matchingMessageIndices.length) % _matchingMessageIndices.length;
+    _jumpToMatch(prev, totalItems);
   }
 
   void _scrollToMessage(String? replyToId, List<dynamic> items) {
@@ -3380,6 +3387,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                             ),
                                           )
                                         else ...[
+                                          if (message.replyToId != null &&
+                                              message.replyToContent != null)
+                                            Container(
                                               padding: const EdgeInsets.symmetric(
                                                 horizontal: 10,
                                                 vertical: 6,
@@ -5378,12 +5388,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             child: SizedBox(
               width: 44,
               height: 44,
-              child: item.imageUrl.isNotEmpty
+              child: (item.imageUrl != null && item.imageUrl!.isNotEmpty)
                   ? CachedNetworkImage(
-                      imageUrl: UrlValidator.formatImageUrl(item.imageUrl),
+                      imageUrl: UrlValidator.formatImageUrl(item.imageUrl!),
                       fit: BoxFit.cover,
-                      placeholder: (_, __) => Container(color: Colors.grey[800]),
-                      errorWidget: (_, __, ___) => const Icon(Icons.shopping_bag_outlined, size: 24),
+                      placeholder: (_, _) => Container(color: Colors.grey[800]),
+                      errorWidget: (_, _, _) => const Icon(Icons.shopping_bag_outlined, size: 24),
                     )
                   : const Icon(Icons.shopping_bag_outlined, size: 24),
             ),

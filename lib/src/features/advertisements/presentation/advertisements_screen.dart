@@ -104,6 +104,25 @@ class AdvertisementsScreen extends ConsumerWidget {
                             ),
                           ),
                         ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.25),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Text(
+                            'COMING SOON',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 10),
@@ -118,16 +137,43 @@ class AdvertisementsScreen extends ConsumerWidget {
                     const SizedBox(height: 14),
                     ElevatedButton.icon(
                       onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                const CreateAdvertisementScreen(),
+                        showDialog(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Row(
+                              children: [
+                                Icon(Icons.stars_rounded, color: Color(0xFF0284C7)),
+                                SizedBox(width: 8),
+                                Text('Coming Soon'),
+                              ],
+                            ),
+                            content: const Text(
+                              'Ad Creation & Campus Payments are paused for now and will be live in an upcoming update! You can explore the design studio in preview mode.',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx),
+                                child: const Text('Close'),
+                              ),
+                              ElevatedButton(
+                                onPressed: () {
+                                  Navigator.pop(ctx);
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          const CreateAdvertisementScreen(),
+                                    ),
+                                  );
+                                },
+                                child: const Text('Open Preview Studio'),
+                              ),
+                            ],
                           ),
                         );
                       },
-                      icon: const Icon(Icons.rocket_launch, size: 16),
+                      icon: const Icon(Icons.visibility_rounded, size: 16),
                       label: const Text(
-                        'Launch an Ad Now',
+                        'Ad Creation (Coming Soon)',
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                       style: ElevatedButton.styleFrom(

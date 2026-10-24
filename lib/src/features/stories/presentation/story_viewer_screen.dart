@@ -56,6 +56,9 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
   AudioPlayer? _bgAudioPlayer;
   bool _isMediaLoading = false;
   late AnimationController _progressAnimController;
+  DateTime? _touchStartTime;
+  Offset? _touchStartPosition;
+  bool _isHolding = false;
 
   @override
   void initState() {
@@ -642,18 +645,49 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
       child: Scaffold(
         backgroundColor: Colors.black,
         body: GestureDetector(
+          behavior: HitTestBehavior.translucent,
           onTapDown: (details) {
-            final width = MediaQuery.of(context).size.width;
-            if (details.globalPosition.dx < width * 0.35) {
-              _previousStory();
+            _touchStartTime = DateTime.now();
+            _touchStartPosition = details.globalPosition;
+            _isHolding = false;
+            // Instantly pause timer & video when finger touches screen
+            _pauseStory();
+          },
+          onTapUp: (details) {
+            final now = DateTime.now();
+            final durationMs = _touchStartTime != null
+                ? now.difference(_touchStartTime!).inMilliseconds
+                : 999;
+            final dxDiff = _touchStartPosition != null
+                ? (details.globalPosition.dx - _touchStartPosition!.dx).abs()
+                : 0.0;
+
+            // Only navigate if it was a quick, deliberate tap and NOT a hold to view
+            if (durationMs < 300 && dxDiff < 25 && !_isHolding) {
+              final width = MediaQuery.of(context).size.width;
+              if (details.globalPosition.dx < width * 0.35) {
+                _previousStory();
+              } else {
+                _nextStory();
+              }
             } else {
-              _nextStory();
+              // Released after holding snap to view — resume playback
+              _resumeStory();
             }
+            _touchStartTime = null;
+            _isHolding = false;
+          },
+          onTapCancel: () {
+            _touchStartTime = null;
+            _isHolding = false;
+            _resumeStory();
           },
           onLongPressStart: (_) {
+            _isHolding = true;
             _pauseStory();
           },
           onLongPressEnd: (_) {
+            _isHolding = false;
             _resumeStory();
           },
           onVerticalDragEnd: (details) {
@@ -661,7 +695,18 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
               _safePop();
             }
           },
-          child: PageView.builder(
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (notification) {
+              if (notification is ScrollStartNotification) {
+                // Pause video and timer immediately during horizontal 3D swipe
+                _pauseStory();
+              } else if (notification is ScrollEndNotification) {
+                // Resume story video and timer once swipe settles
+                _resumeStory();
+              }
+              return false;
+            },
+            child: PageView.builder(
             controller: _userPageController,
             physics: widget.singleUserMode
                 ? const NeverScrollableScrollPhysics()
@@ -1650,8 +1695,9 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
           },
         ),
       ),
-      ),
-    );
+    ),
+  ),
+);
   }
 
   TextAlign _parseTextAlign(String? align) {
