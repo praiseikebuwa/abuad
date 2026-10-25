@@ -36,7 +36,7 @@ class _ExamCountdownScreenState extends State<ExamCountdownScreen>
   ];
 
   final TextEditingController _taskController = TextEditingController();
-  String _selectedCourseForTask = 'GST 111';
+  final String _selectedCourseForTask = 'GST 111';
 
   @override
   void initState() {

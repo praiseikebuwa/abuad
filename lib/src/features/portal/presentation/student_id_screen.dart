@@ -133,7 +133,7 @@ class _StudentIdScreenState extends ConsumerState<StudentIdScreen>
                   children: [
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        value: selectedLevel,
+                        initialValue: selectedLevel,
                         dropdownColor: const Color(0xFF1E293B),
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
@@ -154,7 +154,7 @@ class _StudentIdScreenState extends ConsumerState<StudentIdScreen>
                     const SizedBox(width: 10),
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        value: selectedBlood,
+                        initialValue: selectedBlood,
                         dropdownColor: const Color(0xFF1E293B),
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(

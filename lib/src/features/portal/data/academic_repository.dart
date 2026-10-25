@@ -472,6 +472,96 @@ class AcademicRepository {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_studentIdKey, jsonEncode(profile));
   }
+
+  /// Syncs extracted student data from the official ABUAD portal into the app
+  Future<Map<String, dynamic>> syncFromPortalData({
+    String? fullName,
+    String? matricNumber,
+    String? department,
+    String? college,
+    String? level,
+    String? bloodGroup,
+    String? session,
+    double? gpa,
+    double? cgpa,
+    List<Map<String, dynamic>>? courses,
+  }) async {
+    final currentProfile = await getStudentIdProfile();
+    final updatedProfile = Map<String, String>.from(currentProfile);
+
+    if (fullName != null && fullName.trim().isNotEmpty) {
+      updatedProfile['fullName'] = fullName.trim();
+    }
+    if (matricNumber != null && matricNumber.trim().isNotEmpty) {
+      updatedProfile['matricNumber'] = matricNumber.trim();
+    }
+    if (department != null && department.trim().isNotEmpty) {
+      updatedProfile['department'] = department.trim();
+    }
+    if (college != null && college.trim().isNotEmpty) {
+      updatedProfile['college'] = college.trim();
+    }
+    if (level != null && level.trim().isNotEmpty) {
+      final lvl = level.trim().toUpperCase();
+      updatedProfile['level'] = lvl.endsWith('L') ? lvl : '${lvl}L';
+    }
+    if (bloodGroup != null && bloodGroup.trim().isNotEmpty) {
+      updatedProfile['bloodGroup'] = bloodGroup.trim();
+    }
+    if (session != null && session.trim().isNotEmpty) {
+      updatedProfile['session'] = session.trim();
+    }
+
+    await saveStudentIdProfile(updatedProfile);
+
+    // If courses were registered/scraped, update timetable courses
+    int importedCoursesCount = 0;
+    if (courses != null && courses.isNotEmpty) {
+      final existingTimetable = await getTimetable();
+      for (final c in courses) {
+        final code = c['code']?.toString().trim() ?? '';
+        final title = c['title']?.toString().trim() ?? '';
+        final courseDisplay = code.isNotEmpty
+            ? (title.isNotEmpty ? '$code - $title' : code)
+            : title;
+        if (courseDisplay.isEmpty) continue;
+
+        final exists = existingTimetable.any((t) =>
+            t['course'].toString().toLowerCase().contains(code.toLowerCase()));
+        if (!exists) {
+          final day = c['day']?.toString() ?? 'Monday';
+          final time = c['time']?.toString() ?? '08:00 - 10:00';
+          final venue = c['venue']?.toString() ?? 'Lecture Theatre';
+          final lecturer = c['lecturer']?.toString() ?? 'Course Lecturer';
+          await addTimetableClass({
+            'day': day,
+            'time': time,
+            'course': courseDisplay,
+            'venue': venue,
+            'lecturer': lecturer,
+          });
+          importedCoursesCount++;
+        }
+      }
+    }
+
+    // If GPA / semester results were found
+    if (gpa != null && gpa > 0) {
+      final semesterName =
+          '${updatedProfile['session'] ?? '2024/2025'} Semester Result';
+      await saveGPAResult(
+        semester: semesterName,
+        gpa: gpa,
+        courses: courses ?? [],
+      );
+    }
+
+    return {
+      'profile': updatedProfile,
+      'importedCoursesCount': importedCoursesCount,
+      'gpa': gpa,
+    };
+  }
 }
 
 final academicRepositoryProvider = Provider<AcademicRepository>((ref) {

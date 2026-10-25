@@ -562,6 +562,187 @@
                     </div>
                 </div>
 
+                <!-- Broadcasts & Announcements Tab -->
+                <div id="broadcasts-tab" class="tab-content">
+                    <header class="content-header">
+                        <div>
+                            <h1>Campus Broadcasts & Targeted Alerts</h1>
+                            <p style="color: var(--text-secondary); margin-top: 4px;">
+                                Dispatch real-time notices, urgent alerts, and academic communications targeted to specific colleges, departments, levels, or everyone.
+                            </p>
+                        </div>
+                        <div>
+                            <button id="refresh-broadcasts-btn" class="btn-secondary" style="display: inline-flex; align-items: center; gap: 8px;">
+                                <i class="fas fa-sync-alt"></i> Refresh Feed
+                            </button>
+                        </div>
+                    </header>
+
+                    <div class="broadcast-layout" style="display: grid; grid-template-columns: 1.1fr 1fr; gap: 24px; align-items: start;">
+                        <!-- Compose Card -->
+                        <div class="card" style="border: 1px solid var(--border-subtle); padding: 24px; border-radius: 12px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                <h3 style="margin: 0; display: flex; align-items: center; gap: 10px;">
+                                    <i class="fas fa-bullhorn" style="color: var(--color-primary-light);"></i>
+                                    Compose Targeted Broadcast
+                                </h3>
+                                <span id="broadcast-reach-badge" class="badge badge-info" style="font-size: 0.8rem; padding: 4px 10px;">
+                                    <i class="fas fa-users"></i> Target: Everyone
+                                </span>
+                            </div>
+
+                            <form id="broadcast-form">
+                                <div class="form-group" style="margin-bottom: 16px;">
+                                    <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.88rem;">Announcement Title</label>
+                                    <input type="text" id="broadcast-title" placeholder="e.g. Mid-Semester Exam Schedule Released" required
+                                        style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-subtle); background: var(--bg-card); color: var(--text-primary); font-size: 0.95rem;">
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 16px;">
+                                    <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.88rem;">Message Content</label>
+                                    <textarea id="broadcast-message" rows="5" placeholder="Enter detailed broadcast message to display on student devices..." required
+                                        style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-subtle); background: var(--bg-card); color: var(--text-primary); font-size: 0.92rem; font-family: inherit; resize: vertical;"></textarea>
+                                </div>
+
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px;">
+                                    <div class="form-group">
+                                        <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.88rem;">Target Audience</label>
+                                        <select id="broadcast-target" style="width: 100%; padding: 11px; border-radius: 8px; border: 1px solid var(--border-subtle); background: var(--bg-card); color: var(--text-primary); font-size: 0.9rem;">
+                                            <option value="everyone">All Campus (Students & Staff)</option>
+                                            <option value="students">All Students</option>
+                                            <option value="department">Specific Department</option>
+                                            <option value="college">Specific College</option>
+                                            <option value="level">Specific Academic Level</option>
+                                            <option value="staff">Staff & Faculty Only</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.88rem;">Notification Type</label>
+                                        <select id="broadcast-type" style="width: 100%; padding: 11px; border-radius: 8px; border: 1px solid var(--border-subtle); background: var(--bg-card); color: var(--text-primary); font-size: 0.9rem;">
+                                            <option value="info">📢 Info / Campus Notice</option>
+                                            <option value="urgent">⚠️ Urgent Alert</option>
+                                            <option value="academic">🎓 Academic & Examination</option>
+                                            <option value="security">🛡️ Security & Health Advisory</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <!-- Dynamic Targeting Filters -->
+                                <div id="targeting-filters-container" style="background: rgba(255,255,255,0.03); border: 1px dashed var(--border-subtle); border-radius: 10px; padding: 16px; margin-bottom: 20px;">
+                                    <div style="font-size: 0.85rem; font-weight: 600; color: var(--color-primary-light); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                                        <i class="fas fa-filter"></i> Targeting Filters (Optional / Fine-tune):
+                                    </div>
+
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px;">
+                                        <div class="form-group">
+                                            <label style="display: block; font-size: 0.82rem; margin-bottom: 4px; color: var(--text-secondary);">Target College</label>
+                                            <select id="broadcast-college" style="width: 100%; padding: 9px; border-radius: 8px; border: 1px solid var(--border-subtle); background: var(--bg-card); color: var(--text-primary); font-size: 0.85rem;">
+                                                <option value="all">Any / All Colleges</option>
+                                                <option value="College of Engineering">College of Engineering</option>
+                                                <option value="College of Law">College of Law</option>
+                                                <option value="College of Medicine and Health Sciences">College of Medicine & Health Sciences (MHS)</option>
+                                                <option value="College of Sciences">College of Sciences</option>
+                                                <option value="College of Social and Management Sciences">College of Social & Management Sciences (SMS)</option>
+                                                <option value="College of Pharmacy">College of Pharmacy</option>
+                                            </select>
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label style="display: block; font-size: 0.82rem; margin-bottom: 4px; color: var(--text-secondary);">Target Academic Level</label>
+                                            <select id="broadcast-level" style="width: 100%; padding: 9px; border-radius: 8px; border: 1px solid var(--border-subtle); background: var(--bg-card); color: var(--text-primary); font-size: 0.85rem;">
+                                                <option value="all">Any / All Levels</option>
+                                                <option value="100">100 Level (Freshers)</option>
+                                                <option value="200">200 Level</option>
+                                                <option value="300">300 Level</option>
+                                                <option value="400">400 Level</option>
+                                                <option value="500">500 Level (Final Year)</option>
+                                                <option value="600">600 Level (Medical)</option>
+                                                <option value="Postgraduate">Postgraduate</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label style="display: block; font-size: 0.82rem; margin-bottom: 4px; color: var(--text-secondary);">Target Department</label>
+                                        <select id="broadcast-department" style="width: 100%; padding: 9px; border-radius: 8px; border: 1px solid var(--border-subtle); background: var(--bg-card); color: var(--text-primary); font-size: 0.85rem;">
+                                            <option value="all">Any / All Departments</option>
+                                            <!-- Engineering -->
+                                            <optgroup label="Engineering">
+                                                <option value="Computer Engineering">Computer Engineering</option>
+                                                <option value="Electrical / Electronics Engineering">Electrical / Electronics Engineering</option>
+                                                <option value="Mechanical Engineering">Mechanical Engineering</option>
+                                                <option value="Mechatronics Engineering">Mechatronics Engineering</option>
+                                                <option value="Civil Engineering">Civil Engineering</option>
+                                                <option value="Chemical / Petroleum Engineering">Chemical / Petroleum Engineering</option>
+                                                <option value="Biomedical Engineering">Biomedical Engineering</option>
+                                                <option value="Aeronautical Engineering">Aeronautical Engineering</option>
+                                            </optgroup>
+                                            <!-- Sciences & Computing -->
+                                            <optgroup label="Sciences & Computing">
+                                                <option value="Computer Science">Computer Science</option>
+                                                <option value="Cyber Security">Cyber Security</option>
+                                                <option value="Software Engineering">Software Engineering</option>
+                                                <option value="Information Technology">Information Technology</option>
+                                                <option value="Microbiology">Microbiology</option>
+                                                <option value="Biochemistry">Biochemistry</option>
+                                                <option value="Industrial Chemistry">Industrial Chemistry</option>
+                                            </optgroup>
+                                            <!-- Medicine & Health Sciences -->
+                                            <optgroup label="Medicine & Health Sciences">
+                                                <option value="Medicine & Surgery">Medicine & Surgery (MBBS)</option>
+                                                <option value="Nursing Science">Nursing Science</option>
+                                                <option value="Medical Laboratory Science">Medical Laboratory Science</option>
+                                                <option value="Pharmacy">Pharmacy</option>
+                                                <option value="Public Health">Public Health</option>
+                                                <option value="Human Anatomy">Human Anatomy</option>
+                                                <option value="Physiology">Physiology</option>
+                                            </optgroup>
+                                            <!-- Law -->
+                                            <optgroup label="Law">
+                                                <option value="Law">Law (LLB)</option>
+                                            </optgroup>
+                                            <!-- Social & Management Sciences -->
+                                            <optgroup label="Social & Management Sciences">
+                                                <option value="Accounting">Accounting</option>
+                                                <option value="Business Administration">Business Administration</option>
+                                                <option value="Economics">Economics</option>
+                                                <option value="Finance">Finance</option>
+                                                <option value="International Relations & Diplomacy">International Relations & Diplomacy</option>
+                                                <option value="Media & Communication Studies">Media & Communication Studies</option>
+                                                <option value="Peace & Conflict Studies">Peace & Conflict Studies</option>
+                                                <option value="Tourism & Events Management">Tourism & Events Management</option>
+                                            </optgroup>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <button type="submit" class="btn-primary" style="width: 100%; padding: 12px; font-weight: 600; display: flex; justify-content: center; align-items: center; gap: 8px;">
+                                    <i class="fas fa-paper-plane"></i> Send Broadcast to Campus
+                                </button>
+                            </form>
+                        </div>
+
+                        <!-- Broadcast History Card -->
+                        <div class="card" style="border: 1px solid var(--border-subtle); padding: 24px; border-radius: 12px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                                <h3 style="margin: 0; display: flex; align-items: center; gap: 8px;">
+                                    <i class="fas fa-history" style="color: var(--color-primary-light);"></i>
+                                    Broadcast Feed & History
+                                </h3>
+                                <span id="broadcasts-count" class="badge badge-secondary" style="font-size: 0.8rem;">0 Total</span>
+                            </div>
+
+                            <div id="broadcast-history" style="display: flex; flex-direction: column; gap: 12px; max-height: 620px; overflow-y: auto; padding-right: 4px;">
+                                <div style="text-align: center; padding: 30px; color: var(--text-secondary);">
+                                    <i class="fas fa-spinner fa-spin" style="font-size: 1.5rem; margin-bottom: 10px;"></i>
+                                    <p>Loading broadcasts...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Reports Tab -->
                 <div id="reports-tab" class="tab-content">
                     <header class="content-header">

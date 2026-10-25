@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -36,6 +35,10 @@ class _AbuadPortalWebViewScreenState
   bool _autoSignInEnabled = true;
   bool _credentialsLoaded = false;
   bool _hasAttemptedAutoFill = false;
+
+  // Extracted Student Portal Data
+  Map<String, dynamic>? _detectedPortalData;
+  bool _isExtracting = false;
 
   @override
   void initState() {
@@ -95,6 +98,10 @@ class _AbuadPortalWebViewScreenState
               _injectAutoSignIn();
             }
             _injectCredentialWatcher();
+            // Automatically scrape student profile & registered courses from portal DOM
+            Future.delayed(const Duration(milliseconds: 900), () {
+              if (mounted) _injectPortalDataExtractor();
+            });
           },
           onWebResourceError: (WebResourceError error) {
             debugPrint('ABUAD Portal Web Error: ${error.description}');
@@ -106,11 +113,16 @@ class _AbuadPortalWebViewScreenState
         onMessageReceived: (JavaScriptMessage message) {
           try {
             final data = jsonDecode(message.message);
-            if (data is Map && data['username'] != null && data['password'] != null) {
-              final u = data['username'].toString().trim();
-              final p = data['password'].toString().trim();
-              if (u.isNotEmpty && p.isNotEmpty && (u != _savedUsername || p != _savedPassword)) {
-                _showSaveCredentialsPrompt(u, p);
+            if (data is Map) {
+              if (data['type'] == 'PORTAL_DATA_SYNC') {
+                final payload = Map<String, dynamic>.from(data['payload'] as Map? ?? {});
+                _handleExtractedPortalData(payload);
+              } else if (data['username'] != null && data['password'] != null) {
+                final u = data['username'].toString().trim();
+                final p = data['password'].toString().trim();
+                if (u.isNotEmpty && p.isNotEmpty && (u != _savedUsername || p != _savedPassword)) {
+                  _showSaveCredentialsPrompt(u, p);
+                }
               }
             }
           } catch (_) {}
@@ -230,6 +242,381 @@ class _AbuadPortalWebViewScreenState
     try {
       await _controller.runJavaScript(script);
     } catch (_) {}
+  }
+
+  /// Extracts student profile, matriculation number, department, college, level, and courses from ABUAD portal DOM
+  Future<void> _injectPortalDataExtractor({bool manual = false}) async {
+    final script = '''
+      (function() {
+        try {
+          var text = document.body ? document.body.innerText : '';
+          
+          // 1. Matric Number (e.g. 21/ENG02/089, 22/SMS01/014, 20/LAW01/050)
+          var matricMatch = text.match(/\\b(\\d{2}\\/[A-Za-z0-9]{2,8}\\/\\d{2,5})\\b/);
+          var matricNumber = matricMatch ? matricMatch[1].toUpperCase() : null;
+
+          // 2. Full Name
+          var nameEl = document.querySelector('.user-name, .profile-name, #lblStudentName, .navbar-text, .username, .profile-info h4, span[id*="Name" i], .user-panel .info p, .student-name');
+          var fullName = null;
+          if (nameEl && nameEl.innerText && nameEl.innerText.trim().length > 3) {
+            fullName = nameEl.innerText.replace(/welcome|student|logged in as|portal/gi, '').trim();
+          }
+          if (!fullName) {
+            var nameMatch = text.match(/(?:Student Name|Full Name|Name)\\s*[:\\-]\\s*([A-Za-z\\s]{3,40})(?:\\n|\\r|\$)/i);
+            if (nameMatch) {
+              fullName = nameMatch[1].trim();
+            }
+          }
+
+          // 3. Department
+          var deptEl = document.querySelector('span[id*="Department" i], span[id*="Dept" i]');
+          var department = deptEl && deptEl.innerText.trim().length > 2 ? deptEl.innerText.trim() : null;
+          if (!department) {
+            var deptMatch = text.match(/(?:Department of|Department)\\s*[:\\-]?\\s*([A-Za-z\\s&/]{4,50})(?:\\n|\\r|,|\$)/i);
+            if (deptMatch) department = deptMatch[1].trim();
+          }
+
+          // 4. College
+          var colEl = document.querySelector('span[id*="College" i]');
+          var college = colEl && colEl.innerText.trim().length > 2 ? colEl.innerText.trim() : null;
+          if (!college) {
+            var colMatch = text.match(/(?:College of|College)\\s*[:\\-]?\\s*([A-Za-z\\s&]{4,50})(?:\\n|\\r|,|\$)/i);
+            if (colMatch) college = colMatch[1].trim();
+          }
+
+          // 5. Academic Level (100L - 600L)
+          var lvlMatch = text.match(/\\b([1-6]00)\\s*(?:Level|L)?\\b/i);
+          var level = lvlMatch ? lvlMatch[1] + 'L' : null;
+
+          // 6. Blood Group
+          var bgMatch = text.match(/\\b(A|B|AB|O)[+-]\\b/);
+          var bloodGroup = bgMatch ? bgMatch[0] : null;
+
+          // 7. Academic Session (e.g. 2024/2025)
+          var sessMatch = text.match(/\\b(20\\d{2}\\/20\\d{2})\\b/);
+          var session = sessMatch ? sessMatch[1] : null;
+
+          // 8. GPA / CGPA
+          var gpaMatch = text.match(/(?:GPA|CGPA|Grade Point Average)\\s*[:\\-]?\\s*([0-5]\\.\\d{1,2})/i);
+          var gpa = gpaMatch ? parseFloat(gpaMatch[1]) : null;
+
+          // 9. Registered Courses from tables
+          var courses = [];
+          var rows = document.querySelectorAll('tr');
+          rows.forEach(function(row) {
+            var rowText = row.innerText;
+            var codeMatch = rowText.match(/\\b([A-Z]{3}\\s*\\d{3})\\b/);
+            if (codeMatch) {
+              var code = codeMatch[1].replace(/\\s+/, ' ');
+              var cells = row.querySelectorAll('td, th');
+              var title = '';
+              var units = 3;
+              var grade = 'A';
+
+              cells.forEach(function(cell) {
+                var cellTxt = cell.innerText.trim();
+                if (cellTxt.length > 5 && !cellTxt.match(/^[A-Z]{3}\\s*\\d{3}\$/) && !title) {
+                  title = cellTxt;
+                }
+                if (cellTxt.match(/^[1-6]\$/)) {
+                  units = parseInt(cellTxt, 10);
+                }
+                if (cellTxt.match(/^[A-F]\$/i)) {
+                  grade = cellTxt.toUpperCase();
+                }
+              });
+
+              // Prevent duplicates
+              if (!courses.some(function(c) { return c.code === code; })) {
+                courses.push({
+                  code: code,
+                  title: title || code,
+                  units: units,
+                  grade: grade,
+                  day: 'Monday',
+                  time: '08:00 - 10:00',
+                  venue: 'Lecture Theatre'
+                });
+              }
+            }
+          });
+
+          // Post extracted payload to Flutter Bridge
+          if (matricNumber || fullName || courses.length > 0 || department) {
+            AbuadPortalBridge.postMessage(JSON.stringify({
+              type: 'PORTAL_DATA_SYNC',
+              payload: {
+                fullName: fullName,
+                matricNumber: matricNumber,
+                department: department,
+                college: college,
+                level: level,
+                bloodGroup: bloodGroup,
+                session: session,
+                gpa: gpa,
+                courses: courses,
+                isManual: $manual
+              }
+            }));
+          } else if ($manual) {
+            AbuadPortalBridge.postMessage(JSON.stringify({
+              type: 'PORTAL_DATA_SYNC',
+              payload: { isEmpty: true, isManual: true }
+            }));
+          }
+        } catch(e) {
+          console.error('Portal Data Scraper Error:', e);
+        }
+      })();
+    ''';
+
+    try {
+      await _controller.runJavaScript(script);
+    } catch (e) {
+      debugPrint('Error running portal extraction script: $e');
+    }
+  }
+
+  void _triggerManualExtraction() async {
+    setState(() => _isExtracting = true);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.secondaryTeal),
+            ),
+            SizedBox(width: 12),
+            Text('Scanning ABUAD Portal for student records...'),
+          ],
+        ),
+        duration: Duration(milliseconds: 1400),
+        backgroundColor: Color(0xFF0F172A),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+    await _injectPortalDataExtractor(manual: true);
+    await Future.delayed(const Duration(milliseconds: 1500));
+    if (mounted) setState(() => _isExtracting = false);
+  }
+
+  void _handleExtractedPortalData(Map<String, dynamic> payload) {
+    if (payload['isEmpty'] == true) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No student records or course tables detected on this portal page yet.'),
+            backgroundColor: Color(0xFF1E293B),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
+
+    final matric = payload['matricNumber']?.toString().trim() ?? '';
+    final name = payload['fullName']?.toString().trim() ?? '';
+    final dept = payload['department']?.toString().trim() ?? '';
+    final courses = payload['courses'] as List<dynamic>? ?? [];
+
+    if (matric.isEmpty && name.isEmpty && dept.isEmpty && courses.isEmpty) {
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _detectedPortalData = payload;
+      });
+
+      final isManual = payload['isManual'] == true;
+      if (isManual) {
+        _showExtractedDataSyncDialog(payload);
+      }
+    }
+  }
+
+  void _showExtractedDataSyncDialog(Map<String, dynamic> data) {
+    if (!mounted) return;
+
+    final name = data['fullName']?.toString() ?? 'ABUAD Student';
+    final matric = data['matricNumber']?.toString() ?? 'Pending Portal Sync';
+    final dept = data['department']?.toString() ?? 'Not Specified';
+    final college = data['college']?.toString() ?? 'College of Engineering';
+    final level = data['level']?.toString() ?? '300L';
+    final courses = (data['courses'] as List<dynamic>?) ?? [];
+    final gpa = (data['gpa'] as num?)?.toDouble();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0F172A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: AppColors.secondaryTeal.withValues(alpha: 0.4))),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.secondaryTeal.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.school_rounded, color: AppColors.secondaryTeal, size: 24),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Sync Official Portal Data', style: GoogleFonts.outfit(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+                  Text('Update ID, Timetable & Academics', style: GoogleFonts.inter(color: Colors.white60, fontSize: 11)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'The following verified records were extracted from the ABUAD e-Portal:',
+                style: TextStyle(color: Colors.white70, fontSize: 12.5),
+              ),
+              const SizedBox(height: 14),
+
+              // Student Profile Card
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E293B),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white10),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildPreviewRow(Icons.person_rounded, 'Student Name', name),
+                    const Divider(color: Colors.white10, height: 16),
+                    _buildPreviewRow(Icons.badge_rounded, 'Matric No.', matric),
+                    const Divider(color: Colors.white10, height: 16),
+                    _buildPreviewRow(Icons.apartment_rounded, 'Department', dept),
+                    const Divider(color: Colors.white10, height: 16),
+                    _buildPreviewRow(Icons.account_balance_rounded, 'College', college),
+                    const Divider(color: Colors.white10, height: 16),
+                    _buildPreviewRow(Icons.grade_rounded, 'Level', level),
+                    if (gpa != null) ...[
+                      const Divider(color: Colors.white10, height: 16),
+                      _buildPreviewRow(Icons.trending_up_rounded, 'GPA / Results', gpa.toStringAsFixed(2)),
+                    ],
+                  ],
+                ),
+              ),
+
+              if (courses.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.secondaryTeal.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.secondaryTeal.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.menu_book_rounded, color: AppColors.secondaryTeal, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${courses.length} registered course${courses.length == 1 ? '' : 's'} found! Auto-adds to your schedule.',
+                          style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.secondaryTeal,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final repo = ref.read(academicRepositoryProvider);
+              final result = await repo.syncFromPortalData(
+                fullName: data['fullName']?.toString(),
+                matricNumber: data['matricNumber']?.toString(),
+                department: data['department']?.toString(),
+                college: data['college']?.toString(),
+                level: data['level']?.toString(),
+                bloodGroup: data['bloodGroup']?.toString(),
+                session: data['session']?.toString(),
+                gpa: gpa,
+                courses: courses.map((c) => Map<String, dynamic>.from(c as Map)).toList(),
+              );
+
+              if (mounted) {
+                setState(() => _detectedPortalData = null);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Row(
+                      children: [
+                        const Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Academic profile updated! (${result['importedCoursesCount']} courses added to timetable)',
+                            style: const TextStyle(fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                      ],
+                    ),
+                    backgroundColor: const Color(0xFF0F172A),
+                    behavior: SnackBarBehavior.floating,
+                    duration: const Duration(seconds: 4),
+                  ),
+                );
+              }
+            },
+            child: const Text('Sync to ABUAD App', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPreviewRow(IconData icon, String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: AppColors.secondaryTeal),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 90,
+          child: Text(label, style: const TextStyle(color: Colors.white60, fontSize: 12)),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w600),
+            textAlign: TextAlign.end,
+          ),
+        ),
+      ],
+    );
   }
 
   void _showSaveCredentialsPrompt(String username, String password) {
@@ -437,7 +824,7 @@ class _AbuadPortalWebViewScreenState
                 ),
                 child: SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  activeColor: AppColors.secondaryTeal,
+                  activeThumbColor: AppColors.secondaryTeal,
                   title: Text(
                     'Enable Auto Sign-In',
                     style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
@@ -580,6 +967,17 @@ class _AbuadPortalWebViewScreenState
         ),
         actions: [
           IconButton(
+            icon: _isExtracting
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.secondaryTeal),
+                  )
+                : const Icon(Icons.sync_rounded, color: AppColors.secondaryTeal),
+            tooltip: 'Sync Portal Records to App',
+            onPressed: _isExtracting ? null : _triggerManualExtraction,
+          ),
+          IconButton(
             icon: Icon(
               _savedUsername.isNotEmpty ? Icons.vpn_key_rounded : Icons.vpn_key_outlined,
               color: _savedUsername.isNotEmpty ? Colors.amberAccent : Colors.white70,
@@ -600,6 +998,9 @@ class _AbuadPortalWebViewScreenState
             color: const Color(0xFF1E293B),
             onSelected: (val) async {
               switch (val) {
+                case 'sync':
+                  _triggerManualExtraction();
+                  break;
                 case 'external':
                   final uri = Uri.parse(_currentUrl);
                   if (await canLaunchUrl(uri)) {
@@ -621,6 +1022,16 @@ class _AbuadPortalWebViewScreenState
               }
             },
             itemBuilder: (ctx) => [
+              const PopupMenuItem(
+                value: 'sync',
+                child: Row(
+                  children: [
+                    Icon(Icons.sync_rounded, color: AppColors.secondaryTeal, size: 18),
+                    SizedBox(width: 10),
+                    Text('Sync Portal Records', style: TextStyle(color: Colors.white)),
+                  ],
+                ),
+              ),
               const PopupMenuItem(
                 value: 'vault',
                 child: Row(
@@ -712,6 +1123,80 @@ class _AbuadPortalWebViewScreenState
             child: WebViewWidget(controller: _controller),
           ),
 
+          // Live Detected Portal Records Banner
+          if (_detectedPortalData != null)
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [
+                    Color(0xFF1E293B),
+                    Color(0xFF0D3B3F),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.secondaryTeal.withValues(alpha: 0.6)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.4),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.school_rounded, color: AppColors.secondaryTeal, size: 22),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'ABUAD Portal Profile Detected',
+                          style: GoogleFonts.outfit(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12.5,
+                          ),
+                        ),
+                        Text(
+                          '${_detectedPortalData!['matricNumber'] ?? _detectedPortalData!['fullName'] ?? 'Student Profile'} • Tap to Sync',
+                          style: GoogleFonts.inter(
+                            color: Colors.white70,
+                            fontSize: 11,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.secondaryTeal,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: () => _showExtractedDataSyncDialog(_detectedPortalData!),
+                    child: const Text('Sync App', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white60, size: 16),
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () => setState(() => _detectedPortalData = null),
+                  ),
+                ],
+              ),
+            ),
+
           // Browser Navigation Bottom Bar
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -801,7 +1286,7 @@ class _AbuadPortalWebViewScreenState
           style: GoogleFonts.inter(
             fontSize: 11.5,
             fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-            color: isSelected ? Colors.white : Colors.white80,
+            color: isSelected ? Colors.white : Colors.white,
           ),
         ),
         backgroundColor: isSelected ? AppColors.secondaryTeal : const Color(0xFF1E293B),

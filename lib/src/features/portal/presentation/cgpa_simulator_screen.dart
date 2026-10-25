@@ -336,7 +336,7 @@ class _CgpaSimulatorScreenState extends State<CgpaSimulatorScreen> {
                       style: GoogleFonts.robotoMono(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
                     ),
                     Text(
-                      '${_simulatedSemesterUnits} Credit Units',
+                      '$_simulatedSemesterUnits Credit Units',
                       style: GoogleFonts.robotoMono(color: Colors.white70, fontSize: 12),
                     ),
                   ],

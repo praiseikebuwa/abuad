@@ -437,42 +437,97 @@ router.delete('/posts/:id', auth_1.authenticateToken, adminOnly, (0, audit_1.aud
 });
 /**
  * POST /api/admin/broadcast
- * Send a campus announcement + system notification to everyone
+ * Send a campus announcement + system notification to everyone or targeted groups (College, Department, Level, Role)
  */
 router.post('/broadcast', auth_1.authenticateToken, adminOnly, (0, audit_1.auditAction)('BROADCAST_ANNOUNCEMENT'), async (req, res) => {
     try {
-        const { title, body, target } = req.body;
+        const { title, body, target = 'everyone', department, college, level, type = 'info' } = req.body;
         if (!title || !body)
             return res.status(400).json({ error: 'Title and body are required' });
+        // Construct target label for the announcement record
+        let targetSummary = target;
+        const targetDetails = [];
+        if (college && college !== 'all')
+            targetDetails.push(`College: ${college}`);
+        if (department && department !== 'all')
+            targetDetails.push(`Dept: ${department}`);
+        if (level && level !== 'all')
+            targetDetails.push(`Level: ${level}`);
+        if (targetDetails.length > 0) {
+            targetSummary = `${target} (${targetDetails.join(', ')})`;
+        }
         const announcement = await db_1.prisma.announcement.create({
             data: {
-                title,
-                body,
-                target: target || 'everyone',
+                title: title.trim(),
+                body: body.trim(),
+                target: targetSummary,
             },
         });
-        // Notify all active users asynchronously
-        const users = await db_1.prisma.user.findMany({ select: { id: true }, take: 2000 });
-        const notificationsData = users.map((u) => ({
-            userId: u.id,
-            title: `📢 ${title}`,
-            body,
-            type: 'system',
-        }));
-        await db_1.prisma.notification.createMany({
-            data: notificationsData,
-            skipDuplicates: true,
+        // Build Prisma query to find matching users
+        const where = {};
+        if (target === 'students') {
+            where.role = 'STUDENT';
+        }
+        else if (target === 'staff') {
+            where.role = { in: ['STAFF', 'ADMIN', 'LECTURER'] };
+        }
+        if (department && department !== 'all') {
+            where.department = { contains: department, mode: 'insensitive' };
+        }
+        if (college && college !== 'all') {
+            where.college = { contains: college, mode: 'insensitive' };
+        }
+        if (level && level !== 'all') {
+            const cleanLevel = String(level).replace(/L$/i, '').trim();
+            where.level = { contains: cleanLevel, mode: 'insensitive' };
+        }
+        const matchedUsers = await db_1.prisma.user.findMany({
+            where,
+            select: { id: true },
+            take: 5000,
         });
-        // Realtime live broadcast push to all active connections
-        (0, socket_1.emitToAll)('broadcast:new', announcement);
-        (0, socket_1.emitToAll)('notification:new', {
-            id: announcement.id,
-            title: `📢 ${title}`,
-            body,
-            type: 'system',
-            createdAt: announcement.createdAt,
+        const isTargeted = target !== 'everyone' || (department && department !== 'all') || (college && college !== 'all') || (level && level !== 'all');
+        if (matchedUsers.length > 0) {
+            const notificationsData = matchedUsers.map((u) => ({
+                userId: u.id,
+                title: `📢 ${title}`,
+                body: body.trim(),
+                type: type || 'broadcast',
+            }));
+            await db_1.prisma.notification.createMany({
+                data: notificationsData,
+                skipDuplicates: true,
+            });
+            const userIds = matchedUsers.map((u) => u.id);
+            if (!isTargeted) {
+                // Emit to all connected sockets
+                (0, socket_1.emitToAll)('broadcast:new', announcement);
+                (0, socket_1.emitToAll)('notification:new', {
+                    id: announcement.id,
+                    title: `📢 ${title}`,
+                    body: body.trim(),
+                    type: type || 'broadcast',
+                    createdAt: announcement.createdAt,
+                });
+            }
+            else {
+                // Targeted emit to matched users
+                (0, socket_1.emitToUsers)(userIds, 'broadcast:new', announcement);
+                (0, socket_1.emitToUsers)(userIds, 'notification:new', {
+                    id: announcement.id,
+                    title: `📢 ${title}`,
+                    body: body.trim(),
+                    type: type || 'broadcast',
+                    createdAt: announcement.createdAt,
+                });
+            }
+        }
+        return res.status(201).json({
+            success: true,
+            data: announcement,
+            recipientCount: matchedUsers.length,
+            message: `Broadcast published successfully to ${matchedUsers.length} recipient${matchedUsers.length === 1 ? '' : 's'}.`,
         });
-        return res.status(201).json({ success: true, data: announcement, message: 'Broadcast published to campus' });
     }
     catch (error) {
         console.error('Error broadcasting announcement:', error);
@@ -586,6 +641,18 @@ router.post('/announcements', auth_1.authenticateToken, adminOnly, (0, audit_1.a
     }
     catch (error) {
         return res.status(500).json({ error: 'Failed to create announcement' });
+    }
+});
+router.delete('/announcements/:id', auth_1.authenticateToken, adminOnly, (0, audit_1.auditAction)('DELETE_ANNOUNCEMENT'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        await db_1.prisma.announcement.delete({
+            where: { id: String(id) },
+        });
+        return res.json({ success: true, message: 'Announcement deleted successfully' });
+    }
+    catch (error) {
+        return res.status(500).json({ error: 'Failed to delete announcement' });
     }
 });
 router.get('/audit-logs', auth_1.authenticateToken, adminOnly, async (req, res) => {

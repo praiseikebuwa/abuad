@@ -55,7 +55,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 DropdownButtonFormField<String>(
-                  value: selectedDay,
+                  initialValue: selectedDay,
                   dropdownColor: const Color(0xFF1E293B),
                   style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
