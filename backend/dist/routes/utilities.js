@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const auth_1 = require("../middleware/auth");
 const db_1 = require("../config/db");
+const socket_1 = require("../realtime/socket");
 const router = (0, express_1.Router)();
 /**
  * GET /api/utilities/sos or /api/sos_alerts - Get SOS alerts
@@ -142,6 +143,8 @@ router.post('/notifications', auth_1.authenticateToken, async (req, res) => {
                 relatedId: relatedId || null,
             },
         });
+        // Realtime live socket notification
+        (0, socket_1.emitToUsers)([targetUserId], 'notification:new', notification);
         return res.status(201).json({ success: true, data: notification });
     }
     catch (error) {

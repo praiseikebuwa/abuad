@@ -118,6 +118,11 @@ class UsersController {
                                 title="View Profile" style="color: #4facfe; background: rgba(79, 172, 254, 0.1); border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer;">
                             <i class="fas fa-id-badge"></i>
                         </button>
+                        <button class="btn-icon btn-notify" 
+                                onclick="window.usersController.openNotifyModal('${user.id}')"
+                                title="Send Direct Notification / Message" style="color: #10B981; background: rgba(16, 185, 129, 0.15); border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer;">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
                         <div class="verification-tier-buttons" style="display: flex; gap: 2px; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 2px; background: rgba(0,0,0,0.2);">
                             <button class="btn-icon btn-tier-none ${vType === 'none' ? 'active' : ''}" 
                                     onclick="window.usersController.setVerification('${user.id}', 'none')"
@@ -360,13 +365,105 @@ class UsersController {
                         ${user.lastSeen || user.last_seen ? `<span>👀 Last Active ${formatDate(user.lastSeen || user.last_seen)}</span>` : ''}
                     </div>
                 </div>
-                <div class="modal-footer" style="padding: 15px 20px; border-top: 1px solid rgba(255,255,255,0.1);">
-                    <button class="btn-primary" style="width:100%; border-radius: 8px;" onclick="document.getElementById('user-detail-modal').style.display='none'">Done</button>
+                <div class="modal-footer" style="padding: 15px 20px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; gap: 10px;">
+                    <button class="btn-primary" style="flex: 1; background: #10B981; border: none; border-radius: 8px; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600;" onclick="document.getElementById('user-detail-modal').style.display='none'; window.usersController.openNotifyModal('${user.id}')">
+                        <i class="fas fa-paper-plane"></i> Send Direct Message
+                    </button>
+                    <button class="btn-text" style="padding: 10px 20px; background: rgba(255,255,255,0.08); color: #fff; border: none; border-radius: 8px; cursor: pointer;" onclick="document.getElementById('user-detail-modal').style.display='none'">Close</button>
                 </div>
             </div>
         `;
 
         modal.style.display = 'flex';
+    }
+
+    openNotifyModal(uid) {
+        const user = this.users.find(u => u.id === uid);
+        if (!user) return;
+
+        let modal = document.getElementById('user-notify-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'user-notify-modal';
+            modal.className = 'modal-overlay';
+            document.body.appendChild(modal);
+        }
+
+        const displayName = user.fullName || user.displayName || user.username || 'User';
+
+        modal.innerHTML = `
+            <div class="modal-card" style="max-width: 520px; width: 92%; background: #1e293b; border-radius: 16px; overflow: hidden; border: 1px solid rgba(255,255,255,0.12); color: #fff; box-shadow: 0 25px 50px rgba(0,0,0,0.6);">
+                <div class="modal-header" style="padding: 18px 22px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center; background: #0f172a;">
+                    <h3 style="margin: 0; font-size: 1.15rem; display: flex; align-items: center; gap: 10px;">
+                        <i class="fas fa-paper-plane" style="color: #10B981;"></i> Direct Notification to ${displayName}
+                    </h3>
+                    <button type="button" class="btn-text" onclick="document.getElementById('user-notify-modal').style.display='none'" style="color: #aaa; background: none; border: none; cursor: pointer; font-size: 1.4rem;">&times;</button>
+                </div>
+                <form id="admin-user-notify-form" style="padding: 22px;" onsubmit="window.usersController.sendNotificationToUser(event, '${uid}')">
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <label style="display: block; font-size: 0.85rem; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">Notification Title</label>
+                        <input type="text" id="user-notify-title" placeholder="e.g. Course Registration Alert / Academic Notice" required style="width: 100%; padding: 12px 14px; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); border-radius: 10px; color: #fff; font-size: 0.95rem; box-sizing: border-box;" />
+                    </div>
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <label style="display: block; font-size: 0.85rem; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">Category / Channel</label>
+                        <select id="user-notify-type" style="width: 100%; padding: 12px 14px; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); border-radius: 10px; color: #fff; font-size: 0.95rem; box-sizing: border-box;">
+                            <option value="admin_message">💬 Direct Admin Message</option>
+                            <option value="academic">🎓 Academic Alert</option>
+                            <option value="urgent">🚨 Urgent Priority Notice</option>
+                            <option value="verification">✅ Verification Update</option>
+                            <option value="system">⚙️ General System Notice</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 20px;">
+                        <label style="display: block; font-size: 0.85rem; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">Message Body</label>
+                        <textarea id="user-notify-body" rows="4" placeholder="Enter message to deliver immediately to this user's app..." required style="width: 100%; padding: 12px 14px; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); border-radius: 10px; color: #fff; font-size: 0.95rem; resize: vertical; box-sizing: border-box;"></textarea>
+                    </div>
+                    <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                        <button type="button" class="btn-text" onclick="document.getElementById('user-notify-modal').style.display='none'" style="padding: 10px 18px; background: rgba(255,255,255,0.06); color: #cbd5e1; border: none; border-radius: 8px; cursor: pointer;">Cancel</button>
+                        <button type="submit" id="user-notify-submit-btn" style="padding: 12px 24px; background: #10B981; color: #fff; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);">
+                            <i class="fas fa-paper-plane"></i> Send Notification
+                        </button>
+                    </div>
+                </form>
+            </div>
+        `;
+
+        modal.style.display = 'flex';
+    }
+
+    async sendNotificationToUser(e, uid) {
+        e.preventDefault();
+        const title = document.getElementById('user-notify-title').value.trim();
+        const body = document.getElementById('user-notify-body').value.trim();
+        const type = document.getElementById('user-notify-type').value;
+        const submitBtn = document.getElementById('user-notify-submit-btn');
+
+        if (!title || !body) return;
+
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Dispatching...';
+
+        try {
+            const res = await ApiClientAdmin.fetch(`/admin/users/${uid}/notify`, {
+                method: 'POST',
+                body: JSON.stringify({ title, body, type })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                document.getElementById('user-notify-modal').style.display = 'none';
+                alert('✅ Notification dispatched directly to user!');
+                if (typeof window.logAdminAction === 'function') {
+                    window.logAdminAction('NOTIFY_USER', `Sent notification "${title}" to User ${uid}`, 'user', uid);
+                }
+            } else {
+                throw new Error(data.error || 'Failed to dispatch notification');
+            }
+        } catch (err) {
+            alert('Error sending notification: ' + err.message);
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Notification';
+        }
     }
 
     setVerification(uid, type) {

@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { authenticateToken, AuthenticatedRequest } from '../middleware/auth';
 import { prisma } from '../config/db';
+import { emitToUsers } from '../realtime/socket';
 
 const router = Router();
 
@@ -151,6 +152,10 @@ router.post('/notifications', authenticateToken, async (req: AuthenticatedReques
         relatedId: relatedId || null,
       },
     });
+
+    // Realtime live socket notification
+    emitToUsers([targetUserId], 'notification:new', notification);
+
     return res.status(201).json({ success: true, data: notification });
   } catch (error) {
     return res.status(500).json({ error: 'Failed to create notification' });

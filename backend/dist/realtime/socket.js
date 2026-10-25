@@ -4,6 +4,7 @@ exports.initSocket = initSocket;
 exports.isUserOnline = isUserOnline;
 exports.emitToChannel = emitToChannel;
 exports.emitToUsers = emitToUsers;
+exports.emitToAll = emitToAll;
 const socket_io_1 = require("socket.io");
 const jwt_1 = require("../utils/jwt");
 const db_1 = require("../config/db");
@@ -140,4 +141,10 @@ function emitToUsers(userIds, event, payload) {
         return;
     for (const id of userIds)
         io.to(userRoom(id)).emit(event, payload);
+}
+/** Emit an event to all connected sockets. */
+function emitToAll(event, payload) {
+    if (!io)
+        return;
+    io.emit(event, payload);
 }

@@ -4,8 +4,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../user/data/user_repository.dart';
+import '../data/academic_repository.dart';
 
 class StudentIdScreen extends ConsumerStatefulWidget {
   const StudentIdScreen({super.key});
@@ -19,6 +21,7 @@ class _StudentIdScreenState extends ConsumerState<StudentIdScreen>
   late AnimationController _flipController;
   late Animation<double> _flipAnimation;
   bool _showFront = true;
+  Map<String, String>? _customProfile;
 
   @override
   void initState() {
@@ -30,6 +33,12 @@ class _StudentIdScreenState extends ConsumerState<StudentIdScreen>
     _flipAnimation = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _flipController, curve: Curves.easeInOutBack),
     );
+    _loadCustomProfile();
+  }
+
+  Future<void> _loadCustomProfile() async {
+    final profile = await ref.read(academicRepositoryProvider).getStudentIdProfile();
+    if (mounted) setState(() => _customProfile = profile);
   }
 
   @override
@@ -56,6 +65,156 @@ class _StudentIdScreenState extends ConsumerState<StudentIdScreen>
     return '21/ENG02/089';
   }
 
+  void _showEditProfileDialog(String currentMatric, String currentDept, String currentCollege) {
+    final matricCtrl = TextEditingController(text: _customProfile?['matricNumber'] ?? currentMatric);
+    final deptCtrl = TextEditingController(text: _customProfile?['department'] ?? currentDept);
+    final collegeCtrl = TextEditingController(text: _customProfile?['college'] ?? currentCollege);
+    String selectedLevel = _customProfile?['level'] ?? '400L';
+    String selectedBlood = _customProfile?['bloodGroup'] ?? 'O+';
+    String session = _customProfile?['session'] ?? '2025/2026';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF1E293B),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: const [
+              Icon(Icons.badge_rounded, color: AppColors.secondaryTeal),
+              SizedBox(width: 10),
+              Text('Edit Student ID', style: TextStyle(color: Colors.white, fontSize: 18)),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: matricCtrl,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    labelText: 'Matriculation Number',
+                    hintText: 'e.g. 21/ENG02/089',
+                    labelStyle: const TextStyle(color: Colors.white70),
+                    filled: true,
+                    fillColor: const Color(0xFF0F172A),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: deptCtrl,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    labelText: 'Department',
+                    hintText: 'e.g. Computer Engineering',
+                    labelStyle: const TextStyle(color: Colors.white70),
+                    filled: true,
+                    fillColor: const Color(0xFF0F172A),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: collegeCtrl,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    labelText: 'College / Faculty',
+                    hintText: 'e.g. College of Engineering',
+                    labelStyle: const TextStyle(color: Colors.white70),
+                    filled: true,
+                    fillColor: const Color(0xFF0F172A),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        value: selectedLevel,
+                        dropdownColor: const Color(0xFF1E293B),
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          labelText: 'Level',
+                          labelStyle: const TextStyle(color: Colors.white70),
+                          filled: true,
+                          fillColor: const Color(0xFF0F172A),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                        ),
+                        items: ['100L', '200L', '300L', '400L', '500L', 'Postgrad']
+                            .map((l) => DropdownMenuItem(value: l, child: Text(l)))
+                            .toList(),
+                        onChanged: (v) {
+                          if (v != null) setDialogState(() => selectedLevel = v);
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        value: selectedBlood,
+                        dropdownColor: const Color(0xFF1E293B),
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          labelText: 'Blood',
+                          labelStyle: const TextStyle(color: Colors.white70),
+                          filled: true,
+                          fillColor: const Color(0xFF0F172A),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                        ),
+                        items: ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-']
+                            .map((b) => DropdownMenuItem(value: b, child: Text(b)))
+                            .toList(),
+                        onChanged: (v) {
+                          if (v != null) setDialogState(() => selectedBlood = v);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.secondaryTeal,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () async {
+                final newProfile = {
+                  'matricNumber': matricCtrl.text.trim().isNotEmpty ? matricCtrl.text.trim() : currentMatric,
+                  'department': deptCtrl.text.trim().isNotEmpty ? deptCtrl.text.trim() : currentDept,
+                  'college': collegeCtrl.text.trim().isNotEmpty ? collegeCtrl.text.trim() : currentCollege,
+                  'level': selectedLevel,
+                  'bloodGroup': selectedBlood,
+                  'session': session,
+                  'expiryDate': '31 Oct 2026',
+                };
+                Navigator.pop(ctx);
+                await ref.read(academicRepositoryProvider).saveStudentIdProfile(newProfile);
+                setState(() => _customProfile = newProfile);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Student ID Card details updated!')),
+                  );
+                }
+              },
+              child: const Text('Save Details'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final userAsync = ref.watch(currentUserProvider);
@@ -63,9 +222,17 @@ class _StudentIdScreenState extends ConsumerState<StudentIdScreen>
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final displayName = user?.displayName.isNotEmpty == true ? user!.displayName : 'Student Name';
-    final matricNumber = _formatMatric(user?.uid ?? '20230001');
-    final department = user?.department?.isNotEmpty == true ? user!.department! : 'Computer Engineering';
-    final college = user?.college?.isNotEmpty == true ? user!.college! : 'College of Engineering';
+    final fallbackMatric = _formatMatric(user?.uid ?? '20230001');
+    final fallbackDept = user?.department?.isNotEmpty == true ? user!.department! : 'Computer Engineering';
+    final fallbackCollege = user?.college?.isNotEmpty == true ? user!.college! : 'College of Engineering';
+
+    final matricNumber = _customProfile?['matricNumber']?.isNotEmpty == true ? _customProfile!['matricNumber']! : fallbackMatric;
+    final department = _customProfile?['department']?.isNotEmpty == true ? _customProfile!['department']! : fallbackDept;
+    final college = _customProfile?['college']?.isNotEmpty == true ? _customProfile!['college']! : fallbackCollege;
+    final level = _customProfile?['level'] ?? '400L';
+    final bloodGroup = _customProfile?['bloodGroup'] ?? 'O+';
+    final session = _customProfile?['session'] ?? '2025/2026';
+    final expiryDate = _customProfile?['expiryDate'] ?? '31 Oct 2026';
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF0A0F1D) : const Color(0xFFF1F5F9),
@@ -78,6 +245,11 @@ class _StudentIdScreenState extends ConsumerState<StudentIdScreen>
         backgroundColor: Colors.transparent,
         centerTitle: true,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.edit_outlined),
+            tooltip: 'Edit Card Details',
+            onPressed: () => _showEditProfileDialog(matricNumber, department, college),
+          ),
           IconButton(
             icon: const Icon(Icons.flip_camera_android_rounded),
             tooltip: 'Flip Card',
@@ -134,7 +306,16 @@ class _StudentIdScreenState extends ConsumerState<StudentIdScreen>
                           ..rotateY(angle),
                         alignment: Alignment.center,
                         child: isFront
-                            ? _buildCardFront(displayName, matricNumber, department, college, user?.avatarUrl)
+                            ? _buildCardFront(
+                                displayName,
+                                matricNumber,
+                                department,
+                                college,
+                                user?.avatarUrl,
+                                level: level,
+                                bloodGroup: bloodGroup,
+                                expiryDate: expiryDate,
+                              )
                             : Transform(
                                 transform: Matrix4.identity()..rotateY(pi),
                                 alignment: Alignment.center,
@@ -169,17 +350,9 @@ class _StudentIdScreenState extends ConsumerState<StudentIdScreen>
                           color: isDark ? Colors.white24 : const Color(0xFFCBD5E1),
                         ),
                       ),
-                      icon: const Icon(Icons.share_rounded, size: 18),
-                      label: Text('Share Card', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
-                      onPressed: () {
-                        HapticFeedback.lightImpact();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('ID Card details copied to clipboard'),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
-                      },
+                      icon: const Icon(Icons.edit_outlined, size: 18),
+                      label: Text('Edit ID Info', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+                      onPressed: () => _showEditProfileDialog(matricNumber, department, college),
                     ),
                   ),
                   const SizedBox(width: 14),
@@ -211,10 +384,11 @@ class _StudentIdScreenState extends ConsumerState<StudentIdScreen>
                   _InfoRow(label: 'Matriculation No.', value: matricNumber),
                   _InfoRow(label: 'College / Faculty', value: college),
                   _InfoRow(label: 'Department', value: department),
-                  _InfoRow(label: 'Blood Group', value: 'O+'),
-                  _InfoRow(label: 'Academic Session', value: '2024/2025'),
+                  _InfoRow(label: 'Level', value: level),
+                  _InfoRow(label: 'Blood Group', value: bloodGroup),
+                  _InfoRow(label: 'Academic Session', value: session),
                   _InfoRow(label: 'Status', value: 'Active Student', isStatus: true),
-                  _InfoRow(label: 'Expiry Date', value: '31 Oct 2026'),
+                  _InfoRow(label: 'Expiry Date', value: expiryDate),
                 ],
               ),
             ],
@@ -229,8 +403,11 @@ class _StudentIdScreenState extends ConsumerState<StudentIdScreen>
     String matric,
     String department,
     String college,
-    String? avatarUrl,
-  ) {
+    String? avatarUrl, {
+    String level = '400L',
+    String bloodGroup = 'O+',
+    String expiryDate = '31 Oct 2026',
+  }) {
     return Container(
       width: 350,
       height: 220,
@@ -452,9 +629,9 @@ class _StudentIdScreenState extends ConsumerState<StudentIdScreen>
                             const SizedBox(height: 6),
                             Row(
                               children: [
-                                _badge('400L'),
+                                _badge(level),
                                 const SizedBox(width: 6),
-                                _badge('O+'),
+                                _badge(bloodGroup),
                               ],
                             ),
                           ],
@@ -470,7 +647,7 @@ class _StudentIdScreenState extends ConsumerState<StudentIdScreen>
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'EXP: 10/2026',
+                        'EXP: $expiryDate',
                         style: GoogleFonts.robotoMono(color: Colors.white38, fontSize: 8.5),
                       ),
                       Text(
@@ -566,13 +743,15 @@ class _StudentIdScreenState extends ConsumerState<StudentIdScreen>
                       size: const Size(180, 36),
                       painter: _BarcodePainter(),
                     ),
-                    // QR Code graphic
-                    Container(
-                      width: 36,
-                      height: 36,
-                      color: Colors.black,
-                      child: const Center(
-                        child: Icon(Icons.qr_code_2_rounded, color: Colors.white, size: 36),
+                    // Real scannable QR Code
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: QrImageView(
+                        data: 'https://portal.abuad.edu.ng/verify?matric=$matric',
+                        version: QrVersions.auto,
+                        size: 38.0,
+                        backgroundColor: Colors.white,
+                        padding: const EdgeInsets.all(1),
                       ),
                     ),
                   ],

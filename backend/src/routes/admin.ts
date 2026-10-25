@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { authenticateToken, requireRole, AuthenticatedRequest } from '../middleware/auth';
 import { auditAction } from '../middleware/audit';
 import { prisma } from '../config/db';
+import { emitToUsers, emitToAll } from '../realtime/socket';
 
 const router = Router();
 
@@ -489,10 +490,73 @@ router.post('/broadcast', authenticateToken, adminOnly, auditAction('BROADCAST_A
       skipDuplicates: true,
     });
 
+    // Realtime live broadcast push to all active connections
+    emitToAll('broadcast:new', announcement);
+    emitToAll('notification:new', {
+      id: announcement.id,
+      title: `📢 ${title}`,
+      body,
+      type: 'system',
+      createdAt: announcement.createdAt,
+    });
+
     return res.status(201).json({ success: true, data: announcement, message: 'Broadcast published to campus' });
   } catch (error) {
     console.error('Error broadcasting announcement:', error);
     return res.status(500).json({ error: 'Failed to broadcast announcement' });
+  }
+});
+
+/**
+ * POST /api/admin/users/:userId/notify
+ * Send a direct notification / administrative message to a specific user
+ */
+router.post('/users/:userId/notify', authenticateToken, adminOnly, auditAction('NOTIFY_USER'), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const { title, body, type = 'admin_message', relatedId } = req.body;
+
+    if (!title || !body) {
+      return res.status(400).json({ error: 'Title and body are required' });
+    }
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id: String(userId) },
+      select: { id: true, fullName: true, username: true },
+    });
+
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Target user not found' });
+    }
+
+    const notification = await prisma.notification.create({
+      data: {
+        userId: targetUser.id,
+        senderId: req.user!.id,
+        title: title.trim(),
+        body: body.trim(),
+        type: type || 'admin_message',
+        relatedId: relatedId || null,
+      },
+    });
+
+    const enriched = {
+      ...notification,
+      senderName: (req.user as any)?.fullName || req.user?.email || 'ABUAD Administration',
+      senderRole: 'ADMIN',
+    };
+
+    // Emit live realtime event to the user's socket room
+    emitToUsers([targetUser.id], 'notification:new', enriched);
+
+    return res.status(201).json({
+      success: true,
+      data: enriched,
+      message: `Notification sent successfully to ${targetUser.fullName || targetUser.username}`,
+    });
+  } catch (error) {
+    console.error('Error sending user notification:', error);
+    return res.status(500).json({ error: 'Failed to send notification to user' });
   }
 });
 

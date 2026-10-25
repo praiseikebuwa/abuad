@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as socket_io;
 import 'api_client.dart';
+import 'notification_service.dart';
 
 class SocketService {
   SocketService._();
@@ -18,6 +19,7 @@ class SocketService {
   final _typingController = StreamController<Map<String, dynamic>>.broadcast();
   final _presenceController = StreamController<Map<String, dynamic>>.broadcast();
   final _snapSavedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _notificationController = StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get onNewMessage => _newMessageController.stream;
   Stream<Map<String, dynamic>> get onMessageUpdated => _messageUpdatedController.stream;
@@ -27,6 +29,7 @@ class SocketService {
   Stream<Map<String, dynamic>> get onTyping => _typingController.stream;
   Stream<Map<String, dynamic>> get onPresence => _presenceController.stream;
   Stream<Map<String, dynamic>> get onSnapSaved => _snapSavedController.stream;
+  Stream<Map<String, dynamic>> get onNotification => _notificationController.stream;
 
   String _getSocketUrl() {
     try {
@@ -84,7 +87,52 @@ class SocketService {
 
     _socket!.on('message:new', (data) {
       if (data is Map) {
-        _newMessageController.add(Map<String, dynamic>.from(data));
+        final map = Map<String, dynamic>.from(data);
+        _newMessageController.add(map);
+
+        try {
+          final msg = map['message'] is Map ? Map<String, dynamic>.from(map['message']) : map;
+          final sender = msg['sender'] is Map ? Map<String, dynamic>.from(msg['sender']) : {};
+          final senderName = sender['fullName'] ?? sender['name'] ?? sender['username'] ?? 'New Message';
+          final content = msg['content']?.toString() ?? 'Sent a message';
+          final channelId = map['channelId']?.toString();
+
+          NotificationService().showLocalNotification(
+            title: senderName.toString(),
+            body: content,
+            payload: channelId,
+            type: 'chat',
+          );
+        } catch (_) {}
+      }
+    });
+
+    _socket!.on('notification:new', (data) {
+      if (data is Map) {
+        final map = Map<String, dynamic>.from(data);
+        _notificationController.add(map);
+        final title = map['title']?.toString() ?? 'New Notification';
+        final body = map['body']?.toString() ?? '';
+        final type = map['type']?.toString() ?? 'system';
+        NotificationService().showLocalNotification(
+          title: title,
+          body: body,
+          type: type,
+        );
+      }
+    });
+
+    _socket!.on('broadcast:new', (data) {
+      if (data is Map) {
+        final map = Map<String, dynamic>.from(data);
+        final title = map['title']?.toString() ?? 'Campus Broadcast';
+        final body = map['body']?.toString() ?? '';
+        final type = map['type']?.toString() ?? 'urgent';
+        NotificationService().showLocalNotification(
+          title: '📢 $title',
+          body: body,
+          type: type,
+        );
       }
     });
 

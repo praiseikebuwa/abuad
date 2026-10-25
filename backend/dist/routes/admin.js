@@ -4,6 +4,7 @@ const express_1 = require("express");
 const auth_1 = require("../middleware/auth");
 const audit_1 = require("../middleware/audit");
 const db_1 = require("../config/db");
+const socket_1 = require("../realtime/socket");
 const router = (0, express_1.Router)();
 const adminOnly = (req, res, next) => {
     const role = req.user?.role?.toUpperCase();
@@ -462,11 +463,66 @@ router.post('/broadcast', auth_1.authenticateToken, adminOnly, (0, audit_1.audit
             data: notificationsData,
             skipDuplicates: true,
         });
+        // Realtime live broadcast push to all active connections
+        (0, socket_1.emitToAll)('broadcast:new', announcement);
+        (0, socket_1.emitToAll)('notification:new', {
+            id: announcement.id,
+            title: `📢 ${title}`,
+            body,
+            type: 'system',
+            createdAt: announcement.createdAt,
+        });
         return res.status(201).json({ success: true, data: announcement, message: 'Broadcast published to campus' });
     }
     catch (error) {
         console.error('Error broadcasting announcement:', error);
         return res.status(500).json({ error: 'Failed to broadcast announcement' });
+    }
+});
+/**
+ * POST /api/admin/users/:userId/notify
+ * Send a direct notification / administrative message to a specific user
+ */
+router.post('/users/:userId/notify', auth_1.authenticateToken, adminOnly, (0, audit_1.auditAction)('NOTIFY_USER'), async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { title, body, type = 'admin_message', relatedId } = req.body;
+        if (!title || !body) {
+            return res.status(400).json({ error: 'Title and body are required' });
+        }
+        const targetUser = await db_1.prisma.user.findUnique({
+            where: { id: String(userId) },
+            select: { id: true, fullName: true, username: true },
+        });
+        if (!targetUser) {
+            return res.status(404).json({ error: 'Target user not found' });
+        }
+        const notification = await db_1.prisma.notification.create({
+            data: {
+                userId: targetUser.id,
+                senderId: req.user.id,
+                title: title.trim(),
+                body: body.trim(),
+                type: type || 'admin_message',
+                relatedId: relatedId || null,
+            },
+        });
+        const enriched = {
+            ...notification,
+            senderName: req.user?.fullName || req.user?.email || 'ABUAD Administration',
+            senderRole: 'ADMIN',
+        };
+        // Emit live realtime event to the user's socket room
+        (0, socket_1.emitToUsers)([targetUser.id], 'notification:new', enriched);
+        return res.status(201).json({
+            success: true,
+            data: enriched,
+            message: `Notification sent successfully to ${targetUser.fullName || targetUser.username}`,
+        });
+    }
+    catch (error) {
+        console.error('Error sending user notification:', error);
+        return res.status(500).json({ error: 'Failed to send notification to user' });
     }
 });
 /**

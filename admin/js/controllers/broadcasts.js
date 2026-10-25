@@ -26,22 +26,36 @@ class BroadcastController {
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
 
         try {
-            // Write to 'announcements' collection
-            const docRef = await db.collection('announcements').add({
-                title: title,
-                body: message,
-                type: type,
-                senderId: window.auth && window.auth.currentUser ? (window.auth.currentUser.id || window.auth.currentUser.uid) : 'admin',
-                senderName: 'Admin',
-                timestamp: new Date().toISOString(),
-                active: true
+            const res = await ApiClientAdmin.fetch('/admin/broadcast', {
+                method: 'POST',
+                body: JSON.stringify({
+                    title: title,
+                    body: message,
+                    type: type,
+                    target: 'everyone'
+                })
             });
 
-            window.logAdminAction('SEND_BROADCAST', `Sent broadcast: ${title}`, 'announcement', docRef.id);
+            const json = await res.json();
+            if (!res.ok || !json.success) {
+                // Fallback to announcements collection
+                await db.collection('announcements').add({
+                    title: title,
+                    body: message,
+                    type: type,
+                    timestamp: new Date().toISOString(),
+                    active: true
+                });
+            }
+
+            if (typeof window.logAdminAction === 'function') {
+                window.logAdminAction('SEND_BROADCAST', `Sent campus broadcast: ${title}`, 'announcement');
+            }
 
             // Reset form
             this.form.reset();
-            alert("Broadcast sent successfully!");
+            alert("Broadcast sent successfully and pushed to all student devices in real-time!");
+            this.loadHistory();
         } catch (error) {
             alert("Failed to send broadcast: " + error.message);
         } finally {

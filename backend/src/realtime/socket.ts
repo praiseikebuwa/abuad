@@ -137,3 +137,9 @@ export function emitToUsers(userIds: string[], event: string, payload: Record<st
   if (!io) return;
   for (const id of userIds) io.to(userRoom(id)).emit(event, payload);
 }
+
+/** Emit an event to all connected sockets. */
+export function emitToAll(event: string, payload: Record<string, unknown>) {
+  if (!io) return;
+  io.emit(event, payload);
+}
