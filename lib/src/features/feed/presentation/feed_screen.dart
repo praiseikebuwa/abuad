@@ -256,6 +256,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
             Consumer(
               builder: (context, ref, child) {
                 final notificationsAsync = ref.watch(userNotificationsProvider);
+                final adsEnabled = ref.watch(adsEnabledProvider);
                 final unreadCount = notificationsAsync.maybeWhen(
                   data: (n) => n.where((notif) => !notif.isRead).length,
                   orElse: () => 0,
@@ -286,20 +287,21 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                     }
                   },
                   itemBuilder: (context) => [
-                    PopupMenuItem(
-                      value: 'advertisements',
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.campaign_outlined,
-                            size: 20,
-                            color: Color(0xFF00E5FF),
-                          ),
-                          const SizedBox(width: 12),
-                          const Text('Advertise / Promo'),
-                        ],
+                    if (adsEnabled)
+                      PopupMenuItem(
+                        value: 'advertisements',
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.campaign_outlined,
+                              size: 20,
+                              color: Color(0xFF00E5FF),
+                            ),
+                            const SizedBox(width: 12),
+                            const Text('Advertise / Promo'),
+                          ],
+                        ),
                       ),
-                    ),
                     PopupMenuItem(
                       value: 'notifications',
                       child: Row(
@@ -688,7 +690,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                                         },
                                       );
 
-                                final showAd = feedAds.isNotEmpty &&
+                                final showAd = ref.watch(adsEnabledProvider) &&
+                                    feedAds.isNotEmpty &&
                                     (index > 0 && index % 6 == 3);
                                 final adWidget = showAd
                                     ? SponsoredAdCard(

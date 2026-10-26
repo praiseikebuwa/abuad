@@ -1247,11 +1247,11 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
                                                   .getUserByHandle(mention)
                                                   .then((user) {
                                                     if (user != null &&
-                                                        mounted) {
+                                                        context.mounted) {
                                                       context.push(
                                                         '/user/${user.uid}',
                                                       );
-                                                    } else if (mounted) {
+                                                    } else if (context.mounted) {
                                                       ScaffoldMessenger.of(
                                                         context,
                                                       ).showSnackBar(
@@ -1397,277 +1397,207 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
                             right: 16,
                             child: Row(
                               children: [
+                                // Frosted Glass Reply Input Bar
                                 Expanded(
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(28),
                                     child: BackdropFilter(
-                                      filter: ImageFilter.blur(
-                                        sigmaX: 24,
-                                        sigmaY: 24,
-                                      ),
-                                      child: ShaderMask(
-                                        blendMode: BlendMode.srcOver,
-                                        shaderCallback: (bounds) =>
-                                            LinearGradient(
-                                              begin: Alignment.topLeft,
-                                              end: Alignment.bottomRight,
-                                              colors: [
-                                                Colors.white.withValues(
-                                                  alpha: 0.28,
-                                                ),
-                                                Colors.white.withValues(
-                                                  alpha: 0.06,
-                                                ),
-                                                Colors.lightBlueAccent
-                                                    .withValues(alpha: 0.08),
-                                                Colors.white.withValues(
-                                                  alpha: 0.18,
-                                                ),
-                                              ],
-                                              stops: const [
-                                                0.0,
-                                                0.35,
-                                                0.65,
-                                                1.0,
-                                              ],
-                                            ).createShader(bounds),
-                                        child: Container(
-                                          height: 48,
-                                          decoration: BoxDecoration(
-                                            borderRadius: BorderRadius.circular(
-                                              28,
-                                            ),
-                                            gradient: LinearGradient(
-                                              begin: Alignment.topLeft,
-                                              end: Alignment.bottomRight,
-                                              colors: [
-                                                Colors.white.withValues(
-                                                  alpha: 0.22,
-                                                ),
-                                                Colors.white.withValues(
-                                                  alpha: 0.07,
-                                                ),
-                                              ],
-                                            ),
-                                            border: Border.all(
-                                              color: Colors.white.withValues(
-                                                alpha: 0.0,
-                                              ),
-                                              width: 0,
-                                            ),
-                                            boxShadow: [
-                                              // Outer glow
-                                              BoxShadow(
-                                                color: Colors.white.withValues(
-                                                  alpha: 0.12,
-                                                ),
-                                                blurRadius: 16,
-                                                spreadRadius: -2,
-                                              ),
-                                              // Inner highlight (top edge)
-                                              BoxShadow(
-                                                color: Colors.white.withValues(
-                                                  alpha: 0.25,
-                                                ),
-                                                blurRadius: 1,
-                                                offset: const Offset(0, 1),
-                                              ),
+                                      filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                                      child: Container(
+                                        height: 50,
+                                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(28),
+                                          gradient: LinearGradient(
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
+                                            colors: [
+                                              Colors.white.withValues(alpha: 0.20),
+                                              Colors.white.withValues(alpha: 0.08),
                                             ],
                                           ),
-                                          child: Stack(
-                                            children: [
-                                              // Iridescent shimmer border
-                                              Positioned.fill(
-                                                child: DecoratedBox(
-                                                  decoration: BoxDecoration(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          28,
-                                                        ),
-                                                    gradient: LinearGradient(
-                                                      begin: Alignment.topLeft,
-                                                      end:
-                                                          Alignment.bottomRight,
-                                                      colors: [
-                                                        Colors.white.withValues(
-                                                          alpha: 0.55,
-                                                        ),
-                                                        Colors.lightBlueAccent
-                                                            .withValues(
-                                                              alpha: 0.35,
-                                                            ),
-                                                        Colors.purpleAccent
-                                                            .withValues(
-                                                              alpha: 0.20,
-                                                            ),
-                                                        Colors.white.withValues(
-                                                          alpha: 0.10,
-                                                        ),
-                                                      ],
-                                                      stops: const [
-                                                        0.0,
-                                                        0.3,
-                                                        0.7,
-                                                        1.0,
-                                                      ],
-                                                    ),
-                                                  ),
-                                                  child: Padding(
-                                                    padding:
-                                                        const EdgeInsets.all(
-                                                          1.2,
-                                                        ),
-                                                    child: DecoratedBox(
-                                                      decoration: BoxDecoration(
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              27,
-                                                            ),
-                                                        gradient:
-                                                            LinearGradient(
-                                                              begin: Alignment
-                                                                  .topLeft,
-                                                              end: Alignment
-                                                                  .bottomRight,
-                                                              colors: [
-                                                                Colors.white
-                                                                    .withValues(
-                                                                      alpha:
-                                                                          0.18,
-                                                                    ),
-                                                                Colors.white
-                                                                    .withValues(
-                                                                      alpha:
-                                                                          0.04,
-                                                                    ),
-                                                              ],
-                                                            ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                              // Text field
-                                              Padding(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 18,
-                                                    ),
-                                                child: Center(
-                                                  child: TextField(
-                                                    controller:
-                                                        _messageController,
-                                                    focusNode: _focusNode,
-                                                    style: const TextStyle(
-                                                      color: Colors.white,
-                                                      fontSize: 15,
-                                                      fontWeight:
-                                                          FontWeight.w400,
-                                                      shadows: [
-                                                        Shadow(
-                                                          color: Colors.black38,
-                                                          blurRadius: 4,
-                                                        ),
-                                                      ],
-                                                    ),
-                                                    decoration: InputDecoration(
-                                                      hintText:
-                                                          'Send message...',
-                                                      hintStyle: TextStyle(
-                                                        color: Colors.white
-                                                            .withValues(
-                                                              alpha: 0.55,
-                                                            ),
-                                                        fontSize: 14,
-                                                        fontWeight:
-                                                            FontWeight.w300,
-                                                      ),
-                                                      border: InputBorder.none,
-                                                      isDense: true,
-                                                      contentPadding:
-                                                          EdgeInsets.zero,
-                                                    ),
-                                                    onSubmitted: (_) =>
-                                                        _sendMessage(story),
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
+                                          border: Border.all(
+                                            color: Colors.white.withValues(alpha: 0.32),
+                                            width: 1.2,
                                           ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black.withValues(alpha: 0.2),
+                                              blurRadius: 16,
+                                              offset: const Offset(0, 4),
+                                            ),
+                                          ],
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            const Icon(
+                                              Icons.chat_bubble_outline_rounded,
+                                              color: Colors.white70,
+                                              size: 19,
+                                            ),
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: TextField(
+                                                controller: _messageController,
+                                                focusNode: _focusNode,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 14.5,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                                decoration: const InputDecoration(
+                                                  hintText: 'Reply to story...',
+                                                  hintStyle: TextStyle(
+                                                    color: Colors.white60,
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.w400,
+                                                  ),
+                                                  border: InputBorder.none,
+                                                  isDense: true,
+                                                  contentPadding: EdgeInsets.zero,
+                                                ),
+                                                onSubmitted: (_) => _sendMessage(story),
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                     ),
                                   ),
                                 ),
 
+                                const SizedBox(width: 10),
+
+                                // Actions (Like, Reshare, Share) OR Send Button
                                 AnimatedSize(
-                                  duration: const Duration(milliseconds: 300),
+                                  duration: const Duration(milliseconds: 250),
+                                  curve: Curves.easeOutCubic,
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      if (!_isTyping &&
-                                          !_focusNode.hasFocus) ...[
-                                        const SizedBox(width: 12),
-                                        IconButton(
-                                          onPressed: _likeCurrentStory,
-                                          icon: Icon(
-                                            (viewerId != null &&
-                                                    story.hasLiked(viewerId))
-                                                ? Icons.favorite
-                                                : Icons.favorite_border,
-                                            color:
-                                                (viewerId != null &&
-                                                    story.hasLiked(viewerId))
-                                                ? Colors.red
-                                                : Colors.white,
-                                          ),
-                                        ),
-                                        IconButton(
-                                          onPressed: () => _reshareStory(story),
-                                          icon: Container(
-                                            padding: const EdgeInsets.all(8),
-                                            decoration: BoxDecoration(
-                                              color: const Color(
-                                                0xFF8B5CF6,
-                                              ).withValues(alpha: 0.15),
-                                              shape: BoxShape.circle,
-                                              border: Border.all(
-                                                color: const Color(
-                                                  0xFF8B5CF6,
-                                                ).withValues(alpha: 0.3),
-                                              ),
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: const Color(
-                                                    0xFF8B5CF6,
-                                                  ).withValues(alpha: 0.2),
-                                                  blurRadius: 8,
-                                                  spreadRadius: 0,
+                                      if (!_isTyping && !_focusNode.hasFocus) ...[
+                                        // Like Button
+                                        ClipOval(
+                                          child: BackdropFilter(
+                                            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                                            child: Container(
+                                              width: 44,
+                                              height: 44,
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                color: (viewerId != null && story.hasLiked(viewerId))
+                                                    ? Colors.red.withValues(alpha: 0.25)
+                                                    : Colors.white.withValues(alpha: 0.15),
+                                                border: Border.all(
+                                                  color: (viewerId != null && story.hasLiked(viewerId))
+                                                      ? Colors.redAccent.withValues(alpha: 0.6)
+                                                      : Colors.white.withValues(alpha: 0.25),
+                                                  width: 1.2,
                                                 ),
-                                              ],
-                                            ),
-                                            child: const Icon(
-                                              Icons.repeat,
-                                              color: Colors.white,
-                                              size: 20,
+                                              ),
+                                              child: IconButton(
+                                                padding: EdgeInsets.zero,
+                                                onPressed: _likeCurrentStory,
+                                                icon: Icon(
+                                                  (viewerId != null && story.hasLiked(viewerId))
+                                                      ? Icons.favorite_rounded
+                                                      : Icons.favorite_border_rounded,
+                                                  color: (viewerId != null && story.hasLiked(viewerId))
+                                                      ? Colors.redAccent
+                                                      : Colors.white,
+                                                  size: 22,
+                                                ),
+                                              ),
                                             ),
                                           ),
                                         ),
-                                        IconButton(
-                                          onPressed: () => _shareStory(story),
-                                          icon: const Icon(
-                                            Icons.ios_share,
-                                            color: Colors.white,
-                                            size: 22,
+                                        const SizedBox(width: 8),
+
+                                        // Reshare Button
+                                        ClipOval(
+                                          child: BackdropFilter(
+                                            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                                            child: Container(
+                                              width: 44,
+                                              height: 44,
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+                                                border: Border.all(
+                                                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.4),
+                                                  width: 1.2,
+                                                ),
+                                              ),
+                                              child: IconButton(
+                                                padding: EdgeInsets.zero,
+                                                onPressed: () => _reshareStory(story),
+                                                icon: const Icon(
+                                                  Icons.repeat_rounded,
+                                                  color: Colors.white,
+                                                  size: 20,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+
+                                        // Share Button
+                                        ClipOval(
+                                          child: BackdropFilter(
+                                            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                                            child: Container(
+                                              width: 44,
+                                              height: 44,
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                color: Colors.white.withValues(alpha: 0.15),
+                                                border: Border.all(
+                                                  color: Colors.white.withValues(alpha: 0.25),
+                                                  width: 1.2,
+                                                ),
+                                              ),
+                                              child: IconButton(
+                                                padding: EdgeInsets.zero,
+                                                onPressed: () => _shareStory(story),
+                                                icon: const Icon(
+                                                  Icons.ios_share_rounded,
+                                                  color: Colors.white,
+                                                  size: 20,
+                                                ),
+                                              ),
+                                            ),
                                           ),
                                         ),
                                       ] else ...[
-                                        const SizedBox(width: 8),
-                                        IconButton(
-                                          onPressed: () => _sendMessage(story),
-                                          icon: const Icon(
-                                            Icons.send_rounded,
-                                            color: Colors.white,
+                                        // Glowing Send Button
+                                        GestureDetector(
+                                          onTap: () => _sendMessage(story),
+                                          child: Container(
+                                            width: 46,
+                                            height: 46,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              gradient: const LinearGradient(
+                                                colors: [Color(0xFF0F766E), Color(0xFF14B8A6)],
+                                                begin: Alignment.topLeft,
+                                                end: Alignment.bottomRight,
+                                              ),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: const Color(0xFF14B8A6).withValues(alpha: 0.45),
+                                                  blurRadius: 14,
+                                                  offset: const Offset(0, 3),
+                                                ),
+                                              ],
+                                            ),
+                                            child: const Center(
+                                              child: Icon(
+                                                Icons.arrow_upward_rounded,
+                                                color: Colors.white,
+                                                size: 24,
+                                              ),
+                                            ),
                                           ),
                                         ),
                                       ],

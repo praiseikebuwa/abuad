@@ -581,9 +581,9 @@ router.post('/users/:userId/notify', auth_1.authenticateToken, adminOnly, (0, au
     }
 });
 /**
- * Legacy routes for system config, announcements, audit logs
+ * Routes for system config, announcements, audit logs
  */
-router.get(['/config', '/system/config'], auth_1.authenticateToken, async (req, res) => {
+router.get(['/config', '/system/config', '/config/public', '/config/:id', '/system/config/:id'], auth_1.optionalAuth, async (req, res) => {
     try {
         const settings = await db_1.prisma.systemSetting.findMany();
         const configMap = {};
@@ -595,24 +595,64 @@ router.get(['/config', '/system/config'], auth_1.authenticateToken, async (req, 
                 configMap[s.key] = s.value;
             }
         });
+        // Default ads_enabled / adsEnabled to true if not explicitly disabled
+        const rawAds = configMap.ads_enabled ?? configMap.adsEnabled ?? true;
+        const isAdsEnabled = rawAds !== false && rawAds !== 'false' && rawAds !== 0 && rawAds !== '0';
+        configMap.ads_enabled = isAdsEnabled;
+        configMap.adsEnabled = isAdsEnabled;
         return res.json({ success: true, data: configMap });
     }
     catch (error) {
-        return res.json({ success: true, data: { maintenanceMode: false, appVersion: '1.0.0' } });
+        return res.json({
+            success: true,
+            data: {
+                maintenanceMode: false,
+                appVersion: '1.0.0',
+                ads_enabled: true,
+                adsEnabled: true,
+            },
+        });
     }
 });
-router.post(['/config', '/system/config'], auth_1.authenticateToken, adminOnly, (0, audit_1.auditAction)('UPDATE_SYSTEM_CONFIG'), async (req, res) => {
+router.post(['/config', '/system/config', '/config/:id', '/system/config/:id'], auth_1.authenticateToken, adminOnly, (0, audit_1.auditAction)('UPDATE_SYSTEM_CONFIG'), async (req, res) => {
     try {
-        const { key, value } = req.body;
-        if (!key)
-            return res.status(400).json({ error: 'Key is required' });
-        const strVal = typeof value === 'object' ? JSON.stringify(value) : String(value);
-        const setting = await db_1.prisma.systemSetting.upsert({
-            where: { key },
-            update: { value: strVal },
-            create: { key, value: strVal },
-        });
-        return res.json({ success: true, data: setting });
+        const body = req.body || {};
+        const { key, value } = body;
+        if (key !== undefined) {
+            const strVal = typeof value === 'object' ? JSON.stringify(value) : String(value);
+            const setting = await db_1.prisma.systemSetting.upsert({
+                where: { key: String(key) },
+                update: { value: strVal },
+                create: { key: String(key), value: strVal },
+            });
+            if (key === 'ads_enabled' || key === 'adsEnabled') {
+                const isEnabled = strVal !== 'false' && strVal !== '0';
+                (0, socket_1.emitToAll)('config:updated', { key: 'ads_enabled', adsEnabled: isEnabled });
+            }
+            else {
+                (0, socket_1.emitToAll)('config:updated', { key, value });
+            }
+            return res.json({ success: true, data: setting });
+        }
+        // Handle dictionary payload like { maintenanceMode: false, adsEnabled: false, ... }
+        let changedAdsEnabled = null;
+        for (const [k, v] of Object.entries(body)) {
+            if (k === 'lastUpdated' || k === 'updatedBy')
+                continue;
+            const strVal = typeof v === 'object' ? JSON.stringify(v) : String(v);
+            await db_1.prisma.systemSetting.upsert({
+                where: { key: k },
+                update: { value: strVal },
+                create: { key: k, value: strVal },
+            });
+            if (k === 'ads_enabled' || k === 'adsEnabled') {
+                changedAdsEnabled = strVal !== 'false' && strVal !== '0';
+            }
+        }
+        if (changedAdsEnabled !== null) {
+            (0, socket_1.emitToAll)('config:updated', { key: 'ads_enabled', adsEnabled: changedAdsEnabled });
+        }
+        return res.json({ success: true, message: 'Configuration updated successfully' });
     }
     catch (error) {
         return res.status(500).json({ error: 'Failed to save config' });
@@ -733,6 +773,63 @@ router.post('/ai-posts/clean', auth_1.authenticateToken, adminOnly, (0, audit_1.
     catch (error) {
         console.error('Error cleaning AI posts:', error);
         return res.status(500).json({ error: 'Failed to clean AI posts' });
+    }
+});
+/**
+ * GET /api/admin/settings/ads
+ * Check whether campus advertisements & paid promos are enabled
+ */
+router.get(['/settings/ads', '/settings/advertisements', '/ads/status'], auth_1.optionalAuth, async (req, res) => {
+    try {
+        const setting = await db_1.prisma.systemSetting.findFirst({
+            where: {
+                OR: [
+                    { key: 'ads_enabled' },
+                    { key: 'adsEnabled' }
+                ]
+            },
+        });
+        const enabled = setting ? (setting.value !== 'false' && setting.value !== '0') : true;
+        return res.json({ success: true, adsEnabled: enabled, enabled });
+    }
+    catch (error) {
+        console.error('Error fetching ads setting:', error);
+        return res.status(500).json({ error: 'Failed to fetch ads setting' });
+    }
+});
+/**
+ * POST /api/admin/settings/ads
+ * Master kill-switch to shut down or re-enable all campus advertisements, boost buttons, and promo cards
+ */
+router.post(['/settings/ads', '/settings/advertisements'], auth_1.authenticateToken, adminOnly, (0, audit_1.auditAction)('TOGGLE_ADVERTISEMENTS'), async (req, res) => {
+    try {
+        const { enabled } = req.body;
+        const isEnabled = enabled === true || enabled === 'true' || enabled === 1 || enabled === '1';
+        const strVal = isEnabled ? 'true' : 'false';
+        await db_1.prisma.systemSetting.upsert({
+            where: { key: 'ads_enabled' },
+            update: { value: strVal },
+            create: { key: 'ads_enabled', value: strVal },
+        });
+        // Also update adsEnabled key for consistency
+        await db_1.prisma.systemSetting.upsert({
+            where: { key: 'adsEnabled' },
+            update: { value: strVal },
+            create: { key: 'adsEnabled', value: strVal },
+        });
+        // Broadcast instant real-time notification to all connected mobile clients
+        (0, socket_1.emitToAll)('config:updated', { key: 'ads_enabled', adsEnabled: isEnabled });
+        console.log(`🚨 Admin ${req.user?.username || req.user?.id} set Campus Advertisements to: ${isEnabled ? 'ACTIVE 🟢' : 'SHUT DOWN 🔴'}`);
+        return res.json({
+            success: true,
+            adsEnabled: isEnabled,
+            enabled: isEnabled,
+            message: `Campus Advertisements are now ${isEnabled ? 'ACTIVE' : 'SHUT DOWN'}`
+        });
+    }
+    catch (error) {
+        console.error('Error updating ads setting:', error);
+        return res.status(500).json({ error: 'Failed to update ads setting' });
     }
 });
 exports.default = router;

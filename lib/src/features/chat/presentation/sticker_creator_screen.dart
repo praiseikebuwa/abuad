@@ -146,7 +146,7 @@ class _StickerCreatorScreenState extends State<StickerCreatorScreen> with Single
             decoration: BoxDecoration(
               color: isDark ? Colors.black : const Color(0xFFF1F5F9),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.grey.withOpacity(0.3)),
+              border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
             ),
             child: Stack(
               children: [
@@ -182,11 +182,11 @@ class _StickerCreatorScreenState extends State<StickerCreatorScreen> with Single
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.gesture, size: 48, color: Colors.grey.withOpacity(0.4)),
+                        Icon(Icons.gesture, size: 48, color: Colors.grey.withValues(alpha: 0.4)),
                         const SizedBox(height: 8),
                         Text(
                           'Doodle or draw your sticker with your finger',
-                          style: TextStyle(color: Colors.grey.withOpacity(0.7), fontSize: 13),
+                          style: TextStyle(color: Colors.grey.withValues(alpha: 0.7), fontSize: 13),
                         ),
                       ],
                     ),
@@ -319,7 +319,7 @@ class _StickerCreatorScreenState extends State<StickerCreatorScreen> with Single
                   : Border.all(color: Colors.transparent),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
+                  color: Colors.black.withValues(alpha: 0.2),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
@@ -332,7 +332,7 @@ class _StickerCreatorScreenState extends State<StickerCreatorScreen> with Single
                       child: Image.network(
                         _selectedImage!.path,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 48, color: Colors.tealAccent),
+                        errorBuilder: (_, _, _) => const Icon(Icons.image, size: 48, color: Colors.tealAccent),
                       ),
                     )
                   : Column(
@@ -391,7 +391,7 @@ class _StickerCreatorScreenState extends State<StickerCreatorScreen> with Single
           title: const Text('Sticker White Contour Border', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
           subtitle: const Text('Adds a crisp comic sticker outline with drop shadow', style: TextStyle(fontSize: 12)),
           value: _hasWhiteOutline,
-          activeColor: Colors.tealAccent,
+          activeThumbColor: Colors.tealAccent,
           onChanged: (val) => setState(() => _hasWhiteOutline = val),
         ),
         const SizedBox(height: 16),
@@ -522,7 +522,7 @@ class _StickerCreatorScreenState extends State<StickerCreatorScreen> with Single
           title: const Text('Boomerang Bounce (Forward & Reverse)', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
           subtitle: const Text('Loops back and forth seamlessly like Instagram / Snapchat stickers', style: TextStyle(fontSize: 12)),
           value: _isBoomerang,
-          activeColor: Colors.tealAccent,
+          activeThumbColor: Colors.tealAccent,
           onChanged: (val) => setState(() => _isBoomerang = val),
         ),
         const SizedBox(height: 16),

@@ -161,7 +161,7 @@ class _SportsCenterScreenState extends State<SportsCenterScreen> with SingleTick
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: Colors.redAccent.withOpacity(0.2),
+                          color: Colors.redAccent.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: Colors.redAccent, width: 1),
                         ),
@@ -252,7 +252,7 @@ class _SportsCenterScreenState extends State<SportsCenterScreen> with SingleTick
           child: ListTile(
             contentPadding: const EdgeInsets.all(14),
             leading: CircleAvatar(
-              backgroundColor: Colors.greenAccent.withOpacity(0.15),
+              backgroundColor: Colors.greenAccent.withValues(alpha: 0.15),
               child: const Icon(Icons.event, color: Colors.greenAccent),
             ),
             title: Text('${fix['teamA']} vs ${fix['teamB']}', style: const TextStyle(fontWeight: FontWeight.bold)),

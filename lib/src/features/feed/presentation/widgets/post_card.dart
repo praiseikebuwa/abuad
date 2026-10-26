@@ -13,6 +13,7 @@ import '../../../../core/widgets/verification_badge.dart';
 import '../../../../core/utils/url_validator.dart';
 import 'package:abuad/src/features/feed/data/post_repository.dart';
 import '../../../auth/data/auth_repository.dart';
+import '../../../advertisements/data/advertisement_repository.dart';
 import '../../domain/post.dart' as domain;
 import '../providers/feed_provider.dart';
 import 'animated_like_button.dart';
@@ -1300,13 +1301,15 @@ class _PostCardState extends ConsumerState<PostCard> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                _overlayActionButton(
-                  icon: Icons.rocket_launch,
-                  label: 'Boost this post',
-                  color: AppColors.secondaryTeal,
-                  onTap: () => _handleBoost(context),
-                ),
-                const SizedBox(height: 12),
+                if (ref.watch(adsEnabledProvider)) ...[
+                  _overlayActionButton(
+                    icon: Icons.rocket_launch,
+                    label: 'Boost this post',
+                    color: AppColors.secondaryTeal,
+                    onTap: () => _handleBoost(context),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 _overlayActionButton(
                   icon: Icons.emoji_emotions_outlined,
                   label: 'Add reaction',

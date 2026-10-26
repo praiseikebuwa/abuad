@@ -20,6 +20,7 @@ class SocketService {
   final _presenceController = StreamController<Map<String, dynamic>>.broadcast();
   final _snapSavedController = StreamController<Map<String, dynamic>>.broadcast();
   final _notificationController = StreamController<Map<String, dynamic>>.broadcast();
+  final _configUpdatedController = StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get onNewMessage => _newMessageController.stream;
   Stream<Map<String, dynamic>> get onMessageUpdated => _messageUpdatedController.stream;
@@ -30,6 +31,7 @@ class SocketService {
   Stream<Map<String, dynamic>> get onPresence => _presenceController.stream;
   Stream<Map<String, dynamic>> get onSnapSaved => _snapSavedController.stream;
   Stream<Map<String, dynamic>> get onNotification => _notificationController.stream;
+  Stream<Map<String, dynamic>> get onConfigUpdated => _configUpdatedController.stream;
 
   String _getSocketUrl() {
     try {
@@ -175,6 +177,12 @@ class SocketService {
     _socket!.on('snap:saved', (data) {
       if (data is Map) {
         _snapSavedController.add(Map<String, dynamic>.from(data));
+      }
+    });
+
+    _socket!.on('config:updated', (data) {
+      if (data is Map) {
+        _configUpdatedController.add(Map<String, dynamic>.from(data));
       }
     });
   }

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import '../../features/stories/data/story_repository.dart';
 import '../../features/stories/domain/story.dart';
@@ -8,6 +7,7 @@ import '../../features/auth/data/auth_repository.dart';
 import '../../core/utils/url_validator.dart';
 import '../../features/stories/presentation/my_story_screen.dart';
 import '../../features/stories/presentation/create_story_screen.dart';
+import 'autoplay_live_media_widget.dart';
 
 class UserAvatar extends ConsumerWidget {
   final String userId;
@@ -280,15 +280,14 @@ class UserAvatar extends ConsumerWidget {
       radius: radius,
       backgroundColor: backgroundColor ?? const Color(0xFF8B5CF6),
       child: hasValidUrl
-          ? ClipOval(
-              child: CachedNetworkImage(
-                imageUrl: formattedUrl,
-                width: radius * 2,
-                height: radius * 2,
-                fit: BoxFit.cover,
-                placeholder: (context, url) => fallbackText,
-                errorWidget: (context, url, error) => fallbackText,
-              ),
+          ? AutoPlayLiveMediaWidget(
+              url: formattedUrl,
+              width: radius * 2,
+              height: radius * 2,
+              isCircle: true,
+              fit: BoxFit.cover,
+              placeholder: fallbackText,
+              errorWidget: fallbackText,
             )
           : fallbackText,
     );

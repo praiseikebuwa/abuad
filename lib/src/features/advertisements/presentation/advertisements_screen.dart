@@ -19,6 +19,81 @@ class AdvertisementsScreen extends ConsumerWidget {
     final textPrimary = isDark ? Colors.white : const Color(0xFF0F172A);
     final textSecondary = isDark ? Colors.grey[400]! : Colors.grey[600]!;
 
+    final adsEnabled = ref.watch(adsEnabledProvider);
+    if (!adsEnabled) {
+      return Scaffold(
+        backgroundColor: bg,
+        appBar: AppBar(
+          backgroundColor: bg,
+          elevation: 0,
+          title: Text(
+            'Campus Advertisements',
+            style: TextStyle(
+              color: textPrimary,
+              fontWeight: FontWeight.w800,
+              fontSize: 18,
+            ),
+          ),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 28.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(22),
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.campaign_outlined,
+                    size: 64,
+                    color: Colors.redAccent,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'Advertisements Temporarily Shut Down',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: textPrimary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Campus administration has paused all advertisements, sponsored promotions, and item boost features platform-wide. New campaign creation is currently disabled.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: textSecondary,
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 32),
+                ElevatedButton.icon(
+                  onPressed: () => Navigator.of(context).maybePop(),
+                  icon: const Icon(Icons.arrow_back),
+                  label: const Text('Return to Campus'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryBlue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     final activeAdsAsync = ref.watch(activeAdsProvider);
 
     return Scaffold(

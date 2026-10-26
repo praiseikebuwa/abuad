@@ -212,7 +212,7 @@ class _SellerStorefrontScreenState extends ConsumerState<SellerStorefrontScreen>
             return ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: filteredItems.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              separatorBuilder: (_, _) => const SizedBox(height: 12),
               itemBuilder: (context, index) {
                 return _buildProductListTile(filteredItems[index], cardColor, textPrimary, textSecondary, isDark);
               },
@@ -359,8 +359,8 @@ class _SellerStorefrontScreenState extends ConsumerState<SellerStorefrontScreen>
                       ? CachedNetworkImage(
                           imageUrl: UrlValidator.formatImageUrl(item.imageUrl!),
                           fit: BoxFit.cover,
-                          placeholder: (_, __) => Container(color: isDark ? Colors.white10 : const Color(0xFFF1F5F9)),
-                          errorWidget: (_, __, ___) => const Center(child: Icon(Icons.shopping_bag_outlined, size: 36, color: Colors.grey)),
+                          placeholder: (_, _) => Container(color: isDark ? Colors.white10 : const Color(0xFFF1F5F9)),
+                          errorWidget: (_, _, _) => const Center(child: Icon(Icons.shopping_bag_outlined, size: 36, color: Colors.grey)),
                         )
                       : const Center(child: Icon(Icons.shopping_bag_outlined, size: 36, color: Colors.grey)),
                 ),
@@ -417,8 +417,8 @@ class _SellerStorefrontScreenState extends ConsumerState<SellerStorefrontScreen>
                     ? CachedNetworkImage(
                         imageUrl: UrlValidator.formatImageUrl(item.imageUrl!),
                         fit: BoxFit.cover,
-                        placeholder: (_, __) => Container(color: isDark ? Colors.white10 : const Color(0xFFF1F5F9)),
-                        errorWidget: (_, __, ___) => const Icon(Icons.shopping_bag_outlined, size: 28, color: Colors.grey),
+                        placeholder: (_, _) => Container(color: isDark ? Colors.white10 : const Color(0xFFF1F5F9)),
+                        errorWidget: (_, _, _) => const Icon(Icons.shopping_bag_outlined, size: 28, color: Colors.grey),
                       )
                     : const Icon(Icons.shopping_bag_outlined, size: 28, color: Colors.grey),
               ),

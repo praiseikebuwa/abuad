@@ -196,5 +196,18 @@ class MarketplaceRepository {
 
   Future<void> updateItemStatus(String itemId, String status) async {}
 
+  Future<MarketplaceItem?> getItemById(String itemId) async {
+    try {
+      final response = await ApiClient.get('/marketplace/$itemId');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] != null) {
+          return MarketplaceItem.fromMap(data['data']);
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   Future<void> deleteItem(String itemId) async {}
 }

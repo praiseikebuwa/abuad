@@ -1286,6 +1286,7 @@ class _AddMemberModalState extends ConsumerState<_AddMemberModal> {
   final Set<String> _selectedUids = {};
   List<AppUser> _searchResults = [];
   bool _isLoading = false;
+  bool _isAdding = false;
 
   @override
   void initState() {
@@ -1366,18 +1367,45 @@ class _AddMemberModalState extends ConsumerState<_AddMemberModal> {
                   ),
                   if (_selectedUids.isNotEmpty)
                     TextButton(
-                      onPressed: () async {
+                      onPressed: _isAdding ? null : () async {
                         final nav = Navigator.of(context);
                         final selected = _selectedUids.toList();
-                        final success = await ref
-                            .read(chatRepositoryProvider)
-                            .addMembersToGroup(widget.channel.id, selected);
-                        if (success) {
-                          widget.onMembersAdded();
-                          nav.pop();
+                        setState(() => _isAdding = true);
+                        try {
+                          final success = await ref
+                              .read(chatRepositoryProvider)
+                              .addMembersToGroup(widget.channel.id, selected);
+                          if (!mounted) return;
+                          setState(() => _isAdding = false);
+                          if (success) {
+                            widget.onMembersAdded();
+                            nav.pop();
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Added ${selected.length} member(s) to group'),
+                                  backgroundColor: AppColors.secondaryTeal,
+                                ),
+                              );
+                            }
+                          } else {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Failed to add members. Please try again.'),
+                                  backgroundColor: Colors.redAccent,
+                                ),
+                              );
+                            }
+                          }
+                        } catch (e) {
+                          if (mounted) setState(() => _isAdding = false);
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Added ${selected.length} member(s) to group')),
+                              SnackBar(
+                                content: Text('Error adding members: $e'),
+                                backgroundColor: Colors.redAccent,
+                              ),
                             );
                           }
                         }
@@ -1388,7 +1416,16 @@ class _AddMemberModalState extends ConsumerState<_AddMemberModal> {
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                       ),
-                      child: Text('Add (${_selectedUids.length})'),
+                      child: _isAdding
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Text('Add (${_selectedUids.length})'),
                     ),
                 ],
               ),
@@ -1429,7 +1466,7 @@ class _AddMemberModalState extends ConsumerState<_AddMemberModal> {
                           controller: scrollController,
                           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                           itemCount: _searchResults.length,
-                          separatorBuilder: (_, __) => Divider(
+                          separatorBuilder: (_, _) => Divider(
                             height: 1,
                             color: isDark ? Colors.white10 : const Color(0xFFE2E8F0),
                           ),

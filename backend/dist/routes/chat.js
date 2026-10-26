@@ -456,16 +456,123 @@ router.patch('/channels/:id', auth_1.authenticateToken, async (req, res) => {
     }
 });
 /**
+ * Helper to resolve channel by ID handling both raw uuid and channel_ prefix
+ */
+async function findChannelByIdFlexible(rawId) {
+    let channel = await db_1.prisma.chatChannel.findUnique({ where: { id: rawId } });
+    if (!channel && rawId.startsWith('channel_')) {
+        channel = await db_1.prisma.chatChannel.findUnique({ where: { id: rawId.substring(8) } });
+    }
+    if (!channel && !rawId.startsWith('channel_')) {
+        channel = await db_1.prisma.chatChannel.findUnique({ where: { id: `channel_${rawId}` } });
+    }
+    return channel;
+}
+/**
+ * GET /api/chat/channels/:id/public-info - Public preview info for group join invitation
+ */
+router.get('/channels/:id/public-info', auth_1.optionalAuth, async (req, res) => {
+    try {
+        const rawId = String(req.params.id);
+        const channel = await findChannelByIdFlexible(rawId);
+        if (!channel)
+            return res.status(404).json({ error: 'Group not found' });
+        let memberIds = [];
+        try {
+            memberIds = JSON.parse(channel.memberIds || '[]');
+        }
+        catch { }
+        const isMember = req.user ? memberIds.includes(req.user.id) : false;
+        // Get sample member avatars for preview
+        const sampleUsers = await db_1.prisma.user.findMany({
+            where: { id: { in: memberIds.slice(0, 5) } },
+            select: { id: true, fullName: true, username: true, avatarUrl: true },
+        });
+        return res.json({
+            success: true,
+            channel: {
+                id: channel.id,
+                name: channel.name || 'ABUAD Community Group',
+                type: channel.type,
+                isGroup: channel.isGroup,
+                memberCount: memberIds.length,
+                isMember,
+                sampleMembers: sampleUsers,
+                createdAt: channel.createdAt,
+            },
+        });
+    }
+    catch (error) {
+        console.error('Error fetching public group info:', error);
+        return res.status(500).json({ error: 'Failed to fetch group info' });
+    }
+});
+/**
+ * POST /api/chat/channels/:id/join - Join a group via link
+ */
+router.post('/channels/:id/join', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const rawId = String(req.params.id);
+        const userId = req.user.id;
+        const channel = await findChannelByIdFlexible(rawId);
+        if (!channel)
+            return res.status(404).json({ error: 'Group not found' });
+        let memberIds = [];
+        try {
+            memberIds = JSON.parse(channel.memberIds || '[]');
+        }
+        catch { }
+        if (memberIds.includes(userId)) {
+            const formatted = await formatChannel(channel, userId);
+            return res.json({ success: true, alreadyMember: true, data: formatted });
+        }
+        const updatedMemberIds = [...memberIds, userId];
+        const user = await db_1.prisma.user.findUnique({
+            where: { id: userId },
+            select: { fullName: true, username: true, avatarUrl: true },
+        });
+        const userName = user?.fullName || user?.username || 'A student';
+        const updatedChannel = await db_1.prisma.chatChannel.update({
+            where: { id: channel.id },
+            data: {
+                memberIds: JSON.stringify(updatedMemberIds),
+                lastMessage: `🎉 ${userName} joined the group via link!`,
+                lastMessageTime: new Date(),
+            },
+        });
+        const systemMsg = await db_1.prisma.chatMessage.create({
+            data: {
+                senderId: userId,
+                channelId: channel.id,
+                text: `🎉 ${userName} joined the group via link. Welcome!`,
+                type: 'system',
+            },
+            include: {
+                sender: { select: { id: true, username: true, fullName: true, avatarUrl: true } },
+            },
+        });
+        (0, socket_1.emitToChannel)(channel.id, 'message:new', { message: formatMessage(systemMsg) });
+        (0, socket_1.emitToChannel)(channel.id, 'channel:updated', { memberIds: updatedMemberIds });
+        (0, socket_1.emitToUsers)(updatedMemberIds, 'channel:updated', { channelId: channel.id });
+        const formatted = await formatChannel(updatedChannel, userId);
+        return res.json({ success: true, data: formatted });
+    }
+    catch (error) {
+        console.error('Error joining group channel:', error);
+        return res.status(500).json({ error: 'Failed to join group' });
+    }
+});
+/**
  * POST /api/chat/channels/:id/members - Add members to group channel
  */
 router.post('/channels/:id/members', auth_1.authenticateToken, async (req, res) => {
     try {
-        const channelId = String(req.params.id);
+        const rawId = String(req.params.id);
         const { userIds } = req.body;
         if (!Array.isArray(userIds) || userIds.length === 0) {
             return res.status(400).json({ error: 'User IDs array is required' });
         }
-        const channel = await db_1.prisma.chatChannel.findUnique({ where: { id: channelId } });
+        const channel = await findChannelByIdFlexible(rawId);
         if (!channel)
             return res.status(404).json({ error: 'Channel not found' });
         let memberIds = [];
@@ -486,7 +593,7 @@ router.post('/channels/:id/members', auth_1.authenticateToken, async (req, res) 
         });
         const addedNames = addedUsers.map(u => u.fullName || u.username).join(', ');
         const updatedChannel = await db_1.prisma.chatChannel.update({
-            where: { id: channelId },
+            where: { id: channel.id },
             data: {
                 memberIds: JSON.stringify(updatedMemberIds),
                 lastMessage: `${req.user?.fullName || req.user?.username || 'Admin'} added ${addedNames || `${newMembers.length} member(s)`}`,
@@ -497,7 +604,7 @@ router.post('/channels/:id/members', auth_1.authenticateToken, async (req, res) 
         const systemMsg = await db_1.prisma.chatMessage.create({
             data: {
                 senderId: req.user.id,
-                channelId,
+                channelId: channel.id,
                 text: `📌 ${req.user?.fullName || req.user?.username || 'Admin'} added ${addedNames || `${newMembers.length} member(s)`} to the group.`,
                 type: 'system',
             },
@@ -506,9 +613,9 @@ router.post('/channels/:id/members', auth_1.authenticateToken, async (req, res) 
             }
         });
         const formattedSystemMsg = formatMessage(systemMsg);
-        (0, socket_1.emitToChannel)(channelId, 'message:new', { message: formattedSystemMsg });
-        (0, socket_1.emitToChannel)(channelId, 'channel:updated', { memberIds: updatedMemberIds });
-        (0, socket_1.emitToUsers)(updatedMemberIds, 'channel:updated', { channelId });
+        (0, socket_1.emitToChannel)(channel.id, 'message:new', { message: formattedSystemMsg });
+        (0, socket_1.emitToChannel)(channel.id, 'channel:updated', { memberIds: updatedMemberIds });
+        (0, socket_1.emitToUsers)(updatedMemberIds, 'channel:updated', { channelId: channel.id });
         const formatted = await formatChannel(updatedChannel, req.user.id);
         return res.json({ success: true, data: formatted, addedCount: newMembers.length });
     }
@@ -522,9 +629,9 @@ router.post('/channels/:id/members', auth_1.authenticateToken, async (req, res) 
  */
 router.delete('/channels/:id/members/:userId', auth_1.authenticateToken, async (req, res) => {
     try {
-        const channelId = String(req.params.id);
+        const rawId = String(req.params.id);
         const targetUserId = String(req.params.userId);
-        const channel = await db_1.prisma.chatChannel.findUnique({ where: { id: channelId } });
+        const channel = await findChannelByIdFlexible(rawId);
         if (!channel)
             return res.status(404).json({ error: 'Channel not found' });
         let memberIds = [];
@@ -546,7 +653,7 @@ router.delete('/channels/:id/members/:userId', auth_1.authenticateToken, async (
             ? `👋 ${targetName} left the group.`
             : `🚫 ${req.user?.fullName || req.user?.username || 'Admin'} removed ${targetName} from the group.`;
         const updatedChannel = await db_1.prisma.chatChannel.update({
-            where: { id: channelId },
+            where: { id: channel.id },
             data: {
                 memberIds: JSON.stringify(updatedMemberIds),
                 lastMessage: actionText,
@@ -556,7 +663,7 @@ router.delete('/channels/:id/members/:userId', auth_1.authenticateToken, async (
         const systemMsg = await db_1.prisma.chatMessage.create({
             data: {
                 senderId: req.user.id,
-                channelId,
+                channelId: channel.id,
                 text: actionText,
                 type: 'system',
             },
@@ -564,9 +671,9 @@ router.delete('/channels/:id/members/:userId', auth_1.authenticateToken, async (
                 sender: { select: { id: true, username: true, fullName: true, avatarUrl: true } }
             }
         });
-        (0, socket_1.emitToChannel)(channelId, 'message:new', { message: formatMessage(systemMsg) });
-        (0, socket_1.emitToChannel)(channelId, 'channel:updated', { memberIds: updatedMemberIds });
-        (0, socket_1.emitToUsers)(memberIds, 'channel:updated', { channelId });
+        (0, socket_1.emitToChannel)(channel.id, 'message:new', { message: formatMessage(systemMsg) });
+        (0, socket_1.emitToChannel)(channel.id, 'channel:updated', { memberIds: updatedMemberIds });
+        (0, socket_1.emitToUsers)(memberIds, 'channel:updated', { channelId: channel.id });
         return res.json({ success: true, data: await formatChannel(updatedChannel, req.user.id) });
     }
     catch (error) {

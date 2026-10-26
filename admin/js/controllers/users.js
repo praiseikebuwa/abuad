@@ -1,21 +1,69 @@
 class UsersController {
     constructor() {
         this.tableBody = document.querySelector('#users-table tbody');
-        this.users = []; // Cache for search
+        this.users = []; // Cache
+        this.selectedUserIds = new Set();
 
+        this.initControls();
+    }
+
+    initControls() {
         // Search Listener
         const searchInput = document.getElementById('user-search');
         if (searchInput) {
-            searchInput.addEventListener('input', (e) => {
-                this.filterUsers(e.target.value);
+            searchInput.addEventListener('input', () => this.applyFilters());
+        }
+
+        // Dropdown Filters
+        const roleFilter = document.getElementById('user-role-filter');
+        if (roleFilter) roleFilter.addEventListener('change', () => this.applyFilters());
+
+        const statusFilter = document.getElementById('user-status-filter');
+        if (statusFilter) statusFilter.addEventListener('change', () => this.applyFilters());
+
+        const tierFilter = document.getElementById('user-tier-filter');
+        if (tierFilter) tierFilter.addEventListener('change', () => this.applyFilters());
+
+        // Refresh Button
+        const refreshBtn = document.getElementById('users-refresh-btn');
+        if (refreshBtn) refreshBtn.addEventListener('click', () => this.load());
+
+        // Export CSV Button
+        const exportBtn = document.getElementById('users-export-btn');
+        if (exportBtn) exportBtn.addEventListener('click', () => this.exportCsv());
+
+        // Select All Checkbox
+        const selectAll = document.getElementById('users-select-all');
+        if (selectAll) {
+            selectAll.addEventListener('change', (e) => {
+                const checkboxes = document.querySelectorAll('.user-row-checkbox');
+                checkboxes.forEach(cb => {
+                    cb.checked = e.target.checked;
+                    if (e.target.checked) {
+                        this.selectedUserIds.add(cb.value);
+                    } else {
+                        this.selectedUserIds.delete(cb.value);
+                    }
+                });
+                this.updateBulkActionBar();
             });
+        }
+
+        // Bulk Actions
+        const bulkVerifyBtn = document.getElementById('bulk-verify-blue-btn');
+        if (bulkVerifyBtn) {
+            bulkVerifyBtn.addEventListener('click', () => this.bulkSetVerification('blue'));
+        }
+
+        const bulkBanBtn = document.getElementById('bulk-ban-btn');
+        if (bulkBanBtn) {
+            bulkBanBtn.addEventListener('click', () => this.bulkToggleBan(true));
         }
     }
 
     load() {
-        this.tableBody.innerHTML = '<tr><td colspan="5" class="loading-text">Loading users directory...</td></tr>';
+        this.tableBody.innerHTML = '<tr><td colspan="6" class="loading-text">Loading users directory...</td></tr>';
 
-        // Unsubscribe from previous listener if exists
         if (typeof this.unsubscribe === 'function') this.unsubscribe();
 
         this.unsubscribe = db.collection('users')
@@ -30,27 +78,53 @@ class UsersController {
                     const timeB = b.createdAt?.seconds || b.created_at?.seconds || 0;
                     return timeB - timeA;
                 });
-                this.renderTable(this.users);
+                this.applyFilters();
             }, err => {
                 console.error(err);
-                this.tableBody.innerHTML = `<tr><td colspan="5" class="error-text">Error loading users: ${err.message}</td></tr>`;
+                this.tableBody.innerHTML = `<tr><td colspan="6" class="error-text">Error loading users: ${err.message}</td></tr>`;
             });
     }
 
-    filterUsers(query) {
-        if (!query) {
-            this.renderTable(this.users);
-            return;
+    applyFilters() {
+        const query = (document.getElementById('user-search')?.value || '').toLowerCase().trim();
+        const role = document.getElementById('user-role-filter')?.value || 'all';
+        const status = document.getElementById('user-status-filter')?.value || 'all';
+        const tier = document.getElementById('user-tier-filter')?.value || 'all';
+
+        let filtered = this.users;
+
+        // Text search
+        if (query) {
+            filtered = filtered.filter(u =>
+                (u.fullName && u.fullName.toLowerCase().includes(query)) ||
+                (u.displayName && u.displayName.toLowerCase().includes(query)) ||
+                (u.email && u.email.toLowerCase().includes(query)) ||
+                (u.username && u.username.toLowerCase().includes(query)) ||
+                (u.department && u.department.toLowerCase().includes(query)) ||
+                (u.matricNumber && u.matricNumber.toLowerCase().includes(query))
+            );
         }
-        const lower = query.toLowerCase();
-        const filtered = this.users.filter(u =>
-            (u.fullName && u.fullName.toLowerCase().includes(lower)) ||
-            (u.displayName && u.displayName.toLowerCase().includes(lower)) ||
-            (u.display_name && u.display_name.toLowerCase().includes(lower)) ||
-            (u.email && u.email.toLowerCase().includes(lower)) ||
-            (u.username && u.username.toLowerCase().includes(lower)) ||
-            (u.handle && u.handle.toLowerCase().includes(lower))
-        );
+
+        // Role filter
+        if (role !== 'all') {
+            filtered = filtered.filter(u => (u.role || 'student').toLowerCase() === role.toLowerCase());
+        }
+
+        // Status filter
+        if (status === 'online') {
+            filtered = filtered.filter(u => u.status === 'online');
+        } else if (status === 'banned') {
+            filtered = filtered.filter(u => u.status === 'banned' || u.isBlocked === true);
+        }
+
+        // Verification tier filter
+        if (tier !== 'all') {
+            filtered = filtered.filter(u => {
+                const v = (u.verificationType || u.verification_type || (u.isVerified ? 'blue' : 'none')).toLowerCase();
+                return v === tier;
+            });
+        }
+
         this.renderTable(filtered);
     }
 
@@ -58,7 +132,7 @@ class UsersController {
         this.tableBody.innerHTML = '';
 
         if (userList.length === 0) {
-            this.tableBody.innerHTML = '<tr><td colspan="5">No matching users found.</td></tr>';
+            this.tableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 30px; color: var(--text-secondary);">No matching users found.</td></tr>';
             return;
         }
 
@@ -75,86 +149,90 @@ class UsersController {
             let iconHtml = '';
 
             if (vType === 'violet') {
-                badgeHtml = '<span class="badge" style="background: rgba(124, 58, 237, 0.2); color: #7C3AED; border: 1px solid #7C3AED; padding: 2px 8px; border-radius: 12px; font-weight: 600; font-size: 0.8rem;">Violet</span>';
+                badgeHtml = '<span class="badge" style="background: rgba(124, 58, 237, 0.2); color: #a78bfa; border: 1px solid #7C3AED; padding: 2px 8px; border-radius: 12px; font-weight: 600; font-size: 0.78rem;">Violet Leader</span>';
                 iconHtml = '<i class="fas fa-check-circle" style="color: #7C3AED; margin-left: 4px;" title="Violet Verified"></i>';
             } else if (vType === 'gold') {
-                badgeHtml = '<span class="badge" style="background: rgba(217, 119, 6, 0.2); color: #D97706; border: 1px solid #D97706; padding: 2px 8px; border-radius: 12px; font-weight: 600; font-size: 0.8rem;">Gold</span>';
+                badgeHtml = '<span class="badge" style="background: rgba(217, 119, 6, 0.2); color: #fbbf24; border: 1px solid #D97706; padding: 2px 8px; border-radius: 12px; font-weight: 600; font-size: 0.78rem;">Gold Honors</span>';
                 iconHtml = '<i class="fas fa-check-circle" style="color: #D97706; margin-left: 4px;" title="Gold Verified"></i>';
             } else if (vType === 'blue') {
-                badgeHtml = '<span class="badge" style="background: rgba(2, 132, 199, 0.2); color: #0284C7; border: 1px solid #0284C7; padding: 2px 8px; border-radius: 12px; font-weight: 600; font-size: 0.8rem;">Blue</span>';
+                badgeHtml = '<span class="badge" style="background: rgba(2, 132, 199, 0.2); color: #38bdf8; border: 1px solid #0284C7; padding: 2px 8px; border-radius: 12px; font-weight: 600; font-size: 0.78rem;">Blue Verified</span>';
                 iconHtml = '<i class="fas fa-check-circle" style="color: #0284C7; margin-left: 4px;" title="Blue Verified"></i>';
             } else {
-                badgeHtml = '<span class="badge badge-gray">None</span>';
+                badgeHtml = '<span class="badge badge-gray" style="font-size: 0.78rem;">Unverified</span>';
             }
+
+            const isChecked = this.selectedUserIds.has(user.id);
 
             tr.innerHTML = `
                 <td>
-                    <div class="user-cell">
-                        <div class="avatar-initial" style="background-color: ${seededColor(displayName)}; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; overflow: hidden; font-size: 1.2rem; color: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+                    <input type="checkbox" class="user-row-checkbox" value="${user.id}" ${isChecked ? 'checked' : ''} onchange="window.usersController.toggleRowSelection('${user.id}', this.checked)">
+                </td>
+                <td>
+                    <div class="user-cell" style="display: flex; align-items: center; gap: 12px;">
+                        <div class="avatar-initial" style="background-color: ${seededColor(displayName)}; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; overflow: hidden; font-size: 1.1rem; color: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.3); flex-shrink: 0;">
                             ${avatarUrl ? `<img src="${avatarUrl}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';" /><span style="display:none;">${initial}</span>` : initial}
                         </div>
                         <div>
-                            <div class="user-name">
+                            <div class="user-name" style="font-weight: 600; color: var(--text-primary); font-size: 0.92rem; display: flex; align-items: center;">
                                 ${displayName} 
                                 ${iconHtml}
                             </div>
-                            <small class="user-email">${user.email || (handle ? '@' + handle : 'No email')}</small>
+                            <small class="user-email" style="color: var(--text-secondary); font-size: 0.8rem;">${user.email || (handle ? '@' + handle : 'No email')}</small>
                         </div>
                     </div>
                 </td>
                 <td>
-                    <span class="status-badge ${user.status || 'offline'}">
-                        ${user.status === 'online' ? '● Online' : (user.status === 'banned' ? '🚫 Banned' : 'Offline')}
+                    <span class="status-badge ${user.status || 'offline'}" style="font-size: 0.78rem; padding: 3px 8px; border-radius: 10px;">
+                        ${user.status === 'online' ? '🟢 Online' : (user.status === 'banned' ? '🚫 Banned' : '⚪ Offline')}
                     </span>
                 </td>
                 <td>
                     ${badgeHtml}
                 </td>
-                <td>${formatDate(user.createdAt || user.created_at)}</td>
-                <td>
-                    <div class="action-buttons" style="display: flex; gap: 8px; align-items: center;">
+                <td><small style="color: var(--text-secondary);">${formatDate(user.createdAt || user.created_at)}</small></td>
+                <td style="text-align: right;">
+                    <div class="action-buttons" style="display: inline-flex; gap: 6px; align-items: center; justify-content: flex-end;">
                         <button class="btn-icon btn-view" 
                                 onclick="window.usersController.openUserModal('${user.id}')"
-                                title="View Profile" style="color: #4facfe; background: rgba(79, 172, 254, 0.1); border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer;">
+                                title="Inspect Student Profile">
                             <i class="fas fa-id-badge"></i>
                         </button>
                         <button class="btn-icon btn-notify" 
                                 onclick="window.usersController.openNotifyModal('${user.id}')"
-                                title="Send Direct Notification / Message" style="color: #10B981; background: rgba(16, 185, 129, 0.15); border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer;">
+                                title="Direct Message / Alert">
                             <i class="fas fa-paper-plane"></i>
                         </button>
-                        <div class="verification-tier-buttons" style="display: flex; gap: 2px; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 2px; background: rgba(0,0,0,0.2);">
-                            <button class="btn-icon btn-tier-none ${vType === 'none' ? 'active' : ''}" 
+                        <div class="verification-tier-buttons">
+                            <button class="btn-tier btn-tier-none ${vType === 'none' ? 'active' : ''}" 
                                     onclick="window.usersController.setVerification('${user.id}', 'none')"
-                                    title="Unverify" style="background: ${vType === 'none' ? 'rgba(255,255,255,0.2)' : 'transparent'}; border: none; color: #aaa; padding: 4px 6px; cursor: pointer; border-radius: 2px;">
+                                    title="Unverify">
                                 <i class="fas fa-times"></i>
                             </button>
-                            <button class="btn-icon btn-tier-blue ${vType === 'blue' ? 'active' : ''}" 
+                            <button class="btn-tier btn-tier-blue ${vType === 'blue' ? 'active' : ''}" 
                                     onclick="window.usersController.setVerification('${user.id}', 'blue')"
-                                    title="Blue Badge (#0284C7)" style="background: ${vType === 'blue' ? 'rgba(2, 132, 199, 0.3)' : 'transparent'}; border: none; color: #0284C7; padding: 4px 6px; cursor: pointer; border-radius: 2px;">
+                                    title="Blue Badge">
                                 <i class="fas fa-check-circle"></i>
                             </button>
-                            <button class="btn-icon btn-tier-gold ${vType === 'gold' ? 'active' : ''}" 
+                            <button class="btn-tier btn-tier-gold ${vType === 'gold' ? 'active' : ''}" 
                                     onclick="window.usersController.setVerification('${user.id}', 'gold')"
-                                    title="Gold Badge (#D97706)" style="background: ${vType === 'gold' ? 'rgba(217, 119, 6, 0.3)' : 'transparent'}; border: none; color: #D97706; padding: 4px 6px; cursor: pointer; border-radius: 2px;">
+                                    title="Gold Badge">
                                 <i class="fas fa-award"></i>
                             </button>
-                            <button class="btn-icon btn-tier-violet ${vType === 'violet' ? 'active' : ''}" 
+                            <button class="btn-tier btn-tier-violet ${vType === 'violet' ? 'active' : ''}" 
                                     onclick="window.usersController.setVerification('${user.id}', 'violet')"
-                                    title="Violet Badge (#7C3AED)" style="background: ${vType === 'violet' ? 'rgba(124, 58, 237, 0.3)' : 'transparent'}; border: none; color: #7C3AED; padding: 4px 6px; cursor: pointer; border-radius: 2px;">
+                                    title="Violet Badge">
                                 <i class="fas fa-crown"></i>
                             </button>
                         </div>
                         <button class="btn-icon ${user.status === 'banned' ? 'btn-unban' : 'btn-ban'}" 
                                 onclick="window.usersController.toggleBan('${user.id}', ${user.status === 'banned'})"
-                                title="${user.status === 'banned' ? 'Unban User' : 'Ban User'}"
-                                style="color: ${user.status === 'banned' ? '#4caf50' : '#f44336'}; background: rgba(0,0,0,0.2); border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer;">
+                                title="${user.status === 'banned' ? 'Unban Account' : 'Restrict / Ban Account'}">
                             <i class="fas ${user.status === 'banned' ? 'fa-unlock' : 'fa-ban'}"></i>
                         </button>
                         <button class="btn-icon btn-delete" 
                                 onclick="window.usersController.deleteUser('${user.id}')"
-                                title="Delete User" style="color: #ff4d4d; background: rgba(255, 77, 77, 0.1); border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer;">
-                            <i class="fas fa-trash"></i>
+                                title="Delete User">
+                            <i class="fas fa-trash-alt"></i>
                         </button>
                     </div>
                 </td>
@@ -162,9 +240,85 @@ class UsersController {
             this.tableBody.appendChild(tr);
         });
 
-        // Update stats counter if exists
         const totalCount = document.getElementById('stat-total-users');
         if (totalCount) totalCount.innerText = this.users.length + '+';
+    }
+
+    toggleRowSelection(userId, checked) {
+        if (checked) {
+            this.selectedUserIds.add(userId);
+        } else {
+            this.selectedUserIds.delete(userId);
+        }
+        this.updateBulkActionBar();
+    }
+
+    updateBulkActionBar() {
+        const bar = document.getElementById('users-bulk-actions');
+        const countSpan = document.getElementById('users-selected-count');
+        if (!bar || !countSpan) return;
+
+        if (this.selectedUserIds.size > 0) {
+            bar.classList.add('active');
+            countSpan.innerText = `${this.selectedUserIds.size} Selected`;
+        } else {
+            bar.classList.remove('active');
+            countSpan.innerText = '0 Selected';
+        }
+    }
+
+    async bulkSetVerification(tier) {
+        if (this.selectedUserIds.size === 0) return;
+        const count = this.selectedUserIds.size;
+        if (!confirm(`Apply "${tier.toUpperCase()}" verification badge to ${count} selected accounts?`)) return;
+
+        const promises = Array.from(this.selectedUserIds).map(uid => this.setVerification(uid, tier, true));
+        await Promise.all(promises);
+        this.selectedUserIds.clear();
+        this.updateBulkActionBar();
+        alert(`Successfully updated verification for ${count} users.`);
+    }
+
+    async bulkToggleBan(shouldBan) {
+        if (this.selectedUserIds.size === 0) return;
+        const count = this.selectedUserIds.size;
+        if (!confirm(`${shouldBan ? 'Ban' : 'Unban'} ${count} selected accounts?`)) return;
+
+        const promises = Array.from(this.selectedUserIds).map(uid => this.toggleBan(uid, !shouldBan, true));
+        await Promise.all(promises);
+        this.selectedUserIds.clear();
+        this.updateBulkActionBar();
+        alert(`Successfully ${shouldBan ? 'banned' : 'unbanned'} ${count} users.`);
+    }
+
+    exportCsv() {
+        if (this.users.length === 0) {
+            alert('No user records available to export.');
+            return;
+        }
+
+        const headers = ['ID', 'Full Name', 'Username', 'Email', 'Role', 'Department', 'Level', 'Status', 'Verification', 'Created Date'];
+        const rows = this.users.map(u => [
+            u.id || '',
+            `"${(u.fullName || u.displayName || '').replace(/"/g, '""')}"`,
+            `"${(u.username || u.handle || '').replace(/"/g, '""')}"`,
+            `"${(u.email || '').replace(/"/g, '""')}"`,
+            u.role || 'student',
+            `"${(u.department || '').replace(/"/g, '""')}"`,
+            u.level || '',
+            u.status || 'offline',
+            u.verificationType || (u.isVerified ? 'blue' : 'none'),
+            u.createdAt ? new Date(u.createdAt.seconds ? u.createdAt.seconds * 1000 : u.createdAt).toISOString() : ''
+        ]);
+
+        const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement('a');
+        link.setAttribute('href', encodedUri);
+        link.setAttribute('download', `abuad_users_export_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     }
 
     openUserModal(uid) {

@@ -458,12 +458,15 @@ class AcademicRepository {
       }
     } catch (_) {}
     return {
-      'matricNumber': '21/ENG02/089',
-      'department': 'Computer Engineering',
-      'college': 'College of Engineering',
-      'level': '400L',
+      'fullName': 'IKEBUWA Praise Ifechukwude',
+      'matricNumber': '25/SCI01/057',
+      'department': 'Computer Science',
+      'college': 'College of Sciences',
+      'level': '200 Level',
       'bloodGroup': 'O+',
       'session': '2025/2026',
+      'validationCode': '17552282',
+      'photoUrl': '',
       'expiryDate': '31 Oct 2026',
     };
   }
@@ -482,6 +485,8 @@ class AcademicRepository {
     String? level,
     String? bloodGroup,
     String? session,
+    String? validationCode,
+    String? photoUrl,
     double? gpa,
     double? cgpa,
     List<Map<String, dynamic>>? courses,
@@ -502,14 +507,26 @@ class AcademicRepository {
       updatedProfile['college'] = college.trim();
     }
     if (level != null && level.trim().isNotEmpty) {
-      final lvl = level.trim().toUpperCase();
-      updatedProfile['level'] = lvl.endsWith('L') ? lvl : '${lvl}L';
+      final lvl = level.trim();
+      updatedProfile['level'] = lvl.toLowerCase().contains('level') ? lvl : (lvl.toUpperCase().endsWith('L') ? lvl.toUpperCase() : '${lvl}L');
     }
     if (bloodGroup != null && bloodGroup.trim().isNotEmpty) {
       updatedProfile['bloodGroup'] = bloodGroup.trim();
     }
     if (session != null && session.trim().isNotEmpty) {
       updatedProfile['session'] = session.trim();
+    }
+    if (validationCode != null && validationCode.trim().isNotEmpty) {
+      updatedProfile['validationCode'] = validationCode.trim();
+    }
+    if (photoUrl != null && photoUrl.trim().isNotEmpty) {
+      updatedProfile['photoUrl'] = photoUrl.trim();
+    }
+    if (cgpa != null && cgpa > 0) {
+      updatedProfile['cgpa'] = cgpa.toStringAsFixed(2);
+    }
+    if (gpa != null && gpa > 0) {
+      updatedProfile['gpa'] = gpa.toStringAsFixed(2);
     }
 
     await saveStudentIdProfile(updatedProfile);

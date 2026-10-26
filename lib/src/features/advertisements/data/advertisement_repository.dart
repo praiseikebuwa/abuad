@@ -1,35 +1,146 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../core/services/api_client.dart';
+import '../../../core/services/socket_service.dart';
 import '../domain/advertisement.dart';
 import '../../auth/data/auth_repository.dart';
+
+class AdsEnabledNotifier extends StateNotifier<bool> {
+  static const _cacheKey = 'system_ads_enabled';
+  StreamSubscription? _socketSub;
+
+  AdsEnabledNotifier() : super(true) {
+    _init();
+  }
+
+  Future<void> _init() async {
+    // 1. Load cached state immediately
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.containsKey(_cacheKey)) {
+        state = prefs.getBool(_cacheKey) ?? true;
+      }
+    } catch (_) {}
+
+    // 2. Listen to real-time socket updates from admin
+    _socketSub = SocketService.instance.onConfigUpdated.listen((data) {
+      if (data.containsKey('adsEnabled')) {
+        final enabled = data['adsEnabled'] == true;
+        _updateState(enabled);
+      } else if (data['key'] == 'ads_enabled' || data['key'] == 'adsEnabled') {
+        final val = data['value'];
+        final enabled = val != false && val != 'false' && val != 0 && val != '0';
+        _updateState(enabled);
+      }
+    });
+
+    // 3. Fetch latest platform config from server
+    await syncWithServer();
+  }
+
+  Future<void> syncWithServer() async {
+    try {
+      final res = await ApiClient.get('/admin/settings/ads');
+      if (res.statusCode == 200) {
+        final decoded = jsonDecode(res.body);
+        if (decoded is Map && decoded['adsEnabled'] != null) {
+          final enabled = decoded['adsEnabled'] == true;
+          await _updateState(enabled);
+          return;
+        }
+      }
+    } catch (_) {}
+
+    try {
+      final res = await ApiClient.get('/system/config');
+      if (res.statusCode == 200) {
+        final decoded = jsonDecode(res.body);
+        if (decoded is Map && decoded['data'] != null) {
+          final data = decoded['data'];
+          if (data is Map) {
+            final rawAds = data['ads_enabled'] ?? data['adsEnabled'];
+            if (rawAds != null) {
+              final enabled = rawAds != false && rawAds != 'false';
+              await _updateState(enabled);
+            }
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _updateState(bool enabled) async {
+    if (state != enabled) {
+      state = enabled;
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_cacheKey, enabled);
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _socketSub?.cancel();
+    super.dispose();
+  }
+}
+
+final adsEnabledProvider = StateNotifierProvider<AdsEnabledNotifier, bool>((ref) {
+  return AdsEnabledNotifier();
+});
 
 final advertisementRepositoryProvider = Provider<AdvertisementRepository>((ref) {
   return AdvertisementRepository();
 });
 
 final activeAdsProvider = StreamProvider<List<Advertisement>>((ref) {
+  final isEnabled = ref.watch(adsEnabledProvider);
+  if (!isEnabled) {
+    return Stream.value(<Advertisement>[]);
+  }
   final repo = ref.watch(advertisementRepositoryProvider);
   return repo.watchActiveAds();
 });
 
 final feedAdsProvider = StreamProvider<List<Advertisement>>((ref) {
+  final isEnabled = ref.watch(adsEnabledProvider);
+  if (!isEnabled) {
+    return Stream.value(<Advertisement>[]);
+  }
   final repo = ref.watch(advertisementRepositoryProvider);
   return repo.watchActiveAds(placement: 'feed');
 });
 
 final storyAdsProvider = StreamProvider<List<Advertisement>>((ref) {
+  final isEnabled = ref.watch(adsEnabledProvider);
+  if (!isEnabled) {
+    return Stream.value(<Advertisement>[]);
+  }
   final repo = ref.watch(advertisementRepositoryProvider);
   return repo.watchActiveAds(placement: 'story');
 });
 
 final marketplaceAdsProvider = StreamProvider<List<Advertisement>>((ref) {
+  final isEnabled = ref.watch(adsEnabledProvider);
+  if (!isEnabled) {
+    return Stream.value(<Advertisement>[]);
+  }
   final repo = ref.watch(advertisementRepositoryProvider);
   return repo.watchActiveAds(placement: 'marketplace');
 });
 
 final myAdsProvider = StreamProvider<List<Advertisement>>((ref) {
+  final isEnabled = ref.watch(adsEnabledProvider);
+  if (!isEnabled) {
+    return Stream.value(<Advertisement>[]);
+  }
   final repo = ref.watch(advertisementRepositoryProvider);
   final userId = ref.watch(authRepositoryProvider).currentUser?.uid ?? '';
   return repo.watchMyAds(userId);

@@ -20,6 +20,8 @@ class AnalyticsController {
                     const mStatus = document.getElementById('summary-maintenance-status');
                     const sStatus = document.getElementById('summary-signups-status');
                     
+                    const aStatus = document.getElementById('summary-ads-status');
+                    
                     if (mStatus) {
                         mStatus.innerText = data.maintenanceMode ? '🚫 ACTIVE' : '✅ DISABLED';
                         mStatus.style.color = data.maintenanceMode ? 'var(--color-accent-rose)' : 'var(--color-primary-light)';
@@ -27,6 +29,11 @@ class AnalyticsController {
                     if (sStatus) {
                         sStatus.innerText = data.allowSignups !== false ? '✅ OPEN' : '🚫 CLOSED';
                         sStatus.style.color = data.allowSignups !== false ? 'var(--color-primary-light)' : 'var(--color-accent-rose)';
+                    }
+                    if (aStatus) {
+                        const isAdsOn = (data.ads_enabled !== false && data.ads_enabled !== 'false' && data.adsEnabled !== false && data.adsEnabled !== 'false');
+                        aStatus.innerText = isAdsOn ? '✅ ACTIVE' : '🚫 SHUT DOWN';
+                        aStatus.style.color = isAdsOn ? 'var(--color-primary-light)' : 'var(--color-accent-rose)';
                     }
                 }
             });

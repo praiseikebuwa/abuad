@@ -65,7 +65,7 @@ pm2 save
 pm2 startup
 
 
-
+git add .; git commit -m "feat: ABUAD e-Portal webview with auto-signin vault, live OS & heads-up notifications, admin direct user messaging"; git push origin main
 
 # If server runs out of memory (512MB VPS), enable 2GB swap once:
 # sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile && echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab

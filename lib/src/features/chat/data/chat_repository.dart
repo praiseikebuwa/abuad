@@ -31,9 +31,14 @@ class ChatRepository {
 
   final Map<String, List<ChatMessage>> _cachedMessages = {};
   final Map<String, ChatChannel> _cachedChannels = {};
+  List<ChatChannel> _channelsList = [];
   final Map<String, StreamController<Map<String, bool>>> _typingControllers = {};
   final Map<String, Map<String, bool>> _typingStatus = {};
   bool _socketInitialized = false;
+
+  static const String _channelsCacheKey = 'cached_chat_channels_v2';
+
+  List<ChatChannel> get channels => List.unmodifiable(_channelsList);
 
   ChatChannel? getCachedChannel(String channelId) {
     if (_cachedChannels.containsKey(channelId)) {
@@ -63,6 +68,119 @@ class ChatRepository {
 
   ChatRepository([this._ref, dynamic _]) {
     _initSocketListeners();
+    _loadChannelsFromDisk();
+  }
+
+  Future<void> _loadChannelsFromDisk() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonStr = prefs.getString(_channelsCacheKey);
+      if (jsonStr != null && jsonStr.isNotEmpty) {
+        final decoded = jsonDecode(jsonStr);
+        if (decoded is List) {
+          final loaded = decoded.map((m) => ChatChannel.fromMap(Map<String, dynamic>.from(m))).toList();
+          for (final ch in loaded) {
+            _updateChannelCache(ch);
+          }
+          _channelsList = loaded;
+          _sortChannels(_channelsList);
+          if (!_channelsController.isClosed) {
+            _channelsController.add(List.from(_channelsList));
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading cached channels: $e');
+    }
+  }
+
+  Future<void> _saveChannelsToDisk() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final data = _channelsList.map((c) => c.toMap()).toList();
+      await prefs.setString(_channelsCacheKey, jsonEncode(data));
+    } catch (_) {}
+  }
+
+  void _sortChannels(List<ChatChannel> list) {
+    final uid = currentUserId;
+    list.sort((a, b) {
+      final aPinned = a.pinnedBy.contains(uid);
+      final bPinned = b.pinnedBy.contains(uid);
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+
+      // Real messages come before empty placeholders
+      final aHasMsg = a.lastMessage.isNotEmpty && (a.lastMessage['content']?.toString().trim().isNotEmpty ?? false);
+      final bHasMsg = b.lastMessage.isNotEmpty && (b.lastMessage['content']?.toString().trim().isNotEmpty ?? false);
+      if (aHasMsg && !bHasMsg) return -1;
+      if (!aHasMsg && bHasMsg) return 1;
+
+      return b.lastMessageTime.compareTo(a.lastMessageTime);
+    });
+  }
+
+  void _emitChannels() {
+    _sortChannels(_channelsList);
+    if (!_channelsController.isClosed) {
+      _channelsController.add(List.from(_channelsList));
+    }
+    _saveChannelsToDisk();
+  }
+
+  void _handleIncomingRealtimeMessage(
+    String channelId,
+    ChatMessage newMsg,
+    Map<String, dynamic> rawMsg,
+  ) {
+    final existingChannel = getCachedChannel(channelId);
+    final uid = currentUserId;
+
+    final senderInfo = rawMsg['sender'];
+    final senderName = senderInfo is Map
+        ? (senderInfo['fullName'] ?? senderInfo['name'] ?? senderInfo['username'])
+        : null;
+
+    final lastMsg = <String, dynamic>{
+      'id': newMsg.id,
+      'sender_id': newMsg.senderId,
+      'senderId': newMsg.senderId,
+      'sender_name': senderName,
+      'content': newMsg.content,
+      'text': newMsg.content,
+      'type': newMsg.type,
+      'timestamp': newMsg.timestamp.toIso8601String(),
+      'created_at': newMsg.timestamp.toIso8601String(),
+      'isSnap': newMsg.isSnap,
+      'mediaUrl': newMsg.imageUrl ?? newMsg.audioUrl,
+    };
+
+    if (existingChannel != null) {
+      final updatedUnread = Map<String, int>.from(existingChannel.unreadCounts);
+      if (uid != null && newMsg.senderId != uid) {
+        updatedUnread[uid] = (updatedUnread[uid] ?? 0) + 1;
+      }
+
+      final updatedChannel = existingChannel.copyWith(
+        lastMessage: lastMsg,
+        lastMessageTime: newMsg.timestamp,
+        unreadCounts: updatedUnread,
+      );
+
+      _updateChannelCache(updatedChannel);
+
+      final idx = _channelsList.indexWhere(
+        (c) => c.id == existingChannel.id || c.id == channelId,
+      );
+      if (idx != -1) {
+        _channelsList[idx] = updatedChannel;
+      } else {
+        _channelsList.add(updatedChannel);
+      }
+      _emitChannels();
+    } else {
+      _fetchChannels();
+    }
   }
 
   void _initSocketListeners() {
@@ -81,6 +199,8 @@ class ChatRepository {
             _messageControllers[channelId]!.add(List.from(list));
           }
         }
+        // INSTANT REALTIME TOP-OF-LIST UPDATE
+        _handleIncomingRealtimeMessage(channelId, newMsg, Map<String, dynamic>.from(msgMap));
         _fetchChannels();
       }
     });
@@ -201,6 +321,13 @@ class ChatRepository {
   String? get currentUserId => _ref?.read(authRepositoryProvider).currentUserId;
 
   Stream<List<ChatChannel>> watchChannels() {
+    if (_channelsList.isNotEmpty) {
+      scheduleMicrotask(() {
+        if (!_channelsController.isClosed) {
+          _channelsController.add(List.from(_channelsList));
+        }
+      });
+    }
     _fetchChannels();
     _channelsTimer ??= Timer.periodic(const Duration(seconds: 15), (_) {
       _fetchChannels();
@@ -220,19 +347,20 @@ class ChatRepository {
           for (final ch in channels) {
             _updateChannelCache(ch);
           }
-          if (!_channelsController.isClosed) {
-            _channelsController.add(channels);
-          }
+          _channelsList = channels;
+          _emitChannels();
           return;
         }
       }
-      if (!_channelsController.isClosed && _cachedChannels.isNotEmpty) {
-        _channelsController.add(_cachedChannels.values.toSet().toList());
+      if (_cachedChannels.isNotEmpty) {
+        _channelsList = _cachedChannels.values.toSet().toList();
+        _emitChannels();
       }
     } catch (e) {
       debugPrint('Error fetching chat channels: $e');
-      if (!_channelsController.isClosed && _cachedChannels.isNotEmpty) {
-        _channelsController.add(_cachedChannels.values.toSet().toList());
+      if (_cachedChannels.isNotEmpty) {
+        _channelsList = _cachedChannels.values.toSet().toList();
+        _emitChannels();
       }
     }
   }
@@ -472,6 +600,32 @@ class ChatRepository {
       final res = await ApiClient.post('/chat/send', payload);
 
       if (res.statusCode == 200 || res.statusCode == 201) {
+        // Optimistically update channel immediately
+        final existing = getCachedChannel(channelId);
+        if (existing != null) {
+          final updated = existing.copyWith(
+            lastMessage: {
+              'content': content,
+              'text': content,
+              'type': effectiveType,
+              'sender_id': currentUserId,
+              'senderId': currentUserId,
+              'timestamp': DateTime.now().toIso8601String(),
+              'created_at': DateTime.now().toIso8601String(),
+              'isSnap': isSnap ?? false,
+              'mediaUrl': effectiveMediaUrl,
+            },
+            lastMessageTime: DateTime.now(),
+          );
+          _updateChannelCache(updated);
+          final idx = _channelsList.indexWhere((c) => c.id == existing.id || c.id == channelId);
+          if (idx != -1) {
+            _channelsList[idx] = updated;
+          } else {
+            _channelsList.add(updated);
+          }
+          _emitChannels();
+        }
         // Immediately refresh messages and channels
         _fetchMessages(channelId);
         _fetchChannels();
@@ -483,6 +637,17 @@ class ChatRepository {
   }
 
   Future<void> markChannelAsRead(String channelId) async {
+    final uid = currentUserId;
+    final ch = getCachedChannel(channelId);
+    if (ch != null && uid != null) {
+      final updatedUnread = Map<String, int>.from(ch.unreadCounts);
+      updatedUnread[uid] = 0;
+      final updated = ch.copyWith(unreadCounts: updatedUnread);
+      _updateChannelCache(updated);
+      final idx = _channelsList.indexWhere((c) => c.id == ch.id || c.id == channelId);
+      if (idx != -1) _channelsList[idx] = updated;
+      _emitChannels();
+    }
     try {
       final cleanId = channelId.startsWith('channel_') ? channelId.substring(8) : channelId;
       await ApiClient.post('/chat/channels/$cleanId/read', {});
@@ -509,6 +674,19 @@ class ChatRepository {
   }
 
   Future<void> togglePinChannel(String channelId, [dynamic arg2]) async {
+    final uid = currentUserId;
+    final ch = getCachedChannel(channelId);
+    if (ch != null && uid != null) {
+      final isPinned = ch.pinnedBy.contains(uid);
+      final newPinnedBy = isPinned
+          ? ch.pinnedBy.where((id) => id != uid).toList()
+          : [...ch.pinnedBy, uid];
+      final updated = ch.copyWith(pinnedBy: newPinnedBy);
+      _updateChannelCache(updated);
+      final idx = _channelsList.indexWhere((c) => c.id == ch.id || c.id == channelId);
+      if (idx != -1) _channelsList[idx] = updated;
+      _emitChannels();
+    }
     try {
       final cleanId = channelId.startsWith('channel_') ? channelId.substring(8) : channelId;
       await ApiClient.post('/chat/channels/$cleanId/pin', {});
@@ -519,6 +697,19 @@ class ChatRepository {
   }
 
   Future<void> toggleArchiveChannel(String channelId, [dynamic arg2]) async {
+    final uid = currentUserId;
+    final ch = getCachedChannel(channelId);
+    if (ch != null && uid != null) {
+      final isArchived = ch.archivedBy.contains(uid);
+      final newArchivedBy = isArchived
+          ? ch.archivedBy.where((id) => id != uid).toList()
+          : [...ch.archivedBy, uid];
+      final updated = ch.copyWith(archivedBy: newArchivedBy);
+      _updateChannelCache(updated);
+      final idx = _channelsList.indexWhere((c) => c.id == ch.id || c.id == channelId);
+      if (idx != -1) _channelsList[idx] = updated;
+      _emitChannels();
+    }
     try {
       final cleanId = channelId.startsWith('channel_') ? channelId.substring(8) : channelId;
       await ApiClient.post('/chat/channels/$cleanId/archive', {});
@@ -644,6 +835,37 @@ class ChatRepository {
       }
     } catch (e) {
       debugPrint('Error adding members to group: $e');
+    }
+    return false;
+  }
+
+  Future<Map<String, dynamic>?> getGroupPublicInfo(String channelId) async {
+    try {
+      final cleanId = channelId.startsWith('channel_') ? channelId.substring(8) : channelId;
+      final res = await ApiClient.get('/chat/channels/$cleanId/public-info');
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['channel'] != null) {
+          return Map<String, dynamic>.from(data['channel']);
+        }
+      }
+    } catch (e) {
+      debugPrint('Error getting group public info: $e');
+    }
+    return null;
+  }
+
+  Future<bool> joinGroup(String channelId) async {
+    try {
+      final cleanId = channelId.startsWith('channel_') ? channelId.substring(8) : channelId;
+      final res = await ApiClient.post('/chat/channels/$cleanId/join', {});
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        _fetchChannel(channelId);
+        _fetchChannels();
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Error joining group: $e');
     }
     return false;
   }

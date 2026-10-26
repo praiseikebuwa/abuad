@@ -169,7 +169,7 @@
                                 <h3 style="margin: 0;"><i class="fas fa-tools" style="color: var(--color-accent-purple);"></i> System Configuration</h3>
                                 <button class="btn-icon" data-tab="config" onclick="window.navigationController.switchTab('config')" style="padding:4px; font-size:12px; background:rgba(255,255,255,0.05); color:white; border-radius:4px;"><i class="fas fa-external-link-alt"></i></button>
                             </div>
-                            <div class="config-summary-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                            <div class="config-summary-grid" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:10px;">
                                 <div class="config-item" style="background:rgba(255,255,255,0.02); padding:10px; border-radius:8px;">
                                     <small style="color:var(--text-secondary)">Maintenance</small>
                                     <div id="summary-maintenance-status" style="font-weight:600; font-size:0.9rem;">Loading...</div>
@@ -177,6 +177,10 @@
                                 <div class="config-item" style="background:rgba(255,255,255,0.02); padding:10px; border-radius:8px;">
                                     <small style="color:var(--text-secondary)">Public Signups</small>
                                     <div id="summary-signups-status" style="font-weight:600; font-size:0.9rem;">Loading...</div>
+                                </div>
+                                <div class="config-item" style="background:rgba(255,255,255,0.02); padding:10px; border-radius:8px;">
+                                    <small style="color:var(--text-secondary)">Campus Ads</small>
+                                    <div id="summary-ads-status" style="font-weight:600; font-size:0.9rem;">Loading...</div>
                                 </div>
                             </div>
                             <div style="margin-top:15px; font-size:0.8rem; color:var(--text-muted);">
@@ -203,12 +207,62 @@
                 <!-- Users Tab -->
                 <div id="users-tab" class="tab-content">
                     <header class="content-header">
-                        <h1>User Management</h1>
-                        <div class="search-box">
-                            <i class="fas fa-search"></i>
-                            <input type="text" id="user-search" placeholder="Search by name, email, or department...">
+                        <div>
+                            <h1>User Management & Directory</h1>
+                            <p style="color: var(--text-secondary); margin-top: 4px;">Monitor, verify, manage permissions, and communicate with campus accounts.</p>
+                        </div>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <button id="users-export-btn" class="btn btn-secondary">
+                                <i class="fas fa-file-csv"></i> Export CSV
+                            </button>
+                            <button id="users-refresh-btn" class="btn btn-secondary">
+                                <i class="fas fa-sync-alt"></i> Refresh
+                            </button>
                         </div>
                     </header>
+
+                    <!-- Moderation Toolbar -->
+                    <div class="moderation-toolbar">
+                        <div class="toolbar-filters">
+                            <div class="toolbar-search">
+                                <i class="fas fa-search"></i>
+                                <input type="text" id="user-search" placeholder="Search by name, @handle, matric, email...">
+                            </div>
+
+                            <select id="user-role-filter">
+                                <option value="all">All Roles</option>
+                                <option value="student">Students</option>
+                                <option value="staff">Staff & Faculty</option>
+                                <option value="admin">Administrators</option>
+                            </select>
+
+                            <select id="user-status-filter">
+                                <option value="all">All Statuses</option>
+                                <option value="online">Online Now 🟢</option>
+                                <option value="banned">Banned / Restricted 🚫</option>
+                            </select>
+
+                            <select id="user-tier-filter">
+                                <option value="all">All Verification Tiers</option>
+                                <option value="violet">Violet Badge (Leadership)</option>
+                                <option value="gold">Gold Badge (Honors/Staff)</option>
+                                <option value="blue">Blue Badge (Verified Student)</option>
+                                <option value="none">Unverified</option>
+                            </select>
+                        </div>
+
+                        <!-- Bulk Actions Bar -->
+                        <div id="users-bulk-actions" class="bulk-actions-bar">
+                            <span id="users-selected-count" style="font-size: 0.82rem; font-weight: 600; color: var(--color-primary-light);">0 Selected</span>
+                            <button id="bulk-verify-blue-btn" class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.78rem;">
+                                <i class="fas fa-check-circle" style="color: #0284c7;"></i> Verify Blue
+                            </button>
+                            <button id="bulk-ban-btn" class="btn btn-danger" style="padding: 4px 10px; font-size: 0.78rem;">
+                                <i class="fas fa-ban"></i> Ban Selected
+                            </button>
+                        </div>
+                    </div>
+
                     <div class="table-container">
                         <table id="users-table">
                             <thead>
@@ -216,23 +270,27 @@
                                     <th style="width: 40px;"><input type="checkbox" id="users-select-all"></th>
                                     <th>User Profile</th>
                                     <th>Status</th>
-                                    <th>Verification</th>
+                                    <th>Verification Tier</th>
                                     <th>Joined Date</th>
-                                    <th style="text-align: right;">Actions</th>
+                                    <th style="text-align: right; min-width: 220px;">Quick Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <!-- Populated by JS -->
+                                <!-- Populated by users.js -->
                             </tbody>
                         </table>
                     </div>
                 </div>
 
-                <!-- Posts Tab -->
+                <!-- Posts Moderation Tab -->
                 <div id="posts-tab" class="tab-content">
                     <header class="content-header">
-                        <h1>Content Moderation</h1>
+                        <div>
+                            <h1>Feed & Content Moderation</h1>
+                            <p style="color: var(--text-secondary); margin-top: 4px;">Inspect posts, pin campus bulletins, warn authors, and regulate automated posts.</p>
+                        </div>
                     </header>
+
                     <!-- ABUAD AI Bot Feed Controls -->
                     <div class="card"
                         style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 12px; margin-bottom: 16px; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
@@ -258,20 +316,31 @@
                                     <span class="slider round"></span>
                                 </label>
                             </div>
-                            <button id="posts-clean-ai-btn" class="btn-danger" style="padding: 7px 14px; border-radius: 8px; background: #ef4444; color: white; border: none; cursor: pointer; font-size: 0.85rem; font-weight: 600; display: flex; align-items: center; gap: 6px;" title="Delete all past automated AI posts from the feed">
-                                <i class="fas fa-trash"></i> Clean AI Posts
+                            <button id="posts-clean-ai-btn" class="btn btn-danger" style="padding: 7px 14px; font-size: 0.85rem;" title="Delete all past automated AI posts from the feed">
+                                <i class="fas fa-trash-alt"></i> Clean AI Posts
                             </button>
                         </div>
                     </div>
 
-                    <div class="card"
-                        style="background: var(--color-warning-bg); border-color: var(--color-warning-text); margin-bottom: 20px;">
-                        <div style="display: flex; gap: 10px; color: var(--color-warning-text);">
-                            <i class="fas fa-exclamation-triangle"></i>
-                            <p style="font-size: 0.9rem;"><strong>Moderation Warning:</strong> Deleting content is
-                                irreversible. Please review flagged items carefully.</p>
+                    <!-- Moderation Toolbar -->
+                    <div class="moderation-toolbar">
+                        <div class="toolbar-filters">
+                            <div class="toolbar-search">
+                                <i class="fas fa-search"></i>
+                                <input type="text" id="post-search" placeholder="Search post text, @handle, keywords...">
+                            </div>
+
+                            <select id="post-filter-type">
+                                <option value="all">All Content</option>
+                                <option value="media">Image / Media Only 📷</option>
+                                <option value="anonymous">Anonymous Posts 🎭</option>
+                            </select>
+                        </div>
+                        <div>
+                            <span id="posts-count-badge" class="badge badge-secondary" style="padding: 6px 12px; font-size: 0.82rem;">0 Posts</span>
                         </div>
                     </div>
+
                     <div class="table-container">
                         <table id="posts-table">
                             <thead>
@@ -281,116 +350,149 @@
                                     <th>Author</th>
                                     <th>Engagement</th>
                                     <th>Posted</th>
-                                    <th style="text-align: right;">Actions</th>
+                                    <th style="text-align: right; min-width: 140px;">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <!-- Populated by JS -->
+                                <!-- Populated by posts.js -->
                             </tbody>
                         </table>
                     </div>
                 </div>
 
-                <!-- Reels Tab -->
+                <!-- Reels Moderation Tab -->
                 <div id="reels-tab" class="tab-content">
                     <header class="content-header">
-                        <h1>Reels Moderation</h1>
+                        <div>
+                            <h1>Campus Reels & Short Videos</h1>
+                            <p style="color: var(--text-secondary); margin-top: 4px;">Review student vertical video reels, feature trending clips, and remove violations.</p>
+                        </div>
+                        <button id="reels-refresh-btn" class="btn btn-secondary">
+                            <i class="fas fa-sync-alt"></i> Refresh Reels
+                        </button>
                     </header>
-                    <div class="card" style="margin-bottom: 20px; background: rgba(129, 140, 248, 0.1); border-color: var(--color-accent-purple);">
-                        <div style="display: flex; gap: 10px; color: var(--color-accent-purple);">
-                            <i class="fas fa-info-circle"></i>
-                            <p style="font-size: 0.9rem;">Modern TikTok-style video moderation. Click a thumbnail to preview.</p>
+
+                    <!-- Moderation Toolbar -->
+                    <div class="moderation-toolbar">
+                        <div class="toolbar-filters">
+                            <div class="toolbar-search">
+                                <i class="fas fa-search"></i>
+                                <input type="text" id="reels-search" placeholder="Search creator @handle or caption...">
+                            </div>
+
+                            <select id="reels-filter">
+                                <option value="all">All Reels</option>
+                                <option value="trending">Featured & Trending 🔥</option>
+                                <option value="flagged">Reported / Review Needed ⚠️</option>
+                            </select>
+                        </div>
+                        <div>
+                            <span id="reels-count-badge" class="badge badge-secondary" style="padding: 6px 12px; font-size: 0.82rem;">0 Reels</span>
                         </div>
                     </div>
-                    <div class="reels-grid" id="reels-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px;">
+
+                    <div class="reels-grid" id="reels-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px;">
                         <!-- Populated by reels.js -->
-                        <div class="loading-text">Loading reels...</div>
+                        <div class="loading-text">Loading campus reels...</div>
                     </div>
                 </div>
 
-                <!-- Stories Tab -->
+                <!-- Stories Moderation Tab -->
                 <div id="stories-tab" class="tab-content">
                     <header class="content-header">
-                        <h1>Story Moderation</h1>
+                        <div>
+                            <h1>Ephemeral Stories Moderation</h1>
+                            <p style="color: var(--text-secondary); margin-top: 4px;">Monitor 24-hour campus stories, text snaps, and multimedia status updates.</p>
+                        </div>
+                        <button id="stories-refresh-btn" class="btn btn-secondary">
+                            <i class="fas fa-sync-alt"></i> Refresh Stories
+                        </button>
                     </header>
+
+                    <!-- Moderation Toolbar -->
+                    <div class="moderation-toolbar">
+                        <div class="toolbar-filters">
+                            <div class="toolbar-search">
+                                <i class="fas fa-search"></i>
+                                <input type="text" id="stories-search" placeholder="Search author, caption, mentions...">
+                            </div>
+
+                            <select id="stories-filter">
+                                <option value="all">All Active Stories</option>
+                                <option value="expiring">Expiring Soon (< 4h) ⏳</option>
+                                <option value="media">Image / Media Stories 🖼️</option>
+                                <option value="text">Text Snap Stories 📝</option>
+                            </select>
+                        </div>
+                        <div>
+                            <span id="stories-count-badge" class="badge badge-secondary" style="padding: 6px 12px; font-size: 0.82rem;">0 Active Stories</span>
+                        </div>
+                    </div>
+
                     <div class="table-container">
                         <table id="stories-table">
                             <thead>
                                 <tr>
-                                    <th style="width: 30%">Content Preview</th>
-                                    <th>Author</th>
-                                    <th>Details</th>
-                                    <th>Expires</th>
-                                    <th style="text-align: right;">Actions</th>
+                                    <th style="width: 32%">Story Preview</th>
+                                    <th>Creator</th>
+                                    <th>Type & Tags</th>
+                                    <th>Time Remaining</th>
+                                    <th style="text-align: right; min-width: 120px;">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <!-- Populated by JS -->
+                                <!-- Populated by stories.js -->
                             </tbody>
                         </table>
                     </div>
                 </div>
 
-                <!-- Chats Tab -->
+                <!-- Chat Channels Tab -->
                 <div id="chats-tab" class="tab-content">
                     <header class="content-header">
-                        <h1>Chat Moderation</h1>
+                        <div>
+                            <h1>Chat Channels & Group Oversight</h1>
+                            <p style="color: var(--text-secondary); margin-top: 4px;">Administrative oversight across departmental groups, hostel chats, and direct messages.</p>
+                        </div>
+                        <button id="chats-refresh-btn" class="btn btn-secondary">
+                            <i class="fas fa-sync-alt"></i> Refresh Channels
+                        </button>
                     </header>
+
+                    <!-- Moderation Toolbar -->
+                    <div class="moderation-toolbar">
+                        <div class="toolbar-filters">
+                            <div class="toolbar-search">
+                                <i class="fas fa-search"></i>
+                                <input type="text" id="chats-search" placeholder="Search by Channel ID, member...">
+                            </div>
+
+                            <select id="chats-filter">
+                                <option value="all">All Channels</option>
+                                <option value="group">Group Chats 👥</option>
+                                <option value="direct">Direct Messages 💬</option>
+                            </select>
+                        </div>
+                        <div>
+                            <span id="chats-count-badge" class="badge badge-secondary" style="padding: 6px 12px; font-size: 0.82rem;">0 Channels</span>
+                        </div>
+                    </div>
+
                     <div class="table-container">
                         <table id="chats-table">
                             <thead>
                                 <tr>
-                                    <th>Channel ID</th>
-                                    <th>Participants</th>
-                                    <th>Last Activity</th>
-                                    <th style="text-align: right;">Actions</th>
+                                    <th>Channel Details</th>
+                                    <th>Members</th>
+                                    <th>Last Activity Snippet</th>
+                                    <th>Timestamp</th>
+                                    <th style="text-align: right; min-width: 160px;">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <!-- Populated by JS -->
+                                <!-- Populated by chats.js -->
                             </tbody>
                         </table>
-                    </div>
-                </div>
-
-                <!-- Broadcasts Tab -->
-                <div id="broadcasts-tab" class="tab-content">
-                    <header class="content-header">
-                        <h1>System Broadcasts</h1>
-                    </header>
-                    <div class="broadcast-layout">
-                        <div class="card">
-                            <h3>Send Announcement</h3>
-                            <form id="broadcast-form">
-                                <div class="form-group">
-                                    <label>Title</label>
-                                    <input type="text" id="broadcast-title" placeholder="e.g. Scheduled Maintenance"
-                                        required>
-                                </div>
-                                <div class="form-group">
-                                    <label>Priority Level</label>
-                                    <select id="broadcast-type"
-                                        style="width: 100%; padding: 10px; border: 1px solid var(--border-subtle); border-radius: 8px;">
-                                        <option value="info">Information (Blue)</option>
-                                        <option value="warning">Warning (Orange)</option>
-                                        <option value="urgent">Critical (Red)</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label>Message</label>
-                                    <textarea id="broadcast-message" rows="4" placeholder="Type your message here..."
-                                        style="width: 100%; padding: 10px; border: 1px solid var(--border-subtle); border-radius: 8px;"
-                                        required></textarea>
-                                </div>
-                                <button type="submit" class="btn-primary">Send Broadcast</button>
-                            </form>
-                        </div>
-                        <div class="card">
-                            <h3>Recent History</h3>
-                            <div id="broadcast-history">
-                                <!-- Populated by JS -->
-                            </div>
-                        </div>
                     </div>
                 </div>
 
@@ -853,6 +955,20 @@
                                 </div>
                                 <label class="switch">
                                     <input type="checkbox" id="config-signups" checked>
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                            <div class="form-group"
+                                style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid var(--border-subtle);">
+                                <div>
+                                    <div style="display:flex; align-items:center; gap:8px;">
+                                        <b>Campus Advertisements &amp; Paid Promotions</b>
+                                        <span id="ads-badge-indicator" class="badge badge-success" style="font-size:10px; padding:2px 8px;">ACTIVE 🟢</span>
+                                    </div>
+                                    <small class="text-muted">Master shutoff for all ads, boost buttons, promo badges, and campaigns app-wide</small>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="config-ads-enabled" checked>
                                     <span class="slider round"></span>
                                 </label>
                             </div>

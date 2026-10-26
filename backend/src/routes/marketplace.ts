@@ -53,6 +53,43 @@ router.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Response) =
 });
 
 /**
+ * GET /api/marketplace/:id - Get single marketplace item
+ */
+router.get('/:id', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const item = await prisma.marketplaceItem.findUnique({
+      where: { id },
+      include: {
+        seller: {
+          select: {
+            id: true,
+            username: true,
+            fullName: true,
+            avatarUrl: true,
+            verificationType: true,
+          },
+        },
+      },
+    });
+
+    if (!item) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+
+    const formatted = {
+      ...item,
+      images: safeParseImages(item.images),
+    };
+
+    return res.json({ success: true, data: formatted });
+  } catch (error: any) {
+    console.error('Fetch marketplace item error:', error);
+    return res.status(500).json({ error: 'Failed to fetch item' });
+  }
+});
+
+/**
  * POST /api/marketplace
  */
 router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {

@@ -245,20 +245,21 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
                       });
                     },
                   ),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.campaign_outlined,
-                      color: AppColors.accentAmber,
+                  if (ref.watch(adsEnabledProvider))
+                    IconButton(
+                      icon: const Icon(
+                        Icons.campaign_outlined,
+                        color: AppColors.accentAmber,
+                      ),
+                      tooltip: 'Promote Item / Advertise',
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const AdvertisementsScreen(),
+                          ),
+                        );
+                      },
                     ),
-                    tooltip: 'Promote Item / Advertise',
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => const AdvertisementsScreen(),
-                        ),
-                      );
-                    },
-                  ),
                   IconButton(
                     icon: Icon(
                       _isListView ? Icons.grid_view_rounded : Icons.view_agenda_outlined,
@@ -364,7 +365,7 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
                         sliver: _isListView
                             ? SliverList.separated(
                                 itemCount: items.length,
-                                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                                separatorBuilder: (_, _) => const SizedBox(height: 12),
                                 itemBuilder: (context, index) =>
                                     _buildListItemCard(context, items[index])
                                         .animate(delay: (index * 30).ms)
@@ -420,7 +421,7 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: ads.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 12),
+                separatorBuilder: (_, _) => const SizedBox(width: 12),
                 itemBuilder: (context, index) {
                   final ad = ads[index];
                   return Container(
@@ -454,10 +455,10 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
                               child: CachedNetworkImage(
                                 imageUrl: ad.mediaUrl,
                                 fit: BoxFit.cover,
-                                placeholder: (_, __) => Container(
+                                placeholder: (_, _) => Container(
                                   color: isDark ? Colors.grey[900] : Colors.grey[200],
                                 ),
-                                errorWidget: (_, __, ___) => Container(
+                                errorWidget: (_, _, _) => Container(
                                   color: isDark ? Colors.grey[900] : Colors.grey[200],
                                   child: const Icon(Icons.image, color: Colors.grey),
                                 ),
@@ -1029,8 +1030,9 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
   }
 
   Widget _buildItemCard(BuildContext context, MarketplaceItem item) {
+    final adsEnabled = ref.watch(adsEnabledProvider);
     final boostedIds = ref.watch(boostedListingsProvider);
-    final isBoosted = boostedIds.contains(item.id);
+    final isBoosted = adsEnabled && boostedIds.contains(item.id);
     final priceLabel = _formatCurrency(item.price);
     final limitedLabel = _limitedDropLabel(item);
     final timeLabel = timeago.format(item.createdAt);
@@ -1334,7 +1336,8 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
         },
         itemBuilder: (context) => [
           const PopupMenuItem(value: 'share', child: Text('Share listing')),
-          const PopupMenuItem(value: 'boost', child: Text('Boost visibility')),
+          if (ref.watch(adsEnabledProvider))
+            const PopupMenuItem(value: 'boost', child: Text('Boost visibility')),
           const PopupMenuItem(value: 'react', child: Text('Add reaction')),
           const PopupMenuDivider(),
           const PopupMenuItem(value: 'report', child: Text('Report listing')),
@@ -1346,9 +1349,9 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
 
   void _shareListing(MarketplaceItem item) {
     final priceLabel = _formatCurrency(item.price);
-    final text =
-        'Check out this ${item.title} for $priceLabel on ABUAD Campus Marketplace!\n\n${item.description}';
-    Share.share(text, subject: item.title);
+    final link = 'https://abuadapp.com.ng/marketplace/detail?id=${item.id}';
+    final text = '🛍️ ${item.title}\n💰 Price: $priceLabel\n\n${item.description.isNotEmpty ? '${item.description}\n\n' : ''}Check out this listing on ABUAD Campus Marketplace:\n$link';
+    SharePlus.instance.share(ShareParams(text: text, subject: item.title));
   }
 
   Future<void> _boostListing(MarketplaceItem item) async {
@@ -1454,14 +1457,15 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
                 _shareListing(item);
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.campaign),
-              title: const Text('Boost your listing'),
-              onTap: () {
-                Navigator.pop(context);
-                _boostListing(item);
-              },
-            ),
+            if (ref.watch(adsEnabledProvider))
+              ListTile(
+                leading: const Icon(Icons.campaign),
+                title: const Text('Boost your listing'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _boostListing(item);
+                },
+              ),
             ListTile(
               leading: const Icon(Icons.insert_emoticon),
               title: const Text('Add reaction'),
@@ -1984,7 +1988,7 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             scrollDirection: Axis.horizontal,
             itemCount: displaySellers.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 14),
+            separatorBuilder: (_, _) => const SizedBox(width: 14),
             itemBuilder: (context, index) {
               final seller = displaySellers[index];
               final sampleItem = seller.value.first;
@@ -2024,8 +2028,8 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
                                 ? CachedNetworkImage(
                                     imageUrl: UrlValidator.formatImageUrl(sampleItem.imageUrl!),
                                     fit: BoxFit.cover,
-                                    placeholder: (_, __) => Container(color: Colors.grey[800]),
-                                    errorWidget: (_, __, ___) => Center(
+                                    placeholder: (_, _) => Container(color: Colors.grey[800]),
+                                    errorWidget: (_, _, _) => Center(
                                       child: Text(
                                         firstWord.isNotEmpty ? firstWord[0].toUpperCase() : 'S',
                                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
@@ -2108,8 +2112,8 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
                     ? CachedNetworkImage(
                         imageUrl: UrlValidator.formatImageUrl(item.imageUrl!),
                         fit: BoxFit.cover,
-                        placeholder: (_, __) => Container(color: Colors.white10),
-                        errorWidget: (_, __, ___) => const Center(child: Icon(Icons.image_outlined, size: 30, color: Colors.white24)),
+                        placeholder: (_, _) => Container(color: Colors.white10),
+                        errorWidget: (_, _, _) => const Center(child: Icon(Icons.image_outlined, size: 30, color: Colors.white24)),
                       )
                     : const Center(child: Icon(Icons.image_outlined, size: 30, color: Colors.white24)),
               ),

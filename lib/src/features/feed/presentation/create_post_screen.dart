@@ -999,16 +999,29 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
             .where((t) => t.isNotEmpty)
             .toList();
         if (optionsStrings.length >= 2) {
-          int days = 1;
-          if (pollDuration.contains('3')) days = 3;
-          if (pollDuration.contains('7')) days = 7;
+          Duration dur = const Duration(days: 7);
+          if (pollDuration.contains('12 Hour')) {
+            dur = const Duration(hours: 12);
+          } else if (pollDuration.startsWith('1 Day')) {
+            dur = const Duration(days: 1);
+          } else if (pollDuration.contains('3 Day')) {
+            dur = const Duration(days: 3);
+          } else if (pollDuration.contains('7 Day')) {
+            dur = const Duration(days: 7);
+          } else if (pollDuration.contains('14 Day')) {
+            dur = const Duration(days: 14);
+          } else if (pollDuration.contains('30 Day')) {
+            dur = const Duration(days: 30);
+          } else if (pollDuration.contains('No Limit') || pollDuration.contains('Permanent')) {
+            dur = const Duration(days: 3650);
+          }
 
           pollData = {
             'options': optionsStrings,
             'votes': List<int>.filled(optionsStrings.length, 0),
             'voters': <String, int>{},
             'ends_at': DateTime.now()
-                .add(Duration(days: days))
+                .add(dur)
                 .toIso8601String(),
           };
         }
@@ -1901,7 +1914,15 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                                           context: context,
                                           builder: (context) => SimpleDialog(
                                             title: const Text("Poll Duration"),
-                                            children: ['1 Day', '3 Days', '7 Days'].map((d) {
+                                            children: [
+                                              '12 Hours',
+                                              '1 Day',
+                                              '3 Days',
+                                              '7 Days',
+                                              '14 Days',
+                                              '30 Days',
+                                              'No Limit (Permanent)',
+                                            ].map((d) {
                                               return SimpleDialogOption(
                                                 onPressed: () {
                                                   setState(() => _pollDuration = d);

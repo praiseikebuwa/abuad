@@ -264,16 +264,22 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                 ? _StatusListView(isDark: isDark, searchQuery: _searchQuery)
                 : StreamBuilder<List<ChatChannel>>(
                     stream: channelsStream,
+                    initialData: repo.channels.isNotEmpty ? repo.channels : null,
                     builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
+                      final allChannels = snapshot.data ?? repo.channels;
+                      final currentUserId = repo.currentUserId;
+
+                      if (allChannels.isEmpty && snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: Color(0xFF6366F1),
+                          ),
+                        );
                       }
-                      if (snapshot.hasError) {
+                      if (snapshot.hasError && allChannels.isEmpty) {
                         return Center(child: Text('Error: ${snapshot.error}'));
                       }
-
-                      final allChannels = snapshot.data ?? [];
-                      final currentUserId = repo.currentUserId;
 
                       return _buildChatView(allChannels, currentUserId, isDark);
                     },
@@ -326,6 +332,11 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
     String? currentUserId,
     bool isDark,
   ) {
+    final archivedCount = allChannels.where((c) => c.archivedBy.contains(currentUserId)).length;
+    final unreadCountTotal = allChannels
+        .where((c) => (c.unreadCounts[currentUserId] ?? 0) > 0 && !c.archivedBy.contains(currentUserId))
+        .length;
+
     final filteredChannels = allChannels.where((c) {
       final isArchived = c.archivedBy.contains(currentUserId);
       if (_selectedFilter == 'Archived') {
@@ -341,13 +352,18 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
         if (c.type != 'group') return false;
       } else if (_selectedFilter == 'Chats') {
         if (c.type == 'group') return false;
+      } else if (_selectedFilter == 'Mentions') {
+        final mentions = c.lastMessage['mentions'];
+        final isMentioned = (mentions is List && mentions.contains(currentUserId)) ||
+            (c.lastMessage['content']?.toString().contains('@') ?? false);
+        if (!isMentioned) return false;
       }
 
-      // Hide empty 0-message direct channels when not searching
+      // Hide empty 0-message direct channels when not searching, unless in Archived tab
       final isGroup = c.type == 'group';
       final hasMessage = c.lastMessage.isNotEmpty &&
           (c.lastMessage['content']?.toString().trim().isNotEmpty ?? false);
-      if (_searchQuery.isEmpty && !isGroup && !hasMessage) {
+      if (_searchQuery.isEmpty && !isGroup && !hasMessage && _selectedFilter != 'Archived') {
         return false;
       }
 
@@ -412,9 +428,19 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
               const SizedBox(width: 8),
               _ModernFilterPill(
                 label: 'Unread',
-                hasNotificationDot: true,
+                count: unreadCountTotal > 0 ? unreadCountTotal : null,
+                hasNotificationDot: unreadCountTotal > 0,
                 isSelected: _selectedFilter == 'Unread',
                 onTap: () => setState(() => _selectedFilter = 'Unread'),
+                isDark: isDark,
+              ),
+              const SizedBox(width: 8),
+              _ModernFilterPill(
+                label: 'Archived',
+                icon: Icons.archive_outlined,
+                count: archivedCount > 0 ? archivedCount : null,
+                isSelected: _selectedFilter == 'Archived',
+                onTap: () => setState(() => _selectedFilter = 'Archived'),
                 isDark: isDark,
               ),
               const SizedBox(width: 8),
@@ -428,15 +454,136 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
           ),
         ),
 
-        const SizedBox(height: 4),
+        // Archived banner when in Archived tab
+        if (_selectedFilter == 'Archived')
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E1B4B).withValues(alpha: 0.5) : const Color(0xFFEDE9FE),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.archive_rounded, size: 18, color: Color(0xFF8B5CF6)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Archived chats stay hidden from All chats.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: isDark ? const Color(0xFFDDD6FE) : const Color(0xFF5B21B6),
+                      ),
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () => setState(() => _selectedFilter = 'All'),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      child: Text(
+                        'View All',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : const Color(0xFF5B21B6),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+        // Archived row on top of "All" chats list when archived chats exist
+        if (_selectedFilter == 'All' && _searchQuery.isEmpty && archivedCount > 0)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
+            child: InkWell(
+              onTap: () => setState(() => _selectedFilter = 'Archived'),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF131B2E) : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.06)
+                        : Colors.black.withValues(alpha: 0.05),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.archive_outlined, size: 16, color: Color(0xFF8B5CF6)),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Archived',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.white : const Color(0xFF0F172A),
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '$archivedCount',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF8B5CF6),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 18,
+                      color: isDark ? Colors.white38 : Colors.black38,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+        const SizedBox(height: 2),
 
         // Chat List
         Expanded(
           child: filteredChannels.isEmpty
-              ? _EmptyState(
-                  onStartConversation: () => context.push('/chat/user-search'),
-                  isDark: isDark,
-                )
+              ? (_selectedFilter == 'Archived'
+                  ? _EmptyState(
+                      title: 'No archived chats',
+                      description: 'Swipe left on any conversation and tap Archive to hide it here.',
+                      icon: Icons.archive_outlined,
+                      buttonText: 'Back to All Chats',
+                      onStartConversation: () => setState(() => _selectedFilter = 'All'),
+                      isDark: isDark,
+                    )
+                  : _EmptyState(
+                      onStartConversation: () => context.push('/chat/user-search'),
+                      isDark: isDark,
+                    ))
               : ListView.separated(
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   itemCount: filteredChannels.length,
@@ -462,14 +609,21 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
   }
 }
 
-
 class _EmptyState extends StatelessWidget {
   final VoidCallback onStartConversation;
   final bool isDark;
+  final String? title;
+  final String? description;
+  final IconData? icon;
+  final String? buttonText;
 
   const _EmptyState({
     required this.onStartConversation,
     required this.isDark,
+    this.title,
+    this.description,
+    this.icon,
+    this.buttonText,
   });
 
   @override
@@ -479,13 +633,13 @@ class _EmptyState extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            Icons.chat_bubble_outline_rounded,
+            icon ?? Icons.chat_bubble_outline_rounded,
             size: 64,
             color: isDark ? Colors.white24 : Colors.grey[400],
           ),
           const SizedBox(height: 16),
           Text(
-            'No messages yet',
+            title ?? 'No messages yet',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -493,18 +647,25 @@ class _EmptyState extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            'Start a new conversation with friends or groups',
-            style: TextStyle(
-              fontSize: 14,
-              color: isDark ? Colors.white38 : Colors.grey[600],
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Text(
+              description ?? 'Start a new conversation with friends or groups',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: isDark ? Colors.white38 : Colors.grey[600],
+              ),
             ),
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
             onPressed: onStartConversation,
-            icon: const Icon(Icons.add, color: Colors.white),
-            label: const Text('New Message', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            icon: Icon(buttonText != null ? Icons.arrow_back_rounded : Icons.add, color: Colors.white, size: 18),
+            label: Text(
+              buttonText ?? 'New Message',
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF3B49DF),
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
@@ -1380,6 +1541,8 @@ class _ModernFilterPill extends StatelessWidget {
   final String label;
   final bool isSelected;
   final bool hasNotificationDot;
+  final int? count;
+  final IconData? icon;
   final VoidCallback onTap;
   final bool isDark;
 
@@ -1387,6 +1550,8 @@ class _ModernFilterPill extends StatelessWidget {
     required this.label,
     required this.isSelected,
     this.hasNotificationDot = false,
+    this.count,
+    this.icon,
     required this.onTap,
     required this.isDark,
   });
@@ -1396,27 +1561,64 @@ class _ModernFilterPill extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
           color: isSelected
               ? const Color(0xFF3B49DF)
               : (isDark ? Colors.black : const Color(0xFFF1F5F9)),
           borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected
+                ? const Color(0xFF3B49DF)
+                : (isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.04)),
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (icon != null) ...[
+              Icon(
+                icon,
+                size: 15,
+                color: isSelected
+                    ? Colors.white
+                    : (isDark ? Colors.white70 : const Color(0xFF475569)),
+              ),
+              const SizedBox(width: 5),
+            ],
             Text(
               label,
               style: TextStyle(
-                fontSize: 14,
+                fontSize: 13.5,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                 color: isSelected
                     ? Colors.white
                     : (isDark ? Colors.white70 : const Color(0xFF475569)),
               ),
             ),
-            if (hasNotificationDot) ...[
+            if (count != null && count! > 0) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? Colors.white.withValues(alpha: 0.25)
+                      : (isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '$count',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: isSelected
+                        ? Colors.white
+                        : (isDark ? Colors.white : const Color(0xFF0F172A)),
+                  ),
+                ),
+              ),
+            ],
+            if (hasNotificationDot && (count == null || count == 0)) ...[
               const SizedBox(width: 4),
               Container(
                 width: 6,

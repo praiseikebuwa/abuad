@@ -19,6 +19,7 @@ import 'package:timeago/timeago.dart' as timeago;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../feed/data/bookmark_folders_service.dart';
+import '../../../shared/widgets/autoplay_live_media_widget.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   final String? userId; // If null, shows current user
@@ -299,45 +300,81 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     AppUser user,
   ) async {
     final picker = ImagePicker();
-    final result = await showModalBottomSheet<ImageSource>(
+    final choice = await showModalBottomSheet<String>(
       context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (context) => SafeArea(
         top: false,
         child: Wrap(
           children: [
-            Material(
-              color: Colors.transparent,
-              child: ListTile(
-                leading: const Icon(Icons.photo_library),
-                title: const Text('Choose from gallery'),
-                onTap: () => Navigator.pop(context, ImageSource.gallery),
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text(
+                'Change Profile Photo / Live Avatar',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
             ),
             Material(
               color: Colors.transparent,
               child: ListTile(
-                leading: const Icon(Icons.camera_alt),
+                leading: const Icon(Icons.gif_box_rounded, color: AppColors.secondaryTeal),
+                title: const Text('Photo or Animated GIF'),
+                subtitle: const Text('Choose image or animated GIF from gallery'),
+                onTap: () => Navigator.pop(context, 'image_gallery'),
+              ),
+            ),
+            Material(
+              color: Colors.transparent,
+              child: ListTile(
+                leading: const Icon(Icons.videocam_rounded, color: Colors.purpleAccent),
+                title: const Text('Live Photo / Video Avatar'),
+                subtitle: const Text('Autoplays seamlessly on your profile'),
+                onTap: () => Navigator.pop(context, 'video_gallery'),
+              ),
+            ),
+            Material(
+              color: Colors.transparent,
+              child: ListTile(
+                leading: const Icon(Icons.camera_alt_rounded),
                 title: const Text('Take a photo'),
-                onTap: () => Navigator.pop(context, ImageSource.camera),
+                onTap: () => Navigator.pop(context, 'camera'),
               ),
             ),
+            const SizedBox(height: 12),
           ],
         ),
       ),
     );
 
-    if (result != null) {
-      final pickedFile = await picker.pickImage(
-        source: result,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 80,
-      );
+    if (choice != null) {
+      XFile? pickedFile;
+      if (choice == 'video_gallery') {
+        pickedFile = await picker.pickVideo(
+          source: ImageSource.gallery,
+          maxDuration: const Duration(seconds: 15),
+        );
+      } else if (choice == 'camera') {
+        pickedFile = await picker.pickImage(
+          source: ImageSource.camera,
+          maxWidth: 1024,
+          maxHeight: 1024,
+          imageQuality: 85,
+        );
+      } else {
+        pickedFile = await picker.pickImage(
+          source: ImageSource.gallery,
+          maxWidth: 1024,
+          maxHeight: 1024,
+          imageQuality: 85,
+        );
+      }
 
       if (pickedFile != null && context.mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('Uploading image...')));
+        ).showSnackBar(const SnackBar(content: Text('Uploading avatar...')));
 
         try {
           final storage = CloudStorageService();
@@ -355,7 +392,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             await ref.read(authRepositoryProvider).init();
             if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Profile picture updated!')),
+                const SnackBar(content: Text('Profile media updated! Autoplay enabled.')),
               );
             }
           }
@@ -376,38 +413,88 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     AppUser user,
   ) async {
     final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        top: false,
+        child: Wrap(
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text(
+                'Change Banner / Live Cover',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+            ),
+            Material(
+              color: Colors.transparent,
+              child: ListTile(
+                leading: const Icon(Icons.gif_box_rounded, color: AppColors.secondaryTeal),
+                title: const Text('Photo or Animated GIF Banner'),
+                subtitle: const Text('Choose image or GIF from gallery'),
+                onTap: () => Navigator.pop(context, 'image_gallery'),
+              ),
+            ),
+            Material(
+              color: Colors.transparent,
+              child: ListTile(
+                leading: const Icon(Icons.video_library_rounded, color: Colors.purpleAccent),
+                title: const Text('Live Photo / Video Cover'),
+                subtitle: const Text('Autoplays seamlessly across your banner'),
+                onTap: () => Navigator.pop(context, 'video_gallery'),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
 
-    if (pickedFile != null && context.mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Uploading banner...')));
-
-      try {
-        final storage = CloudStorageService();
-        final url = await storage.uploadImage(
-          pickedFile,
-          path: 'profile_images/${user.uid}/',
+    if (choice != null) {
+      XFile? pickedFile;
+      if (choice == 'video_gallery') {
+        pickedFile = await picker.pickVideo(
+          source: ImageSource.gallery,
+          maxDuration: const Duration(seconds: 15),
         );
+      } else {
+        pickedFile = await picker.pickImage(source: ImageSource.gallery);
+      }
 
-        if (url.isNotEmpty && context.mounted) {
-          await ref.read(userRepositoryProvider).updateUser(user.uid, {
-            'banner_url': url,
-            'bannerUrl': url,
-          });
-          ref.invalidate(userProvider(user.uid));
-          await ref.read(authRepositoryProvider).init();
+      if (pickedFile != null && context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Uploading banner media...')));
+
+        try {
+          final storage = CloudStorageService();
+          final url = await storage.uploadImage(
+            pickedFile,
+            path: 'profile_images/${user.uid}/',
+          );
+
+          if (url.isNotEmpty && context.mounted) {
+            await ref.read(userRepositoryProvider).updateUser(user.uid, {
+              'banner_url': url,
+              'bannerUrl': url,
+            });
+            ref.invalidate(userProvider(user.uid));
+            await ref.read(authRepositoryProvider).init();
+            if (context.mounted) {
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('Banner media updated! Autoplay enabled.')));
+            }
+          }
+        } catch (e) {
           if (context.mounted) {
             ScaffoldMessenger.of(
               context,
-            ).showSnackBar(const SnackBar(content: Text('Banner updated!')));
+            ).showSnackBar(SnackBar(content: Text('Error updating banner: $e')));
           }
-        }
-      } catch (e) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Error updating banner: $e')));
         }
       }
     }
@@ -458,15 +545,15 @@ class _ProfileHeader extends ConsumerWidget {
                 child: (user.bannerUrl != null &&
                         user.bannerUrl!.isNotEmpty &&
                         UrlValidator.isValidUrl(user.bannerUrl!))
-                    ? CachedNetworkImage(
-                        imageUrl: user.bannerUrl!,
+                    ? AutoPlayLiveMediaWidget(
+                        url: user.bannerUrl!,
                         fit: BoxFit.cover,
                         width: double.infinity,
                         height: bannerHeight,
-                        placeholder: (context, url) => Container(
+                        placeholder: Container(
                           color: isDark ? Colors.grey[800] : Colors.grey[300],
                         ),
-                        errorWidget: (context, url, error) => Container(
+                        errorWidget: Container(
                           decoration: const BoxDecoration(
                             gradient: AppColors.inkTealGradient,
                           ),
@@ -535,54 +622,50 @@ class _ProfileHeader extends ConsumerWidget {
                           child: (user.avatarUrl != null &&
                                   user.avatarUrl!.isNotEmpty &&
                                   UrlValidator.isValidUrl(user.avatarUrl!))
-                              ? ClipOval(
-                                  child: CachedNetworkImage(
-                                    imageUrl: user.avatarUrl!,
+                              ? AutoPlayLiveMediaWidget(
+                                  url: user.avatarUrl!,
+                                  width: avatarDiameter,
+                                  height: avatarDiameter,
+                                  isCircle: true,
+                                  fit: BoxFit.cover,
+                                  placeholder: Container(
                                     width: avatarDiameter,
                                     height: avatarDiameter,
-                                    fit: BoxFit.cover,
-                                    placeholder: (context, url) => Container(
-                                      width: avatarDiameter,
-                                      height: avatarDiameter,
-                                      color: isDark
-                                          ? const Color(0xFF1E293B)
-                                          : const Color(0xFFE2E8F0),
-                                      child: Center(
-                                        child: Text(
-                                          user.displayName.isNotEmpty
-                                              ? user.displayName[0]
-                                                  .toUpperCase()
-                                              : '?',
-                                          style: TextStyle(
-                                            fontSize: 34,
-                                            fontWeight: FontWeight.bold,
-                                            color: isDark
-                                                ? Colors.white
-                                                : AppColors.primaryInk,
-                                          ),
+                                    color: isDark
+                                        ? const Color(0xFF1E293B)
+                                        : const Color(0xFFE2E8F0),
+                                    child: Center(
+                                      child: Text(
+                                        user.displayName.isNotEmpty
+                                            ? user.displayName[0].toUpperCase()
+                                            : '?',
+                                        style: TextStyle(
+                                          fontSize: 34,
+                                          fontWeight: FontWeight.bold,
+                                          color: isDark
+                                              ? Colors.white
+                                              : AppColors.primaryInk,
                                         ),
                                       ),
                                     ),
-                                    errorWidget: (context, url, error) =>
-                                        Container(
-                                      width: avatarDiameter,
-                                      height: avatarDiameter,
-                                      color: isDark
-                                          ? const Color(0xFF1E293B)
-                                          : const Color(0xFFE2E8F0),
-                                      child: Center(
-                                        child: Text(
-                                          user.displayName.isNotEmpty
-                                              ? user.displayName[0]
-                                                  .toUpperCase()
-                                              : '?',
-                                          style: TextStyle(
-                                            fontSize: 34,
-                                            fontWeight: FontWeight.bold,
-                                            color: isDark
-                                                ? Colors.white
-                                                : AppColors.primaryInk,
-                                          ),
+                                  ),
+                                  errorWidget: Container(
+                                    width: avatarDiameter,
+                                    height: avatarDiameter,
+                                    color: isDark
+                                        ? const Color(0xFF1E293B)
+                                        : const Color(0xFFE2E8F0),
+                                    child: Center(
+                                      child: Text(
+                                        user.displayName.isNotEmpty
+                                            ? user.displayName[0].toUpperCase()
+                                            : '?',
+                                        style: TextStyle(
+                                          fontSize: 34,
+                                          fontWeight: FontWeight.bold,
+                                          color: isDark
+                                              ? Colors.white
+                                              : AppColors.primaryInk,
                                         ),
                                       ),
                                     ),

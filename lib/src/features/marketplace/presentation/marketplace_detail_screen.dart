@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:share_plus/share_plus.dart';
 import '../data/marketplace_repository.dart';
 import '../../chat/data/chat_repository.dart';
 import '../../auth/data/auth_repository.dart';
@@ -10,13 +11,136 @@ import '../../../core/widgets/verification_badge.dart';
 import '../../../core/utils/url_validator.dart';
 import '../../../shared/widgets/user_avatar.dart';
 
-class MarketplaceDetailScreen extends ConsumerWidget {
-  final MarketplaceItem item;
+class MarketplaceDetailScreen extends ConsumerStatefulWidget {
+  final MarketplaceItem? item;
+  final String? itemId;
 
-  const MarketplaceDetailScreen({super.key, required this.item});
+  const MarketplaceDetailScreen({
+    super.key,
+    this.item,
+    this.itemId,
+  });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MarketplaceDetailScreen> createState() => _MarketplaceDetailScreenState();
+}
+
+class _MarketplaceDetailScreenState extends ConsumerState<MarketplaceDetailScreen> {
+  MarketplaceItem? _item;
+  bool _isLoading = false;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _item = widget.item;
+    if (_item == null && widget.itemId != null) {
+      _loadItem();
+    }
+  }
+
+  Future<void> _loadItem() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final fetched = await ref
+          .read(marketplaceRepositoryProvider)
+          .getItemById(widget.itemId!);
+
+      if (mounted) {
+        if (fetched != null) {
+          setState(() {
+            _item = fetched;
+            _isLoading = false;
+          });
+        } else {
+          setState(() {
+            _errorMessage = 'Item not found or has been removed.';
+            _isLoading = false;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Failed to load item: $e';
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _shareItem(MarketplaceItem item) {
+    final link = 'https://abuadapp.com.ng/marketplace/detail?id=${item.id}';
+    final text =
+        '🛍️ ${item.title}\n💰 Price: ₦${item.price.toStringAsFixed(0)}\n\n${item.description.isNotEmpty ? '${item.description}\n\n' : ''}Check out this item on ABUAD Campus Marketplace:\n$link';
+    SharePlus.instance.share(ShareParams(text: text, subject: item.title));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(color: AppColors.secondaryTeal),
+        ),
+      );
+    }
+
+    if (_errorMessage != null || _item == null) {
+      return Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            onPressed: () {
+              if (Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+              } else {
+                context.go('/marketplace');
+              }
+            },
+          ),
+          title: const Text('Item Not Found'),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.storefront_rounded, size: 64, color: Colors.grey),
+                const SizedBox(height: 16),
+                Text(
+                  _errorMessage ?? 'Marketplace item could not be found.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 16),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: () {
+                    if (Navigator.of(context).canPop()) {
+                      Navigator.of(context).pop();
+                    } else {
+                      context.go('/marketplace');
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.secondaryTeal,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Go to Marketplace'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final item = _item!;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final currentUser = ref.watch(currentUserProvider).value;
@@ -29,6 +153,21 @@ class MarketplaceDetailScreen extends ConsumerWidget {
           SliverAppBar(
             expandedHeight: 400,
             pinned: true,
+            actions: [
+              IconButton(
+                icon: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.4),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.share_rounded, color: Colors.white, size: 20),
+                ),
+                tooltip: 'Share listing',
+                onPressed: () => _shareItem(item),
+              ),
+              const SizedBox(width: 8),
+            ],
             flexibleSpace: FlexibleSpaceBar(
               background: item.images.isNotEmpty
                   ? Stack(
@@ -305,44 +444,67 @@ class MarketplaceDetailScreen extends ConsumerWidget {
             ),
           ],
         ),
-        child: isSeller
-            ? FilledButton.icon(
-                onPressed: () => _handleDelete(context, ref),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.error,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(double.infinity, 54),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
+        child: Row(
+          children: [
+            OutlinedButton(
+              onPressed: () => _shareItem(item),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: isDark ? Colors.white : AppColors.primaryInk,
+                side: BorderSide(color: isDark ? Colors.white24 : Colors.grey.shade300),
+                minimumSize: const Size(54, 54),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                icon: const Icon(Icons.delete_outline, color: Colors.white),
-                label: const Text(
-                  'Delete Listing',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                ),
-              )
-            : FilledButton.icon(
-                onPressed: () => _handleChat(context, ref),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.secondaryTeal,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(double.infinity, 54),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                icon: const Icon(Icons.chat_bubble_outline, color: Colors.white),
-                label: const Text(
-                  'Chat with Seller',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
               ),
+              child: const Icon(Icons.share_rounded, size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: isSeller
+                  ? FilledButton.icon(
+                      onPressed: () => _handleDelete(context, ref),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.error,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(double.infinity, 54),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      icon: const Icon(Icons.delete_outline, color: Colors.white),
+                      label: const Text(
+                        'Delete Listing',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                      ),
+                    )
+                  : FilledButton.icon(
+                      onPressed: () => _handleChat(context, ref),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.secondaryTeal,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(double.infinity, 54),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      icon: const Icon(Icons.chat_bubble_outline, color: Colors.white),
+                      label: const Text(
+                        'Chat with Seller',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                      ),
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Future<void> _handleChat(BuildContext context, WidgetRef ref) async {
+    final item = _item;
+    if (item == null) return;
+
     try {
       final chatRepo = ref.read(chatRepositoryProvider);
       final userRepo = ref.read(userRepositoryProvider);
@@ -401,6 +563,9 @@ class MarketplaceDetailScreen extends ConsumerWidget {
   }
 
   Future<void> _handleDelete(BuildContext context, WidgetRef ref) async {
+    final item = _item;
+    if (item == null) return;
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(

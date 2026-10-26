@@ -155,19 +155,19 @@ class _SuggestedUserCardState extends ConsumerState<_SuggestedUserCard> {
       duration: const Duration(milliseconds: 200),
       opacity: _isDismissed ? 0.0 : 1.0,
       child: Container(
-        width: 156,
+        width: 164,
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E2124) : Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          color: isDark ? const Color(0xFF1E293B) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isDark ? AppColors.borderDark : AppColors.borderLight,
+            color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
             width: 1.2,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
+              color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.06),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
@@ -175,12 +175,12 @@ class _SuggestedUserCardState extends ConsumerState<_SuggestedUserCard> {
           children: [
             // Card Content
             InkWell(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(20),
               onTap: () {
-                context.push('/profile/${user.uid}', extra: user);
+                context.push('/user/${user.uid}', extra: user);
               },
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -188,13 +188,32 @@ class _SuggestedUserCardState extends ConsumerState<_SuggestedUserCard> {
                     Column(
                       children: [
                         const SizedBox(height: 4),
-                        UserAvatar(
-                          userId: user.uid,
-                          avatarUrl: user.avatarUrl,
-                          radius: 32,
-                          showStoryRing: false,
+                        Container(
+                          padding: const EdgeInsets.all(2.5),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF0F766E), Color(0xFF14B8A6)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF14B8A6).withValues(alpha: 0.25),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: UserAvatar(
+                            userId: user.uid,
+                            avatarUrl: user.avatarUrl,
+                            radius: 32,
+                            showStoryRing: false,
+                            enableDefaultTap: false,
+                          ),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 10),
 
                         // Name + Verification
                         Row(
@@ -204,10 +223,11 @@ class _SuggestedUserCardState extends ConsumerState<_SuggestedUserCard> {
                             Flexible(
                               child: Text(
                                 user.displayName,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontWeight: FontWeight.w700,
                                   fontSize: 13.5,
                                   letterSpacing: -0.2,
+                                  color: isDark ? Colors.white : const Color(0xFF0F172A),
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -215,10 +235,10 @@ class _SuggestedUserCardState extends ConsumerState<_SuggestedUserCard> {
                               ),
                             ),
                             if (user.isVerified) ...[
-                              const SizedBox(width: 3),
+                              const SizedBox(width: 4),
                               VerificationBadge(
                                 type: user.verificationType,
-                                size: 12,
+                                size: 13,
                               ),
                             ],
                           ],
@@ -231,30 +251,29 @@ class _SuggestedUserCardState extends ConsumerState<_SuggestedUserCard> {
                           style: TextStyle(
                             color: isDark ? Colors.grey[400] : Colors.grey[600],
                             fontSize: 11.5,
+                            fontWeight: FontWeight.w500,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 8),
 
                         // Algorithm Reason
                         Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
+                            horizontal: 8,
+                            vertical: 3,
                           ),
                           decoration: BoxDecoration(
-                            color: isDark
-                                ? Colors.white.withValues(alpha: 0.05)
-                                : Colors.black.withValues(alpha: 0.03),
-                            borderRadius: BorderRadius.circular(6),
+                            color: AppColors.secondaryTeal.withValues(alpha: isDark ? 0.15 : 0.08),
+                            borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
                             reason,
-                            style: TextStyle(
-                              color: isDark ? Colors.grey[300] : Colors.grey[700],
+                            style: const TextStyle(
+                              color: AppColors.secondaryTeal,
                               fontSize: 10.5,
-                              fontWeight: FontWeight.w500,
+                              fontWeight: FontWeight.w600,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -267,26 +286,27 @@ class _SuggestedUserCardState extends ConsumerState<_SuggestedUserCard> {
                     // Follow Button
                     SizedBox(
                       width: double.infinity,
-                      height: 32,
+                      height: 34,
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: isFollowing
                               ? (isDark
-                                  ? Colors.grey[800]
-                                  : Colors.grey[200])
-                              : AppColors.success,
+                                  ? const Color(0xFF334155)
+                                  : const Color(0xFFF1F5F9))
+                              : AppColors.secondaryTeal,
                           foregroundColor: isFollowing
-                              ? (isDark ? Colors.white70 : Colors.black)
+                              ? (isDark ? Colors.white70 : Colors.black87)
                               : Colors.white,
-                          elevation: 0,
+                          elevation: isFollowing ? 0 : 2,
+                          shadowColor: AppColors.secondaryTeal.withValues(alpha: 0.3),
                           padding: EdgeInsets.zero,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(12),
                             side: isFollowing
                                 ? BorderSide(
                                     color: isDark
-                                        ? AppColors.borderDark
-                                        : AppColors.borderLight,
+                                        ? const Color(0xFF475569)
+                                        : const Color(0xFFCBD5E1),
                                   )
                                 : BorderSide.none,
                           ),
@@ -307,7 +327,7 @@ class _SuggestedUserCardState extends ConsumerState<_SuggestedUserCard> {
                             fontSize: 12.5,
                             fontWeight: FontWeight.w700,
                             color: isFollowing
-                                ? (isDark ? Colors.white70 : Colors.black)
+                                ? (isDark ? Colors.white70 : Colors.black87)
                                 : Colors.white,
                           ),
                         ),

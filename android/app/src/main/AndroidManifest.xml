@@ -46,6 +46,10 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="abuadapp.com.ng" />
+                <data android:scheme="http" android:host="abuadapp.com.ng" />
+                <data android:scheme="https" android:host="app.abuad.edu.ng" />
+                <data android:scheme="http" android:host="app.abuad.edu.ng" />
                 <data android:scheme="https" android:host="abuadapp.web.app" />
                 <data android:scheme="http" android:host="abuadapp.web.app" />
             </intent-filter>

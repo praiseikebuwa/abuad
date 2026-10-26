@@ -83,7 +83,7 @@ class _CampusSosScreenState extends State<CampusSosScreen> {
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: Colors.redAccent.withOpacity(0.4), width: 1.5),
+              border: Border.all(color: Colors.redAccent.withValues(alpha: 0.4), width: 1.5),
             ),
             child: Column(
               children: [
@@ -114,7 +114,7 @@ class _CampusSosScreenState extends State<CampusSosScreen> {
                         color: Colors.redAccent,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.redAccent.withOpacity(0.5),
+                            color: Colors.redAccent.withValues(alpha: 0.5),
                             blurRadius: 30,
                             spreadRadius: 8,
                           ),
@@ -302,7 +302,7 @@ class _CampusSosScreenState extends State<CampusSosScreen> {
       color: isDark ? Colors.black : Colors.white,
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: color.withOpacity(0.15),
+          backgroundColor: color.withValues(alpha: 0.15),
           child: Icon(icon, color: color),
         ),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
@@ -317,7 +317,7 @@ class _CampusSosScreenState extends State<CampusSosScreen> {
         ),
         trailing: IconButton(
           icon: CircleAvatar(
-            backgroundColor: color.withOpacity(0.2),
+            backgroundColor: color.withValues(alpha: 0.2),
             child: Icon(Icons.phone, color: color, size: 18),
           ),
           onPressed: () {

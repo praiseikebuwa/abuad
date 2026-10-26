@@ -186,7 +186,7 @@ class _StudyLoungesScreenState extends State<StudyLoungesScreen> {
                         ),
                         Text(
                           'Host: ${activeLounge['host']} • ${activeLounge['listeners']} in room',
-                          style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 11),
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 11),
                         ),
                       ],
                     ),
@@ -270,7 +270,7 @@ class _StudyLoungesScreenState extends State<StudyLoungesScreen> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: isLive ? Colors.redAccent.withOpacity(0.15) : Colors.grey.withOpacity(0.15),
+                                  color: isLive ? Colors.redAccent.withValues(alpha: 0.15) : Colors.grey.withValues(alpha: 0.15),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Row(
@@ -296,7 +296,7 @@ class _StudyLoungesScreenState extends State<StudyLoungesScreen> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: Colors.purpleAccent.withOpacity(0.15),
+                                  color: Colors.purpleAccent.withValues(alpha: 0.15),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Text(

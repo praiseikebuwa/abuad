@@ -109,7 +109,7 @@ class _ClinicQueueScreenState extends State<ClinicQueueScreen> with SingleTicker
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                             decoration: BoxDecoration(
-                              color: Colors.tealAccent.withOpacity(0.2),
+                              color: Colors.tealAccent.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(16),
                             ),
                             child: const Row(
@@ -209,7 +209,7 @@ class _ClinicQueueScreenState extends State<ClinicQueueScreen> with SingleTicker
                 color: isDark ? Colors.black : Colors.white,
                 child: ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: inStock ? Colors.green.withOpacity(0.15) : Colors.red.withOpacity(0.15),
+                    backgroundColor: inStock ? Colors.green.withValues(alpha: 0.15) : Colors.red.withValues(alpha: 0.15),
                     child: Icon(
                       inStock ? Icons.check_circle_outline : Icons.highlight_off_rounded,
                       color: inStock ? Colors.green : Colors.redAccent,
@@ -220,7 +220,7 @@ class _ClinicQueueScreenState extends State<ClinicQueueScreen> with SingleTicker
                   trailing: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: inStock ? Colors.green.withOpacity(0.15) : Colors.red.withOpacity(0.15),
+                      color: inStock ? Colors.green.withValues(alpha: 0.15) : Colors.red.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
@@ -278,7 +278,7 @@ class _ClinicQueueScreenState extends State<ClinicQueueScreen> with SingleTicker
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
       child: ListTile(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.withOpacity(0.2))),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.withValues(alpha: 0.2))),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
         subtitle: Text(schedule, style: const TextStyle(fontSize: 11)),
         trailing: ElevatedButton(

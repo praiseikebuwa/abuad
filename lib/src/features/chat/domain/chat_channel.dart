@@ -165,4 +165,52 @@ class ChatChannel {
       archivedBy: parseList(map['archived_by'] ?? map['archivedBy']),
     );
   }
+
+  ChatChannel copyWith({
+    String? id,
+    String? type,
+    String? displayName,
+    String? displayAvatarUrl,
+    String? createdBy,
+    List<String>? memberIds,
+    Map<String, dynamic>? lastMessage,
+    DateTime? lastMessageTime,
+    Map<String, int>? unreadCounts,
+    Map<String, bool>? typingUsers,
+    Map<String, String>? memberNames,
+    Map<String, String?>? memberAvatars,
+    Map<String, String>? verificationTypes,
+    List<String>? adminIds,
+    bool? restrictInfoUpdates,
+    bool? restrictMessaging,
+    int? streakCount,
+    Map<String, DateTime>? lastSnapTime,
+    DateTime? streakExpiry,
+    List<String>? pinnedBy,
+    List<String>? archivedBy,
+  }) {
+    return ChatChannel(
+      id: id ?? this.id,
+      type: type ?? this.type,
+      displayName: displayName ?? this.displayName,
+      displayAvatarUrl: displayAvatarUrl ?? this.displayAvatarUrl,
+      createdBy: createdBy ?? this.createdBy,
+      memberIds: memberIds ?? this.memberIds,
+      lastMessage: lastMessage ?? this.lastMessage,
+      lastMessageTime: lastMessageTime ?? this.lastMessageTime,
+      unreadCounts: unreadCounts ?? this.unreadCounts,
+      typingUsers: typingUsers ?? this.typingUsers,
+      memberNames: memberNames ?? this.memberNames,
+      memberAvatars: memberAvatars ?? this.memberAvatars,
+      verificationTypes: verificationTypes ?? this.verificationTypes,
+      adminIds: adminIds ?? this.adminIds,
+      restrictInfoUpdates: restrictInfoUpdates ?? this.restrictInfoUpdates,
+      restrictMessaging: restrictMessaging ?? this.restrictMessaging,
+      streakCount: streakCount ?? this.streakCount,
+      lastSnapTime: lastSnapTime ?? this.lastSnapTime,
+      streakExpiry: streakExpiry ?? this.streakExpiry,
+      pinnedBy: pinnedBy ?? this.pinnedBy,
+      archivedBy: archivedBy ?? this.archivedBy,
+    );
+  }
 }

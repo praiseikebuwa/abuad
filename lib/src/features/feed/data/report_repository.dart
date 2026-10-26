@@ -169,7 +169,7 @@ class ReportRepository {
     try {
       final response = await ApiClient.post('/admin/reports/$reportId/action', {
         'action': action,
-        if (notes != null) 'notes': notes,
+        'notes': ?notes,
       });
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);

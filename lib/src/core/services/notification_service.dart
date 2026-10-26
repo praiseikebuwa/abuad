@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:toastification/toastification.dart';
@@ -37,7 +36,6 @@ class NotificationService {
         requestAlertPermission: true,
         requestBadgePermission: true,
         requestSoundPermission: true,
-        onDidReceiveLocalNotification: (id, title, body, payload) async {},
       );
 
       final initSettings = InitializationSettings(
@@ -47,7 +45,7 @@ class NotificationService {
       );
 
       await _notificationsPlugin.initialize(
-        initSettings,
+        settings: initSettings,
         onDidReceiveNotificationResponse: (NotificationResponse response) {
           debugPrint('🔔 Notification clicked: ${response.payload}');
         },
@@ -130,10 +128,10 @@ class NotificationService {
       );
 
       await _notificationsPlugin.show(
-        notificationId,
-        title,
-        body,
-        details,
+        id: notificationId,
+        title: title,
+        body: body,
+        notificationDetails: details,
         payload: payload,
       );
     } catch (e) {

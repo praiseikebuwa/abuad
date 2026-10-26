@@ -245,22 +245,46 @@ class _AbuadPortalWebViewScreenState
   }
 
   /// Extracts student profile, matriculation number, department, college, level, and courses from ABUAD portal DOM
+  /// Extracts student profile, matriculation number, department, college, level, and courses from ABUAD portal DOM
   Future<void> _injectPortalDataExtractor({bool manual = false}) async {
     final script = '''
       (function() {
         try {
           var text = document.body ? document.body.innerText : '';
           
-          // 1. Matric Number (e.g. 21/ENG02/089, 22/SMS01/014, 20/LAW01/050)
+          // 1. Matric Number (e.g. 25/SCI01/057, 21/ENG02/089)
           var matricMatch = text.match(/\\b(\\d{2}\\/[A-Za-z0-9]{2,8}\\/\\d{2,5})\\b/);
           var matricNumber = matricMatch ? matricMatch[1].toUpperCase() : null;
 
           // 2. Full Name
-          var nameEl = document.querySelector('.user-name, .profile-name, #lblStudentName, .navbar-text, .username, .profile-info h4, span[id*="Name" i], .user-panel .info p, .student-name');
           var fullName = null;
-          if (nameEl && nameEl.innerText && nameEl.innerText.trim().length > 3) {
-            fullName = nameEl.innerText.replace(/welcome|student|logged in as|portal/gi, '').trim();
+
+          // Check if inputs exist on UpdateProfile page (Surname, Firstname, Othername)
+          var surnameInput = document.querySelector('input[name*="surname" i], input[id*="surname" i], input[placeholder*="Surname" i]');
+          var firstnameInput = document.querySelector('input[name*="firstname" i], input[id*="firstname" i], input[placeholder*="Firstname" i]');
+          var othernameInput = document.querySelector('input[name*="othername" i], input[id*="othername" i], input[placeholder*="Othername" i]');
+
+          if (surnameInput && firstnameInput && surnameInput.value && firstnameInput.value) {
+            fullName = (surnameInput.value.trim() + ' ' + firstnameInput.value.trim() + (othernameInput && othernameInput.value ? ' ' + othernameInput.value.trim() : '')).trim();
           }
+
+          // Check navbar format: e.g. "IKEBUWA Praise Ifechukwude (25/SCI01/057)"
+          if (!fullName) {
+            var navMatch = text.match(/([A-Z][a-zA-Z\\s]{3,45})\\s*\\((\\d{2}\\/[A-Za-z0-9]{2,8}\\/\\d{2,5})\\)/);
+            if (navMatch) {
+              fullName = navMatch[1].replace(/welcome|student|portal|logged in as/gi, '').trim();
+              if (!matricNumber) matricNumber = navMatch[2].toUpperCase();
+            }
+          }
+
+          // Fallback to profile elements
+          if (!fullName) {
+            var nameEl = document.querySelector('.user-name, .profile-name, #lblStudentName, .navbar-text, .username, .profile-info h4, span[id*="Name" i], .user-panel .info p, .student-name');
+            if (nameEl && nameEl.innerText && nameEl.innerText.trim().length > 3) {
+              fullName = nameEl.innerText.replace(/welcome|student|logged in as|portal/gi, '').trim();
+            }
+          }
+
           if (!fullName) {
             var nameMatch = text.match(/(?:Student Name|Full Name|Name)\\s*[:\\-]\\s*([A-Za-z\\s]{3,40})(?:\\n|\\r|\$)/i);
             if (nameMatch) {
@@ -268,11 +292,21 @@ class _AbuadPortalWebViewScreenState
             }
           }
 
-          // 3. Department
-          var deptEl = document.querySelector('span[id*="Department" i], span[id*="Dept" i]');
-          var department = deptEl && deptEl.innerText.trim().length > 2 ? deptEl.innerText.trim() : null;
+          // 3. Department & Level from "Computer Science (200 Level)" format
+          var deptLevelMatch = text.match(/([A-Za-z\\s&/]{3,45})\\s*\\(([1-6]00\\s*Level)\\)/i);
+          var department = null;
+          var level = null;
+          if (deptLevelMatch) {
+            department = deptLevelMatch[1].trim();
+            level = deptLevelMatch[2].trim();
+          }
+
           if (!department) {
-            var deptMatch = text.match(/(?:Department of|Department)\\s*[:\\-]?\\s*([A-Za-z\\s&/]{4,50})(?:\\n|\\r|,|\$)/i);
+            var deptEl = document.querySelector('span[id*="Department" i], span[id*="Dept" i]');
+            department = deptEl && deptEl.innerText.trim().length > 2 ? deptEl.innerText.trim() : null;
+          }
+          if (!department) {
+            var deptMatch = text.match(/(?:Department of|Department|Programme)\\s*[:\\-]?\\s*([A-Za-z\\s&/]{4,50})(?:\\n|\\r|,|\$)/i);
             if (deptMatch) department = deptMatch[1].trim();
           }
 
@@ -280,27 +314,43 @@ class _AbuadPortalWebViewScreenState
           var colEl = document.querySelector('span[id*="College" i]');
           var college = colEl && colEl.innerText.trim().length > 2 ? colEl.innerText.trim() : null;
           if (!college) {
-            var colMatch = text.match(/(?:College of|College)\\s*[:\\-]?\\s*([A-Za-z\\s&]{4,50})(?:\\n|\\r|,|\$)/i);
+            var colMatch = text.match(/(?:College of|College|Faculty)\\s*[:\\-]?\\s*([A-Za-z\\s&]{4,50})(?:\\n|\\r|,|\$)/i);
             if (colMatch) college = colMatch[1].trim();
           }
 
-          // 5. Academic Level (100L - 600L)
-          var lvlMatch = text.match(/\\b([1-6]00)\\s*(?:Level|L)?\\b/i);
-          var level = lvlMatch ? lvlMatch[1] + 'L' : null;
+          // 5. Academic Level fallback (100L - 600L)
+          if (!level) {
+            var lvlMatch = text.match(/\\b([1-6]00)\\s*(?:Level|L)?\\b/i);
+            level = lvlMatch ? lvlMatch[1] + 'L' : null;
+          }
 
-          // 6. Blood Group
+          // 6. Validation Code (e.g. "Validation Code: 17552282")
+          var valMatch = text.match(/(?:Validation Code|Validation)\\s*[:\\-]?\\s*(\\d{6,12})/i);
+          var validationCode = valMatch ? valMatch[1].trim() : null;
+
+          // 7. Photo URL from Temporary ID card or Profile Image
+          var photoUrl = null;
+          var imgEl = document.querySelector('.id-card img, #imgStudent, img[src*="passport" i], img[src*="student" i], img[src*="photo" i], table img[src*="upload" i]');
+          if (imgEl && imgEl.src && imgEl.src.startsWith('http')) {
+            photoUrl = imgEl.src;
+          }
+
+          // 8. Blood Group & Religion
           var bgMatch = text.match(/\\b(A|B|AB|O)[+-]\\b/);
           var bloodGroup = bgMatch ? bgMatch[0] : null;
 
-          // 7. Academic Session (e.g. 2024/2025)
+          // 9. Academic Session (e.g. 2024/2025, 2025/2026)
           var sessMatch = text.match(/\\b(20\\d{2}\\/20\\d{2})\\b/);
           var session = sessMatch ? sessMatch[1] : null;
 
-          // 8. GPA / CGPA
-          var gpaMatch = text.match(/(?:GPA|CGPA|Grade Point Average)\\s*[:\\-]?\\s*([0-5]\\.\\d{1,2})/i);
+          // 10. CGPA & GPA (from my-dashboard or Results)
+          var cgpaMatch = text.match(/(?:CGPA|Cumulative GPA|Cumulative Grade Point Average|C\\.G\\.P\\.A)\\s*[:\\-]?\\s*([0-5]\\.\\d{1,2})/i);
+          var cgpa = cgpaMatch ? parseFloat(cgpaMatch[1]) : null;
+
+          var gpaMatch = text.match(/(?:GPA|Current GPA|Grade Point Average|G\\.P\\.A)\\s*[:\\-]?\\s*([0-5]\\.\\d{1,2})/i);
           var gpa = gpaMatch ? parseFloat(gpaMatch[1]) : null;
 
-          // 9. Registered Courses from tables
+          // 11. Registered Courses from tables
           var courses = [];
           var rows = document.querySelectorAll('tr');
           rows.forEach(function(row) {
@@ -326,7 +376,6 @@ class _AbuadPortalWebViewScreenState
                 }
               });
 
-              // Prevent duplicates
               if (!courses.some(function(c) { return c.code === code; })) {
                 courses.push({
                   code: code,
@@ -342,7 +391,7 @@ class _AbuadPortalWebViewScreenState
           });
 
           // Post extracted payload to Flutter Bridge
-          if (matricNumber || fullName || courses.length > 0 || department) {
+          if (matricNumber || fullName || courses.length > 0 || department || validationCode || cgpa) {
             AbuadPortalBridge.postMessage(JSON.stringify({
               type: 'PORTAL_DATA_SYNC',
               payload: {
@@ -351,8 +400,11 @@ class _AbuadPortalWebViewScreenState
                 department: department,
                 college: college,
                 level: level,
+                validationCode: validationCode,
+                photoUrl: photoUrl,
                 bloodGroup: bloodGroup,
                 session: session,
+                cgpa: cgpa,
                 gpa: gpa,
                 courses: courses,
                 isManual: $manual
@@ -389,7 +441,7 @@ class _AbuadPortalWebViewScreenState
               child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.secondaryTeal),
             ),
             SizedBox(width: 12),
-            Text('Scanning ABUAD Portal for student records...'),
+            Text('Academic Algorithm: Scanning portal records...'),
           ],
         ),
         duration: Duration(milliseconds: 1400),
@@ -402,9 +454,9 @@ class _AbuadPortalWebViewScreenState
     if (mounted) setState(() => _isExtracting = false);
   }
 
-  void _handleExtractedPortalData(Map<String, dynamic> payload) {
+  void _handleExtractedPortalData(Map<String, dynamic> payload) async {
     if (payload['isEmpty'] == true) {
-      if (mounted) {
+      if (mounted && payload['isManual'] == true) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('No student records or course tables detected on this portal page yet.'),
@@ -420,9 +472,38 @@ class _AbuadPortalWebViewScreenState
     final name = payload['fullName']?.toString().trim() ?? '';
     final dept = payload['department']?.toString().trim() ?? '';
     final courses = payload['courses'] as List<dynamic>? ?? [];
+    final valCode = payload['validationCode']?.toString().trim() ?? '';
+    final photo = payload['photoUrl']?.toString().trim() ?? '';
+    final cgpa = (payload['cgpa'] as num?)?.toDouble();
+    final gpa = (payload['gpa'] as num?)?.toDouble() ?? cgpa;
 
-    if (matric.isEmpty && name.isEmpty && dept.isEmpty && courses.isEmpty) {
+    if (matric.isEmpty && name.isEmpty && dept.isEmpty && courses.isEmpty && valCode.isEmpty && cgpa == null) {
       return;
+    }
+
+    // SILENT BACKGROUND ALGORITHM:
+    // Feed data directly into AcademicRepository (which powers Student ID Card and CGPA Simulator)
+    // without showing nervous popups in the student's face.
+    try {
+      final repo = ref.read(academicRepositoryProvider);
+      final coursesList = courses.map((c) => Map<String, dynamic>.from(c as Map)).toList();
+
+      await repo.syncFromPortalData(
+        fullName: name.isNotEmpty ? name : null,
+        matricNumber: matric.isNotEmpty ? matric : null,
+        department: dept.isNotEmpty ? dept : null,
+        college: payload['college']?.toString(),
+        level: payload['level']?.toString(),
+        validationCode: valCode.isNotEmpty ? valCode : null,
+        photoUrl: photo.isNotEmpty ? photo : null,
+        bloodGroup: payload['bloodGroup']?.toString(),
+        session: payload['session']?.toString(),
+        cgpa: cgpa,
+        gpa: gpa,
+        courses: coursesList.isNotEmpty ? coursesList : null,
+      );
+    } catch (e) {
+      debugPrint('Silent sync error: $e');
     }
 
     if (mounted) {
@@ -430,9 +511,28 @@ class _AbuadPortalWebViewScreenState
         _detectedPortalData = payload;
       });
 
+      // Discreet notification only if user clicked the scan button manually
       final isManual = payload['isManual'] == true;
       if (isManual) {
-        _showExtractedDataSyncDialog(payload);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: AppColors.secondaryTeal, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Academic Algorithm: Synced student identity ($matric) to ID & Simulator',
+                    style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF0F172A),
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     }
   }

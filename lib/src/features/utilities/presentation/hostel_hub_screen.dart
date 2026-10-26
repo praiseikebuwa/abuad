@@ -93,7 +93,7 @@ class _HostelHubScreenState extends State<HostelHubScreen>
   // Report issue form controllers
   String _selectedHall = 'Nelson Mandela Hall';
   String _selectedCategory = 'Plumbing';
-  String _selectedPriority = 'Normal';
+  final String _selectedPriority = 'Normal';
   final TextEditingController _roomNumberController = TextEditingController(text: 'B204');
   final TextEditingController _issueDescriptionController = TextEditingController();
 
@@ -203,7 +203,7 @@ class _HostelHubScreenState extends State<HostelHubScreen>
 
               // Hall dropdown
               DropdownButtonFormField<String>(
-                value: _selectedHall,
+                initialValue: _selectedHall,
                 dropdownColor: const Color(0xFF0F172A),
                 style: const TextStyle(color: Colors.white),
                 decoration: InputDecoration(
@@ -236,7 +236,7 @@ class _HostelHubScreenState extends State<HostelHubScreen>
                   const SizedBox(width: 12),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _selectedCategory,
+                      initialValue: _selectedCategory,
                       dropdownColor: const Color(0xFF0F172A),
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(

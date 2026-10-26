@@ -85,16 +85,30 @@ class _CampusPollsScreenState extends State<CampusPollsScreen> with SingleTicker
   }
 
   void _vote(int pollIndex, int optionIndex) {
+    bool isChanged = false;
     setState(() {
       final poll = _polls[pollIndex];
-      if (poll['hasVoted'] == true) return;
-      poll['hasVoted'] = true;
-      poll['userVotedIndex'] = optionIndex;
-      poll['options'][optionIndex]['votes'] = (poll['options'][optionIndex]['votes'] as int) + 1;
-      poll['totalVotes'] = (poll['totalVotes'] as int) + 1;
+      final prevVoteIndex = poll['userVotedIndex'] as int? ?? -1;
+      if (poll['hasVoted'] == true) {
+        if (prevVoteIndex == optionIndex) return;
+        isChanged = true;
+        if (prevVoteIndex >= 0 && prevVoteIndex < (poll['options'] as List).length) {
+          final oldVotes = poll['options'][prevVoteIndex]['votes'] as int;
+          poll['options'][prevVoteIndex]['votes'] = (oldVotes - 1).clamp(0, 999999);
+        }
+        poll['options'][optionIndex]['votes'] = (poll['options'][optionIndex]['votes'] as int) + 1;
+        poll['userVotedIndex'] = optionIndex;
+      } else {
+        poll['hasVoted'] = true;
+        poll['userVotedIndex'] = optionIndex;
+        poll['options'][optionIndex]['votes'] = (poll['options'][optionIndex]['votes'] as int) + 1;
+        poll['totalVotes'] = (poll['totalVotes'] as int) + 1;
+      }
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Vote recorded! Real-time tally updated.')),
+      SnackBar(
+        content: Text(isChanged ? 'Vote changed! Real-time tally updated.' : 'Vote recorded! Real-time tally updated.'),
+      ),
     );
   }
 
@@ -128,7 +142,7 @@ class _CampusPollsScreenState extends State<CampusPollsScreen> with SingleTicker
                         width: 40,
                         height: 4,
                         decoration: BoxDecoration(
-                          color: Colors.grey.withOpacity(0.4),
+                          color: Colors.grey.withValues(alpha: 0.4),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -308,7 +322,7 @@ class _CampusPollsScreenState extends State<CampusPollsScreen> with SingleTicker
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.poll_outlined, size: 60, color: Colors.grey.withOpacity(0.5)),
+            Icon(Icons.poll_outlined, size: 60, color: Colors.grey.withValues(alpha: 0.5)),
             const SizedBox(height: 12),
             const Text('No polls in this category yet.', style: TextStyle(fontWeight: FontWeight.w600)),
           ],
@@ -418,8 +432,8 @@ class _CampusPollsScreenState extends State<CampusPollsScreen> with SingleTicker
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(12),
                                   color: isSelected
-                                      ? Colors.indigoAccent.withOpacity(0.35)
-                                      : Colors.indigoAccent.withOpacity(0.15),
+                                      ? Colors.indigoAccent.withValues(alpha: 0.35)
+                                      : Colors.indigoAccent.withValues(alpha: 0.15),
                                 ),
                               ),
                             ),

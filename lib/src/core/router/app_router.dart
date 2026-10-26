@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:abuad/src/core/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,6 +22,7 @@ import '../../features/map/presentation/map_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/profile/presentation/share_profile_screen.dart';
 import '../../shared/widgets/scaffold_with_bottom_nav.dart';
+import '../../features/chat/presentation/join_group_screen.dart';
 import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/presentation/signup_screen.dart';
 import '../../features/auth/presentation/complete_profile_screen.dart';
@@ -181,6 +183,54 @@ final goRouterProvider = Provider<GoRouter>((ref) {
 
       return null;
     },
+    errorBuilder: (context, state) => Scaffold(
+      appBar: AppBar(
+        title: const Text('Page Not Found'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            } else {
+              context.go('/');
+            }
+          },
+        ),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.link_off_rounded, size: 64, color: Colors.grey),
+              const SizedBox(height: 16),
+              const Text(
+                'Page Not Found',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'The link or route "${state.uri.toString()}" could not be found.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.grey),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: () => context.go('/'),
+                icon: const Icon(Icons.home_rounded),
+                label: const Text('Back to Home'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.secondaryTeal,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
     routes: [
       GoRoute(
         path: '/splash',
@@ -323,6 +373,54 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final userId = state.pathParameters['userId']!;
           return ShareProfileScreen(userId: userId);
+        },
+      ),
+      GoRoute(
+        path: '/profile/:userId',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) {
+          final userId = state.pathParameters['userId'];
+          return ProfileScreen(userId: userId);
+        },
+      ),
+      GoRoute(
+        path: '/u/:userId',
+        parentNavigatorKey: rootNavigatorKey,
+        redirect: (context, state) {
+          final userId = state.pathParameters['userId'];
+          return userId != null ? '/user/$userId' : '/';
+        },
+      ),
+      GoRoute(
+        path: '/join/group/:channelId',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) {
+          final channelId = state.pathParameters['channelId'] ?? '';
+          return JoinGroupScreen(channelId: channelId);
+        },
+      ),
+      GoRoute(
+        path: '/groups/join/:channelId',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) {
+          final channelId = state.pathParameters['channelId'] ?? '';
+          return JoinGroupScreen(channelId: channelId);
+        },
+      ),
+      GoRoute(
+        path: '/group/join/:channelId',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) {
+          final channelId = state.pathParameters['channelId'] ?? '';
+          return JoinGroupScreen(channelId: channelId);
+        },
+      ),
+      GoRoute(
+        path: '/channels/:channelId/join',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) {
+          final channelId = state.pathParameters['channelId'] ?? '';
+          return JoinGroupScreen(channelId: channelId);
         },
       ),
       GoRoute(
@@ -791,15 +889,18 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                     path: 'detail',
                     parentNavigatorKey: rootNavigatorKey,
                     builder: (context, state) {
-                      final item = state.extra;
-                      if (item is! MarketplaceItem) {
-                        // Extra was null or wrong type – go back to marketplace
-                        WidgetsBinding.instance.addPostFrameCallback(
-                          (_) => Navigator.of(context).maybePop(),
-                        );
-                        return const MarketplaceScreen();
-                      }
-                      return MarketplaceDetailScreen(item: item);
+                      final item = state.extra is MarketplaceItem ? state.extra as MarketplaceItem : null;
+                      final itemId = state.uri.queryParameters['id'] ?? state.uri.queryParameters['itemId'];
+                      return MarketplaceDetailScreen(item: item, itemId: itemId);
+                    },
+                  ),
+                  GoRoute(
+                    path: 'item/:itemId',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) {
+                      final itemId = state.pathParameters['itemId'];
+                      final item = state.extra is MarketplaceItem ? state.extra as MarketplaceItem : null;
+                      return MarketplaceDetailScreen(item: item, itemId: itemId);
                     },
                   ),
                   GoRoute(

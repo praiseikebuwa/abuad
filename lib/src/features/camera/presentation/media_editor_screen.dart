@@ -114,7 +114,7 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
 
   // Bottom action states
   bool _isSaving = false;
-  bool _isPostingStory = false;
+  final bool _isPostingStory = false;
   bool _isSaved = false;
 
   final List<Color> _palette = const [

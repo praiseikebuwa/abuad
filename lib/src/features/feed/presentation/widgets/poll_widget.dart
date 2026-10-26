@@ -119,7 +119,6 @@ class _PollWidgetState extends State<PollWidget> {
     final secondaryTextColor = isDark
         ? Colors.white.withValues(alpha: 0.6)
         : const Color(0xFF64748B);
-    const accentBlue = Color(0xFF2563EB);
     const primaryBlue = Color(0xFF3B82F6);
 
     return Container(
@@ -350,7 +349,7 @@ class _PollWidgetState extends State<PollWidget> {
           Padding(
             padding: const EdgeInsets.only(top: 4, left: 4),
             child: Text(
-              '$totalVotes ${totalVotes == 1 ? 'vote' : 'votes'}${hasVoted || isEnded ? '' : ' • Tap to vote'}',
+              '$totalVotes ${totalVotes == 1 ? 'vote' : 'votes'}${hasVoted && !isEnded ? ' • Tap option to change vote' : (!hasVoted && !isEnded ? ' • Tap to vote' : '')}',
               style: TextStyle(
                 color: secondaryTextColor,
                 fontSize: 12.5,
