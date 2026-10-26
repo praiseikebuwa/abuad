@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
+import 'package:abuad/src/features/feed/presentation/widgets/full_screen_image_view.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'dart:math';
@@ -36,8 +37,9 @@ import '../../../core/services/media_saver.dart';
 import '../../marketplace/data/marketplace_repository.dart';
 import '../../../shared/widgets/abuad_markdown.dart';
 import '../../stories/presentation/snap_viewer_screen.dart';
-import '../../feed/presentation/widgets/full_screen_image_view.dart';
 import 'sticker_creator_screen.dart';
+import '../domain/sticker_item.dart';
+import '../data/sticker_repository.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String channelId;
@@ -112,7 +114,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     '🤫', '🫡', '😇', '💩', '💀', '🤡', '🌟', '🏆'
   ];
 
-  // Campus & User Created Stickers
+  // Dynamic Campus Stickers State
+  int _stickerDrawerTab = 0; // 0: Trending, 1: Campus Packs, 2: My Stickers
+  String _stickerCategoryFilter = 'ALL';
+  String _stickerSearchText = '';
+  final TextEditingController _stickerSearchController = TextEditingController();
+  List<StickerItem> _trendingStickers = [];
+  List<StickerItem> _communityStickers = [];
+  List<StickerItem> _myStickers = [];
+  bool _isLoadingStickers = false;
+
+  // Campus & User Created Stickers (legacy fallback)
   final List<CreatedStickerItem> _customStickers = [
     const CreatedStickerItem(id: 'cs1', title: 'ABUAD Law ⚖️', type: 'preset', emojiOrText: 'ABUAD LAW ⚖️'),
     const CreatedStickerItem(id: 'cs2', title: 'Talent Cafe 🍗', type: 'preset', emojiOrText: 'TALENT CAFE 🔥'),
@@ -123,6 +135,34 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     const CreatedStickerItem(id: 'cs7', title: 'VC Cup Goal ⚽', type: 'preset', emojiOrText: 'VC CUP GOAL ⚽🔥'),
   ];
 
+  Future<void> _loadStickers() async {
+    if (_isLoadingStickers) return;
+    setState(() => _isLoadingStickers = true);
+    try {
+      final repo = ref.read(stickerRepositoryProvider);
+      final trending = await repo.getTrendingStickers();
+      final community = await repo.getCommunityStickers(
+        category: _stickerCategoryFilter,
+        search: _stickerSearchText,
+      );
+      final my = await repo.getMyStickers();
+      final myTrayList = my.isNotEmpty ? my : _customStickers.map((c) => c.toStickerItem()).toList();
+      if (mounted) {
+        setState(() {
+          _trendingStickers = trending;
+          _communityStickers = community;
+          _myStickers = myTrayList;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading stickers: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingStickers = false);
+      }
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -131,10 +171,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _messageController.text = widget.initialText!;
       _hasText = true;
     }
-    // Mark messages as read when screen loads
+    // Mark messages as read when screen loads & prefetch stickers
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(chatRepositoryProvider).markMessagesAsRead(widget.channelId);
       _loadSettings();
+      _loadStickers();
       if (_hasText) {
         _messageFocusNode.requestFocus();
       }
@@ -271,6 +312,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _messageFocusNode.dispose();
     _conversationSearchController.dispose();
     _conversationSearchFocusNode.dispose();
+    _stickerSearchController.dispose();
     _scrollController.dispose();
     _typingTimer?.cancel();
     _recordingTimer?.cancel();
@@ -4347,6 +4389,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           if (_showEmojiPicker) {
             _showAttachmentDrawer = false;
             FocusScope.of(context).unfocus();
+            _loadStickers();
           }
         });
       },
@@ -4585,7 +4628,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return DefaultTabController(
       length: 2,
       child: Container(
-        height: 300,
+        height: 340,
         color: isDark ? AppColors.surfaceDarkElevated : Colors.white,
         child: Column(
           children: [
@@ -4724,96 +4767,426 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
+  Widget _buildStickerSubTabChip(int index, String label, bool isDark) {
+    final isSel = _stickerDrawerTab == index;
+    return GestureDetector(
+      onTap: () {
+        setState(() => _stickerDrawerTab = index);
+        _loadStickers();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: isSel
+              ? AppColors.secondaryTeal
+              : (isDark ? const Color(0xFF1E293B) : Colors.white),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSel ? AppColors.secondaryTeal : (isDark ? Colors.white12 : Colors.black12),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSel ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+            fontWeight: isSel ? FontWeight.bold : FontWeight.w500,
+            fontSize: 11,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildStickerGrid(bool isDark) {
+    List<StickerItem> currentList;
+    if (_stickerDrawerTab == 0) {
+      currentList = _trendingStickers;
+    } else if (_stickerDrawerTab == 1) {
+      currentList = _communityStickers;
+    } else {
+      currentList = _myStickers;
+    }
+
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        // Sub-tabs & Create button
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          color: isDark ? const Color(0xFF1E293B).withValues(alpha: 0.5) : Colors.grey.shade100,
           child: Row(
             children: [
               Expanded(
-                child: Text(
-                  "Campus & Saved Stickers",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? Colors.white70 : Colors.black87,
-                    fontSize: 13,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _buildStickerSubTabChip(0, '🔥 Trending (${_trendingStickers.length})', isDark),
+                      const SizedBox(width: 6),
+                      _buildStickerSubTabChip(1, '🎒 Campus Packs', isDark),
+                      const SizedBox(width: 6),
+                      _buildStickerSubTabChip(2, '⭐ My Tray (${_myStickers.length})', isDark),
+                    ],
                   ),
                 ),
               ),
+              const SizedBox(width: 6),
               FilledButton.tonalIcon(
                 onPressed: _openStickerCreator,
-                icon: const Icon(Icons.add, size: 14),
-                label: const Text("Create Sticker", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                icon: const Icon(Icons.add_rounded, size: 14),
+                label: const Text(
+                  "Create",
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                ),
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.secondaryTeal.withValues(alpha: 0.18),
                   foregroundColor: AppColors.secondaryTeal,
                   visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 ),
               ),
             ],
           ),
         ),
-        Expanded(
-          child: GridView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-              childAspectRatio: 1.15,
-            ),
-            itemCount: _customStickers.length,
-            itemBuilder: (context, index) {
-              final stk = _customStickers[index];
-              return InkWell(
-                borderRadius: BorderRadius.circular(14),
-                onTap: () => _sendSticker(stk.emojiOrText ?? stk.title, imageUrl: stk.localPath),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.black : Colors.grey[100],
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: isDark ? Colors.white12 : Colors.grey.withValues(alpha: 0.2),
-                    ),
-                  ),
-                  padding: const EdgeInsets.all(8),
-                  child: Center(
-                    child: stk.localPath != null
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: Image.file(
-                              File(stk.localPath!),
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) => Text(stk.title),
-                            ),
-                          )
-                        : Text(
-                            stk.emojiOrText ?? stk.title,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                          ),
+
+        // Categories & Search (when on Campus Packs tab)
+        if (_stickerDrawerTab == 1) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 6, 10, 2),
+            child: SizedBox(
+              height: 32,
+              child: TextField(
+                controller: _stickerSearchController,
+                style: const TextStyle(fontSize: 12),
+                decoration: InputDecoration(
+                  hintText: 'Search campus stickers (e.g. #exam, food, hostel)...',
+                  hintStyle: const TextStyle(fontSize: 11),
+                  prefixIcon: const Icon(Icons.search, size: 16),
+                  suffixIcon: _stickerSearchText.isNotEmpty
+                      ? GestureDetector(
+                          onTap: () {
+                            _stickerSearchController.clear();
+                            setState(() => _stickerSearchText = '');
+                            _loadStickers();
+                          },
+                          child: const Icon(Icons.clear, size: 14),
+                        )
+                      : null,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                  filled: true,
+                  fillColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none,
                   ),
                 ),
-              );
-            },
+                onSubmitted: (val) {
+                  setState(() => _stickerSearchText = val);
+                  _loadStickers();
+                },
+              ),
+            ),
           ),
+          SizedBox(
+            height: 32,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              children: ['ALL', 'CAMPUS', 'MEME', 'REACTION', 'STUDY', 'DOODLE'].map((cat) {
+                final isSel = _stickerCategoryFilter == cat;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: FilterChip(
+                    label: Text(cat, style: const TextStyle(fontSize: 10)),
+                    selected: isSel,
+                    selectedColor: AppColors.secondaryTeal.withValues(alpha: 0.25),
+                    checkmarkColor: AppColors.secondaryTeal,
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+                    onSelected: (val) {
+                      setState(() => _stickerCategoryFilter = cat);
+                      _loadStickers();
+                    },
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+
+        // Stickers Grid
+        Expanded(
+          child: _isLoadingStickers && currentList.isEmpty
+              ? const Center(
+                  child: CircularProgressIndicator(color: AppColors.secondaryTeal),
+                )
+              : currentList.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.sticky_note_2_outlined,
+                            size: 36,
+                            color: Colors.grey.withValues(alpha: 0.5),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            _stickerDrawerTab == 2
+                                ? 'No custom stickers in your tray yet!\nTap "Create" to draw or cut out your first sticker ✨'
+                                : 'No stickers found',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.grey.withValues(alpha: 0.7),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : GridView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        crossAxisSpacing: 8,
+                        mainAxisSpacing: 8,
+                        childAspectRatio: 1.05,
+                      ),
+                      itemCount: currentList.length,
+                      itemBuilder: (context, index) {
+                        final stk = currentList[index];
+                        return _buildStickerTile(stk, isDark);
+                      },
+                    ),
         ),
       ],
     );
   }
 
+  Widget _buildStickerTile(StickerItem stk, bool isDark) {
+    final hasImg = stk.imageUrl.isNotEmpty;
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () {
+        _sendSticker(stk.title, imageUrl: stk.imageUrl);
+        ref.read(stickerRepositoryProvider).useSticker(stk.id);
+      },
+      onLongPress: () => _showStickerDetailsModal(stk, isDark),
+      child: Container(
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E293B) : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isDark ? Colors.white12 : Colors.grey.withValues(alpha: 0.2),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(6),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Center(
+              child: hasImg
+                  ? (stk.imageUrl.startsWith('http')
+                      ? CachedNetworkImage(
+                          imageUrl: stk.imageUrl,
+                          fit: BoxFit.contain,
+                          placeholder: (context, url) => const Center(
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppColors.secondaryTeal,
+                              ),
+                            ),
+                          ),
+                          errorWidget: (context, url, error) => Text(
+                            stk.title,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                        )
+                      : Image.file(
+                          File(stk.imageUrl),
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) => Text(
+                            stk.title,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                        ))
+                  : Text(
+                      stk.title,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+            ),
+
+            // Animated GIF or Trending flame badge
+            if (stk.isAnimated)
+              Positioned(
+                top: 2,
+                right: 2,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text(
+                    'GIF',
+                    style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              )
+            else if (_stickerDrawerTab == 0 && stk.usageCount > 0)
+              Positioned(
+                top: 2,
+                left: 2,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade800,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('🔥 ', style: TextStyle(fontSize: 8)),
+                      Text(
+                        '${stk.usageCount}',
+                        style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showStickerDetailsModal(StickerItem stk, bool isDark) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              if (stk.imageUrl.isNotEmpty)
+                Container(
+                  width: 90,
+                  height: 90,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: stk.imageUrl.startsWith('http')
+                      ? CachedNetworkImage(imageUrl: stk.imageUrl, fit: BoxFit.contain)
+                      : Image.file(File(stk.imageUrl), fit: BoxFit.contain),
+                ),
+              Text(
+                stk.title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              if (stk.authorName != null && stk.authorName!.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Created by ${stk.authorName}',
+                    style: TextStyle(color: isDark ? Colors.white60 : Colors.black54, fontSize: 12),
+                  ),
+                ),
+              if (stk.usageCount > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Used ${stk.usageCount} times on campus 🔥',
+                    style: const TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.send_rounded, size: 16),
+                      label: const Text('Send In Chat'),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _sendSticker(stk.title, imageUrl: stk.imageUrl);
+                        ref.read(stickerRepositoryProvider).useSticker(stk.id);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(backgroundColor: AppColors.secondaryTeal),
+                      icon: const Icon(Icons.star_rounded, size: 18),
+                      label: Text(stk.isSaved ? 'In My Tray ⭐' : 'Save Sticker'),
+                      onPressed: () async {
+                        Navigator.pop(ctx);
+                        await ref.read(stickerRepositoryProvider).saveSticker(stk);
+                        await _loadStickers();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Saved "${stk.title}" to My Stickers! ⭐'),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _openStickerCreator() async {
-    final created = await Navigator.push<CreatedStickerItem>(
+    final created = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const StickerCreatorScreen()),
     );
     if (created != null && mounted) {
-      setState(() {
-        _customStickers.insert(0, created);
-      });
-      _sendSticker(created.emojiOrText ?? created.title, imageUrl: created.localPath);
+      await _loadStickers();
+      if (created is StickerItem) {
+        _sendSticker(created.title, imageUrl: created.imageUrl);
+        ref.read(stickerRepositoryProvider).useSticker(created.id);
+      } else if (created is CreatedStickerItem) {
+        _sendSticker(
+          created.emojiOrText ?? created.title,
+          imageUrl: created.cloudUrl ?? created.localPath,
+        );
+      }
     }
   }
 
@@ -4841,6 +5214,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         final isDark = Theme.of(context).brightness == Brightness.dark;
+        final hasImg = message.imageUrl != null && message.imageUrl!.isNotEmpty;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           decoration: BoxDecoration(
@@ -4860,31 +5234,55 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
+                if (hasImg)
+                  Container(
+                    width: 80,
+                    height: 80,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: message.imageUrl!.startsWith('http')
+                        ? CachedNetworkImage(
+                            imageUrl: message.imageUrl!,
+                            fit: BoxFit.contain,
+                          )
+                        : Image.file(
+                            File(message.imageUrl!),
+                            fit: BoxFit.contain,
+                          ),
+                  ),
+                Text(
+                  message.content.isNotEmpty ? message.content : 'Campus Sticker',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 12),
                 ListTile(
                   leading: const Icon(Icons.star_rounded, color: Color(0xFFF59E0B), size: 28),
                   title: const Text('Save to My Stickers', style: TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: const Text('Add this sticker to your custom stickers keyboard'),
-                  onTap: () {
+                  subtitle: const Text('Add this sticker to your custom stickers keyboard tray'),
+                  onTap: () async {
                     Navigator.pop(ctx);
-                    final newItem = CreatedStickerItem(
-                      id: message.id.isNotEmpty ? message.id : DateTime.now().millisecondsSinceEpoch.toString(),
+                    final newItem = StickerItem(
+                      id: message.id.isNotEmpty
+                          ? message.id
+                          : 'stk_${DateTime.now().millisecondsSinceEpoch}',
                       title: message.content.isNotEmpty ? message.content : 'Sticker',
-                      type: message.imageUrl != null ? 'photo' : 'text',
-                      localPath: message.imageUrl,
-                      emojiOrText: message.content,
-                      isFavorite: true,
+                      imageUrl: message.imageUrl ?? '',
+                      type: 'PHOTO',
+                      category: 'CAMPUS',
+                      isSaved: true,
                     );
-                    setState(() {
-                      _customStickers.removeWhere((s) => s.id == newItem.id || (s.localPath != null && s.localPath == newItem.localPath));
-                      _customStickers.insert(0, newItem);
-                    });
+                    await ref.read(stickerRepositoryProvider).saveSticker(newItem);
+                    await _loadStickers();
                     HapticFeedback.lightImpact();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Saved to your stickers! ⭐'),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Saved to your stickers tray! ⭐'),
+                          duration: Duration(seconds: 2),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
                   },
                 ),
               ],

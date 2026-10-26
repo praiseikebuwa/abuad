@@ -272,6 +272,10 @@ class _CameraScreenState extends State<CameraScreen>
   // Snapchat Lenses (CameraKit)
   late final _cameraKitFlutterImpl = CameraKitFlutterImpl(cameraKitFlutterEvents: this);
   static const String _snapLensGroupId = '4b594445-eaf3-46cd-8626-fae099b74079';
+  static const String _snapWebProductionToken =
+      'eyJhbGciOiJIUzI1NiIsImtpZCI6IkNhbnZhc1MyU0hNQUNQcm9kIiwidHlwIjoiSldUIn0.eyJhdWQiOiJjYW52YXMtY2FudmFzYXBpIiwiaXNzIjoiY2FudmFzLXMyc3Rva2VuIiwibmJmIjoxNzkzMDM3MTc5LCJzdWIiOiI5NzYwZjY0ZS00YzQ5LTQ3MDAtYWY2Ny03OTI0MjBjNTVkNWR-UFJPRFVDVElPTn4zYTYyNmFjZi1jYjQyLTQzYzQtYmQ3ZS1lMGY5Y2E0N2IwMDAifQ.YTBGQ4kQdAv40TkAUzbNGqtmtSFzL3I4PWyrWjbrWGA';
+  static const String _snapWebStagingToken =
+      'eyJhbGciOiJIUzI1NiIsImtpZCI6IkNhbnZhc1MyU0hNQUNQcm9kIiwidHlwIjoiSldUIn0.eyJhdWQiOiJjYW52YXMtY2FudmFzYXBpIiwiaXNzIjoiY2FudmFzLXMyc3Rva2VuIiwibmJmIjoxNzkzMDM3MTc5LCJzdWIiOiI5NzYwZjY0ZS00YzQ5LTQ3MDAtYWY2Ny03OTI0MjBjNTVkNWR-U1RBR0lOR35jYjI5ZjBmNS01MTY3LTRmNjgtOWQ4Ny1jYmM0OWQ3NGNjMDQifQ.OLtrkZew0oVv_QNj1ddw-arhFmgSA7QEjwclu--CFB4';
   List<Lens> _snapLenses = [];
 
   // Timers & Duration
@@ -1064,6 +1068,7 @@ class _CameraScreenState extends State<CameraScreen>
 
   void _openSnapchatLenses() async {
     if (kIsWeb) {
+      debugPrint('Initializing Web Camera Kit with token: $_snapWebProductionToken (Staging: $_snapWebStagingToken)');
       _openLensesSearchSheet();
       return;
     }

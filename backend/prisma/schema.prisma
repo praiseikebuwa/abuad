@@ -81,6 +81,8 @@ model User {
   blockedBy              BlockedUser[]    @relation("Blocked")
   closeFriends           CloseFriend[]    @relation("User")
   closeFriendsWith       CloseFriend[]    @relation("Friend")
+  stickers               Sticker[]        @relation("UserStickers")
+  savedStickers          UserSavedSticker[]
 }
 
 model Follower {
@@ -487,3 +489,38 @@ model SOSAlert {
 
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+model Sticker {
+  id          String   @id @default(uuid())
+  title       String
+  imageUrl    String
+  animatedUrl String?
+  type        String   @default("STATIC") // STATIC, ANIMATED, DOODLE, PHOTO_CUT
+  category    String   @default("CAMPUS") // CAMPUS, MEME, REACTION, STUDY, TRENDING
+  tags        String[] @default([])
+  isPublic    Boolean  @default(true)
+  usageCount  Int      @default(0)
+  authorId    String
+  author      User     @relation("UserStickers", fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  savedBy     UserSavedSticker[]
+
+  @@index([isPublic, usageCount])
+  @@index([category])
+  @@index([authorId])
+}
+
+model UserSavedSticker {
+  id        String   @id @default(uuid())
+  userId    String
+  stickerId String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sticker   Sticker  @relation(fields: [stickerId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, stickerId])
+  @@index([userId])
+}
+

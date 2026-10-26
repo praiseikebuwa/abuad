@@ -15,6 +15,7 @@ import mediaRoutes from './routes/media';
 import utilityRoutes from './routes/utilities';
 import adminRoutes from './routes/admin';
 import musicRoutes from './routes/music';
+import stickerRoutes from './routes/stickers';
 import resetPageRoutes from './routes/resetPage';
 import http from 'http';
 import { initSocket } from './realtime/socket';
@@ -55,6 +56,7 @@ app.use('/api/media', mediaRoutes);
 app.use('/api/utilities', utilityRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/music', musicRoutes);
+app.use('/api/stickers', stickerRoutes);
 
 // Direct collection alias routes for legacy/admin client calls
 app.use('/api/system', adminRoutes);
