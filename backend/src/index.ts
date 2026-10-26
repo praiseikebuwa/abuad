@@ -17,6 +17,7 @@ import adminRoutes from './routes/admin';
 import musicRoutes from './routes/music';
 import stickerRoutes from './routes/stickers';
 import resetPageRoutes from './routes/resetPage';
+import sharePreviewRoutes from './routes/sharePreview';
 import http from 'http';
 import { initSocket } from './realtime/socket';
 
@@ -42,6 +43,10 @@ app.get('/health', (req, res) => {
 
 // Public password reset page (link sent by email)
 app.use('/', resetPageRoutes);
+
+// Public OpenGraph & Twitter Card link previews
+app.use('/share', sharePreviewRoutes);
+app.use('/api/share', sharePreviewRoutes);
 
 // API Routes
 app.use('/api/auth', authRoutes);

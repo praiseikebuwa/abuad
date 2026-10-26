@@ -1349,7 +1349,7 @@ class _MarketplaceScreenState extends ConsumerState<MarketplaceScreen> {
 
   void _shareListing(MarketplaceItem item) {
     final priceLabel = _formatCurrency(item.price);
-    final link = 'https://abuadapp.com.ng/marketplace/detail?id=${item.id}';
+    final link = 'https://api.abuadapp.com.ng/share/marketplace/${item.id}';
     final text = '🛍️ ${item.title}\n💰 Price: $priceLabel\n\n${item.description.isNotEmpty ? '${item.description}\n\n' : ''}Check out this listing on ABUAD Campus Marketplace:\n$link';
     SharePlus.instance.share(ShareParams(text: text, subject: item.title));
   }
