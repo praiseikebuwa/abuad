@@ -74,4 +74,5 @@ git add .; git commit -m "feat: ABUAD e-Portal webview with auto-signin vault, l
 cd ~/abuad/backend
 git checkout -- dist/
 git pull
+npm run build   # Run this if you need to recompile TypeScript/Babel into dist/
 pm2 restart abuad-backend
