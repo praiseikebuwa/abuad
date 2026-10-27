@@ -576,40 +576,97 @@
                     </header>
                     <div class="broadcast-layout">
                         <div class="card">
-                            <h3>Upload Resource</h3>
+                            <h3>Upload Academic Resources</h3>
+                            <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 16px;">
+                                Upload course PDFs, lecture notes, and past questions. These directly feed the ABUAD AI Companion and CBT Examination practice generator.
+                            </p>
                             <form id="resource-form">
                                 <div class="form-group">
-                                    <label>Resource Title</label>
-                                    <input type="text" id="res-title" placeholder="e.g. 100L Lecture Notes" required>
+                                    <label>Course Code</label>
+                                    <input type="text" id="res-course" placeholder="e.g. GST 111, MTH 101, CSC 201" style="text-transform: uppercase;" required>
                                 </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                    <div class="form-group">
+                                        <label>Level</label>
+                                        <select id="res-level" style="width: 100%; padding: 10px; border: 1px solid var(--border-subtle); border-radius: 8px;">
+                                            <option value="100">100 Level</option>
+                                            <option value="200">200 Level</option>
+                                            <option value="300">300 Level</option>
+                                            <option value="400">400 Level</option>
+                                            <option value="500">500 Level</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Category</label>
+                                        <select id="res-category" style="width: 100%; padding: 10px; border: 1px solid var(--border-subtle); border-radius: 8px;">
+                                            <option value="Lecture Notes">Lecture Notes</option>
+                                            <option value="Past Questions">Past Questions</option>
+                                            <option value="Handout">Course Handout</option>
+                                            <option value="Syllabus">Curriculum / Syllabus</option>
+                                            <option value="Lab Manual">Lab Manual</option>
+                                            <option value="Research">Research Paper</option>
+                                        </select>
+                                    </div>
+                                </div>
+
                                 <div class="form-group">
-                                    <label>Category</label>
-                                    <select id="res-category"
-                                        style="width: 100%; padding: 10px; border: 1px solid var(--border-subtle); border-radius: 8px;">
-                                        <option value="Lecture Notes">Lecture Notes</option>
-                                        <option value="Past Questions">Past Questions</option>
-                                        <option value="Research">Research Paper</option>
-                                        <option value="Other">Other</option>
-                                    </select>
+                                    <label>Upload Method</label>
+                                    <div style="display: flex; gap: 16px; margin-bottom: 8px; font-size: 14px;">
+                                        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                                            <input type="radio" name="upload-mode" value="files" checked id="mode-files">
+                                            <span>Upload Files (Multiple PDFs / Docs)</span>
+                                        </label>
+                                        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                                            <input type="radio" name="upload-mode" value="link" id="mode-link">
+                                            <span>External Link URL</span>
+                                        </label>
+                                    </div>
                                 </div>
-                                <div class="form-group">
-                                    <label>File URL (Link)</label>
-                                    <input type="url" id="res-url" placeholder="https://..." required>
+
+                                <!-- Multiple Files Upload Input -->
+                                <div id="group-file-upload" class="form-group">
+                                    <label>Choose File(s) <span style="font-weight: normal; color: var(--text-secondary);">(Supports selecting multiple PDFs/DOCXs)</span></label>
+                                    <input type="file" id="res-files" multiple accept=".pdf,.doc,.docx,.ppt,.pptx,.txt" style="width: 100%; padding: 8px; border: 1px dashed var(--border-subtle); border-radius: 8px; background: var(--bg-surface);">
+                                    <small id="res-file-count" style="display: block; margin-top: 4px; color: var(--color-primary-600); font-weight: 500;"></small>
                                 </div>
-                                <button type="submit" class="btn-primary">Upload Resource</button>
+
+                                <!-- Optional Single Title / Link URL Input -->
+                                <div id="group-link-url" class="form-group" style="display: none;">
+                                    <div class="form-group">
+                                        <label>Resource Title</label>
+                                        <input type="text" id="res-title" placeholder="e.g. Use of English Module 1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>File URL (Direct Link)</label>
+                                        <input type="url" id="res-url" placeholder="https://...">
+                                    </div>
+                                </div>
+
+                                <div id="res-upload-progress" style="display: none; margin-bottom: 12px; font-size: 13px; color: var(--color-primary-600); font-weight: 600;">
+                                    <i class="fas fa-spinner fa-spin"></i> <span id="res-progress-text">Uploading resources to Cloudflare R2...</span>
+                                </div>
+
+                                <button type="submit" id="btn-upload-resource" class="btn-primary" style="width: 100%;">
+                                    <i class="fas fa-cloud-upload-alt"></i> Upload Resources
+                                </button>
                             </form>
                         </div>
                         <div class="card">
-                            <h3>Resource Library</h3>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                <h3 style="margin: 0;">Academic Resource Library</h3>
+                                <button id="btn-refresh-resources" class="btn-secondary" style="padding: 6px 12px; font-size: 13px;">
+                                    <i class="fas fa-sync-alt"></i> Refresh
+                                </button>
+                            </div>
                             <div class="table-container" style="box-shadow: none; border: none;">
                                 <table id="resources-table">
                                     <thead>
                                         <tr>
-                                            <th>Title</th>
+                                            <th>Title & File</th>
+                                            <th>Course & Level</th>
                                             <th>Category</th>
-                                            <th>Downloads</th>
                                             <th>Date</th>
-                                            <th></th>
+                                            <th style="text-align: right;">Action</th>
                                         </tr>
                                     </thead>
                                     <tbody></tbody>

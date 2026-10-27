@@ -65,11 +65,12 @@ class SocketService {
     _socket = socket_io.io(
       serverUrl,
       socket_io.OptionBuilder()
-          .setTransports(['websocket', 'polling'])
+          .setTransports(['polling', 'websocket'])
           .enableAutoConnect()
           .enableReconnection()
           .setReconnectionDelay(1000)
           .setReconnectionDelayMax(5000)
+          .setTimeout(10000)
           .setAuth({'token': token})
           .setQuery({'token': token})
           .build(),

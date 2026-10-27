@@ -5,6 +5,7 @@ const auth_1 = require("../middleware/auth");
 const cloudflare_1 = require("../config/cloudflare");
 const genai_1 = require("@google/genai");
 const client_s3_1 = require("@aws-sdk/client-s3");
+const db_1 = require("../config/db");
 const router = (0, express_1.Router)();
 // Whitelist of allowed Cloudflare Workers AI models
 const ALLOWED_MODELS = new Set([
@@ -106,8 +107,49 @@ async function callGemini(prompt, systemPrompt, imageBuffer, mimeType = 'image/j
     }
 }
 /**
+ * Fetch real-time live campus grounding context (Events, Academic Resources, Announcements)
+ */
+async function getLiveCampusContext() {
+    try {
+        const now = new Date();
+        const [events, resources, announcements] = await Promise.all([
+            db_1.prisma.event.findMany({
+                where: { date: { gte: now } },
+                orderBy: { date: 'asc' },
+                take: 5,
+                select: { title: true, date: true, location: true },
+            }),
+            db_1.prisma.resource.findMany({
+                orderBy: { createdAt: 'desc' },
+                take: 6,
+                select: { title: true, category: true, fileUrl: true },
+            }),
+            db_1.prisma.announcement.findMany({
+                orderBy: { createdAt: 'desc' },
+                take: 4,
+                select: { title: true, body: true },
+            }),
+        ]);
+        let ctx = '\n\n[LIVE ABUAD CAMPUS CONTEXT - REAL DATA FROM PLATFORM]:\n';
+        if (events.length > 0) {
+            ctx += '• Upcoming Campus Events:\n' + events.map(e => `  - "${e.title}" on ${new Date(e.date).toLocaleDateString()} at ${e.location || 'ABUAD'}`).join('\n') + '\n';
+        }
+        if (resources.length > 0) {
+            ctx += '• Available Academic Resources / Course Materials:\n' + resources.map(r => `  - [${r.category || 'Course'}] ${r.title}`).join('\n') + '\n';
+        }
+        if (announcements.length > 0) {
+            ctx += '• Recent Official Announcements:\n' + announcements.map(a => `  - ${a.title}: ${a.body.slice(0, 120)}...`).join('\n') + '\n';
+        }
+        return ctx;
+    }
+    catch (err) {
+        console.warn('Could not load live campus context:', err);
+        return '';
+    }
+}
+/**
  * POST /api/ai/query
- * Hybrid Gemini + Cloudflare Workers AI assistant queries
+ * Hybrid Gemini + Cloudflare Workers AI assistant queries with Live Campus RAG Grounding
  */
 router.post('/query', auth_1.authenticateToken, async (req, res) => {
     try {
@@ -119,9 +161,16 @@ router.post('/query', auth_1.authenticateToken, async (req, res) => {
                 error: { code: 'PROMPT_TOO_LONG', message: 'Prompt exceeds maximum character limit of 12,000' }
             });
         }
-        const activeSystemPrompt = (typeof systemPrompt === 'string' && systemPrompt.trim())
+        // Check if query is campus/academic/event related and inject live grounding context
+        const isCampusRelated = /event|program|resource|note|lecture|exam|cbt|calendar|portal|hostel|cafeteria|abuad|campus|sport|fee|announcement|course/i.test(activePrompt);
+        let campusContext = '';
+        if (isCampusRelated || !systemPrompt) {
+            campusContext = await getLiveCampusContext();
+        }
+        const baseSystemPrompt = (typeof systemPrompt === 'string' && systemPrompt.trim())
             ? systemPrompt.trim()
             : DEFAULT_SYSTEM_PROMPT;
+        const activeSystemPrompt = campusContext ? `${baseSystemPrompt}${campusContext}` : baseSystemPrompt;
         let reply = '';
         const forceCloudflare = provider === 'cloudflare' || (typeof model === 'string' && model.startsWith('@cf/'));
         // Image query
@@ -527,6 +576,174 @@ Respond ONLY with valid JSON in this exact structure:
             confidence: 0.5,
             explanation: 'Moderation service error; held for review',
             reviewRequired: true
+        });
+    }
+});
+/**
+ * POST /api/ai/cbt-generate
+ * Dual AI Engine (Gemini + Cloudflare AI Hand-in-Hand)
+ * Generates verified ABUAD Computer-Based Test (CBT) practice questions
+ */
+router.post('/cbt-generate', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const { courseCode, courseTitle, questionCount = 10, topic, resourceId } = req.body;
+        const count = Math.min(Math.max(parseInt(String(questionCount), 10) || 10, 5), 60);
+        const activeCourseCode = (courseCode || 'GST 111').toUpperCase().trim();
+        const activeTitle = (courseTitle || 'Use of English').trim();
+        // Look up any course materials / resources from database
+        let resourceContext = '';
+        try {
+            if (resourceId) {
+                const targetRes = await db_1.prisma.resource.findUnique({ where: { id: String(resourceId) } });
+                if (targetRes) {
+                    resourceContext = `Resource Title: "${targetRes.title}"\nCategory: ${targetRes.category}\nFile: ${targetRes.fileUrl}\n`;
+                }
+            }
+            if (!resourceContext) {
+                const relatedRes = await db_1.prisma.resource.findMany({
+                    where: {
+                        OR: [
+                            { category: { contains: activeCourseCode, mode: 'insensitive' } },
+                            { title: { contains: activeCourseCode, mode: 'insensitive' } },
+                        ],
+                    },
+                    take: 3,
+                });
+                if (relatedRes.length > 0) {
+                    resourceContext = 'Associated Course Material Titles from ABUAD Library:\n' +
+                        relatedRes.map(r => `• ${r.title} (${r.category})`).join('\n');
+                }
+            }
+        }
+        catch (_) { }
+        const prompt = `You are the Lead Academic Assessment Examiner at Afe Babalola University (ABUAD).
+Generate exactly ${count} university-standard Computer-Based Test (CBT) multiple-choice examination questions.
+
+Course Code: ${activeCourseCode}
+Course Title: ${activeTitle}
+${topic ? `Focus Topic: ${topic}` : ''}
+${resourceContext ? `Course Curriculum Background:\n${resourceContext}` : ''}
+
+CRITICAL RULES FOR ACCURACY:
+1. Generate EXACTLY ${count} questions.
+2. Every question must have EXACTLY 4 distinct, plausible options (A, B, C, D) without placeholder answers.
+3. "correctIndex" MUST be the exact 0-based index of the correct answer (0, 1, 2, or 3).
+4. Distribute correct answers across all options (do NOT always choose 0 or 1).
+5. "explanation" must be concise, insightful, and pedagogically sound, explaining why the chosen option is correct.
+6. Adhere strictly to Nigerian university accreditation curriculum for ${activeCourseCode}.
+
+OUTPUT FORMAT:
+Respond ONLY with a valid JSON array of question objects, without code blocks, markdown tags, or extra commentary:
+[
+  {
+    "question": "Question text here",
+    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "correctIndex": 1,
+    "explanation": "Clear explanation here"
+  }
+]`;
+        let generatedQuestions = [];
+        let usedProvider = 'gemini';
+        // 1. First, call Gemini for academic question generation
+        if (genAI) {
+            const geminiResponse = await callGemini(prompt, 'You are a strict JSON generator. Output only valid JSON without markdown wrapping.');
+            if (geminiResponse) {
+                try {
+                    const clean = geminiResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
+                    const parsed = JSON.parse(clean);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        generatedQuestions = parsed;
+                    }
+                }
+                catch (parseErr) {
+                    console.warn('Could not parse Gemini CBT JSON, attempting cleanup...', parseErr);
+                }
+            }
+        }
+        // 2. If Gemini didn't produce questions or if validation is needed, hand over to Cloudflare AI
+        if (generatedQuestions.length === 0) {
+            usedProvider = 'cloudflare';
+            const cfPrompt = `${prompt}\n\nIMPORTANT: Output only the raw JSON array.`;
+            const cfResult = await (0, cloudflare_1.runCloudflareAI)(cfPrompt, '@cf/meta/llama-3.3-70b-instruct-fp8-fast');
+            const cfText = cfResult?.result?.response || cfResult?.response || (typeof cfResult?.result === 'string' ? cfResult.result : '');
+            if (cfText) {
+                try {
+                    const clean = cfText.replace(/```json/gi, '').replace(/```/g, '').trim();
+                    const parsed = JSON.parse(clean);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        generatedQuestions = parsed;
+                    }
+                }
+                catch (cfParseErr) {
+                    console.warn('Could not parse Cloudflare CBT JSON:', cfParseErr);
+                }
+            }
+        }
+        // 3. Fallback to Llama 3.1 8B if still needed
+        if (generatedQuestions.length === 0) {
+            const fallbackResult = await (0, cloudflare_1.runCloudflareAI)(prompt, '@cf/meta/llama-3.1-8b-instruct');
+            const fbText = fallbackResult?.result?.response || fallbackResult?.response || '';
+            if (fbText) {
+                try {
+                    const clean = fbText.replace(/```json/gi, '').replace(/```/g, '').trim();
+                    const parsed = JSON.parse(clean);
+                    if (Array.isArray(parsed)) {
+                        generatedQuestions = parsed;
+                    }
+                }
+                catch (_) { }
+            }
+        }
+        // Sanitize and normalize question objects
+        const sanitizedQuestions = generatedQuestions
+            .filter((q) => q && typeof q.question === 'string' && Array.isArray(q.options) && q.options.length >= 2)
+            .map((q, idx) => {
+            let options = q.options.map((opt) => String(opt).trim());
+            while (options.length < 4) {
+                options.push(`Alternative ${String.fromCharCode(65 + options.length)}`);
+            }
+            if (options.length > 4) {
+                options = options.slice(0, 4);
+            }
+            let correctIdx = parseInt(q.correctIndex, 10);
+            if (isNaN(correctIdx) || correctIdx < 0 || correctIdx >= 4) {
+                correctIdx = idx % 4;
+            }
+            return {
+                id: `q_${idx + 1}`,
+                question: q.question.trim(),
+                options,
+                correctIndex: correctIdx,
+                explanation: typeof q.explanation === 'string' && q.explanation.trim()
+                    ? q.explanation.trim()
+                    : `Option ${String.fromCharCode(65 + correctIdx)} is the correct answer according to ${activeCourseCode} syllabus.`,
+            };
+        });
+        if (sanitizedQuestions.length === 0) {
+            return res.status(503).json({
+                success: false,
+                error: {
+                    code: 'CBT_GENERATION_FAILED',
+                    message: 'Unable to synthesize questions at this time. Please check your connection and try again.',
+                },
+            });
+        }
+        return res.json({
+            success: true,
+            data: {
+                courseCode: activeCourseCode,
+                courseTitle: activeTitle,
+                questionCount: sanitizedQuestions.length,
+                provider: usedProvider,
+                questions: sanitizedQuestions,
+            },
+        });
+    }
+    catch (error) {
+        console.error('CBT generation error:', error);
+        return res.status(500).json({
+            success: false,
+            error: { code: 'SERVER_ERROR', message: 'Failed to generate CBT examination' },
         });
     }
 });

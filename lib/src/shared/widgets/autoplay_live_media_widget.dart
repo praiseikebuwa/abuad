@@ -6,9 +6,10 @@ import '../../core/utils/url_validator.dart';
 /// AutoPlayLiveMediaWidget
 ///
 /// Seamlessly supports:
-/// 1. Short live photo videos (.mp4, .mov, .webm) with silent looping autoplay.
-/// 2. Animated GIFs (.gif) with smooth infinite looping autoplay.
-/// 3. Standard web images (.jpg, .jpeg, .png, .webp) with caching and placeholders.
+/// 1. Short live photo videos (.mp4, .mov, .webm, .m4v, .mkv, .avi, .3gp) with silent looping autoplay.
+/// 2. Animated live photos and stickers (.webp, .gif) with infinite looping animation.
+/// 3. Standard web images (.jpg, .jpeg, .png) with caching and instant thumbnail preview.
+/// 4. Graceful fallback: If video autoplay is restricted or fails, seamlessly renders the live photo frame!
 class AutoPlayLiveMediaWidget extends StatefulWidget {
   final String? url;
   final double? width;
@@ -38,6 +39,7 @@ class AutoPlayLiveMediaWidget extends StatefulWidget {
 class _AutoPlayLiveMediaWidgetState extends State<AutoPlayLiveMediaWidget> {
   VideoPlayerController? _videoController;
   bool _isVideoInitialized = false;
+  bool _hasVideoError = false;
 
   @override
   void initState() {
@@ -60,12 +62,17 @@ class _AutoPlayLiveMediaWidgetState extends State<AutoPlayLiveMediaWidget> {
         clean.endsWith('.mov') ||
         clean.endsWith('.webm') ||
         clean.endsWith('.m4v') ||
-        clean.endsWith('.mkv');
+        clean.endsWith('.mkv') ||
+        clean.endsWith('.avi') ||
+        clean.endsWith('.3gp') ||
+        url.toLowerCase().contains('/video') ||
+        url.toLowerCase().contains('format=mp4') ||
+        url.toLowerCase().contains('live_video');
   }
 
-  bool _isGifUrl(String url) {
+  bool _isAnimatedImageUrl(String url) {
     final clean = url.toLowerCase().split('?').first;
-    return clean.endsWith('.gif');
+    return clean.endsWith('.gif') || clean.endsWith('.webp');
   }
 
   void _initMedia() {
@@ -76,36 +83,62 @@ class _AutoPlayLiveMediaWidgetState extends State<AutoPlayLiveMediaWidget> {
     if (formatted.isEmpty || !UrlValidator.isValidUrl(formatted)) return;
 
     if (_isVideoUrl(formatted)) {
-      final controller = VideoPlayerController.networkUrl(Uri.parse(formatted));
-      _videoController = controller;
+      _hasVideoError = false;
+      try {
+        final controller = VideoPlayerController.networkUrl(
+          Uri.parse(formatted),
+          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+        );
+        _videoController = controller;
 
-      controller.initialize().then((_) {
-        if (!mounted || _videoController != controller) return;
-        controller.setLooping(true);
+        // Ensure volume is 0 BEFORE initialization to guarantee browser autoplay compliance
         controller.setVolume(0.0);
-        controller.play();
-        setState(() {
-          _isVideoInitialized = true;
+        controller.setLooping(true);
+
+        controller.initialize().then((_) {
+          if (!mounted || _videoController != controller) return;
+          controller.setLooping(true);
+          controller.setVolume(0.0);
+          controller.play();
+          setState(() {
+            _isVideoInitialized = true;
+          });
+        }).catchError((err) {
+          debugPrint('AutoPlayLiveMediaWidget video error: $err');
+          if (!mounted) return;
+          setState(() {
+            _isVideoInitialized = false;
+            _hasVideoError = true;
+          });
         });
-      }).catchError((_) {
-        if (!mounted) return;
-        setState(() {
-          _isVideoInitialized = false;
-        });
-      });
+      } catch (e) {
+        debugPrint('AutoPlayLiveMediaWidget initialization error: $e');
+        _hasVideoError = true;
+      }
     }
   }
 
   void _disposeVideo() {
+    _videoController?.pause();
     _videoController?.dispose();
     _videoController = null;
     _isVideoInitialized = false;
+    _hasVideoError = false;
   }
 
   @override
   void dispose() {
     _disposeVideo();
     super.dispose();
+  }
+
+  void _resumeVideoIfPaused() {
+    if (_videoController != null && _isVideoInitialized) {
+      if (!_videoController!.value.isPlaying) {
+        _videoController!.setVolume(0.0);
+        _videoController!.play();
+      }
+    }
   }
 
   @override
@@ -122,37 +155,48 @@ class _AutoPlayLiveMediaWidgetState extends State<AutoPlayLiveMediaWidget> {
 
     Widget content;
 
-    if (_isVideoUrl(formatted)) {
+    if (_isVideoUrl(formatted) && !_hasVideoError) {
       if (_isVideoInitialized && _videoController != null) {
-        content = SizedBox.expand(
+        final size = _videoController!.value.size;
+        final vWidth = size.width > 0 ? size.width : (widget.width ?? 300);
+        final vHeight = size.height > 0 ? size.height : (widget.height ?? 300);
+
+        content = GestureDetector(
+          onTap: _resumeVideoIfPaused,
           child: FittedBox(
             fit: widget.fit,
             clipBehavior: Clip.hardEdge,
             child: SizedBox(
-              width: _videoController!.value.size.width > 0
-                  ? _videoController!.value.size.width
-                  : (widget.width ?? 100),
-              height: _videoController!.value.size.height > 0
-                  ? _videoController!.value.size.height
-                  : (widget.height ?? 100),
+              width: vWidth,
+              height: vHeight,
               child: VideoPlayer(_videoController!),
             ),
           ),
         );
       } else {
-        content = widget.placeholder ??
-            Container(
-              color: Colors.black12,
-              child: const Center(
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+        // While video initializes, show live image preview directly instead of infinite spinner!
+        content = Image.network(
+          formatted,
+          width: widget.width,
+          height: widget.height,
+          fit: widget.fit,
+          gaplessPlayback: true,
+          errorBuilder: (context, error, stackTrace) =>
+              widget.placeholder ??
+              Container(
+                color: Colors.black12,
+                child: const Center(
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
                 ),
               ),
-            );
+        );
       }
-    } else if (_isGifUrl(formatted)) {
+    } else if (_isAnimatedImageUrl(formatted)) {
+      // Handles animated WebP & GIF with infinite looping and hardware acceleration
       content = Image.network(
         formatted,
         width: widget.width,
@@ -181,6 +225,7 @@ class _AutoPlayLiveMediaWidgetState extends State<AutoPlayLiveMediaWidget> {
             ),
       );
     } else {
+      // Standard static images with robust disk & memory caching
       content = CachedNetworkImage(
         imageUrl: formatted,
         width: widget.width,

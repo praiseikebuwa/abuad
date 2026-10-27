@@ -28,6 +28,10 @@ class ChatRepository {
   final StreamController<List<ChatChannel>> _channelsController = StreamController<List<ChatChannel>>.broadcast();
   Timer? _channelsTimer;
   final Map<String, Timer> _messageTimers = {};
+  bool _isFetchingChannels = false;
+  final Set<String> _inFlightMessageFetches = {};
+  final Map<String, Future<ChatChannel?>> _inFlightChannelRequests = {};
+  final Map<String, DateTime> _negativeChannelCache = {};
 
   final Map<String, List<ChatMessage>> _cachedMessages = {};
   final Map<String, ChatChannel> _cachedChannels = {};
@@ -336,6 +340,8 @@ class ChatRepository {
   }
 
   Future<void> _fetchChannels() async {
+    if (_isFetchingChannels) return;
+    _isFetchingChannels = true;
     try {
       final response = await ApiClient.get('/chat/channels').timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
@@ -362,6 +368,8 @@ class ChatRepository {
         _channelsList = _cachedChannels.values.toSet().toList();
         _emitChannels();
       }
+    } finally {
+      _isFetchingChannels = false;
     }
   }
 
@@ -381,17 +389,38 @@ class ChatRepository {
     return _channelControllers[channelId]!.stream;
   }
 
-  Future<ChatChannel?> getChannel(String channelId) async {
+  Future<ChatChannel?> getChannel(String channelId, {bool forceRefresh = false}) async {
     final cached = getCachedChannel(channelId);
+    if (!forceRefresh && cached != null) {
+      return cached;
+    }
+    final lastFailed = _negativeChannelCache[channelId];
+    if (!forceRefresh && lastFailed != null && DateTime.now().difference(lastFailed).inSeconds < 20) {
+      return cached;
+    }
+    if (_inFlightChannelRequests.containsKey(channelId)) {
+      return _inFlightChannelRequests[channelId];
+    }
+
+    final future = _fetchChannelInternal(channelId, cached);
+    _inFlightChannelRequests[channelId] = future;
+    try {
+      return await future;
+    } finally {
+      _inFlightChannelRequests.remove(channelId);
+    }
+  }
+
+  Future<ChatChannel?> _fetchChannelInternal(String channelId, ChatChannel? cached) async {
     try {
       final cleanId = channelId.startsWith('channel_') ? channelId.substring(8) : channelId;
       
       // Try direct lookup with timeout
       var response = await ApiClient.get('/chat/channels/$channelId')
-          .timeout(const Duration(seconds: 12));
+          .timeout(const Duration(seconds: 10));
       if (response.statusCode != 200 && cleanId != channelId) {
         response = await ApiClient.get('/chat/channels/$cleanId')
-            .timeout(const Duration(seconds: 12));
+            .timeout(const Duration(seconds: 10));
       }
 
       if (response.statusCode == 200) {
@@ -399,6 +428,7 @@ class ChatRepository {
         if (data['success'] == true && data['data'] != null) {
           final channel = ChatChannel.fromMap(data['data']);
           _updateChannelCache(channel);
+          _negativeChannelCache.remove(channelId);
           return channel;
         }
       }
@@ -406,17 +436,20 @@ class ChatRepository {
       // If it's a direct user ID, find/create direct DM
       final directRes = await ApiClient.post('/chat/direct', {
         'targetUserId': cleanId,
-      }).timeout(const Duration(seconds: 12));
+      }).timeout(const Duration(seconds: 10));
       if (directRes.statusCode == 200 || directRes.statusCode == 201) {
         final directData = jsonDecode(directRes.body);
         if (directData['success'] == true && directData['data'] != null) {
           final channel = ChatChannel.fromMap(directData['data']);
           _updateChannelCache(channel);
+          _negativeChannelCache.remove(channelId);
           return channel;
         }
       }
+      _negativeChannelCache[channelId] = DateTime.now();
     } catch (e) {
       debugPrint('Error getChannel: $e');
+      _negativeChannelCache[channelId] = DateTime.now();
     }
     return cached;
   }
@@ -444,7 +477,7 @@ class ChatRepository {
 
     // Setup periodic polling for real-time messages & AI responses
     _messageTimers[channelId]?.cancel();
-    _messageTimers[channelId] = Timer.periodic(const Duration(milliseconds: 1800), (_) {
+    _messageTimers[channelId] = Timer.periodic(const Duration(seconds: 4), (_) {
       _fetchMessages(channelId);
     });
 
@@ -452,6 +485,8 @@ class ChatRepository {
   }
 
   Future<void> _fetchMessages(String channelId) async {
+    if (_inFlightMessageFetches.contains(channelId)) return;
+    _inFlightMessageFetches.add(channelId);
     try {
       final response = await ApiClient.get('/chat/messages?channelId=$channelId');
       if (response.statusCode == 200) {
@@ -484,6 +519,8 @@ class ChatRepository {
       }
     } catch (e) {
       debugPrint('Error fetching messages for $channelId: $e');
+    } finally {
+      _inFlightMessageFetches.remove(channelId);
     }
   }
 

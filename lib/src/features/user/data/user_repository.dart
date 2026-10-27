@@ -336,6 +336,8 @@ class UserRepository {
   static final Map<String, AppUser> _userCache = {};
   static final StreamController<Map<String, AppUser>> _userController =
       StreamController<Map<String, AppUser>>.broadcast();
+  static final Map<String, Future<AppUser?>> _inFlightUserRequests = {};
+  static final Map<String, DateTime> _negativeCache = {};
 
   static Stream<bool> watchIsFollowing(String userId) async* {
     if (userId.isEmpty) {
@@ -387,10 +389,35 @@ class UserRepository {
     return null;
   }
 
-  Future<AppUser?> getUserById(String uid) async {
+  Future<AppUser?> getUserById(String uid, {bool forceRefresh = false}) async {
     if (uid == 'me' || uid.isEmpty) {
       return getCurrentUser();
     }
+    // Return cached user immediately if available and not forcing refresh
+    if (!forceRefresh && _userCache.containsKey(uid) && _userCache[uid] != null) {
+      return _userCache[uid];
+    }
+    // Check negative cache (not found in last 30s) to prevent spamming
+    final lastFailed = _negativeCache[uid];
+    if (!forceRefresh && lastFailed != null && DateTime.now().difference(lastFailed).inSeconds < 30) {
+      return _userCache[uid];
+    }
+    // Deduplicate in-flight requests so 20 widgets don't send 20 requests
+    if (_inFlightUserRequests.containsKey(uid)) {
+      return _inFlightUserRequests[uid];
+    }
+
+    final future = _fetchUserByIdInternal(uid);
+    _inFlightUserRequests[uid] = future;
+    try {
+      final result = await future;
+      return result;
+    } finally {
+      _inFlightUserRequests.remove(uid);
+    }
+  }
+
+  Future<AppUser?> _fetchUserByIdInternal(String uid) async {
     try {
       final response = await ApiClient.get('/users/profile/$uid');
       if (response.statusCode == 200) {
@@ -398,6 +425,7 @@ class UserRepository {
         if (data['success'] == true && data['data'] != null) {
           final user = AppUser.fromMap(data['data']);
           _userCache[uid] = user;
+          _negativeCache.remove(uid);
           if (data['data']['isFollowing'] != null) {
             _followingMap[uid] = data['data']['isFollowing'] == true;
             _followingController.add(Map<String, bool>.from(_followingMap));
@@ -412,12 +440,15 @@ class UserRepository {
         if (data['success'] == true && data['data'] != null) {
           final user = AppUser.fromMap(data['data']);
           _userCache[uid] = user;
+          _negativeCache.remove(uid);
           _userController.add(Map<String, AppUser>.from(_userCache));
           return user;
         }
       }
+      _negativeCache[uid] = DateTime.now();
     } catch (e) {
       debugPrint('Error fetching user by id: $e');
+      _negativeCache[uid] = DateTime.now();
     }
     return _userCache[uid];
   }
@@ -441,11 +472,12 @@ class UserRepository {
   }
 
   Stream<AppUser?> watchUser(String uid) async* {
-    if (_userCache.containsKey(uid)) {
+    if (_userCache.containsKey(uid) && _userCache[uid] != null) {
       yield _userCache[uid];
+    } else {
+      final user = await getUserById(uid);
+      yield _userCache[uid] ?? user;
     }
-    final user = await getUserById(uid);
-    yield _userCache[uid] ?? user;
 
     await for (final map in _userController.stream) {
       if (map.containsKey(uid)) {

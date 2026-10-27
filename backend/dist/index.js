@@ -19,7 +19,10 @@ const media_1 = __importDefault(require("./routes/media"));
 const utilities_1 = __importDefault(require("./routes/utilities"));
 const admin_1 = __importDefault(require("./routes/admin"));
 const music_1 = __importDefault(require("./routes/music"));
+const stickers_1 = __importDefault(require("./routes/stickers"));
 const resetPage_1 = __importDefault(require("./routes/resetPage"));
+const sharePreview_1 = __importDefault(require("./routes/sharePreview"));
+const resources_1 = __importDefault(require("./routes/resources"));
 const http_1 = __importDefault(require("http"));
 const socket_1 = require("./realtime/socket");
 dotenv_1.default.config();
@@ -40,6 +43,9 @@ app.get('/health', (req, res) => {
 });
 // Public password reset page (link sent by email)
 app.use('/', resetPage_1.default);
+// Public OpenGraph & Twitter Card link previews
+app.use('/share', sharePreview_1.default);
+app.use('/api/share', sharePreview_1.default);
 // API Routes
 app.use('/api/auth', auth_1.default);
 app.use('/api/users', users_1.default);
@@ -53,10 +59,12 @@ app.use('/api/media', media_1.default);
 app.use('/api/utilities', utilities_1.default);
 app.use('/api/admin', admin_1.default);
 app.use('/api/music', music_1.default);
+app.use('/api/stickers', stickers_1.default);
+app.use('/api/resources', resources_1.default);
+app.use('/api/admin/resources', resources_1.default);
 // Direct collection alias routes for legacy/admin client calls
 app.use('/api/system', admin_1.default);
 app.use('/api/system/config', admin_1.default);
-app.use('/api/resources', admin_1.default);
 app.use('/api/announcements', admin_1.default);
 app.use('/api/reports', admin_1.default);
 app.use('/api/marketplace_items', marketplace_1.default);

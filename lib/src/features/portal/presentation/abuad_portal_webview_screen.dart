@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -22,7 +24,7 @@ class AbuadPortalWebViewScreen extends ConsumerStatefulWidget {
 
 class _AbuadPortalWebViewScreenState
     extends ConsumerState<AbuadPortalWebViewScreen> {
-  late final WebViewController _controller;
+  WebViewController? _controller;
   double _loadingProgress = 0.0;
   bool _isLoading = true;
   String _currentUrl = 'https://portal.abuad.edu.ng/PortalHome';
@@ -35,6 +37,7 @@ class _AbuadPortalWebViewScreenState
   bool _autoSignInEnabled = true;
   bool _credentialsLoaded = false;
   bool _hasAttemptedAutoFill = false;
+  bool _obscureWebPassword = true;
 
   // Extracted Student Portal Data
   Map<String, dynamic>? _detectedPortalData;
@@ -44,7 +47,11 @@ class _AbuadPortalWebViewScreenState
   void initState() {
     super.initState();
     _currentUrl = widget.initialUrl;
-    _initController();
+    if (!kIsWeb) {
+      _initController();
+    } else {
+      _isLoading = false;
+    }
     _loadStoredCredentials();
   }
 
@@ -59,14 +66,16 @@ class _AbuadPortalWebViewScreenState
         _credentialsLoaded = true;
       });
       // If page is already loaded and credentials became available
-      if (!_isLoading && _savedUsername.isNotEmpty && _savedPassword.isNotEmpty && _autoSignInEnabled) {
+      if (!kIsWeb && !_isLoading && _savedUsername.isNotEmpty && _savedPassword.isNotEmpty && _autoSignInEnabled) {
         _injectAutoSignIn();
       }
     }
   }
 
   void _initController() {
-    _controller = WebViewController()
+    if (kIsWeb) return;
+    try {
+      _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFF0F172A))
       ..setNavigationDelegate(
@@ -129,21 +138,28 @@ class _AbuadPortalWebViewScreenState
         },
       )
       ..loadRequest(Uri.parse(widget.initialUrl));
+    } catch (e) {
+      debugPrint('Failed to initialize WebViewController: $e');
+    }
   }
 
   Future<void> _updateNavButtons() async {
-    final back = await _controller.canGoBack();
-    final forward = await _controller.canGoForward();
-    if (mounted) {
-      setState(() {
-        _canGoBack = back;
-        _canGoForward = forward;
-      });
-    }
+    if (kIsWeb || _controller == null) return;
+    try {
+      final back = await _controller?.canGoBack() ?? false;
+      final forward = await _controller?.canGoForward() ?? false;
+      if (mounted) {
+        setState(() {
+          _canGoBack = back;
+          _canGoForward = forward;
+        });
+      }
+    } catch (_) {}
   }
 
   /// Injects JavaScript to auto-fill username & password and trigger Sign In
   Future<void> _injectAutoSignIn() async {
+    if (kIsWeb || _controller == null) return;
     if (_savedUsername.isEmpty || _savedPassword.isEmpty || _hasAttemptedAutoFill) return;
     _hasAttemptedAutoFill = true;
 
@@ -182,7 +198,7 @@ class _AbuadPortalWebViewScreenState
     ''';
 
     try {
-      await _controller.runJavaScript(script);
+      await _controller?.runJavaScript(script);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -240,7 +256,7 @@ class _AbuadPortalWebViewScreenState
       })();
     ''';
     try {
-      await _controller.runJavaScript(script);
+      await _controller?.runJavaScript(script);
     } catch (_) {}
   }
 
@@ -423,7 +439,7 @@ class _AbuadPortalWebViewScreenState
     ''';
 
     try {
-      await _controller.runJavaScript(script);
+      await _controller?.runJavaScript(script);
     } catch (e) {
       debugPrint('Error running portal extraction script: $e');
     }
@@ -1013,8 +1029,16 @@ class _AbuadPortalWebViewScreenState
     );
   }
 
-  void _navigateToUrl(String url) {
-    _controller.loadRequest(Uri.parse(url));
+  void _navigateToUrl(String url) async {
+    setState(() => _currentUrl = url);
+    if (kIsWeb || _controller == null) {
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    } else {
+      _controller?.loadRequest(Uri.parse(url));
+    }
   }
 
   @override
@@ -1087,10 +1111,20 @@ class _AbuadPortalWebViewScreenState
           ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded, color: Colors.white70),
-            tooltip: 'Reload Page',
+            tooltip: kIsWeb ? 'Refresh Saved Credentials' : 'Reload Page',
             onPressed: () {
-              _hasAttemptedAutoFill = false;
-              _controller.reload();
+              if (kIsWeb || _controller == null) {
+                _loadStoredCredentials();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Refreshed vaulted credentials!'),
+                    duration: Duration(seconds: 1),
+                  ),
+                );
+              } else {
+                _hasAttemptedAutoFill = false;
+                _controller?.reload();
+              }
             },
           ),
           PopupMenuButton<String>(
@@ -1218,9 +1252,11 @@ class _AbuadPortalWebViewScreenState
             ),
           ),
 
-          // Browser View
+          // Browser View or Web Portal Hub
           Expanded(
-            child: WebViewWidget(controller: _controller),
+            child: (kIsWeb || _controller == null)
+                ? _buildWebPortalHub()
+                : WebViewWidget(controller: _controller!),
           ),
 
           // Live Detected Portal Records Banner
@@ -1298,27 +1334,28 @@ class _AbuadPortalWebViewScreenState
             ),
 
           // Browser Navigation Bottom Bar
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: const BoxDecoration(
-              color: Color(0xFF0F172A),
-              border: Border(top: BorderSide(color: Colors.white10)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    IconButton(
-                      icon: Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: _canGoBack ? Colors.white : Colors.white24),
-                      onPressed: _canGoBack ? () => _controller.goBack() : null,
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.arrow_forward_ios_rounded, size: 18, color: _canGoForward ? Colors.white : Colors.white24),
-                      onPressed: _canGoForward ? () => _controller.goForward() : null,
-                    ),
-                  ],
-                ),
+          if (!kIsWeb)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: const BoxDecoration(
+                color: Color(0xFF0F172A),
+                border: Border(top: BorderSide(color: Colors.white10)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: _canGoBack ? Colors.white : Colors.white24),
+                        onPressed: _canGoBack ? () => _controller?.goBack() : null,
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.arrow_forward_ios_rounded, size: 18, color: _canGoForward ? Colors.white : Colors.white24),
+                        onPressed: _canGoForward ? () => _controller?.goForward() : null,
+                      ),
+                    ],
+                  ),
                 InkWell(
                   onTap: _openCredentialVaultSheet,
                   borderRadius: BorderRadius.circular(20),
@@ -1393,6 +1430,435 @@ class _AbuadPortalWebViewScreenState
         padding: const EdgeInsets.symmetric(horizontal: 4),
         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
         onPressed: () => _navigateToUrl(url),
+      ),
+    );
+  }
+
+  Widget _buildWebPortalHub() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 680),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Hero Banner
+              Container(
+                padding: const EdgeInsets.all(22),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [
+                      Color(0xFF0D2538),
+                      Color(0xFF0F172A),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: AppColors.secondaryTeal.withValues(alpha: 0.3)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      blurRadius: 16,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: AppColors.secondaryTeal.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.secondaryTeal.withValues(alpha: 0.4)),
+                          ),
+                          child: const Icon(Icons.school_rounded, color: AppColors.secondaryTeal, size: 26),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Afe Babalola University',
+                                style: GoogleFonts.inter(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              Text(
+                                'Official Integrated e-Portal',
+                                style: GoogleFonts.outfit(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: Colors.greenAccent.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.4)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.greenAccent,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'LIVE',
+                                style: GoogleFonts.inter(
+                                  color: Colors.greenAccent,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Direct link to portal.abuad.edu.ng. For security and cookie isolation, web browsers require the university portal to open in its dedicated tab. Use your vaulted credentials below for instant 1-tap copy.',
+                      style: GoogleFonts.inter(
+                        color: Colors.white70,
+                        fontSize: 13,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    // Launch Button
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.secondaryTeal,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          elevation: 4,
+                          shadowColor: AppColors.secondaryTeal.withValues(alpha: 0.5),
+                        ),
+                        icon: const Icon(Icons.open_in_new_rounded, size: 20),
+                        label: Text(
+                          'Open e-Portal in New Tab',
+                          style: GoogleFonts.inter(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        onPressed: () async {
+                          final uri = Uri.parse(_currentUrl);
+                          if (await canLaunchUrl(uri)) {
+                            await launchUrl(uri, mode: LaunchMode.externalApplication);
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // Vaulted Credentials Card
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E293B),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.vpn_key_rounded, color: Colors.amberAccent, size: 20),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Vaulted Portal Credentials',
+                              style: GoogleFonts.outfit(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        TextButton.icon(
+                          onPressed: _openCredentialVaultSheet,
+                          icon: const Icon(Icons.edit_rounded, size: 14, color: AppColors.secondaryTeal),
+                          label: Text(
+                            _savedUsername.isNotEmpty ? 'Edit' : 'Save',
+                            style: GoogleFonts.inter(
+                              color: AppColors.secondaryTeal,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Matric Number Tile
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0F172A),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white10),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person_outline_rounded, color: Colors.white54, size: 20),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Matric / Username',
+                                  style: GoogleFonts.inter(color: Colors.white38, fontSize: 10.5, fontWeight: FontWeight.w500),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  _savedUsername.isNotEmpty ? _savedUsername : 'Not set (tap Edit to save)',
+                                  style: GoogleFonts.inter(
+                                    color: _savedUsername.isNotEmpty ? Colors.white : Colors.white38,
+                                    fontSize: 14,
+                                    fontWeight: _savedUsername.isNotEmpty ? FontWeight.w600 : FontWeight.normal,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (_savedUsername.isNotEmpty)
+                            IconButton(
+                              icon: const Icon(Icons.copy_rounded, color: AppColors.secondaryTeal, size: 18),
+                              tooltip: 'Copy Matric Number',
+                              onPressed: () {
+                                Clipboard.setData(ClipboardData(text: _savedUsername));
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Matric number copied to clipboard!'),
+                                    duration: Duration(milliseconds: 1500),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              },
+                            ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    // Password Tile
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0F172A),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white10),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.lock_outline_rounded, color: Colors.white54, size: 20),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Portal Password',
+                                  style: GoogleFonts.inter(color: Colors.white38, fontSize: 10.5, fontWeight: FontWeight.w500),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  _savedPassword.isNotEmpty
+                                      ? (_obscureWebPassword ? '••••••••••••' : _savedPassword)
+                                      : 'Not set (tap Edit to save)',
+                                  style: GoogleFonts.inter(
+                                    color: _savedPassword.isNotEmpty ? Colors.white : Colors.white38,
+                                    fontSize: 14,
+                                    fontWeight: _savedPassword.isNotEmpty ? FontWeight.w600 : FontWeight.normal,
+                                    letterSpacing: _savedPassword.isNotEmpty && _obscureWebPassword ? 2 : 0,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (_savedPassword.isNotEmpty) ...[
+                            IconButton(
+                              icon: Icon(
+                                _obscureWebPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                                color: Colors.white54,
+                                size: 18,
+                              ),
+                              tooltip: _obscureWebPassword ? 'Show password' : 'Hide password',
+                              onPressed: () {
+                                setState(() => _obscureWebPassword = !_obscureWebPassword);
+                              },
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.copy_rounded, color: AppColors.secondaryTeal, size: 18),
+                              tooltip: 'Copy Password',
+                              onPressed: () {
+                                Clipboard.setData(ClipboardData(text: _savedPassword));
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Password copied to clipboard!'),
+                                    duration: Duration(milliseconds: 1500),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Icon(Icons.lightbulb_outline_rounded, color: Colors.amberAccent, size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Tip: 1-tap copy your credentials, then paste directly into portal.abuad.edu.ng',
+                            style: GoogleFonts.inter(color: Colors.white54, fontSize: 11.5),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // Quick University Portals Strip
+              Text(
+                'Direct Portals & Resources',
+                style: GoogleFonts.outfit(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              _buildWebPortalLinkCard(
+                title: 'Official e-Portal Home',
+                subtitle: 'Course registration, fees, biodata & exam passes',
+                url: 'https://portal.abuad.edu.ng/PortalHome',
+                icon: Icons.account_balance_rounded,
+                color: const Color(0xFF0284C7),
+              ),
+              const SizedBox(height: 10),
+              _buildWebPortalLinkCard(
+                title: 'Academic Transcripts Portal',
+                subtitle: 'Official degree verification & student transcripts',
+                url: 'https://portal.abuad.edu.ng/Transcript',
+                icon: Icons.description_outlined,
+                color: Colors.purpleAccent,
+              ),
+              const SizedBox(height: 10),
+              _buildWebPortalLinkCard(
+                title: 'University Calendar & Timetable',
+                subtitle: 'Academic schedules, resumptions & convocation',
+                url: 'https://portal.abuad.edu.ng/Calendar',
+                icon: Icons.event_note_rounded,
+                color: Colors.greenAccent,
+              ),
+              const SizedBox(height: 10),
+              _buildWebPortalLinkCard(
+                title: 'Lecturers & Staff Directory',
+                subtitle: 'Faculty contact details and office directory',
+                url: 'https://portal.abuad.edu.ng/Lecturers',
+                icon: Icons.people_alt_rounded,
+                color: Colors.amberAccent,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWebPortalLinkCard({
+    required String title,
+    required String subtitle,
+    required String url,
+    required IconData icon,
+    required Color color,
+  }) {
+    return InkWell(
+      onTap: () => _navigateToUrl(url),
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E293B),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.outfit(
+                      color: Colors.white,
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.inter(
+                      color: Colors.white54,
+                      fontSize: 11.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white30, size: 14),
+          ],
+        ),
       ),
     );
   }

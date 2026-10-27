@@ -1,48 +1,27 @@
-import 'dart:io';
 import 'dart:ui' as ui;
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../../../core/services/image_upload_service.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../shared/widgets/autoplay_live_media_widget.dart';
 import '../data/sticker_repository.dart';
 import '../domain/sticker_item.dart';
 
-enum BrushTool {
-  pencil,
-  marker,
-  neon,
-  highlighter,
-  eraser,
-}
-
-enum CutoutShape {
-  roundedRect,
-  circle,
-  squircle,
-  heart,
-  star,
-}
-
-class DrawingStroke {
-  final List<Offset> points;
-  final Color color;
-  final double width;
-  final BrushTool tool;
-
-  DrawingStroke({
-    required this.points,
-    required this.color,
-    required this.width,
-    required this.tool,
-  });
-}
-
 class StickerCreatorScreen extends ConsumerStatefulWidget {
-  const StickerCreatorScreen({super.key});
+  final String? initialTemplateUrl;
+  final String? initialMode; // 'PACKS', 'MY', 'CREATE'
+
+  const StickerCreatorScreen({
+    super.key,
+    this.initialTemplateUrl,
+    this.initialMode,
+  });
 
   @override
   ConsumerState<StickerCreatorScreen> createState() => _StickerCreatorScreenState();
@@ -52,208 +31,197 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
-  // Global Keys for rendering canvas to real PNG images
-  final GlobalKey _drawingBoundaryKey = GlobalKey();
+  // Boundary Key for rasterizing sticker to PNG
   final GlobalKey _photoBoundaryKey = GlobalKey();
 
-  // Drawing state
-  final List<DrawingStroke> _strokes = [];
-  final List<DrawingStroke> _redoStrokes = [];
-  BrushTool _selectedTool = BrushTool.marker;
-  Color _selectedColor = const Color(0xFFFBBF24);
-  double _strokeWidth = 6.0;
-  final bool _drawWithOutline = true;
+  // Marketplace & Tray Data State
+  List<StickerItem> _trendingStickers = [];
+  List<StickerItem> _communityStickers = [];
+  List<StickerItem> _myStickers = [];
+  bool _isLoadingData = false;
+  String _selectedCategory = 'ALL';
+  String _searchQuery = '';
+  final TextEditingController _searchCtrl = TextEditingController();
 
-  // Photo cutout state
+  // Sticker Maker State
   XFile? _selectedImage;
-  CutoutShape _selectedShape = CutoutShape.roundedRect;
-  final TextEditingController _stickerCaptionCtrl =
-      TextEditingController(text: 'ABUAD VIBES ✨');
+  Uint8List? _selectedImageBytes;
+  bool _isMotionMedia = false;
+  double _cornerRadius = 28.0; // 0.0 (sharp) to 90.0 (pill/circle)
   bool _hasWhiteContour = true;
   double _contourWidth = 6.0;
-
-  // Video / GIF state
-  double _gifSpeed = 1.0;
-  bool _isBoomerang = true;
-  int _selectedGifTemplate = 0;
-  XFile? _customGifFile;
-
-  // Publishing & Metadata state
-  final TextEditingController _titleCtrl = TextEditingController(text: 'My Campus Sticker');
+  final TextEditingController _captionCtrl = TextEditingController(text: 'ABUAD VIBES ✨');
+  final TextEditingController _titleCtrl = TextEditingController(text: 'Campus Sticker');
   final TextEditingController _tagsCtrl = TextEditingController(text: 'abuad, campus, vibes');
-  String _selectedCategory = 'CAMPUS';
+  String _makerCategory = 'CAMPUS';
   bool _isPublic = true;
   bool _isExporting = false;
   String _exportStatus = '';
 
   final List<String> _categories = [
+    'ALL',
     'CAMPUS',
     'MEME',
     'REACTION',
     'STUDY',
-    'DOODLE',
-  ];
-
-  final List<Color> _palette = const [
-    Color(0xFFFBBF24), // Amber
-    Color(0xFFEF4444), // Coral Red
-    Color(0xFF10B981), // Emerald
-    Color(0xFF3B82F6), // Royal Blue
-    Color(0xFF8B5CF6), // Purple
-    Color(0xFFEC4899), // Pink
-    Color(0xFF06B6D4), // Cyan
-    Color(0xFFFFFFFF), // White
-    Color(0xFF000000), // Black
-  ];
-
-  final List<Map<String, String>> _sampleTemplates = [
-    {
-      'title': 'Exam TDB Mood',
-      'emoji': '📚😵',
-      'quote': 'Sleep is a myth',
-      'cat': 'STUDY',
-      'img': 'https://images.unsplash.com/photo-1509062522246-3755977927d7?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      'title': 'Cafeteria Order',
-      'emoji': '🍗🔥',
-      'quote': 'Jollof & Turkey ASAP',
-      'cat': 'CAMPUS',
-      'img': 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      'title': 'Chapel Attendance',
-      'emoji': '👔🙏',
-      'quote': '75% Secured!',
-      'cat': 'CAMPUS',
-      'img': 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      'title': 'Hostel Gate Rush',
-      'emoji': '🏃‍♂️💨',
-      'quote': '5 mins to curfew',
-      'cat': 'CAMPUS',
-      'img': 'https://images.unsplash.com/photo-1552053831-71594a27632d?auto=format&fit=crop&w=400&q=80',
-    },
+    'SPORTS',
+    'LIFESTYLE',
   ];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    int initialIndex = 0;
+    if (widget.initialMode == 'MY') {
+      initialIndex = 1;
+    } else if (widget.initialMode == 'CREATE' ||
+        widget.initialMode == 'PHOTO' ||
+        widget.initialMode == 'DRAW' ||
+        widget.initialMode == 'MOTION') {
+      initialIndex = 2;
+    }
+
+    _tabController = TabController(length: 3, vsync: this, initialIndex: initialIndex);
+    _loadMarketplaceAndTray();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
-    _stickerCaptionCtrl.dispose();
+    _searchCtrl.dispose();
+    _captionCtrl.dispose();
     _titleCtrl.dispose();
     _tagsCtrl.dispose();
     super.dispose();
   }
 
+  Future<void> _loadMarketplaceAndTray() async {
+    if (_isLoadingData) return;
+    setState(() => _isLoadingData = true);
+    try {
+      final repo = ref.read(stickerRepositoryProvider);
+      final trending = await repo.getTrendingStickers();
+      final community = await repo.getCommunityStickers(
+        category: _selectedCategory == 'ALL' ? null : _selectedCategory,
+        search: _searchQuery,
+      );
+      final my = await repo.getMyStickers();
+      if (mounted) {
+        setState(() {
+          _trendingStickers = trending;
+          _communityStickers = community;
+          _myStickers = my;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading sticker marketplace: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingData = false);
+      }
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // MEDIA PICKING
+  // ──────────────────────────────────────────────────────────────────────────
   Future<void> _pickPhoto(ImageSource source) async {
     try {
       final picker = ImagePicker();
-      final picked = await picker.pickImage(source: source, imageQuality: 90);
+      final picked = await picker.pickImage(source: source, imageQuality: 92);
       if (picked != null) {
+        final bytes = await picked.readAsBytes();
         setState(() {
           _selectedImage = picked;
-          _titleCtrl.text = _stickerCaptionCtrl.text.isNotEmpty
-              ? _stickerCaptionCtrl.text
-              : 'Photo Cutout';
+          _selectedImageBytes = bytes;
+          _isMotionMedia = false;
+          if (_titleCtrl.text.isEmpty || _titleCtrl.text == 'Campus Sticker') {
+            _titleCtrl.text = _captionCtrl.text.isNotEmpty ? _captionCtrl.text : 'Photo Sticker';
+          }
         });
       }
     } catch (e) {
       debugPrint('Error picking photo: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not load image: $e')),
+        );
+      }
     }
   }
 
-  Future<void> _pickGifOrVideo() async {
+  Future<void> _pickMotionGifOrVideo() async {
     try {
       final picker = ImagePicker();
-      final picked = await picker.pickVideo(source: ImageSource.gallery);
+      final picked = await picker.pickImage(source: ImageSource.gallery);
       if (picked != null) {
+        final bytes = await picked.readAsBytes();
         setState(() {
-          _customGifFile = picked;
+          _selectedImage = picked;
+          _selectedImageBytes = bytes;
+          _isMotionMedia = true;
+          if (_titleCtrl.text.isEmpty || _titleCtrl.text == 'Campus Sticker') {
+            _titleCtrl.text = 'Motion Sticker';
+          }
         });
       }
     } catch (e) {
-      debugPrint('Error picking motion video: $e');
+      debugPrint('Error picking motion sticker: $e');
     }
   }
 
-  /// Renders a GlobalKey RepaintBoundary to a real PNG file
-  Future<File?> _captureBoundaryToFile(GlobalKey key, String prefix) async {
+  // ──────────────────────────────────────────────────────────────────────────
+  // RASTERIZE CANVAS TO BYTES & SAVE
+  // ──────────────────────────────────────────────────────────────────────────
+  Future<Uint8List?> _captureBoundaryToBytes(GlobalKey key) async {
     try {
-      final boundary =
-          key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      final boundary = key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
       if (boundary == null) return null;
 
       final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
-      final ByteData? byteData =
-          await image.toByteData(format: ui.ImageByteFormat.png);
-      if (byteData == null) return null;
-
-      final Uint8List pngBytes = byteData.buffer.asUint8List();
-      final tempDir = await getTemporaryDirectory();
-      final filePath =
-          '${tempDir.path}/${prefix}_${DateTime.now().millisecondsSinceEpoch}.png';
-      final file = File(filePath);
-      await file.writeAsBytes(pngBytes);
-      return file;
+      final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      return byteData?.buffer.asUint8List();
     } catch (e) {
-      debugPrint('Error capturing sticker image: $e');
+      debugPrint('Error capturing sticker image bytes: $e');
       return null;
     }
   }
 
-  /// Exports, uploads to Cloudflare R2 / S3, and publishes to backend
-  Future<void> _exportAndSaveSticker(String mode) async {
+  Future<void> _exportAndSaveSticker() async {
     setState(() {
       _isExporting = true;
-      _exportStatus = 'Rasterizing sticker canvas...';
+      _exportStatus = 'Rasterizing die-cut sticker...';
     });
 
     try {
       String finalImageUrl = '';
       String? finalAnimatedUrl;
-      File? generatedFile;
+      final capturedBytes = await _captureBoundaryToBytes(_photoBoundaryKey);
 
-      if (mode == 'DRAW') {
-        generatedFile = await _captureBoundaryToFile(_drawingBoundaryKey, 'doodle_sticker');
-      } else if (mode == 'PHOTO') {
-        generatedFile = await _captureBoundaryToFile(_photoBoundaryKey, 'photo_sticker');
-      } else if (mode == 'MOTION') {
-        final sel = _sampleTemplates[_selectedGifTemplate];
-        finalImageUrl = sel['img']!;
-        finalAnimatedUrl = sel['img']!;
-      }
-
-      if (generatedFile != null && generatedFile.existsSync()) {
-        setState(() => _exportStatus = 'Uploading to Cloudflare R2...');
+      if (capturedBytes != null && capturedBytes.isNotEmpty) {
+        setState(() => _exportStatus = 'Uploading to Campus Cloud...');
         try {
-          final uploadResult = await ref
-              .read(imageUploadServiceProvider)
-              .uploadImage(XFile(generatedFile.path));
+          final xfile = XFile.fromData(
+            capturedBytes,
+            name: 'sticker_${DateTime.now().millisecondsSinceEpoch}.png',
+            mimeType: 'image/png',
+          );
+          final uploadResult = await ref.read(imageUploadServiceProvider).uploadImage(xfile);
           finalImageUrl = uploadResult.url;
+          if (_isMotionMedia) {
+            finalAnimatedUrl = finalImageUrl;
+          }
         } catch (uploadError) {
-          debugPrint('Cloud upload fallback to local: $uploadError');
-          finalImageUrl = generatedFile.path;
+          debugPrint('Cloud upload fallback: $uploadError');
+          finalImageUrl = 'https://pub-0014553a7b194df8b2d31efb7c6f4921.r2.dev/uploads/sticker_fallback.png';
         }
       }
 
       if (finalImageUrl.isEmpty) {
-        if (mode == 'DRAW') {
-          finalImageUrl =
-              'https://images.unsplash.com/photo-1519750783826-e2420f4d687f?auto=format&fit=crop&w=400&q=80';
-        } else {
-          finalImageUrl =
-              'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80';
-        }
+        finalImageUrl = 'https://pub-0014553a7b194df8b2d31efb7c6f4921.r2.dev/uploads/sticker_fallback.png';
       }
 
-      setState(() => _exportStatus = 'Publishing to ABUAD Campus Network...');
+      setState(() => _exportStatus = 'Saving to your sticker tray...');
 
       final List<String> parsedTags = _tagsCtrl.text
           .split(',')
@@ -262,16 +230,19 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
           .toList();
 
       final createdSticker = await ref.read(stickerRepositoryProvider).createSticker(
-            title: _titleCtrl.text.trim().isNotEmpty
-                ? _titleCtrl.text.trim()
-                : 'Campus Sticker',
+            title: _titleCtrl.text.trim().isNotEmpty ? _titleCtrl.text.trim() : 'Campus Sticker',
             imageUrl: finalImageUrl,
             animatedUrl: finalAnimatedUrl,
-            type: mode,
-            category: _selectedCategory,
+            type: _isMotionMedia ? 'MOTION' : 'PHOTO',
+            category: _makerCategory,
             tags: parsedTags,
             isPublic: _isPublic,
           );
+
+      if (createdSticker != null) {
+        // Automatically save to local tray
+        await ref.read(stickerRepositoryProvider).saveSticker(createdSticker);
+      }
 
       if (!mounted) return;
 
@@ -284,8 +255,8 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
               Expanded(
                 child: Text(
                   _isPublic
-                      ? 'Sticker "${createdSticker?.title ?? 'Sticker'}" published to Campus Community! 🎉'
-                      : 'Saved privately to "My Stickers" ⭐',
+                      ? 'Sticker "${createdSticker?.title ?? 'Sticker'}" saved to tray & published! 🎉'
+                      : 'Saved to your "My Tray" ⭐',
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
@@ -297,17 +268,15 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
         ),
       );
 
-      // Return both StickerItem & CreatedStickerItem for seamless integration
       final resultItem = createdSticker != null
           ? CreatedStickerItem.fromStickerItem(createdSticker)
           : CreatedStickerItem(
               id: 'stk_${DateTime.now().millisecondsSinceEpoch}',
               title: _titleCtrl.text.trim(),
-              type: mode.toLowerCase(),
+              type: _isMotionMedia ? 'motion' : 'photo',
               cloudUrl: finalImageUrl,
-              localPath: generatedFile?.path,
               isPublic: _isPublic,
-              category: _selectedCategory,
+              category: _makerCategory,
               tags: parsedTags,
             );
 
@@ -317,7 +286,7 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to publish sticker: $e'),
+            content: Text('Failed to save sticker: $e'),
             backgroundColor: Colors.redAccent,
           ),
         );
@@ -326,9 +295,39 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
       if (mounted) {
         setState(() {
           _isExporting = false;
+          _exportStatus = '';
         });
       }
     }
+  }
+
+  Future<void> _toggleSaveSticker(StickerItem item) async {
+    final repo = ref.read(stickerRepositoryProvider);
+    final isAlreadySaved = _myStickers.any((s) => s.id == item.id);
+    if (isAlreadySaved) {
+      await repo.unsaveSticker(item.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Removed "${item.title}" from My Tray'),
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } else {
+      await repo.saveSticker(item);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Added "${item.title}" to My Tray ⭐'),
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+    await _loadMarketplaceAndTray();
   }
 
   @override
@@ -340,33 +339,42 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
       appBar: AppBar(
         elevation: 0,
         backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.auto_awesome, color: Color(0xFF14B8A6), size: 22),
-            SizedBox(width: 8),
-            Text(
-              'Sticker Studio & Studio',
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: AppColors.secondaryTeal.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.style_rounded, color: AppColors.secondaryTeal, size: 20),
+            ),
+            const SizedBox(width: 10),
+            const Text(
+              'Sticker Place',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
             ),
           ],
         ),
-        actions: [
-          IconButton(
-            tooltip: 'Publish Settings',
-            icon: const Icon(Icons.tune_rounded),
-            onPressed: () => _showPublishSettingsSheet(isDark),
-          ),
-        ],
         bottom: TabBar(
           controller: _tabController,
-          labelColor: const Color(0xFF14B8A6),
+          labelColor: AppColors.secondaryTeal,
           unselectedLabelColor: isDark ? Colors.white60 : Colors.black54,
-          indicatorColor: const Color(0xFF14B8A6),
+          indicatorColor: AppColors.secondaryTeal,
           indicatorWeight: 3,
-          tabs: const [
-            Tab(icon: Icon(Icons.brush_rounded), text: 'Doodle Brush'),
-            Tab(icon: Icon(Icons.photo_filter_rounded), text: 'Photo Cutout'),
-            Tab(icon: Icon(Icons.motion_photos_on_rounded), text: 'Motion / GIF'),
+          tabs: [
+            Tab(
+              icon: const Icon(Icons.backpack_rounded, size: 20),
+              text: 'Sticker Packs (${_communityStickers.length})',
+            ),
+            Tab(
+              icon: const Icon(Icons.star_rounded, size: 20),
+              text: 'My Tray (${_myStickers.length})',
+            ),
+            const Tab(
+              icon: Icon(Icons.add_circle_outline_rounded, size: 20),
+              text: 'Create Sticker',
+            ),
           ],
         ),
       ),
@@ -375,9 +383,9 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
           TabBarView(
             controller: _tabController,
             children: [
-              _buildDrawingTab(isDark),
-              _buildPhotoCutoutTab(isDark),
-              _buildMotionGifTab(isDark),
+              _buildStickerPacksTab(isDark),
+              _buildMyTrayTab(isDark),
+              _buildStickerMakerTab(isDark),
             ],
           ),
           if (_isExporting)
@@ -393,7 +401,7 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const CircularProgressIndicator(color: Color(0xFF14B8A6)),
+                      const CircularProgressIndicator(color: AppColors.secondaryTeal),
                       const SizedBox(height: 16),
                       Text(
                         _exportStatus,
@@ -410,329 +418,401 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // 1. DOODLE / DRAWING STUDIO TAB
+  // TAB 1: STICKER PACKS & MARKETPLACE
   // ──────────────────────────────────────────────────────────────────────────
-  Widget _buildDrawingTab(bool isDark) {
-    return Column(
-      children: [
-        // Realistic Canvas with RepaintBoundary
-        Expanded(
-          child: Container(
-            margin: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF020617) : Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: isDark ? Colors.white12 : Colors.grey.withValues(alpha: 0.2),
-                width: 1.5,
+  Widget _buildStickerPacksTab(bool isDark) {
+    return RefreshIndicator(
+      onRefresh: _loadMarketplaceAndTray,
+      color: AppColors.secondaryTeal,
+      child: ListView(
+        padding: const EdgeInsets.all(14),
+        children: [
+          // Search Bar
+          SizedBox(
+            height: 40,
+            child: TextField(
+              controller: _searchCtrl,
+              style: const TextStyle(fontSize: 13),
+              decoration: InputDecoration(
+                hintText: 'Search campus sticker packs (e.g. #exam, food, hostel)...',
+                hintStyle: const TextStyle(fontSize: 12),
+                prefixIcon: const Icon(Icons.search, size: 18),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? GestureDetector(
+                        onTap: () {
+                          _searchCtrl.clear();
+                          setState(() => _searchQuery = '');
+                          _loadMarketplaceAndTray();
+                        },
+                        child: const Icon(Icons.clear, size: 16),
+                      )
+                    : null,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                filled: true,
+                fillColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(
+                    color: isDark ? Colors.white12 : Colors.grey.withValues(alpha: 0.2),
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(
+                    color: isDark ? Colors.white12 : Colors.grey.withValues(alpha: 0.2),
+                  ),
+                ),
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  blurRadius: 16,
-                  offset: const Offset(0, 4),
+              onSubmitted: (val) {
+                setState(() => _searchQuery = val);
+                _loadMarketplaceAndTray();
+              },
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Category Chips
+          SizedBox(
+            height: 34,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: _categories.map((cat) {
+                final isSel = _selectedCategory == cat;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: FilterChip(
+                    label: Text(
+                      cat == 'ALL' ? '🌟 ALL' : cat,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
+                        color: isSel ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                      ),
+                    ),
+                    selected: isSel,
+                    selectedColor: AppColors.secondaryTeal,
+                    backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                    checkmarkColor: Colors.white,
+                    visualDensity: VisualDensity.compact,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(
+                        color: isSel ? AppColors.secondaryTeal : (isDark ? Colors.white12 : Colors.black12),
+                      ),
+                    ),
+                    onSelected: (val) {
+                      setState(() => _selectedCategory = cat);
+                      _loadMarketplaceAndTray();
+                    },
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // Trending Header (if trending stickers exist)
+          if (_trendingStickers.isNotEmpty) ...[
+            Row(
+              children: [
+                const Text('🔥', style: TextStyle(fontSize: 16)),
+                const SizedBox(width: 6),
+                const Text(
+                  'Trending Stickers',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                ),
+                const Spacer(),
+                Text(
+                  'Sorted by student uses',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark ? Colors.white54 : Colors.grey.shade600,
+                  ),
                 ),
               ],
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: Stack(
-                children: [
-                  RepaintBoundary(
-                    key: _drawingBoundaryKey,
-                    child: Container(
-                      color: Colors.transparent,
-                      child: GestureDetector(
-                        onPanStart: (details) {
-                          setState(() {
-                            final box = context.findRenderObject() as RenderBox?;
-                            if (box != null) {
-                              _strokes.add(DrawingStroke(
-                                points: [details.localPosition],
-                                color: _selectedTool == BrushTool.eraser
-                                    ? (isDark ? const Color(0xFF020617) : Colors.white)
-                                    : _selectedColor,
-                                width: _selectedTool == BrushTool.eraser
-                                    ? _strokeWidth * 2.5
-                                    : _strokeWidth,
-                                tool: _selectedTool,
-                              ));
-                              _redoStrokes.clear();
-                            }
-                          });
-                        },
-                        onPanUpdate: (details) {
-                          setState(() {
-                            if (_strokes.isNotEmpty) {
-                              _strokes.last.points.add(details.localPosition);
-                            }
-                          });
-                        },
-                        child: CustomPaint(
-                          size: Size.infinite,
-                          painter: _RealisticBrushPainter(
-                            strokes: _strokes,
-                            drawWithOutline: _drawWithOutline,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  if (_strokes.isEmpty)
-                    Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.gesture_rounded,
-                            size: 52,
-                            color: isDark ? Colors.white24 : Colors.grey.withValues(alpha: 0.4),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Draw your campus sticker with realistic brushes',
-                            style: TextStyle(
-                              color: isDark ? Colors.white60 : Colors.grey[600],
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                  // Floating Quick Controls: Undo, Redo, Clear
-                  Positioned(
-                    top: 12,
-                    right: 12,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? const Color(0xFF1E293B).withValues(alpha: 0.85)
-                            : Colors.white.withValues(alpha: 0.9),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: isDark ? Colors.white12 : Colors.grey.withValues(alpha: 0.2),
-                        ),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                      child: Row(
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.undo_rounded, size: 20),
-                            tooltip: 'Undo',
-                            onPressed: _strokes.isEmpty
-                                ? null
-                                : () {
-                                    setState(() {
-                                      _redoStrokes.add(_strokes.removeLast());
-                                    });
-                                  },
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.redo_rounded, size: 20),
-                            tooltip: 'Redo',
-                            onPressed: _redoStrokes.isEmpty
-                                ? null
-                                : () {
-                                    setState(() {
-                                      _strokes.add(_redoStrokes.removeLast());
-                                    });
-                                  },
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline_rounded, size: 20),
-                            tooltip: 'Clear Canvas',
-                            onPressed: _strokes.isEmpty
-                                ? null
-                                : () {
-                                    setState(() {
-                                      _strokes.clear();
-                                      _redoStrokes.clear();
-                                    });
-                                  },
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-
-        // Multi-Brush Selector Toolbar
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E293B) : Colors.white,
-            border: Border(
-              top: BorderSide(
-                color: isDark ? Colors.white10 : Colors.grey.withValues(alpha: 0.15),
-              ),
-            ),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildBrushToolButton(
-                tool: BrushTool.pencil,
-                label: 'Pencil',
-                icon: Icons.edit_rounded,
-                isDark: isDark,
-              ),
-              _buildBrushToolButton(
-                tool: BrushTool.marker,
-                label: 'Marker',
-                icon: Icons.brush_rounded,
-                isDark: isDark,
-              ),
-              _buildBrushToolButton(
-                tool: BrushTool.neon,
-                label: 'Neon Glow',
-                icon: Icons.auto_awesome_rounded,
-                isDark: isDark,
-              ),
-              _buildBrushToolButton(
-                tool: BrushTool.highlighter,
-                label: 'Highlight',
-                icon: Icons.highlight_rounded,
-                isDark: isDark,
-              ),
-              _buildBrushToolButton(
-                tool: BrushTool.eraser,
-                label: 'Eraser',
-                icon: Icons.cleaning_services_rounded,
-                isDark: isDark,
-              ),
-            ],
-          ),
-        ),
-
-        // Color Palette & Brush Size Slider & Save Button
-        Container(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          color: isDark ? const Color(0xFF1E293B) : Colors.white,
-          child: Column(
-            children: [
-              // Palette
-              SingleChildScrollView(
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 115,
+              child: ListView.separated(
                 scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: _palette.map((c) {
-                    final isSel = _selectedColor == c && _selectedTool != BrushTool.eraser;
-                    return GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _selectedColor = c;
-                          if (_selectedTool == BrushTool.eraser) {
-                            _selectedTool = BrushTool.marker;
-                          }
-                        });
-                      },
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        margin: const EdgeInsets.symmetric(horizontal: 5),
-                        width: isSel ? 36 : 28,
-                        height: isSel ? 36 : 28,
-                        decoration: BoxDecoration(
-                          color: c,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: isSel ? const Color(0xFF14B8A6) : Colors.grey.withValues(alpha: 0.4),
-                            width: isSel ? 3 : 1.5,
-                          ),
-                          boxShadow: [
-                            if (isSel)
-                              BoxShadow(
-                                color: c.withValues(alpha: 0.6),
-                                blurRadius: 8,
-                                spreadRadius: 1,
-                              ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
+                itemCount: _trendingStickers.length,
+                separatorBuilder: (context, index) => const SizedBox(width: 10),
+                itemBuilder: (context, index) {
+                  final stk = _trendingStickers[index];
+                  return _buildTrendingCard(stk, isDark);
+                },
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+
+          // Community Sticker Packs Grid
+          Row(
+            children: [
+              const Icon(Icons.explore_rounded, color: AppColors.secondaryTeal, size: 18),
+              const SizedBox(width: 6),
+              const Text(
+                'Campus Stickers & Packs',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+              ),
+              const Spacer(),
+              Text(
+                '${_communityStickers.length} available',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: isDark ? Colors.white54 : Colors.grey.shade600,
                 ),
               ),
-              const SizedBox(height: 8),
-
-              Row(
-                children: [
-                  const Text('Size', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                  Expanded(
-                    child: Slider(
-                      value: _strokeWidth,
-                      min: 2.0,
-                      max: 28.0,
-                      activeColor: const Color(0xFF14B8A6),
-                      onChanged: (val) => setState(() => _strokeWidth = val),
-                    ),
-                  ),
-                  FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF14B8A6),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    icon: const Icon(Icons.cloud_upload_rounded, size: 18),
-                    label: const Text('Save & Publish', style: TextStyle(fontWeight: FontWeight.bold)),
-                    onPressed: _strokes.isEmpty ? null : () => _exportAndSaveSticker('DRAW'),
-                  ),
-                ],
-              ),
             ],
           ),
-        ),
-      ],
+          const SizedBox(height: 10),
+
+          if (_isLoadingData && _communityStickers.isEmpty)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(40),
+                child: CircularProgressIndicator(color: AppColors.secondaryTeal),
+              ),
+            )
+          else if (_communityStickers.isEmpty)
+            _buildEmptyState(
+              icon: Icons.backpack_outlined,
+              title: 'No community stickers yet',
+              message: 'Be the first student to create and publish a sticker for the campus!',
+              actionLabel: 'Create Sticker Now',
+              onAction: () => _tabController.animateTo(2),
+              isDark: isDark,
+            )
+          else
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+                childAspectRatio: 0.82,
+              ),
+              itemCount: _communityStickers.length,
+              itemBuilder: (context, index) {
+                final stk = _communityStickers[index];
+                return _buildMarketplaceCard(stk, isDark);
+              },
+            ),
+        ],
+      ),
     );
   }
 
-  Widget _buildBrushToolButton({
-    required BrushTool tool,
-    required String label,
-    required IconData icon,
-    required bool isDark,
-  }) {
-    final isSel = _selectedTool == tool;
+  Widget _buildTrendingCard(StickerItem stk, bool isDark) {
+    final isSaved = _myStickers.any((s) => s.id == stk.id);
     return InkWell(
-      borderRadius: BorderRadius.circular(12),
-      onTap: () => setState(() => _selectedTool = tool),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => Navigator.pop(context, stk),
+      child: Container(
+        width: 100,
         decoration: BoxDecoration(
-          color: isSel
-              ? const Color(0xFF14B8A6).withValues(alpha: 0.18)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
+          color: isDark ? const Color(0xFF1E293B) : Colors.white,
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isSel ? const Color(0xFF14B8A6) : Colors.transparent,
-            width: 1.5,
+            color: isDark ? Colors.white12 : Colors.grey.withValues(alpha: 0.2),
           ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: isSel
-                  ? const Color(0xFF14B8A6)
-                  : (isDark ? Colors.white70 : Colors.black87),
-              size: 20,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
             ),
-            const SizedBox(height: 2),
+          ],
+        ),
+        padding: const EdgeInsets.all(6),
+        child: Column(
+          children: [
+            Expanded(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: stk.isAnimated
+                        ? AutoPlayLiveMediaWidget(
+                            url: stk.animatedUrl ?? stk.imageUrl,
+                            fit: BoxFit.contain,
+                          )
+                        : (stk.imageUrl.isNotEmpty
+                            ? CachedNetworkImage(
+                                imageUrl: stk.imageUrl,
+                                fit: BoxFit.contain,
+                                errorWidget: (context, url, error) => Center(
+                                  child: Text(
+                                    stk.title,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              )
+                            : Center(
+                                child: Text(
+                                  stk.title,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                                ),
+                              )),
+                  ),
+                  Positioned(
+                    top: 2,
+                    right: 2,
+                    child: GestureDetector(
+                      onTap: () => _toggleSaveSticker(stk),
+                      child: Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(
+                          color: isSaved ? const Color(0xFFF59E0B) : Colors.black.withValues(alpha: 0.6),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          isSaved ? Icons.star_rounded : Icons.star_border_rounded,
+                          color: Colors.white,
+                          size: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
             Text(
-              label,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
-                color: isSel
-                    ? const Color(0xFF14B8A6)
-                    : (isDark ? Colors.white60 : Colors.black54),
+              stk.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.local_fire_department_rounded, color: Colors.orange, size: 10),
+                const SizedBox(width: 2),
+                Text(
+                  '${stk.usageCount} uses',
+                  style: TextStyle(fontSize: 9, color: isDark ? Colors.white60 : Colors.black54),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMarketplaceCard(StickerItem stk, bool isDark) {
+    final isSaved = _myStickers.any((s) => s.id == stk.id);
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => Navigator.pop(context, stk),
+      child: Container(
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E293B) : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isDark ? Colors.white12 : Colors.grey.withValues(alpha: 0.2),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(6),
+        child: Column(
+          children: [
+            Expanded(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: stk.isAnimated
+                        ? AutoPlayLiveMediaWidget(
+                            url: stk.animatedUrl ?? stk.imageUrl,
+                            fit: BoxFit.contain,
+                          )
+                        : (stk.imageUrl.isNotEmpty
+                            ? CachedNetworkImage(
+                                imageUrl: stk.imageUrl,
+                                fit: BoxFit.contain,
+                                errorWidget: (context, url, error) => Center(
+                                  child: Text(
+                                    stk.title,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              )
+                            : Center(
+                                child: Text(
+                                  stk.title,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                ),
+                              )),
+                  ),
+                  Positioned(
+                    top: 2,
+                    right: 2,
+                    child: GestureDetector(
+                      onTap: () => _toggleSaveSticker(stk),
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: isSaved ? const Color(0xFFF59E0B) : Colors.black.withValues(alpha: 0.6),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          isSaved ? Icons.star_rounded : Icons.star_border_rounded,
+                          color: Colors.white,
+                          size: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              stk.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            SizedBox(
+              height: 22,
+              width: double.infinity,
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                  backgroundColor: isSaved ? AppColors.secondaryTeal.withValues(alpha: 0.15) : null,
+                  side: BorderSide(
+                    color: isSaved ? AppColors.secondaryTeal : Colors.grey.withValues(alpha: 0.3),
+                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: () => _toggleSaveSticker(stk),
+                child: Text(
+                  isSaved ? 'In Tray ⭐' : '+ Add',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: isSaved ? AppColors.secondaryTeal : (isDark ? Colors.white70 : Colors.black87),
+                  ),
+                ),
               ),
             ),
           ],
@@ -742,277 +822,557 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // 2. PHOTO CUTOUT & CONTOUR MAKER TAB
+  // TAB 2: MY TRAY & FAVORITES
   // ──────────────────────────────────────────────────────────────────────────
-  Widget _buildPhotoCutoutTab(bool isDark) {
+  Widget _buildMyTrayTab(bool isDark) {
+    if (_myStickers.isEmpty) {
+      return _buildEmptyState(
+        icon: Icons.star_outline_rounded,
+        title: 'Your Sticker Tray is Empty',
+        message: 'Save stickers from the Sticker Packs or make your own with custom curves & photos!',
+        actionLabel: 'Create a Sticker',
+        onAction: () => _tabController.animateTo(2),
+        isDark: isDark,
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadMarketplaceAndTray,
+      color: AppColors.secondaryTeal,
+      child: ListView(
+        padding: const EdgeInsets.all(14),
+        children: [
+          Row(
+            children: [
+              const Text('⭐', style: TextStyle(fontSize: 18)),
+              const SizedBox(width: 8),
+              const Text(
+                'My Active Sticker Tray',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const Spacer(),
+              FilledButton.tonalIcon(
+                onPressed: () => _tabController.animateTo(2),
+                icon: const Icon(Icons.add, size: 14),
+                label: const Text('New', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                style: FilledButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Tap any sticker to send directly into your chat, or remove it from your tray.',
+            style: TextStyle(fontSize: 11.5, color: isDark ? Colors.white60 : Colors.black54),
+          ),
+          const SizedBox(height: 14),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 4,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+              childAspectRatio: 0.95,
+            ),
+            itemCount: _myStickers.length,
+            itemBuilder: (context, index) {
+              final stk = _myStickers[index];
+              return _buildMyTrayTile(stk, isDark);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMyTrayTile(StickerItem stk, bool isDark) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () {
+        ref.read(stickerRepositoryProvider).useSticker(stk.id);
+        Navigator.pop(context, stk);
+      },
+      onLongPress: () => _showRemoveTrayDialog(stk),
+      child: Container(
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E293B) : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isDark ? Colors.white12 : Colors.grey.withValues(alpha: 0.2),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(5),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: stk.imageUrl.isNotEmpty
+                  ? CachedNetworkImage(
+                      imageUrl: stk.imageUrl,
+                      fit: BoxFit.contain,
+                      errorWidget: (context, url, error) => Center(
+                        child: Text(
+                          stk.title,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    )
+                  : Center(
+                      child: Text(
+                        stk.title,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+            ),
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.55),
+                  borderRadius: const BorderRadius.vertical(bottom: Radius.circular(8)),
+                ),
+                child: Text(
+                  stk.title,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showRemoveTrayDialog(StickerItem stk) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Manage "${stk.title}"',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const Icon(Icons.send_rounded, color: AppColors.secondaryTeal),
+                title: const Text('Send to Chat'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  ref.read(stickerRepositoryProvider).useSticker(stk.id);
+                  Navigator.pop(context, stk);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+                title: const Text('Remove from My Tray', style: TextStyle(color: Colors.redAccent)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _toggleSaveSticker(stk);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // TAB 3: STICKER MAKER (ADJUSTABLE CURVE SLIDER & DIE-CUT BORDER)
+  // ──────────────────────────────────────────────────────────────────────────
+  Widget _buildStickerMakerTab(bool isDark) {
+    final borderRadius = BorderRadius.circular(_cornerRadius);
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        // Live Sticker Preview Box with Smooth Corner Curvature
         Center(
           child: RepaintBoundary(
             key: _photoBoundaryKey,
             child: Container(
-              width: 170,
-              height: 170,
+              width: 175,
+              height: 175,
               decoration: BoxDecoration(
+                borderRadius: borderRadius,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.25),
-                    blurRadius: 18,
+                    color: Colors.black.withValues(alpha: 0.22),
+                    blurRadius: 16,
                     offset: const Offset(0, 6),
                   ),
                 ],
               ),
-              child: _buildShapeCutoutWidget(),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Center(
-          child: Text(
-            'Live Sticker Preview with crisp White Contour Border',
-            style: TextStyle(
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
-              fontSize: 12,
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: borderRadius,
+                  border: _hasWhiteContour
+                      ? Border.all(color: Colors.white, width: _contourWidth)
+                      : null,
+                ),
+                child: ClipRRect(
+                  borderRadius: borderRadius,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // Direct memory byte rendering
+                      if (_selectedImageBytes != null)
+                        Image.memory(
+                          _selectedImageBytes!,
+                          fit: BoxFit.cover,
+                          gaplessPlayback: true,
+                          errorBuilder: (context, error, stackTrace) => _buildPlaceholderPhoto(),
+                        )
+                      else if (_selectedImage != null)
+                        Image.network(
+                          _selectedImage!.path,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => _buildPlaceholderPhoto(),
+                        )
+                      else
+                        _buildPlaceholderPhoto(),
 
-        // Photo Picking Buttons
+                      // Caption overlay banner at bottom
+                      if (_captionCtrl.text.isNotEmpty)
+                        Positioned(
+                          bottom: 8,
+                          left: 8,
+                          right: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.78),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.white24, width: 0.8),
+                            ),
+                            child: Text(
+                              _captionCtrl.text,
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // Media Picker Action Buttons
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             FilledButton.tonalIcon(
-              icon: const Icon(Icons.camera_alt_rounded, size: 18),
-              label: const Text('Take Snap'),
+              icon: const Icon(Icons.camera_alt_rounded, size: 16),
+              label: const Text('Take Snap', style: TextStyle(fontSize: 12)),
               style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               ),
               onPressed: () => _pickPhoto(ImageSource.camera),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8),
             FilledButton.tonalIcon(
-              icon: const Icon(Icons.photo_library_rounded, size: 18),
-              label: const Text('Gallery Photo'),
+              icon: const Icon(Icons.photo_library_rounded, size: 16),
+              label: const Text('Photo / WebP', style: TextStyle(fontSize: 12)),
               style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               ),
               onPressed: () => _pickPhoto(ImageSource.gallery),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.tonalIcon(
+              icon: const Icon(Icons.motion_photos_on_rounded, size: 16),
+              label: const Text('Motion / GIF', style: TextStyle(fontSize: 12)),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+              onPressed: _pickMotionGifOrVideo,
             ),
           ],
         ),
         const SizedBox(height: 20),
 
-        // Cutout Shape Selector
-        const Text(
-          'Cutout Contour Shape',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            _buildShapeOption(CutoutShape.roundedRect, 'Squircle', Icons.crop_square_rounded, isDark),
-            _buildShapeOption(CutoutShape.circle, 'Circle', Icons.circle_outlined, isDark),
-            _buildShapeOption(CutoutShape.heart, 'Heart', Icons.favorite_border_rounded, isDark),
-            _buildShapeOption(CutoutShape.star, 'Star', Icons.star_border_rounded, isDark),
-          ],
-        ),
-        const SizedBox(height: 16),
-
-        // White Contour Border Switch & Slider
-        SwitchListTile(
-          title: const Text(
-            'Sticker White Contour Border',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+        // ──────────────────────────────────────────────────────────────────
+        // ADJUSTABLE CORNER CURVE SLIDER & QUICK PRESETS
+        // ──────────────────────────────────────────────────────────────────
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isDark ? Colors.white12 : Colors.grey.withValues(alpha: 0.2),
+            ),
           ),
-          subtitle: const Text(
-            'Gives the authentic die-cut sticker look with smooth drop shadow',
-            style: TextStyle(fontSize: 12),
-          ),
-          value: _hasWhiteContour,
-          activeThumbColor: const Color(0xFF14B8A6),
-          onChanged: (val) => setState(() => _hasWhiteContour = val),
-        ),
-
-        if (_hasWhiteContour)
-          Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Border Thickness', style: TextStyle(fontSize: 12)),
-              Expanded(
-                child: Slider(
-                  value: _contourWidth,
-                  min: 3.0,
-                  max: 14.0,
-                  activeColor: const Color(0xFF14B8A6),
-                  onChanged: (val) => setState(() => _contourWidth = val),
-                ),
+              Row(
+                children: [
+                  const Icon(Icons.rounded_corner_rounded, color: AppColors.secondaryTeal, size: 20),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Corner Curvature',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.secondaryTeal.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '${_cornerRadius.toInt()}px',
+                      style: const TextStyle(
+                        color: AppColors.secondaryTeal,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Slide to fine-tune from sharp square to smooth squircle or pill/circle',
+                style: TextStyle(fontSize: 11, color: isDark ? Colors.white60 : Colors.black54),
+              ),
+              Slider(
+                value: _cornerRadius,
+                min: 0.0,
+                max: 90.0,
+                activeColor: AppColors.secondaryTeal,
+                onChanged: (val) => setState(() => _cornerRadius = val),
+              ),
+              // Preset chips for instant curves
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _buildCurvePresetChip('Sharp', 0.0, isDark),
+                  _buildCurvePresetChip('Soft', 16.0, isDark),
+                  _buildCurvePresetChip('Squircle', 32.0, isDark),
+                  _buildCurvePresetChip('Pill', 60.0, isDark),
+                  _buildCurvePresetChip('Circle', 90.0, isDark),
+                ],
               ),
             ],
           ),
+        ),
+        const SizedBox(height: 14),
 
-        const SizedBox(height: 12),
-
-        // Text Caption Overlay
-        TextField(
-          controller: _stickerCaptionCtrl,
-          onChanged: (val) => setState(() {
-            _titleCtrl.text = val;
-          }),
-          decoration: InputDecoration(
-            labelText: 'Sticker Caption / Quote',
-            hintText: 'e.g. ABUAD VIBES ✨ or TDB ALL NIGHT 📖',
-            prefixIcon: const Icon(Icons.text_fields_rounded),
-            filled: true,
-            fillColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+        // ──────────────────────────────────────────────────────────────────
+        // DIE-CUT WHITE CONTOUR BORDER
+        // ──────────────────────────────────────────────────────────────────
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isDark ? Colors.white12 : Colors.grey.withValues(alpha: 0.2),
+            ),
+          ),
+          child: Column(
+            children: [
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text(
+                  'White Contour Die-Cut Border',
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+                ),
+                subtitle: const Text(
+                  'Gives an authentic die-cut sticker look',
+                  style: TextStyle(fontSize: 11),
+                ),
+                value: _hasWhiteContour,
+                activeThumbColor: AppColors.secondaryTeal,
+                onChanged: (val) => setState(() => _hasWhiteContour = val),
+              ),
+              if (_hasWhiteContour) ...[
+                Row(
+                  children: [
+                    const Text('Border Thickness', style: TextStyle(fontSize: 12)),
+                    const Spacer(),
+                    Text('${_contourWidth.toInt()}px',
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                Slider(
+                  value: _contourWidth,
+                  min: 2.0,
+                  max: 16.0,
+                  activeColor: AppColors.secondaryTeal,
+                  onChanged: (val) => setState(() => _contourWidth = val),
+                ),
+              ],
+            ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
 
-        // Quick Campus Presets
-        const Text('Quick Campus Presets', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: _sampleTemplates.map((t) {
-            return ActionChip(
-              avatar: Text(t['emoji']!),
-              label: Text(t['title']!),
-              onPressed: () {
-                setState(() {
-                  _stickerCaptionCtrl.text = '${t['emoji']} ${t['title']}';
-                  _titleCtrl.text = '${t['emoji']} ${t['title']}';
-                  _selectedCategory = t['cat']!;
-                });
-              },
-            );
-          }).toList(),
+        // ──────────────────────────────────────────────────────────────────
+        // TEXT CAPTION & METADATA
+        // ──────────────────────────────────────────────────────────────────
+        TextField(
+          controller: _captionCtrl,
+          onChanged: (val) => setState(() {
+            _titleCtrl.text = val.isNotEmpty ? val : 'Campus Sticker';
+          }),
+          decoration: InputDecoration(
+            labelText: 'Sticker Caption Overlay',
+            hintText: 'e.g. ABUAD VIBES, TDB NO SLEEP',
+            prefixIcon: const Icon(Icons.title_rounded, color: AppColors.secondaryTeal),
+            filled: true,
+            fillColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide.none,
+            ),
+          ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 10),
 
-        // Export Button
+        TextField(
+          controller: _titleCtrl,
+          decoration: InputDecoration(
+            labelText: 'Sticker Title',
+            hintText: 'e.g. Exam Rush',
+            prefixIcon: const Icon(Icons.label_outline_rounded, color: AppColors.secondaryTeal),
+            filled: true,
+            fillColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide.none,
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // Category Selector & Public Switch
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isDark ? Colors.white12 : Colors.grey.withValues(alpha: 0.2),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Category', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                children: ['CAMPUS', 'MEME', 'REACTION', 'STUDY', 'SPORTS'].map((c) {
+                  final isSel = _makerCategory == c;
+                  return ChoiceChip(
+                    label: Text(c, style: const TextStyle(fontSize: 10.5)),
+                    selected: isSel,
+                    selectedColor: AppColors.secondaryTeal,
+                    checkmarkColor: Colors.white,
+                    labelStyle: TextStyle(
+                      color: isSel ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                    ),
+                    onSelected: (val) => setState(() => _makerCategory = c),
+                  );
+                }).toList(),
+              ),
+              const Divider(height: 16),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Publish to Campus Marketplace',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                subtitle: const Text('Other students can discover and add your sticker',
+                    style: TextStyle(fontSize: 11)),
+                value: _isPublic,
+                activeThumbColor: AppColors.secondaryTeal,
+                onChanged: (val) => setState(() => _isPublic = val),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        // Save & Add to Tray Button
         SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF14B8A6),
+              backgroundColor: AppColors.secondaryTeal,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
             icon: const Icon(Icons.cloud_upload_rounded),
             label: const Text(
-              'Save & Publish Photo Sticker',
+              'Save & Add to My Tray ⭐',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
             ),
-            onPressed: () => _exportAndSaveSticker('PHOTO'),
+            onPressed: _exportAndSaveSticker,
           ),
         ),
+        const SizedBox(height: 30),
       ],
     );
   }
 
-  Widget _buildShapeOption(CutoutShape shape, String label, IconData icon, bool isDark) {
-    final isSel = _selectedShape == shape;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _selectedShape = shape),
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 4),
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: isSel
-                ? const Color(0xFF14B8A6).withValues(alpha: 0.15)
-                : (isDark ? const Color(0xFF1E293B) : Colors.white),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isSel ? const Color(0xFF14B8A6) : Colors.grey.withValues(alpha: 0.2),
-              width: isSel ? 2 : 1,
-            ),
-          ),
-          child: Column(
-            children: [
-              Icon(icon, color: isSel ? const Color(0xFF14B8A6) : null, size: 22),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
-                  color: isSel ? const Color(0xFF14B8A6) : null,
-                ),
-              ),
-            ],
+  Widget _buildCurvePresetChip(String label, double value, bool isDark) {
+    final isSel = (_cornerRadius - value).abs() < 3.0;
+    return GestureDetector(
+      onTap: () => setState(() => _cornerRadius = value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: isSel ? AppColors.secondaryTeal : (isDark ? const Color(0xFF0F172A) : Colors.grey.shade100),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSel ? AppColors.secondaryTeal : Colors.grey.withValues(alpha: 0.25),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildShapeCutoutWidget() {
-    BorderRadius borderRadius;
-    switch (_selectedShape) {
-      case CutoutShape.circle:
-        borderRadius = BorderRadius.circular(85);
-        break;
-      case CutoutShape.squircle:
-        borderRadius = BorderRadius.circular(34);
-        break;
-      default:
-        borderRadius = BorderRadius.circular(24);
-        break;
-    }
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: borderRadius,
-        border: _hasWhiteContour
-            ? Border.all(color: Colors.white, width: _contourWidth)
-            : null,
-      ),
-      child: ClipRRect(
-        borderRadius: borderRadius,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (_selectedImage != null)
-              Image.file(
-                File(_selectedImage!.path),
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => _buildPlaceholderPhoto(),
-              )
-            else
-              _buildPlaceholderPhoto(),
-
-            // Caption overlay banner at bottom
-            if (_stickerCaptionCtrl.text.isNotEmpty)
-              Positioned(
-                bottom: 8,
-                left: 8,
-                right: 8,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.75),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    _stickerCaptionCtrl.text,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-          ],
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 10.5,
+            fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
+            color: isSel ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+          ),
         ),
       ),
     );
@@ -1022,7 +1382,10 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Colors.indigo.shade800, Colors.teal.shade700],
+          colors: [
+            AppColors.primaryInk,
+            AppColors.secondaryTeal,
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -1031,10 +1394,10 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('🎓', style: TextStyle(fontSize: 48)),
-            SizedBox(height: 4),
+            Text('✨', style: TextStyle(fontSize: 42)),
+            SizedBox(height: 6),
             Text(
-              'Snap / Pick Photo',
+              'Pick a Photo or WebP',
               style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
             ),
           ],
@@ -1043,457 +1406,59 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
     );
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // 3. MOTION & SHORT GIF TAB
-  // ──────────────────────────────────────────────────────────────────────────
-  Widget _buildMotionGifTab(bool isDark) {
-    final sel = _sampleTemplates[_selectedGifTemplate];
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Center(
-          child: Container(
-            width: 170,
-            height: 170,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.purple.shade900, Colors.teal.shade900],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFF14B8A6), width: 3),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF14B8A6).withValues(alpha: 0.3),
-                  blurRadius: 18,
-                  spreadRadius: 2,
-                ),
-              ],
-            ),
-            child: Stack(
-              children: [
-                Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(sel['emoji']!, style: const TextStyle(fontSize: 42)),
-                      const SizedBox(height: 6),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        child: Text(
-                          sel['quote']!,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${_gifSpeed}x Loop ${_isBoomerang ? '(Boomerang)' : ''}',
-                        style: const TextStyle(color: Colors.tealAccent, fontSize: 10),
-                      ),
-                    ],
-                  ),
-                ),
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.redAccent,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Text(
-                      'GIF',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Center(
-          child: Text(
-            'Short looping motion stickers for instant chat reactions',
-            style: TextStyle(
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
-              fontSize: 12,
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
-
-        // Pick Custom Motion File
-        Center(
-          child: OutlinedButton.icon(
-            icon: const Icon(Icons.video_library_rounded),
-            label: Text(_customGifFile != null ? 'Custom Motion Clip Loaded' : 'Pick Video / Motion Clip'),
-            onPressed: _pickGifOrVideo,
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // Loop Speed Multiplier
-        const Text('Loop Speed Multiplier', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-        const SizedBox(height: 8),
-        Row(
-          children: [0.5, 1.0, 1.5, 2.0].map((speed) {
-            final isSel = _gifSpeed == speed;
-            return Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                child: ChoiceChip(
-                  label: Text('${speed}x'),
-                  selected: isSel,
-                  selectedColor: const Color(0xFF14B8A6),
-                  onSelected: (val) {
-                    if (val) setState(() => _gifSpeed = speed);
-                  },
+  Widget _buildEmptyState({
+    required IconData icon,
+    required String title,
+    required String message,
+    required String actionLabel,
+    required VoidCallback onAction,
+    required bool isDark,
+  }) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isDark ? Colors.white12 : Colors.grey.withValues(alpha: 0.2),
                 ),
               ),
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 16),
-
-        // Boomerang Switch
-        SwitchListTile(
-          title: const Text(
-            'Boomerang Ping-Pong (Forward & Reverse)',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-          ),
-          subtitle: const Text(
-            'Loops back and forth seamlessly like Instagram / Snapchat motion stickers',
-            style: TextStyle(fontSize: 12),
-          ),
-          value: _isBoomerang,
-          activeThumbColor: const Color(0xFF14B8A6),
-          onChanged: (val) => setState(() => _isBoomerang = val),
-        ),
-        const SizedBox(height: 16),
-
-        // Curated Campus Animated Reaction Packs
-        const Text('Campus Animated Packs', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-        const SizedBox(height: 8),
-        ...List.generate(_sampleTemplates.length, (idx) {
-          final t = _sampleTemplates[idx];
-          final isSel = _selectedGifTemplate == idx;
-          return Card(
-            margin: const EdgeInsets.only(bottom: 8),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-              side: BorderSide(
-                color: isSel ? const Color(0xFF14B8A6) : Colors.transparent,
-                width: 2,
+              child: Icon(icon, size: 40, color: AppColors.secondaryTeal),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark ? Colors.white60 : Colors.black54,
               ),
             ),
-            child: ListTile(
-              leading: Text(t['emoji']!, style: const TextStyle(fontSize: 26)),
-              title: Text(t['title']!, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-              subtitle: Text(t['quote']!, style: const TextStyle(fontSize: 11)),
-              trailing: isSel
-                  ? const Icon(Icons.check_circle, color: Color(0xFF14B8A6))
-                  : null,
-              onTap: () => setState(() {
-                _selectedGifTemplate = idx;
-                _titleCtrl.text = '${t['emoji']} ${t['title']}';
-                _selectedCategory = t['cat']!;
-              }),
+            const SizedBox(height: 18),
+            FilledButton.tonalIcon(
+              onPressed: onAction,
+              icon: const Icon(Icons.add, size: 16),
+              label: Text(actionLabel),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.secondaryTeal.withValues(alpha: 0.15),
+                foregroundColor: AppColors.secondaryTeal,
+              ),
             ),
-          );
-        }),
-        const SizedBox(height: 20),
-
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF14B8A6),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            ),
-            icon: const Icon(Icons.motion_photos_on_rounded),
-            label: const Text(
-              'Save & Publish Motion Sticker',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-            ),
-            onPressed: () => _exportAndSaveSticker('MOTION'),
-          ),
+          ],
         ),
-      ],
-    );
-  }
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // PUBLISHING SETTINGS MODAL SHEET
-  // ──────────────────────────────────────────────────────────────────────────
-  void _showPublishSettingsSheet(bool isDark) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setSheetState) {
-            return Padding(
-              padding: EdgeInsets.fromLTRB(
-                20,
-                16,
-                20,
-                MediaQuery.of(ctx).viewInsets.bottom + 24,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Sticker Publishing & Visibility',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Control whether students on campus can discover and trend your sticker',
-                    style: TextStyle(
-                      color: isDark ? Colors.grey[400] : Colors.grey[600],
-                      fontSize: 12,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Sticker Title
-                  TextField(
-                    controller: _titleCtrl,
-                    decoration: InputDecoration(
-                      labelText: 'Sticker Name',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-
-                  // Category Selector
-                  DropdownButtonFormField<String>(
-                    initialValue: _selectedCategory,
-                    decoration: InputDecoration(
-                      labelText: 'Category',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    items: _categories.map((c) {
-                      return DropdownMenuItem(value: c, child: Text(c));
-                    }).toList(),
-                    onChanged: (val) {
-                      if (val != null) {
-                        setState(() => _selectedCategory = val);
-                        setSheetState(() {});
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 14),
-
-                  // Tags
-                  TextField(
-                    controller: _tagsCtrl,
-                    decoration: InputDecoration(
-                      labelText: 'Tags (comma-separated)',
-                      hintText: 'e.g. abuad, exam, hostel, food',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-
-                  // Public toggle
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text(
-                      'Make Public to Campus Community',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                    ),
-                    subtitle: const Text(
-                      'Allow all ABUAD students to use, share, and boost it in Trending',
-                      style: TextStyle(fontSize: 12),
-                    ),
-                    value: _isPublic,
-                    activeThumbColor: const Color(0xFF14B8A6),
-                    onChanged: (val) {
-                      setState(() => _isPublic = val);
-                      setSheetState(() {});
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF14B8A6),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text('Save Settings', style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
     );
   }
-}
-
-// ────────────────────────────────────────────────────────────────────────────
-// REALISTIC BRUSH CUSTOM PAINTER
-// ────────────────────────────────────────────────────────────────────────────
-class _RealisticBrushPainter extends CustomPainter {
-  final List<DrawingStroke> strokes;
-  final bool drawWithOutline;
-
-  _RealisticBrushPainter({
-    required this.strokes,
-    required this.drawWithOutline,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    for (final stroke in strokes) {
-      if (stroke.points.isEmpty) continue;
-
-      switch (stroke.tool) {
-        case BrushTool.pencil:
-          _drawPencil(canvas, stroke);
-          break;
-        case BrushTool.marker:
-          _drawMarker(canvas, stroke);
-          break;
-        case BrushTool.neon:
-          _drawNeonGlow(canvas, stroke);
-          break;
-        case BrushTool.highlighter:
-          _drawHighlighter(canvas, stroke);
-          break;
-        case BrushTool.eraser:
-          _drawEraser(canvas, stroke);
-          break;
-      }
-    }
-  }
-
-  void _drawPencil(Canvas canvas, DrawingStroke stroke) {
-    final paint = Paint()
-      ..color = stroke.color.withValues(alpha: 0.92)
-      ..strokeWidth = stroke.width * 0.75
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke;
-
-    _renderPath(canvas, stroke.points, paint);
-  }
-
-  void _drawMarker(Canvas canvas, DrawingStroke stroke) {
-    // Optional crisp white contour outline underneath
-    if (drawWithOutline) {
-      final outlinePaint = Paint()
-        ..color = Colors.white
-        ..strokeWidth = stroke.width + 4.0
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..style = PaintingStyle.stroke;
-      _renderPath(canvas, stroke.points, outlinePaint);
-    }
-
-    final paint = Paint()
-      ..color = stroke.color
-      ..strokeWidth = stroke.width
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke;
-
-    _renderPath(canvas, stroke.points, paint);
-  }
-
-  void _drawNeonGlow(Canvas canvas, DrawingStroke stroke) {
-    // Outer diffuse neon blur
-    final glowPaint = Paint()
-      ..color = stroke.color.withValues(alpha: 0.5)
-      ..strokeWidth = stroke.width * 2.2
-      ..maskFilter = MaskFilter.blur(BlurStyle.normal, stroke.width * 1.2)
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke;
-    _renderPath(canvas, stroke.points, glowPaint);
-
-    // Inner bright core
-    final corePaint = Paint()
-      ..color = Colors.white
-      ..strokeWidth = stroke.width * 0.6
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke;
-    _renderPath(canvas, stroke.points, corePaint);
-  }
-
-  void _drawHighlighter(Canvas canvas, DrawingStroke stroke) {
-    final paint = Paint()
-      ..color = stroke.color.withValues(alpha: 0.38)
-      ..strokeWidth = stroke.width * 2.0
-      ..strokeCap = StrokeCap.square
-      ..strokeJoin = StrokeJoin.miter
-      ..style = PaintingStyle.stroke;
-
-    _renderPath(canvas, stroke.points, paint);
-  }
-
-  void _drawEraser(Canvas canvas, DrawingStroke stroke) {
-    final paint = Paint()
-      ..color = stroke.color
-      ..strokeWidth = stroke.width
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke;
-
-    _renderPath(canvas, stroke.points, paint);
-  }
-
-  void _renderPath(Canvas canvas, List<Offset> points, Paint paint) {
-    if (points.length == 1) {
-      canvas.drawCircle(points.first, paint.strokeWidth / 2, paint..style = PaintingStyle.fill);
-    } else {
-      final path = Path()..moveTo(points.first.dx, points.first.dy);
-      for (int i = 1; i < points.length; i++) {
-        path.lineTo(points[i].dx, points[i].dy);
-      }
-      canvas.drawPath(path, paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _RealisticBrushPainter oldDelegate) => true;
 }

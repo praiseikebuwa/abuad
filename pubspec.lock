@@ -1397,6 +1397,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.1.0+3"
+  pencil_kit:
+    dependency: "direct main"
+    description:
+      name: pencil_kit
+      sha256: "2a7a9ae8006336572c2341ada31918b133c986d51f5012348306cc28d8ba2466"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.1.1"
   permission_handler:
     dependency: "direct main"
     description:

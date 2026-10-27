@@ -541,21 +541,26 @@ class _CameraScreenState extends State<CameraScreen>
     _onNewCameraSelected(_cameras[_selectedCameraIndex]);
   }
 
-  void _toggleFlash() {
+  Future<void> _toggleFlash() async {
     if (_controller == null || !_controller!.value.isInitialized) return;
     HapticFeedback.lightImpact();
-    setState(() {
-      _flashMode = _flashMode == FlashMode.off
-          ? FlashMode.auto
-          : _flashMode == FlashMode.auto
-              ? FlashMode.always
-              : _flashMode == FlashMode.always
-                  ? FlashMode.torch
-                  : FlashMode.off;
-    });
+    final nextMode = _flashMode == FlashMode.off
+        ? FlashMode.auto
+        : _flashMode == FlashMode.auto
+            ? FlashMode.always
+            : (_flashMode == FlashMode.always && !kIsWeb)
+                ? FlashMode.torch
+                : FlashMode.off;
     try {
-      _controller?.setFlashMode(_flashMode);
-    } catch (_) {}
+      await _controller?.setFlashMode(nextMode);
+      if (mounted) setState(() => _flashMode = nextMode);
+    } catch (e) {
+      debugPrint('Flash mode not supported: $e');
+      try {
+        await _controller?.setFlashMode(FlashMode.off);
+        if (mounted) setState(() => _flashMode = FlashMode.off);
+      } catch (_) {}
+    }
   }
 
 
@@ -1069,7 +1074,19 @@ class _CameraScreenState extends State<CameraScreen>
   void _openSnapchatLenses() async {
     if (kIsWeb) {
       debugPrint('Initializing Web Camera Kit with token: $_snapWebProductionToken (Staging: $_snapWebStagingToken)');
-      _openLensesSearchSheet();
+      setState(() {
+        _showLensesCarousel = true;
+        _selectedLens ??= _builtinLenses.length > 1 ? _builtinLenses[1] : null;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✨ Live Aesthetic Lenses active! Swipe the carousel below to change effects.'),
+            duration: Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
       return;
     }
     try {

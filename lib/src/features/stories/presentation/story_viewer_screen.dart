@@ -17,6 +17,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 import 'create_story_screen.dart';
+import 'package:flutter/services.dart';
+import '../../chat/data/chat_repository.dart';
 import 'package:abuad/src/core/utils/url_validator.dart';
 import 'package:abuad/src/core/widgets/verification_badge.dart';
 
@@ -51,6 +53,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
   late FocusNode _focusNode;
   bool _isTyping = false;
   bool _isNavigating = false;
+  bool _isSendingReply = false;
 
   VideoPlayerController? _videoPlayerController;
   AudioPlayer? _bgAudioPlayer;
@@ -94,6 +97,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
     });
 
     _focusNode.addListener(() {
+      if (mounted) setState(() {});
       if (_focusNode.hasFocus) {
         _pauseStory();
       } else {
@@ -520,17 +524,91 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
     });
   }
 
-  void _sendMessage(Story story) {
-    if (_messageController.text.trim().isEmpty) return;
+  Future<void> _sendMessage(Story story, [String? quickReaction]) async {
+    final text = quickReaction ?? _messageController.text.trim();
+    if (text.isEmpty || _isSendingReply) return;
 
-    // Logic to send story reply as a chat message
-    // For now, just clear and unfocus
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Reply sent!')));
+    final myId = ref.read(currentUserProvider).value?.uid;
+    if (myId == null) return;
 
-    _messageController.clear();
-    _focusNode.unfocus();
+    if (story.authorId == myId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("You cannot reply to your own story"),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSendingReply = true);
+    _pauseStory();
+
+    try {
+      final chatRepo = ref.read(chatRepositoryProvider);
+      final channelId = await chatRepo.createOrGetChannel(
+        story.authorId,
+        otherUserName: story.userName,
+        otherUserAvatar: story.userAvatar,
+      );
+
+      await chatRepo.sendMessage(
+        channelId,
+        text,
+        type: 'story_reply',
+        mediaUrl: story.content,
+        replyToContent: story.caption?.isNotEmpty == true
+            ? 'Story: "${story.caption}"'
+            : 'Replied to ${story.userName}\'s story',
+        replyToSenderId: story.authorId,
+      );
+
+      HapticFeedback.mediumImpact();
+      _messageController.clear();
+      _focusNode.unfocus();
+      setState(() => _isTyping = false);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: AppColors.secondaryTeal, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    quickReaction != null
+                        ? 'Sent $quickReaction to ${story.userName}!'
+                        : 'Reply sent to ${story.userName}! 💬',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF0F172A),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error sending story reply: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not send reply: $e'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSendingReply = false);
+        _resumeStory();
+      }
+    }
   }
 
   void _showViewers(Story story) {
@@ -786,6 +864,10 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
                       final isVideoStory = story.type == 'video' ||
                           story.content.toLowerCase().endsWith('.mp4') ||
                           story.content.toLowerCase().contains('.mp4?');
+
+                      final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+                      final bottomPadding = MediaQuery.of(context).padding.bottom;
+                      final effectiveBottom = bottomInset > 0 ? (bottomInset + 12) : (bottomPadding + 16);
 
                       return Stack(
                         children: [
@@ -1390,222 +1472,294 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
                               ),
                             ),
 
-                          // Actions Bar (Bottom)
-                          Positioned(
-                            bottom: MediaQuery.of(context).padding.bottom + 16,
-                            left: 16,
-                            right: 16,
-                            child: Row(
-                              children: [
-                                // Frosted Glass Reply Input Bar
-                                Expanded(
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(28),
-                                    child: BackdropFilter(
-                                      filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                                      child: Container(
-                                        height: 50,
-                                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                                        decoration: BoxDecoration(
-                                          borderRadius: BorderRadius.circular(28),
-                                          gradient: LinearGradient(
-                                            begin: Alignment.topLeft,
-                                            end: Alignment.bottomRight,
-                                            colors: [
-                                              Colors.white.withValues(alpha: 0.20),
-                                              Colors.white.withValues(alpha: 0.08),
-                                            ],
-                                          ),
-                                          border: Border.all(
-                                            color: Colors.white.withValues(alpha: 0.32),
-                                            width: 1.2,
-                                          ),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: Colors.black.withValues(alpha: 0.2),
-                                              blurRadius: 16,
-                                              offset: const Offset(0, 4),
-                                            ),
-                                          ],
+                          // Quick Floating Emoji Reactions Bar (When input is focused)
+                          if (_focusNode.hasFocus && !isOwnStory)
+                            Positioned(
+                              bottom: effectiveBottom + 58,
+                              left: 16,
+                              right: 16,
+                              child: Center(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(24),
+                                  child: BackdropFilter(
+                                    filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withValues(alpha: 0.55),
+                                        borderRadius: BorderRadius.circular(24),
+                                        border: Border.all(
+                                          color: Colors.white.withValues(alpha: 0.2),
+                                          width: 0.8,
                                         ),
-                                        child: Row(
-                                          children: [
-                                            const Icon(
-                                              Icons.chat_bubble_outline_rounded,
-                                              color: Colors.white70,
-                                              size: 19,
-                                            ),
-                                            const SizedBox(width: 10),
-                                            Expanded(
-                                              child: TextField(
-                                                controller: _messageController,
-                                                focusNode: _focusNode,
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 14.5,
-                                                  fontWeight: FontWeight.w500,
-                                                ),
-                                                decoration: const InputDecoration(
-                                                  hintText: 'Reply to story...',
-                                                  hintStyle: TextStyle(
-                                                    color: Colors.white60,
-                                                    fontSize: 14,
-                                                    fontWeight: FontWeight.w400,
-                                                  ),
-                                                  border: InputBorder.none,
-                                                  isDense: true,
-                                                  contentPadding: EdgeInsets.zero,
-                                                ),
-                                                onSubmitted: (_) => _sendMessage(story),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: ['❤️', '🔥', '😂', '😮', '😢', '👏', '🎉', '💯'].map((emoji) {
+                                          return GestureDetector(
+                                            onTap: () => _sendMessage(story, emoji),
+                                            child: Padding(
+                                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+                                              child: Text(
+                                                emoji,
+                                                style: const TextStyle(fontSize: 22),
                                               ),
                                             ),
-                                          ],
-                                        ),
+                                          );
+                                        }).toList(),
                                       ),
                                     ),
                                   ),
                                 ),
+                              ),
+                            ),
 
-                                const SizedBox(width: 10),
-
-                                // Actions (Like, Reshare, Share) OR Send Button
-                                AnimatedSize(
-                                  duration: const Duration(milliseconds: 250),
-                                  curve: Curves.easeOutCubic,
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      if (!_isTyping && !_focusNode.hasFocus) ...[
-                                        // Like Button
-                                        ClipOval(
-                                          child: BackdropFilter(
-                                            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                                            child: Container(
-                                              width: 44,
-                                              height: 44,
-                                              decoration: BoxDecoration(
-                                                shape: BoxShape.circle,
-                                                color: (viewerId != null && story.hasLiked(viewerId))
-                                                    ? Colors.red.withValues(alpha: 0.25)
-                                                    : Colors.white.withValues(alpha: 0.15),
-                                                border: Border.all(
-                                                  color: (viewerId != null && story.hasLiked(viewerId))
-                                                      ? Colors.redAccent.withValues(alpha: 0.6)
-                                                      : Colors.white.withValues(alpha: 0.25),
-                                                  width: 1.2,
-                                                ),
-                                              ),
-                                              child: IconButton(
-                                                padding: EdgeInsets.zero,
-                                                onPressed: _likeCurrentStory,
-                                                icon: Icon(
-                                                  (viewerId != null && story.hasLiked(viewerId))
-                                                      ? Icons.favorite_rounded
-                                                      : Icons.favorite_border_rounded,
-                                                  color: (viewerId != null && story.hasLiked(viewerId))
-                                                      ? Colors.redAccent
-                                                      : Colors.white,
-                                                  size: 22,
-                                                ),
-                                              ),
-                                            ),
+                          // Actions Bar (Bottom)
+                          Positioned(
+                            bottom: effectiveBottom,
+                            left: 16,
+                            right: 16,
+                            child: isOwnStory
+                                ? Center(
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(24),
+                                      child: BackdropFilter(
+                                        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                                        child: Container(
+                                          height: 48,
+                                          padding: const EdgeInsets.symmetric(horizontal: 18),
+                                          decoration: BoxDecoration(
+                                            color: Colors.black.withValues(alpha: 0.45),
+                                            borderRadius: BorderRadius.circular(24),
+                                            border: Border.all(color: Colors.white24, width: 1.0),
                                           ),
-                                        ),
-                                        const SizedBox(width: 8),
-
-                                        // Reshare Button
-                                        ClipOval(
-                                          child: BackdropFilter(
-                                            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                                            child: Container(
-                                              width: 44,
-                                              height: 44,
-                                              decoration: BoxDecoration(
-                                                shape: BoxShape.circle,
-                                                color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
-                                                border: Border.all(
-                                                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.4),
-                                                  width: 1.2,
+                                          child: InkWell(
+                                            onTap: () => _showViewers(story),
+                                            borderRadius: BorderRadius.circular(24),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                const Icon(Icons.visibility_rounded, color: Colors.white, size: 20),
+                                                const SizedBox(width: 8),
+                                                Text(
+                                                  '${story.viewers.length} views',
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 14,
+                                                  ),
                                                 ),
-                                              ),
-                                              child: IconButton(
-                                                padding: EdgeInsets.zero,
-                                                onPressed: () => _reshareStory(story),
-                                                icon: const Icon(
-                                                  Icons.repeat_rounded,
-                                                  color: Colors.white,
-                                                  size: 20,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-
-                                        // Share Button
-                                        ClipOval(
-                                          child: BackdropFilter(
-                                            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                                            child: Container(
-                                              width: 44,
-                                              height: 44,
-                                              decoration: BoxDecoration(
-                                                shape: BoxShape.circle,
-                                                color: Colors.white.withValues(alpha: 0.15),
-                                                border: Border.all(
-                                                  color: Colors.white.withValues(alpha: 0.25),
-                                                  width: 1.2,
-                                                ),
-                                              ),
-                                              child: IconButton(
-                                                padding: EdgeInsets.zero,
-                                                onPressed: () => _shareStory(story),
-                                                icon: const Icon(
-                                                  Icons.ios_share_rounded,
-                                                  color: Colors.white,
-                                                  size: 20,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ] else ...[
-                                        // Glowing Send Button
-                                        GestureDetector(
-                                          onTap: () => _sendMessage(story),
-                                          child: Container(
-                                            width: 46,
-                                            height: 46,
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              gradient: const LinearGradient(
-                                                colors: [Color(0xFF0F766E), Color(0xFF14B8A6)],
-                                                begin: Alignment.topLeft,
-                                                end: Alignment.bottomRight,
-                                              ),
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: const Color(0xFF14B8A6).withValues(alpha: 0.45),
-                                                  blurRadius: 14,
-                                                  offset: const Offset(0, 3),
-                                                ),
+                                                const SizedBox(width: 6),
+                                                const Icon(Icons.keyboard_arrow_up_rounded, color: Colors.white70, size: 20),
                                               ],
                                             ),
-                                            child: const Center(
-                                              child: Icon(
-                                                Icons.arrow_upward_rounded,
-                                                color: Colors.white,
-                                                size: 24,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                : Row(
+                                    children: [
+                                      // Clean Single-Capsule Glassmorphic Reply Input
+                                      Expanded(
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(24),
+                                          child: BackdropFilter(
+                                            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                                            child: Container(
+                                              height: 48,
+                                              padding: const EdgeInsets.symmetric(horizontal: 14),
+                                              decoration: BoxDecoration(
+                                                color: Colors.black.withValues(alpha: 0.38),
+                                                borderRadius: BorderRadius.circular(24),
+                                                border: Border.all(
+                                                  color: _focusNode.hasFocus
+                                                      ? AppColors.secondaryTeal
+                                                      : Colors.white.withValues(alpha: 0.28),
+                                                  width: _focusNode.hasFocus ? 1.5 : 1.0,
+                                                ),
+                                              ),
+                                              child: Row(
+                                                children: [
+                                                  Icon(
+                                                    Icons.chat_bubble_outline_rounded,
+                                                    color: _focusNode.hasFocus
+                                                        ? AppColors.secondaryTeal
+                                                        : Colors.white.withValues(alpha: 0.75),
+                                                    size: 19,
+                                                  ),
+                                                  const SizedBox(width: 10),
+                                                  Expanded(
+                                                    child: Theme(
+                                                      data: Theme.of(context).copyWith(
+                                                        inputDecorationTheme: const InputDecorationTheme(
+                                                          filled: false,
+                                                          fillColor: Colors.transparent,
+                                                          border: InputBorder.none,
+                                                          enabledBorder: InputBorder.none,
+                                                          focusedBorder: InputBorder.none,
+                                                          errorBorder: InputBorder.none,
+                                                          disabledBorder: InputBorder.none,
+                                                          contentPadding: EdgeInsets.zero,
+                                                        ),
+                                                      ),
+                                                      child: TextField(
+                                                        controller: _messageController,
+                                                        focusNode: _focusNode,
+                                                        style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 14.5,
+                                                          fontWeight: FontWeight.w500,
+                                                        ),
+                                                        cursorColor: AppColors.secondaryTeal,
+                                                        decoration: InputDecoration(
+                                                          isDense: true,
+                                                          filled: false,
+                                                          fillColor: Colors.transparent,
+                                                          hintText: 'Reply to ${userName.isNotEmpty ? userName : 'story'}...',
+                                                          hintStyle: TextStyle(
+                                                            color: Colors.white.withValues(alpha: 0.65),
+                                                            fontSize: 14,
+                                                            fontWeight: FontWeight.w400,
+                                                          ),
+                                                          border: InputBorder.none,
+                                                          enabledBorder: InputBorder.none,
+                                                          focusedBorder: InputBorder.none,
+                                                          errorBorder: InputBorder.none,
+                                                          disabledBorder: InputBorder.none,
+                                                          contentPadding: EdgeInsets.zero,
+                                                        ),
+                                                        onSubmitted: (_) => _sendMessage(story),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
                                             ),
                                           ),
                                         ),
-                                      ],
+                                      ),
+
+                                      const SizedBox(width: 8),
+
+                                      // Actions (Like & Share) OR Send Button
+                                      AnimatedSize(
+                                        duration: const Duration(milliseconds: 200),
+                                        curve: Curves.easeOutCubic,
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            if (!_isTyping && !_focusNode.hasFocus) ...[
+                                              // Like Button
+                                              ClipOval(
+                                                child: BackdropFilter(
+                                                  filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                                                  child: Container(
+                                                    width: 44,
+                                                    height: 44,
+                                                    decoration: BoxDecoration(
+                                                      shape: BoxShape.circle,
+                                                      color: (viewerId != null && story.hasLiked(viewerId))
+                                                          ? Colors.red.withValues(alpha: 0.25)
+                                                          : Colors.black.withValues(alpha: 0.35),
+                                                      border: Border.all(
+                                                        color: (viewerId != null && story.hasLiked(viewerId))
+                                                            ? Colors.redAccent.withValues(alpha: 0.7)
+                                                            : Colors.white.withValues(alpha: 0.25),
+                                                        width: 1.0,
+                                                      ),
+                                                    ),
+                                                    child: IconButton(
+                                                      padding: EdgeInsets.zero,
+                                                      onPressed: _likeCurrentStory,
+                                                      icon: Icon(
+                                                        (viewerId != null && story.hasLiked(viewerId))
+                                                            ? Icons.favorite_rounded
+                                                            : Icons.favorite_border_rounded,
+                                                        color: (viewerId != null && story.hasLiked(viewerId))
+                                                            ? Colors.redAccent
+                                                            : Colors.white,
+                                                        size: 22,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+
+                                              // Share Button
+                                              ClipOval(
+                                                child: BackdropFilter(
+                                                  filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                                                  child: Container(
+                                                    width: 44,
+                                                    height: 44,
+                                                    decoration: BoxDecoration(
+                                                      shape: BoxShape.circle,
+                                                      color: Colors.black.withValues(alpha: 0.35),
+                                                      border: Border.all(
+                                                        color: Colors.white.withValues(alpha: 0.25),
+                                                        width: 1.0,
+                                                      ),
+                                                    ),
+                                                    child: IconButton(
+                                                      padding: EdgeInsets.zero,
+                                                      onPressed: () => _reshareStory(story),
+                                                      icon: const Icon(
+                                                        Icons.ios_share_rounded,
+                                                        color: Colors.white,
+                                                        size: 20,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ] else ...[
+                                              // Glowing Send Button
+                                              GestureDetector(
+                                                onTap: _isSendingReply ? null : () => _sendMessage(story),
+                                                child: Container(
+                                                  width: 44,
+                                                  height: 44,
+                                                  decoration: BoxDecoration(
+                                                    shape: BoxShape.circle,
+                                                    gradient: const LinearGradient(
+                                                      colors: [Color(0xFF0F766E), Color(0xFF14B8A6)],
+                                                      begin: Alignment.topLeft,
+                                                      end: Alignment.bottomRight,
+                                                    ),
+                                                    boxShadow: [
+                                                      BoxShadow(
+                                                        color: const Color(0xFF14B8A6).withValues(alpha: 0.45),
+                                                        blurRadius: 10,
+                                                        offset: const Offset(0, 2),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  child: Center(
+                                                    child: _isSendingReply
+                                                        ? const SizedBox(
+                                                            width: 18,
+                                                            height: 18,
+                                                            child: CircularProgressIndicator(
+                                                              color: Colors.white,
+                                                              strokeWidth: 2,
+                                                            ),
+                                                          )
+                                                        : const Icon(
+                                                            Icons.arrow_upward_rounded,
+                                                            color: Colors.white,
+                                                            size: 22,
+                                                          ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ),
                                     ],
                                   ),
-                                ),
-                              ],
-                            ),
                           ),
                         ],
                       );

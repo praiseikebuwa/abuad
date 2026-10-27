@@ -11,9 +11,15 @@ final resourceRepositoryProvider = Provider<ResourceRepository>((ref) {
 class ResourceRepository {
   ResourceRepository([dynamic _]);
 
-  Stream<List<Resource>> watchResources() async* {
+  Stream<List<Resource>> watchResources({String? level, String? courseCode}) async* {
     try {
-      final response = await ApiClient.get('/resources');
+      String query = '/resources';
+      final params = <String>[];
+      if (level != null && level != 'All') params.add('level=$level');
+      if (courseCode != null && courseCode != 'All') params.add('courseCode=$courseCode');
+      if (params.isNotEmpty) query += '?${params.join('&')}';
+
+      final response = await ApiClient.get(query);
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true && data['data'] is List) {
@@ -21,12 +27,27 @@ class ResourceRepository {
           return;
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      // Ignored: fallback to empty list on network or parse error
+    }
     yield [];
   }
 
   Stream<List<Resource>> watchResourcesByLevel(String level) async* {
-    yield* watchResources();
+    yield* watchResources(level: level);
+  }
+
+  Future<List<Map<String, dynamic>>> fetchCourses() async {
+    try {
+      final response = await ApiClient.get('/resources/courses');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] is List) {
+          return List<Map<String, dynamic>>.from(data['data']);
+        }
+      }
+    } catch (_) {}
+    return [];
   }
 
   Future<void> addResource(Resource resource) async {
