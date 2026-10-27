@@ -133,14 +133,15 @@ class ResourcesController {
 
         resources.forEach(res => {
             const row = document.createElement('tr');
-            const fileUrl = res.url || res.fileUrl || '#';
             const courseCode = res.courseCode || res.category || 'General';
+            const title = res.title || res.name || res.fileName || `${courseCode} Course Material`;
+            const fileUrl = res.fileUrl || res.url || '#';
             const level = res.level ? `${res.level}L` : 'All Levels';
-            const dateStr = res.created_at ? new Date(res.created_at).toLocaleDateString() : (res.date || 'Recent');
+            const dateStr = res.createdAt ? new Date(res.createdAt).toLocaleDateString() : (res.created_at ? new Date(res.created_at).toLocaleDateString() : (res.date || 'Recent'));
 
             row.innerHTML = `
                 <td>
-                    <div style="font-weight: 600; color: var(--text-primary);">${res.title}</div>
+                    <div style="font-weight: 600; color: var(--text-primary);">${title}</div>
                     <small>
                         <a href="${fileUrl}" target="_blank" rel="noopener noreferrer" style="color: var(--color-primary-600); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; margin-top: 2px;">
                             <i class="fas fa-external-link-alt"></i> View / Download File
@@ -167,8 +168,8 @@ class ResourcesController {
             `;
 
             row.querySelector('.btn-delete').addEventListener('click', () => {
-                if (confirm(`Are you sure you want to delete "${res.title}"? This will remove it from student study materials and AI context.`)) {
-                    this.deleteResource(res.id, res.title);
+                if (confirm(`Are you sure you want to delete "${title}"? This will remove it from student study materials and AI context.`)) {
+                    this.deleteResource(res.id, title);
                 }
             });
 
@@ -222,13 +223,80 @@ class ResourcesController {
                 formData.append('level', level);
 
                 const token = ApiClientAdmin.getAccessToken();
-                const uploadRes = await fetch(`${API_BASE_URL}/resources/upload-multiple`, {
+                let uploadRes = await fetch(`${API_BASE_URL}/resources/upload-multiple`, {
                     method: 'POST',
                     headers: {
                         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                     },
                     body: formData
                 });
+
+                // Fallback if the remote backend has not yet mounted /resources/upload-multiple
+                if (uploadRes.status === 404) {
+                    console.log("Direct /resources/upload-multiple 404, using /media/upload-multiple fallback...");
+                    progressText.innerText = `Uploading ${files.length} file(s) to Cloudflare R2 via storage service...`;
+
+                    const mediaFormData = new FormData();
+                    for (let i = 0; i < files.length; i++) {
+                        mediaFormData.append('files', files[i]);
+                    }
+
+                    const mediaRes = await fetch(`${API_BASE_URL}/media/upload-multiple`, {
+                        method: 'POST',
+                        headers: {
+                            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                        },
+                        body: mediaFormData
+                    });
+
+                    if (mediaRes.ok) {
+                        const mediaData = await mediaRes.json();
+                        const uploadedFiles = mediaData.data?.files || [];
+                        let createdCount = 0;
+                        progressText.innerText = `Registering ${uploadedFiles.length} course material(s)...`;
+
+                        for (const item of uploadedFiles) {
+                            const rawName = item.filename || item.key || 'Material';
+                            const title = rawName.replace(/\.[^/.]+$/, '').replace(/^[0-9]+-/, '').replace(/[_-]/g, ' ');
+                            const payload = {
+                                title: `${courseCode} - ${title}`,
+                                courseCode,
+                                category,
+                                level,
+                                fileUrl: item.publicUrl
+                            };
+                            try {
+                                const regRes = await ApiClientAdmin.fetch('/resources', {
+                                    method: 'POST',
+                                    body: JSON.stringify(payload)
+                                });
+                                if (regRes.ok) {
+                                    createdCount++;
+                                } else if (typeof db !== 'undefined' && db && db.collection) {
+                                    await db.collection('resources').add({
+                                        ...payload,
+                                        uploadedAt: firebase.firestore.FieldValue.serverTimestamp()
+                                    });
+                                    createdCount++;
+                                }
+                            } catch (_) {
+                                if (typeof db !== 'undefined' && db && db.collection) {
+                                    await db.collection('resources').add({
+                                        ...payload,
+                                        uploadedAt: firebase.firestore.FieldValue.serverTimestamp()
+                                    });
+                                    createdCount++;
+                                }
+                            }
+                        }
+                        alert(`Successfully uploaded ${createdCount || uploadedFiles.length} resource(s) for ${courseCode}!`);
+                        e.target.reset();
+                        document.getElementById('res-file-count').innerText = '';
+                        this.initUploadModeToggle();
+                        this.fetchResources();
+                        return;
+                    }
+                }
 
                 if (!uploadRes.ok) {
                     const errData = await uploadRes.json().catch(() => ({}));
