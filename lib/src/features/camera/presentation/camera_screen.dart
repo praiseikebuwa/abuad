@@ -249,6 +249,9 @@ class _CameraScreenState extends State<CameraScreen>
     ),
   ];
 
+  // Lifecycle & disposal guard
+  bool _isDisposed = false;
+
   // Global key for exact preview viewfinder coordinate calculation
   final GlobalKey _previewKey = GlobalKey();
   Timer? _focusTimer;
@@ -372,19 +375,26 @@ class _CameraScreenState extends State<CameraScreen>
 
   @override
   void dispose() {
+    _isDisposed = true;
+    _isCameraInitialized = false;
     WidgetsBinding.instance.removeObserver(this);
     _focusTimer?.cancel();
     _recordingTimer?.cancel();
     _countdownTimer?.cancel();
     _pulseController.dispose();
-    _bgMusicPlayer?.stop();
+    _stopBackgroundMusic();
     _bgMusicPlayer?.dispose();
-    _controller?.dispose();
+    final controller = _controller;
+    _controller = null;
+    controller?.dispose();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // On Web, browser tabs and permission dialogs fire inactive/paused events constantly;
+    // do not destroy/release the camera controller on web!
+    if (kIsWeb) return;
     if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
       _stopBackgroundMusic();
       _releaseCamera();
@@ -455,6 +465,7 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Future<void> _onNewCameraSelected(CameraDescription cameraDescription) async {
+    if (_isDisposed) return;
     if (_isCameraInitializing) return;
     _isCameraInitializing = true;
 
@@ -462,7 +473,14 @@ class _CameraScreenState extends State<CameraScreen>
     _controller = null;
     if (mounted) setState(() => _isCameraInitialized = false);
     if (oldController != null) {
-      await oldController.dispose();
+      try {
+        await oldController.dispose();
+      } catch (_) {}
+    }
+
+    if (_isDisposed || !mounted) {
+      _isCameraInitializing = false;
+      return;
     }
 
     final CameraController cameraController = CameraController(
@@ -472,36 +490,38 @@ class _CameraScreenState extends State<CameraScreen>
       imageFormatGroup: ImageFormatGroup.jpeg,
     );
 
-    _controller = cameraController;
-
-    cameraController.addListener(() {
-      if (mounted) setState(() {});
-      if (cameraController.value.hasError) {
-        debugPrint('Camera error: ${cameraController.value.errorDescription}');
-      }
-    });
-
     try {
       await cameraController.initialize();
+      if (_isDisposed || !mounted) {
+        await cameraController.dispose();
+        _isCameraInitializing = false;
+        return;
+      }
+
+      cameraController.addListener(() {
+        if (mounted && !_isDisposed) setState(() {});
+        if (cameraController.value.hasError) {
+          debugPrint('Camera error: ${cameraController.value.errorDescription}');
+        }
+      });
+
       if (!kIsWeb) {
         try {
           await cameraController.setFlashMode(_flashMode);
         } catch (_) {}
-      }
-      try {
-        _minZoom = await cameraController.getMinZoomLevel();
-        _maxZoom = await cameraController.getMaxZoomLevel();
-        if (_maxZoom <= _minZoom) _maxZoom = _minZoom * 4.0;
-      } catch (_) {
-        _minZoom = 1.0;
-        _maxZoom = 4.0;
-      }
-      _currentZoom = 1.0.clamp(_minZoom, _maxZoom);
-      try {
-        await cameraController.setZoomLevel(_currentZoom);
-      } catch (_) {}
+        try {
+          _minZoom = await cameraController.getMinZoomLevel();
+          _maxZoom = await cameraController.getMaxZoomLevel();
+          if (_maxZoom <= _minZoom) _maxZoom = _minZoom * 4.0;
+        } catch (_) {
+          _minZoom = 1.0;
+          _maxZoom = 4.0;
+        }
+        _currentZoom = 1.0.clamp(_minZoom, _maxZoom);
+        try {
+          await cameraController.setZoomLevel(_currentZoom);
+        } catch (_) {}
 
-      if (!kIsWeb) {
         try {
           _minExposureOffset = await cameraController.getMinExposureOffset();
           _maxExposureOffset = await cameraController.getMaxExposureOffset();
@@ -509,16 +529,23 @@ class _CameraScreenState extends State<CameraScreen>
           _minExposureOffset = -2.0;
           _maxExposureOffset = 2.0;
         }
+      } else {
+        _minZoom = 1.0;
+        _maxZoom = 4.0;
+        _currentZoom = 1.0;
       }
-      if (mounted) {
+
+      if (mounted && !_isDisposed) {
         setState(() {
           _isCameraInitialized = true;
           _controller = cameraController;
         });
+      } else {
+        await cameraController.dispose();
       }
     } catch (e) {
       debugPrint('Error initializing camera controller: $e');
-      if (mounted) {
+      if (mounted && !_isDisposed) {
         setState(() => _isCameraInitialized = false);
       }
     } finally {
@@ -764,9 +791,11 @@ class _CameraScreenState extends State<CameraScreen>
   void _setZoom(double zoom) {
     final clamped = zoom.clamp(_minZoom, _maxZoom);
     setState(() => _currentZoom = clamped);
-    try {
-      _controller?.setZoomLevel(clamped);
-    } catch (_) {}
+    if (!kIsWeb) {
+      try {
+        _controller?.setZoomLevel(clamped);
+      } catch (_) {}
+    }
     HapticFeedback.selectionClick();
   }
 
@@ -1384,7 +1413,9 @@ class _CameraScreenState extends State<CameraScreen>
               final newZoom = (_baseZoom * details.scale).clamp(_minZoom, _maxZoom);
               if (newZoom != _currentZoom) {
                 setState(() => _currentZoom = newZoom);
-                _controller?.setZoomLevel(newZoom);
+                if (!kIsWeb) {
+                  _controller?.setZoomLevel(newZoom);
+                }
               }
             },
             onDoubleTap: _toggleCamera,
@@ -1984,7 +2015,8 @@ class _CameraScreenState extends State<CameraScreen>
 
   // Viewfinder with dynamic Aspect Ratio letterboxing and framing
   Widget _buildCameraViewfinder(Size screenSize, bool isFrontCamera) {
-    if (_controller == null || !_controller!.value.isInitialized) {
+    final controller = _controller;
+    if (_isDisposed || !_isCameraInitialized || controller == null || !controller.value.isInitialized) {
       return Container(
         color: Colors.black,
         child: const Center(
@@ -1993,7 +2025,7 @@ class _CameraScreenState extends State<CameraScreen>
       );
     }
 
-    final previewSize = _controller!.value.previewSize;
+    final previewSize = controller.value.previewSize;
     // On web, webcam previewSize is already in standard orientation (width x height)
     // On native mobile (Android/iOS), camera sensors are 90deg rotated, so height is width
     final double previewWidth;
@@ -2025,7 +2057,7 @@ class _CameraScreenState extends State<CameraScreen>
       }
     }
 
-    Widget cameraTexture = CameraPreview(_controller!);
+    Widget cameraTexture = CameraPreview(controller);
     // CRITICAL: On Flutter Web, wrapping HtmlElementView in ColorFiltered blanks out the video feed completely!
     // Only wrap with ColorFiltered on native mobile platforms.
     if (!kIsWeb && _selectedLens?.colorMatrix != null) {
