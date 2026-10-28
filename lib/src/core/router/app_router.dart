@@ -376,10 +376,18 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         },
       ),
       GoRoute(
+        path: '/profile/edit',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) => const EditProfileScreen(),
+      ),
+      GoRoute(
         path: '/profile/:userId',
         parentNavigatorKey: rootNavigatorKey,
         builder: (context, state) {
           final userId = state.pathParameters['userId'];
+          if (userId == 'edit') {
+            return const EditProfileScreen();
+          }
           return ProfileScreen(userId: userId);
         },
       ),

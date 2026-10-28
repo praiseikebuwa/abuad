@@ -20,6 +20,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../feed/data/bookmark_folders_service.dart';
 import '../../../shared/widgets/autoplay_live_media_widget.dart';
+import 'edit_profile_screen.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   final String? userId; // If null, shows current user
@@ -39,10 +40,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    // Determine which user to show
-    final targetUserId = widget.userId ?? currentUserId;
+    if (widget.userId == 'edit') {
+      return const EditProfileScreen();
+    }
 
-    if (targetUserId == null) {
+    // Determine which user to show
+    final isSelf = widget.userId == null ||
+        widget.userId == 'me' ||
+        widget.userId == currentUserId ||
+        (cachedCurrentUser != null &&
+            (widget.userId == cachedCurrentUser.uid ||
+                widget.userId == cachedCurrentUser.handle ||
+                widget.userId == cachedCurrentUser.username ||
+                widget.userId == cachedCurrentUser.displayName));
+
+    final targetUserId = isSelf ? (currentUserId ?? 'me') : widget.userId!;
+
+    if (targetUserId == 'me' && cachedCurrentUser == null && authRepo.currentUserId == null) {
       return Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
         body: Center(
@@ -79,7 +93,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         backgroundColor: theme.scaffoldBackgroundColor,
         body: userAsync.when(
           data: (fetchedUser) {
-            final user = fetchedUser ?? (targetUserId == currentUserId ? cachedCurrentUser : null);
+            final user = fetchedUser ?? (isSelf ? cachedCurrentUser : null);
             if (user == null) {
               return Center(
                 child: Column(
@@ -90,7 +104,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     const Text("User not found", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 12),
                     ElevatedButton.icon(
-                      onPressed: () => ref.refresh(userProvider(targetUserId)),
+                      onPressed: () {
+                        ref.read(userRepositoryProvider).getUserById(targetUserId, forceRefresh: true);
+                        ref.invalidate(userProvider(targetUserId));
+                      },
                       icon: const Icon(Icons.refresh),
                       label: const Text("Retry"),
                     ),

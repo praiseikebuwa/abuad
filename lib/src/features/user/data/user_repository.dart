@@ -371,6 +371,9 @@ class UserRepository {
         if (data['success'] == true && data['data'] != null) {
           final user = AppUser.fromMap(data['data']);
           _userCache[user.uid] = user;
+          _userCache['me'] = user;
+          if (user.handle.isNotEmpty) _userCache[user.handle] = user;
+          if (user.username.isNotEmpty) _userCache[user.username] = user;
           return user;
         }
       }
@@ -380,6 +383,9 @@ class UserRepository {
         if (data['success'] == true && data['data'] != null) {
           final user = AppUser.fromMap(data['data']);
           _userCache[user.uid] = user;
+          _userCache['me'] = user;
+          if (user.handle.isNotEmpty) _userCache[user.handle] = user;
+          if (user.username.isNotEmpty) _userCache[user.username] = user;
           return user;
         }
       }
@@ -393,13 +399,16 @@ class UserRepository {
     if (uid == 'me' || uid.isEmpty) {
       return getCurrentUser();
     }
+    if (uid == 'edit') {
+      return null;
+    }
     // Return cached user immediately if available and not forcing refresh
     if (!forceRefresh && _userCache.containsKey(uid) && _userCache[uid] != null) {
       return _userCache[uid];
     }
     // Check negative cache (not found in last 30s) to prevent spamming
     final lastFailed = _negativeCache[uid];
-    if (!forceRefresh && lastFailed != null && DateTime.now().difference(lastFailed).inSeconds < 30) {
+    if (!forceRefresh && lastFailed != null && DateTime.now().difference(lastFailed).inSeconds < 15) {
       return _userCache[uid];
     }
     // Deduplicate in-flight requests so 20 widgets don't send 20 requests
@@ -425,9 +434,14 @@ class UserRepository {
         if (data['success'] == true && data['data'] != null) {
           final user = AppUser.fromMap(data['data']);
           _userCache[uid] = user;
+          _userCache[user.uid] = user;
+          if (user.handle.isNotEmpty) _userCache[user.handle] = user;
+          if (user.username.isNotEmpty) _userCache[user.username] = user;
           _negativeCache.remove(uid);
+          _negativeCache.remove(user.uid);
           if (data['data']['isFollowing'] != null) {
             _followingMap[uid] = data['data']['isFollowing'] == true;
+            _followingMap[user.uid] = data['data']['isFollowing'] == true;
             _followingController.add(Map<String, bool>.from(_followingMap));
           }
           _userController.add(Map<String, AppUser>.from(_userCache));
@@ -440,7 +454,11 @@ class UserRepository {
         if (data['success'] == true && data['data'] != null) {
           final user = AppUser.fromMap(data['data']);
           _userCache[uid] = user;
+          _userCache[user.uid] = user;
+          if (user.handle.isNotEmpty) _userCache[user.handle] = user;
+          if (user.username.isNotEmpty) _userCache[user.username] = user;
           _negativeCache.remove(uid);
+          _negativeCache.remove(user.uid);
           _userController.add(Map<String, AppUser>.from(_userCache));
           return user;
         }

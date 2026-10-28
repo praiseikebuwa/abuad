@@ -142,6 +142,13 @@ class SettingsScreen extends ConsumerWidget {
             title: "Profile",
             subtitle: user?.displayName ?? "Guest",
             showArrow: true,
+            onTap: () => context.push('/profile'),
+          ),
+          _SettingsTile(
+            icon: Icons.edit_outlined,
+            title: "Edit Profile",
+            subtitle: "Update name, bio, and social links",
+            showArrow: true,
             onTap: () => context.push('/profile/edit'),
           ),
           _SettingsTile(
@@ -591,7 +598,7 @@ class SettingsScreen extends ConsumerWidget {
       "Are you sure you want to delete your account? This will permanently delete your profile, posts, reels, and all other activity. This action cannot be undone.",
       isDestructive: true,
     );
-    if (confirmed == true) {
+    if (confirmed == true && context.mounted) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text("Deleting account...")));

@@ -29,6 +29,20 @@ class Resource {
     };
   }
 
+  String get fileExtension {
+    final clean = url.split('?').first.toLowerCase();
+    if (clean.contains('.')) {
+      return clean.split('.').last;
+    }
+    final titleClean = title.split('?').first.toLowerCase();
+    if (titleClean.contains('.')) {
+      return titleClean.split('.').last;
+    }
+    return 'pdf';
+  }
+
+  String get fileType => fileExtension.toUpperCase();
+
   factory Resource.fromMap(Map<String, dynamic> map) {
     DateTime parseTime(dynamic raw) {
       if (raw is String) return DateTime.tryParse(raw) ?? DateTime.now();

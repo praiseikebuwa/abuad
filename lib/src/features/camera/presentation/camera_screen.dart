@@ -423,6 +423,20 @@ class _CameraScreenState extends State<CameraScreen>
 
   Future<void> _initializeCamera() async {
     try {
+      if (kIsWeb) {
+        _cameras = await availableCameras();
+        if (_cameras.isNotEmpty) {
+          final frontIndex = _cameras.indexWhere(
+            (c) => c.lensDirection == CameraLensDirection.front,
+          );
+          _selectedCameraIndex = frontIndex != -1 ? frontIndex : 0;
+          await _onNewCameraSelected(_cameras[_selectedCameraIndex]);
+        } else {
+          if (mounted) setState(() => _isCameraInitialized = false);
+        }
+        return;
+      }
+
       final cameraStatus = await Permission.camera.request();
       // Request microphone optionally so photo mode is not blocked if denied
       await Permission.microphone.request();
@@ -469,9 +483,11 @@ class _CameraScreenState extends State<CameraScreen>
 
     try {
       await cameraController.initialize();
-      try {
-        await cameraController.setFlashMode(_flashMode);
-      } catch (_) {}
+      if (!kIsWeb) {
+        try {
+          await cameraController.setFlashMode(_flashMode);
+        } catch (_) {}
+      }
       try {
         _minZoom = await cameraController.getMinZoomLevel();
         _maxZoom = await cameraController.getMaxZoomLevel();
@@ -485,12 +501,14 @@ class _CameraScreenState extends State<CameraScreen>
         await cameraController.setZoomLevel(_currentZoom);
       } catch (_) {}
 
-      try {
-        _minExposureOffset = await cameraController.getMinExposureOffset();
-        _maxExposureOffset = await cameraController.getMaxExposureOffset();
-      } catch (_) {
-        _minExposureOffset = -2.0;
-        _maxExposureOffset = 2.0;
+      if (!kIsWeb) {
+        try {
+          _minExposureOffset = await cameraController.getMinExposureOffset();
+          _maxExposureOffset = await cameraController.getMaxExposureOffset();
+        } catch (_) {
+          _minExposureOffset = -2.0;
+          _maxExposureOffset = 2.0;
+        }
       }
       if (mounted) {
         setState(() {
@@ -542,6 +560,18 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Future<void> _toggleFlash() async {
+    if (kIsWeb) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Flash/Torch is not available on webcams'),
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
     if (_controller == null || !_controller!.value.isInitialized) return;
     HapticFeedback.lightImpact();
     final nextMode = _flashMode == FlashMode.off
@@ -1964,8 +1994,22 @@ class _CameraScreenState extends State<CameraScreen>
     }
 
     final previewSize = _controller!.value.previewSize;
-    final previewWidth = previewSize != null ? previewSize.height : screenSize.width;
-    final previewHeight = previewSize != null ? previewSize.width : screenSize.height;
+    // On web, webcam previewSize is already in standard orientation (width x height)
+    // On native mobile (Android/iOS), camera sensors are 90deg rotated, so height is width
+    final double previewWidth;
+    final double previewHeight;
+    if (previewSize != null) {
+      if (kIsWeb) {
+        previewWidth = previewSize.width;
+        previewHeight = previewSize.height;
+      } else {
+        previewWidth = previewSize.height;
+        previewHeight = previewSize.width;
+      }
+    } else {
+      previewWidth = screenSize.width;
+      previewHeight = screenSize.height;
+    }
 
     double targetWidth = screenSize.width;
     double targetHeight = screenSize.height;
@@ -1982,7 +2026,9 @@ class _CameraScreenState extends State<CameraScreen>
     }
 
     Widget cameraTexture = CameraPreview(_controller!);
-    if (_selectedLens?.colorMatrix != null) {
+    // CRITICAL: On Flutter Web, wrapping HtmlElementView in ColorFiltered blanks out the video feed completely!
+    // Only wrap with ColorFiltered on native mobile platforms.
+    if (!kIsWeb && _selectedLens?.colorMatrix != null) {
       cameraTexture = ColorFiltered(
         colorFilter: ColorFilter.matrix(_selectedLens!.colorMatrix!),
         child: cameraTexture,
@@ -2020,8 +2066,70 @@ class _CameraScreenState extends State<CameraScreen>
                   ),
                 ),
               ),
+              // On web, overlay the aesthetic tint gracefully on top of the camera stream
+              if (kIsWeb && _selectedLens != null)
+                _buildWebLensOverlay(_selectedLens!),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWebLensOverlay(CameraLensEffect lens) {
+    Color overlayColor;
+    double opacity = 0.22;
+
+    switch (lens.id) {
+      case 'golden':
+        overlayColor = const Color(0xFFFFB300);
+        opacity = 0.22;
+        break;
+      case 'cyberpunk':
+        overlayColor = const Color(0xFFD946EF);
+        opacity = 0.25;
+        break;
+      case 'vintage':
+        overlayColor = const Color(0xFFB45309);
+        opacity = 0.26;
+        break;
+      case 'beauty':
+        overlayColor = const Color(0xFFF472B6);
+        opacity = 0.16;
+        break;
+      case 'aqua':
+        overlayColor = const Color(0xFF06B6D4);
+        opacity = 0.22;
+        break;
+      case 'emerald':
+        overlayColor = const Color(0xFF10B981);
+        opacity = 0.22;
+        break;
+      case 'crimson':
+        overlayColor = const Color(0xFFF43F5E);
+        opacity = 0.24;
+        break;
+      case 'pop':
+        overlayColor = const Color(0xFFEC4899);
+        opacity = 0.18;
+        break;
+      case 'sepia':
+        overlayColor = const Color(0xFF78350F);
+        opacity = 0.30;
+        break;
+      case 'moonlight':
+        overlayColor = const Color(0xFF3B82F6);
+        opacity = 0.24;
+        break;
+      default:
+        overlayColor = lens.previewGradient.isNotEmpty ? lens.previewGradient.first : Colors.amber;
+        opacity = 0.18;
+    }
+
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: Container(
+          color: overlayColor.withValues(alpha: opacity),
         ),
       ),
     );
