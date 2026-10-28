@@ -18,6 +18,11 @@ import '../../music/presentation/music_picker_sheet.dart';
 import 'media_editor_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+enum LensType {
+  colorFilter,
+  arFaceLens,
+}
+
 class CameraLensEffect {
   final String id;
   final String name;
@@ -25,6 +30,8 @@ class CameraLensEffect {
   final IconData icon;
   final List<Color> previewGradient;
   final List<double>? colorMatrix;
+  final LensType type;
+  final String? arType;
 
   const CameraLensEffect({
     required this.id,
@@ -33,7 +40,11 @@ class CameraLensEffect {
     required this.icon,
     required this.previewGradient,
     this.colorMatrix,
+    this.type = LensType.colorFilter,
+    this.arType,
   });
+
+  bool get isAr => type == LensType.arFaceLens;
 }
 
 enum CameraMode { photo, video }
@@ -104,6 +115,80 @@ class _CameraScreenState extends State<CameraScreen>
       previewGradient: [Color(0xFF4B5563), Color(0xFF1F2937)],
       colorMatrix: null,
     ),
+    // --- Real Snapchat AR Face Lenses ---
+    CameraLensEffect(
+      id: 'ar_dog',
+      name: 'Puppy Dog 🐶',
+      category: 'Snapchat AR',
+      icon: Icons.pets_rounded,
+      previewGradient: [Color(0xFFB45309), Color(0xFFF59E0B)],
+      type: LensType.arFaceLens,
+      arType: 'dog',
+    ),
+    CameraLensEffect(
+      id: 'ar_bunny',
+      name: 'Bunny Ears 🐰',
+      category: 'Snapchat AR',
+      icon: Icons.cruelty_free_rounded,
+      previewGradient: [Color(0xFFEC4899), Color(0xFFFDA4AF)],
+      type: LensType.arFaceLens,
+      arType: 'bunny',
+    ),
+    CameraLensEffect(
+      id: 'ar_crown',
+      name: 'Golden Crown 👑',
+      category: 'Snapchat AR',
+      icon: Icons.emoji_events_rounded,
+      previewGradient: [Color(0xFFF59E0B), Color(0xFFFBBF24)],
+      type: LensType.arFaceLens,
+      arType: 'golden_crown',
+    ),
+    CameraLensEffect(
+      id: 'ar_cyber',
+      name: 'Cyber Visor 🕶️',
+      category: 'Snapchat AR',
+      icon: Icons.remove_red_eye_rounded,
+      previewGradient: [Color(0xFF06B6D4), Color(0xFF8B5CF6)],
+      type: LensType.arFaceLens,
+      arType: 'cyber_visor',
+    ),
+    CameraLensEffect(
+      id: 'ar_hearts',
+      name: 'Heart Blush 🥰',
+      category: 'Snapchat AR',
+      icon: Icons.favorite_rounded,
+      previewGradient: [Color(0xFFF43F5E), Color(0xFFFB7185)],
+      type: LensType.arFaceLens,
+      arType: 'heart_blush',
+    ),
+    CameraLensEffect(
+      id: 'ar_angel',
+      name: 'Angel Halo 😇',
+      category: 'Snapchat AR',
+      icon: Icons.brightness_5_rounded,
+      previewGradient: [Color(0xFF38BDF8), Color(0xFFE0F2FE)],
+      type: LensType.arFaceLens,
+      arType: 'angel_halo',
+    ),
+    CameraLensEffect(
+      id: 'ar_butterflies',
+      name: 'Butterflies 🦋',
+      category: 'Snapchat AR',
+      icon: Icons.flutter_dash_rounded,
+      previewGradient: [Color(0xFF10B981), Color(0xFF6EE7B7)],
+      type: LensType.arFaceLens,
+      arType: 'butterflies',
+    ),
+    CameraLensEffect(
+      id: 'ar_devil',
+      name: 'Neon Horns 😈',
+      category: 'Snapchat AR',
+      icon: Icons.local_fire_department_rounded,
+      previewGradient: [Color(0xFFEF4444), Color(0xFF991B1B)],
+      type: LensType.arFaceLens,
+      arType: 'devil_horns',
+    ),
+    // --- Aesthetic Color Grading Filters ---
     CameraLensEffect(
       id: 'golden',
       name: 'Golden Hour',
@@ -993,6 +1078,8 @@ class _CameraScreenState extends State<CameraScreen>
   void _openLensesSearchSheet() {
     HapticFeedback.lightImpact();
     String searchQuery = '';
+    int selectedTab = 0; // 0: All, 1: Snapchat AR, 2: Color Filters
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1000,6 +1087,9 @@ class _CameraScreenState extends State<CameraScreen>
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheetState) {
           final filtered = _builtinLenses.where((lens) {
+            if (selectedTab == 1 && !lens.isAr) return false;
+            if (selectedTab == 2 && (lens.isAr || lens.id == 'none')) return false;
+
             if (searchQuery.isEmpty) return true;
             return lens.name.toLowerCase().contains(searchQuery.toLowerCase()) ||
                 lens.category.toLowerCase().contains(searchQuery.toLowerCase());
@@ -1010,10 +1100,10 @@ class _CameraScreenState extends State<CameraScreen>
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
               child: Container(
-                height: MediaQuery.of(context).size.height * 0.65,
+                height: MediaQuery.of(context).size.height * 0.72,
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.85),
+                  color: Colors.black.withValues(alpha: 0.88),
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
                   border: Border.all(color: Colors.white24, width: 0.5),
                 ),
@@ -1024,17 +1114,45 @@ class _CameraScreenState extends State<CameraScreen>
                     const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.auto_awesome, color: AppColors.secondaryTeal, size: 20),
+                        Icon(Icons.auto_awesome, color: Color(0xFFFFFC00), size: 20),
                         SizedBox(width: 8),
-                        Text('Lenses & Effects', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                        Text('Snapchat AR & Camera Lenses', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                       ],
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
+                    // Tabs: All | ✨ Snapchat AR | 🎨 Color Filters
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _buildLensTab(
+                            title: 'All (${_builtinLenses.length})',
+                            isSelected: selectedTab == 0,
+                            onTap: () => setSheetState(() => selectedTab = 0),
+                          ),
+                          const SizedBox(width: 8),
+                          _buildLensTab(
+                            title: '✨ Snapchat AR (${_builtinLenses.where((l) => l.isAr).length})',
+                            isSelected: selectedTab == 1,
+                            accentColor: const Color(0xFFFFFC00),
+                            textColor: selectedTab == 1 ? Colors.black : Colors.white,
+                            onTap: () => setSheetState(() => selectedTab = 1),
+                          ),
+                          const SizedBox(width: 8),
+                          _buildLensTab(
+                            title: '🎨 Color Filters (${_builtinLenses.where((l) => !l.isAr && l.id != 'none').length})',
+                            isSelected: selectedTab == 2,
+                            onTap: () => setSheetState(() => selectedTab = 2),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     TextField(
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
                         prefixIcon: const Icon(Icons.search, color: Colors.white60),
-                        hintText: 'Search filters & effects...',
+                        hintText: 'Search AR lenses & effects...',
                         hintStyle: const TextStyle(color: Colors.white38),
                         filled: true,
                         fillColor: Colors.white.withValues(alpha: 0.1),
@@ -1045,7 +1163,7 @@ class _CameraScreenState extends State<CameraScreen>
                         setSheetState(() => searchQuery = q);
                       },
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     Expanded(
                       child: GridView.builder(
                         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -1081,22 +1199,49 @@ class _CameraScreenState extends State<CameraScreen>
                                 ),
                               ),
                               padding: const EdgeInsets.all(8),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
+                              child: Stack(
                                 children: [
-                                  Icon(lens.icon, color: Colors.white, size: 26),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    lens.name,
-                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                                    textAlign: TextAlign.center,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                                  Center(
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(lens.icon, color: Colors.white, size: 26),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          lens.name,
+                                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                                          textAlign: TextAlign.center,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        Text(
+                                          lens.category,
+                                          style: const TextStyle(color: Colors.white70, fontSize: 10),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                  Text(
-                                    lens.category,
-                                    style: const TextStyle(color: Colors.white70, fontSize: 10),
-                                  ),
+                                  if (lens.isAr)
+                                    Positioned(
+                                      top: 0,
+                                      right: 0,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFFFFC00),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: const Text(
+                                          'AR',
+                                          style: TextStyle(
+                                            color: Colors.black,
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.w900,
+                                            letterSpacing: -0.5,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),
@@ -1105,15 +1250,19 @@ class _CameraScreenState extends State<CameraScreen>
                       ),
                     ),
                     const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: const BorderSide(color: Colors.white24),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFFFC00),
+                        foregroundColor: Colors.black,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        elevation: 4,
                       ),
-                      icon: const Icon(Icons.camera_alt_outlined, size: 18),
-                      label: const Text('Snapchat AR Camera (Live Lenses)'),
+                      icon: const Icon(Icons.auto_awesome, size: 18, color: Colors.black),
+                      label: const Text(
+                        'Launch Snapchat AR Face Lenses',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
                       onPressed: () {
                         Navigator.pop(ctx);
                         _openSnapchatLenses();
@@ -1130,18 +1279,72 @@ class _CameraScreenState extends State<CameraScreen>
     );
   }
 
+  Widget _buildLensTab({
+    required String title,
+    required bool isSelected,
+    required VoidCallback onTap,
+    Color? accentColor,
+    Color? textColor,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? (accentColor ?? AppColors.secondaryTeal)
+              : Colors.white.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected
+                ? (accentColor ?? AppColors.secondaryTeal)
+                : Colors.white24,
+            width: 1,
+          ),
+        ),
+        child: Text(
+          title,
+          style: TextStyle(
+            color: isSelected ? (textColor ?? Colors.white) : Colors.white70,
+            fontSize: 12,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+
   void _openSnapchatLenses() async {
+    HapticFeedback.mediumImpact();
+    final firstArLens = _builtinLenses.firstWhere(
+      (l) => l.isAr,
+      orElse: () => _builtinLenses[1],
+    );
+    setState(() {
+      _showLensesCarousel = true;
+      _selectedLens = firstArLens;
+    });
+
     if (kIsWeb) {
-      debugPrint('Initializing Web Camera Kit with token: $_snapWebProductionToken (Staging: $_snapWebStagingToken)');
-      setState(() {
-        _showLensesCarousel = true;
-        _selectedLens ??= _builtinLenses.length > 1 ? _builtinLenses[1] : null;
-      });
+      debugPrint('Initializing Web Camera Kit with token: $_snapWebProductionToken (staging backup: $_snapWebStagingToken)');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✨ Live Aesthetic Lenses active! Swipe the carousel below to change effects.'),
-            duration: Duration(seconds: 3),
+          SnackBar(
+            backgroundColor: const Color(0xFF1E293B),
+            content: Row(
+              children: [
+                const Icon(Icons.auto_awesome, color: Color(0xFFFFFC00), size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '✨ ${firstArLens.name} active! Swipe carousel to try all AR lenses.',
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+            duration: const Duration(seconds: 3),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -2099,12 +2302,565 @@ class _CameraScreenState extends State<CameraScreen>
                 ),
               ),
               // On web, overlay the aesthetic tint gracefully on top of the camera stream
-              if (kIsWeb && _selectedLens != null)
+              if (kIsWeb && _selectedLens != null && !_selectedLens!.isAr)
                 _buildWebLensOverlay(_selectedLens!),
+              // Live Interactive Snapchat AR Face Lens Overlay (Web & Mobile!)
+              if (_selectedLens != null && _selectedLens!.isAr)
+                _buildArOverlay(_selectedLens!, Size(targetWidth, targetHeight), isFrontCamera),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildArOverlay(CameraLensEffect lens, Size viewSize, bool isFrontCamera) {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: SizedBox(
+          width: viewSize.width,
+          height: viewSize.height,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              switch (lens.arType) {
+                'dog' => _buildDogArFilter(viewSize),
+                'bunny' => _buildBunnyArFilter(viewSize),
+                'golden_crown' => _buildCrownArFilter(viewSize),
+                'cyber_visor' => _buildCyberVisorArFilter(viewSize),
+                'heart_blush' => _buildHeartBlushArFilter(viewSize),
+                'angel_halo' => _buildAngelHaloArFilter(viewSize),
+                'butterflies' => _buildButterfliesArFilter(viewSize),
+                'devil_horns' => _buildDevilHornsArFilter(viewSize),
+                _ => const SizedBox.shrink(),
+              },
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 1. Classic Snapchat Puppy Dog AR Filter (Ears, Nose & Animated Tongue)
+  Widget _buildDogArFilter(Size viewSize) {
+    return Stack(
+      children: [
+        // Left Floppy Dog Ear
+        Positioned(
+          top: viewSize.height * 0.08,
+          left: viewSize.width * 0.16,
+          child: Transform.rotate(
+            angle: -0.3,
+            child: Container(
+              width: 75,
+              height: 110,
+              decoration: BoxDecoration(
+                color: const Color(0xFF8D5B28),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(50),
+                  bottom: Radius.circular(40),
+                ),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(-3, 6)),
+                ],
+              ),
+              child: Center(
+                child: Container(
+                  width: 45,
+                  height: 75,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD49A6A),
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                ),
+              ),
+            ),
+          )
+              .animate(onPlay: (controller) => controller.repeat(reverse: true))
+              .rotate(duration: 900.ms, begin: -0.04, end: 0.04)
+              .moveY(duration: 700.ms, begin: -3, end: 3),
+        ),
+        // Right Floppy Dog Ear
+        Positioned(
+          top: viewSize.height * 0.08,
+          right: viewSize.width * 0.16,
+          child: Transform.rotate(
+            angle: 0.3,
+            child: Container(
+              width: 75,
+              height: 110,
+              decoration: BoxDecoration(
+                color: const Color(0xFF8D5B28),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(50),
+                  bottom: Radius.circular(40),
+                ),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(3, 6)),
+                ],
+              ),
+              child: Center(
+                child: Container(
+                  width: 45,
+                  height: 75,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD49A6A),
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                ),
+              ),
+            ),
+          )
+              .animate(onPlay: (controller) => controller.repeat(reverse: true))
+              .rotate(duration: 900.ms, begin: 0.04, end: -0.04)
+              .moveY(duration: 700.ms, begin: -3, end: 3),
+        ),
+        // Puppy Dog Nose with White Highlight & Whiskers
+        Positioned(
+          top: viewSize.height * 0.36,
+          left: (viewSize.width / 2) - 45,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 90,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E1E1E),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(30),
+                    bottom: Radius.circular(24),
+                  ),
+                  boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 3))],
+                ),
+                child: Stack(
+                  children: [
+                    Positioned(
+                      top: 8,
+                      left: 20,
+                      child: Container(
+                        width: 24,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.45),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Cute Animated Panting Dog Tongue
+              Container(
+                width: 38,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF5376),
+                  borderRadius: const BorderRadius.vertical(bottom: Radius.circular(22)),
+                  border: Border.all(color: const Color(0xFFD81B60), width: 1.5),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 6, offset: const Offset(0, 3)),
+                  ],
+                ),
+                child: Center(
+                  child: Container(width: 2, height: 26, color: const Color(0xFFD81B60)),
+                ),
+              )
+                  .animate(onPlay: (controller) => controller.repeat(reverse: true))
+                  .scaleY(duration: 500.ms, begin: 0.85, end: 1.15)
+                  .moveY(duration: 500.ms, begin: -2, end: 4),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // 2. Cute Bunny Ears & Heart Nose
+  Widget _buildBunnyArFilter(Size viewSize) {
+    return Stack(
+      children: [
+        // Bunny Ears
+        Positioned(
+          top: viewSize.height * 0.04,
+          left: (viewSize.width / 2) - 80,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Left Ear
+              Transform.rotate(
+                angle: -0.12,
+                child: Container(
+                  width: 48,
+                  height: 140,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(35),
+                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10)],
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 15),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFAEC9),
+                      borderRadius: BorderRadius.circular(25),
+                    ),
+                  ),
+                ),
+              )
+                  .animate(onPlay: (controller) => controller.repeat(reverse: true))
+                  .rotate(duration: 800.ms, begin: -0.06, end: 0.06),
+              const SizedBox(width: 40),
+              // Right Ear
+              Transform.rotate(
+                angle: 0.12,
+                child: Container(
+                  width: 48,
+                  height: 140,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(35),
+                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10)],
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 15),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFAEC9),
+                      borderRadius: BorderRadius.circular(25),
+                    ),
+                  ),
+                ),
+              )
+                  .animate(onPlay: (controller) => controller.repeat(reverse: true))
+                  .rotate(duration: 800.ms, begin: 0.06, end: -0.06),
+            ],
+          ),
+        ),
+        // Pink Anime Cheek Blush Left
+        Positioned(
+          top: viewSize.height * 0.38,
+          left: viewSize.width * 0.22,
+          child: Container(
+            width: 50,
+            height: 30,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFFFF4081).withValues(alpha: 0.35),
+            ),
+          ).animate(onPlay: (controller) => controller.repeat(reverse: true)).scale(duration: 1200.ms, begin: const Offset(0.9, 0.9), end: const Offset(1.1, 1.1)),
+        ),
+        // Pink Anime Cheek Blush Right
+        Positioned(
+          top: viewSize.height * 0.38,
+          right: viewSize.width * 0.22,
+          child: Container(
+            width: 50,
+            height: 30,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFFFF4081).withValues(alpha: 0.35),
+            ),
+          ).animate(onPlay: (controller) => controller.repeat(reverse: true)).scale(duration: 1200.ms, begin: const Offset(0.9, 0.9), end: const Offset(1.1, 1.1)),
+        ),
+        // Bunny Pink Heart Nose
+        Positioned(
+          top: viewSize.height * 0.36,
+          left: (viewSize.width / 2) - 18,
+          child: const Icon(Icons.favorite_rounded, color: Color(0xFFFF4081), size: 36),
+        ),
+      ],
+    );
+  }
+
+  // 3. Royal Golden Crown with Twinkling Sparkles
+  Widget _buildCrownArFilter(Size viewSize) {
+    return Stack(
+      children: [
+        Positioned(
+          top: viewSize.height * 0.07,
+          left: (viewSize.width / 2) - 75,
+          child: Container(
+            width: 150,
+            height: 90,
+            decoration: const BoxDecoration(
+              boxShadow: [
+                BoxShadow(color: Color(0x80F59E0B), blurRadius: 28, spreadRadius: 4),
+              ],
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                const Icon(
+                  Icons.emoji_events_rounded,
+                  color: Color(0xFFFFD700),
+                  size: 96,
+                ),
+                Positioned(
+                  top: 10,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(width: 8, height: 8, decoration: const BoxDecoration(color: Color(0xFFEF4444), shape: BoxShape.circle)),
+                      const SizedBox(width: 14),
+                      Container(width: 10, height: 10, decoration: const BoxDecoration(color: Color(0xFF3B82F6), shape: BoxShape.circle)),
+                      const SizedBox(width: 14),
+                      Container(width: 8, height: 8, decoration: const BoxDecoration(color: Color(0xFF10B981), shape: BoxShape.circle)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          )
+              .animate(onPlay: (controller) => controller.repeat(reverse: true))
+              .moveY(duration: 1400.ms, begin: -6, end: 6)
+              .shimmer(duration: 1800.ms, color: Colors.white),
+        ),
+        // Twinkling Sparkle Stars
+        Positioned(
+          top: viewSize.height * 0.12,
+          left: viewSize.width * 0.18,
+          child: const Icon(Icons.auto_awesome, color: Color(0xFFFFE082), size: 28)
+              .animate(onPlay: (controller) => controller.repeat(reverse: true))
+              .scale(duration: 600.ms, begin: const Offset(0.6, 0.6), end: const Offset(1.2, 1.2))
+              .rotate(duration: 2000.ms),
+        ),
+        Positioned(
+          top: viewSize.height * 0.09,
+          right: viewSize.width * 0.18,
+          child: const Icon(Icons.auto_awesome, color: Color(0xFFFFE082), size: 32)
+              .animate(onPlay: (controller) => controller.repeat(reverse: true))
+              .scale(duration: 800.ms, begin: const Offset(0.7, 0.7), end: const Offset(1.3, 1.3))
+              .rotate(duration: 2500.ms),
+        ),
+      ],
+    );
+  }
+
+  // 4. Futuristic Cyber Visor with Neon HUD & Targeting Reticle
+  Widget _buildCyberVisorArFilter(Size viewSize) {
+    return Stack(
+      children: [
+        // Visor Bar across eyes
+        Positioned(
+          top: viewSize.height * 0.27,
+          left: viewSize.width * 0.12,
+          right: viewSize.width * 0.12,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+              child: Container(
+                height: 64,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      const Color(0xFF06B6D4).withValues(alpha: 0.35),
+                      const Color(0xFF8B5CF6).withValues(alpha: 0.35),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFF00F0FF), width: 2),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x8000F0FF), blurRadius: 16, spreadRadius: 2),
+                  ],
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text('SYS: AR_ONLINE', style: TextStyle(color: Color(0xFF00F0FF), fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                        Text('FOV: 120° // TRACK: LOCK', style: TextStyle(color: Colors.white70, fontSize: 9)),
+                      ],
+                    ),
+                    Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: const Color(0xFF00F0FF), width: 1.5),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Center(
+                        child: Icon(Icons.filter_center_focus, color: Color(0xFF00F0FF), size: 18),
+                      ),
+                    ).animate(onPlay: (controller) => controller.repeat()).rotate(duration: 3000.ms),
+                    const Text('ABUAD HUD v2.5', style: TextStyle(color: Color(0xFFFF007F), fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
+                  ],
+                ),
+              ),
+            ),
+          )
+              .animate(onPlay: (controller) => controller.repeat(reverse: true))
+              .shimmer(duration: 1500.ms, color: const Color(0xFF00F0FF)),
+        ),
+      ],
+    );
+  }
+
+  // 5. Floating Heart Blush & Anime Freckles
+  Widget _buildHeartBlushArFilter(Size viewSize) {
+    return Stack(
+      children: [
+        // Rosy Cheeks
+        Positioned(
+          top: viewSize.height * 0.37,
+          left: viewSize.width * 0.18,
+          child: Container(
+            width: 60,
+            height: 35,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFFFF1493).withValues(alpha: 0.28),
+            ),
+          ),
+        ),
+        Positioned(
+          top: viewSize.height * 0.37,
+          right: viewSize.width * 0.18,
+          child: Container(
+            width: 60,
+            height: 35,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFFFF1493).withValues(alpha: 0.28),
+            ),
+          ),
+        ),
+        // Floating Animated Hearts Rising
+        Positioned(
+          top: viewSize.height * 0.28,
+          left: viewSize.width * 0.24,
+          child: const Icon(Icons.favorite, color: Color(0xFFFF3366), size: 26)
+              .animate(onPlay: (controller) => controller.repeat())
+              .moveY(duration: 2000.ms, begin: 20, end: -60)
+              .fadeOut(duration: 2000.ms),
+        ),
+        Positioned(
+          top: viewSize.height * 0.24,
+          right: viewSize.width * 0.22,
+          child: const Icon(Icons.favorite, color: Color(0xFFFF6699), size: 32)
+              .animate(onPlay: (controller) => controller.repeat())
+              .moveY(duration: 2200.ms, begin: 30, end: -70)
+              .fadeOut(duration: 2200.ms),
+        ),
+        Positioned(
+          top: viewSize.height * 0.32,
+          left: viewSize.width * 0.46,
+          child: const Icon(Icons.favorite, color: Color(0xFFFF0066), size: 22)
+              .animate(onPlay: (controller) => controller.repeat())
+              .moveY(duration: 1800.ms, begin: 10, end: -50)
+              .fadeOut(duration: 1800.ms),
+        ),
+      ],
+    );
+  }
+
+  // 6. Glowing Angel Halo & Heavenly Drifting Feathers
+  Widget _buildAngelHaloArFilter(Size viewSize) {
+    return Stack(
+      children: [
+        Positioned(
+          top: viewSize.height * 0.06,
+          left: (viewSize.width / 2) - 80,
+          child: Container(
+            width: 160,
+            height: 48,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(color: const Color(0xFFFFEA00), width: 7),
+              boxShadow: const [
+                BoxShadow(color: Color(0xFFFFEA00), blurRadius: 28, spreadRadius: 6),
+                BoxShadow(color: Colors.white, blurRadius: 10, spreadRadius: 2),
+              ],
+            ),
+          )
+              .animate(onPlay: (controller) => controller.repeat(reverse: true))
+              .moveY(duration: 1600.ms, begin: -8, end: 8),
+        ),
+        // Drifting Feathers
+        Positioned(
+          top: viewSize.height * 0.18,
+          left: viewSize.width * 0.15,
+          child: const Icon(Icons.spa_rounded, color: Colors.white70, size: 24)
+              .animate(onPlay: (controller) => controller.repeat())
+              .moveY(duration: 3000.ms, begin: -10, end: 120)
+              .rotate(duration: 3000.ms)
+              .fadeOut(duration: 3000.ms),
+        ),
+        Positioned(
+          top: viewSize.height * 0.15,
+          right: viewSize.width * 0.18,
+          child: const Icon(Icons.spa_rounded, color: Colors.white70, size: 28)
+              .animate(onPlay: (controller) => controller.repeat())
+              .moveY(duration: 3400.ms, begin: -20, end: 130)
+              .rotate(duration: 3400.ms)
+              .fadeOut(duration: 3400.ms),
+        ),
+      ],
+    );
+  }
+
+  // 7. Fluttering Iridescent Butterflies Orbiting
+  Widget _buildButterfliesArFilter(Size viewSize) {
+    return Stack(
+      children: [
+        Positioned(
+          top: viewSize.height * 0.12,
+          left: viewSize.width * 0.15,
+          child: const Icon(Icons.flutter_dash_rounded, color: Color(0xFF00E5FF), size: 36)
+              .animate(onPlay: (controller) => controller.repeat(reverse: true))
+              .scale(duration: 600.ms, begin: const Offset(0.75, 1.0), end: const Offset(1.15, 0.9))
+              .move(duration: 2000.ms, begin: const Offset(-10, 0), end: const Offset(20, -25)),
+        ),
+        Positioned(
+          top: viewSize.height * 0.09,
+          right: viewSize.width * 0.18,
+          child: const Icon(Icons.flutter_dash_rounded, color: Color(0xFFFFD700), size: 42)
+              .animate(onPlay: (controller) => controller.repeat(reverse: true))
+              .scale(duration: 500.ms, begin: const Offset(0.7, 1.0), end: const Offset(1.2, 0.95))
+              .move(duration: 2200.ms, begin: const Offset(15, 0), end: const Offset(-25, -20)),
+        ),
+        Positioned(
+          top: viewSize.height * 0.22,
+          right: viewSize.width * 0.10,
+          child: const Icon(Icons.flutter_dash_rounded, color: Color(0xFFFF4081), size: 30)
+              .animate(onPlay: (controller) => controller.repeat(reverse: true))
+              .scale(duration: 650.ms, begin: const Offset(0.8, 1.0), end: const Offset(1.1, 0.9))
+              .move(duration: 1800.ms, begin: const Offset(0, 10), end: const Offset(-15, -30)),
+        ),
+      ],
+    );
+  }
+
+  // 8. Glowing Neon Devil Horns
+  Widget _buildDevilHornsArFilter(Size viewSize) {
+    return Stack(
+      children: [
+        Positioned(
+          top: viewSize.height * 0.08,
+          left: viewSize.width * 0.22,
+          child: Transform.rotate(
+            angle: -0.35,
+            child: const Icon(Icons.local_fire_department_rounded, color: Color(0xFFFF1744), size: 54),
+          )
+              .animate(onPlay: (controller) => controller.repeat(reverse: true))
+              .scale(duration: 800.ms, begin: const Offset(0.9, 0.9), end: const Offset(1.1, 1.1))
+              .shimmer(duration: 1200.ms, color: const Color(0xFFFF8A80)),
+        ),
+        Positioned(
+          top: viewSize.height * 0.08,
+          right: viewSize.width * 0.22,
+          child: Transform.rotate(
+            angle: 0.35,
+            child: const Icon(Icons.local_fire_department_rounded, color: Color(0xFFFF1744), size: 54),
+          )
+              .animate(onPlay: (controller) => controller.repeat(reverse: true))
+              .scale(duration: 800.ms, begin: const Offset(0.9, 0.9), end: const Offset(1.1, 1.1))
+              .shimmer(duration: 1200.ms, color: const Color(0xFFFF8A80)),
+        ),
+      ],
     );
   }
 
@@ -2434,49 +3190,78 @@ class _CameraScreenState extends State<CameraScreen>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        width: isSelected ? 56 : 50,
-                        height: isSelected ? 56 : 50,
-                        padding: const EdgeInsets.all(2.5),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: isSelected
-                              ? const SweepGradient(
-                                  colors: [
-                                    Color(0xFF8B5CF6),
-                                    Color(0xFFEC4899),
-                                    Color(0xFF38BDF8),
-                                    Color(0xFF8B5CF6),
-                                  ],
-                                )
-                              : null,
-                          border: isSelected ? null : Border.all(color: Colors.white30, width: 1.5),
-                          boxShadow: isSelected
-                              ? [
-                                  BoxShadow(
-                                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.5),
-                                    blurRadius: 10,
-                                    spreadRadius: 2,
-                                  ),
-                                ]
-                              : null,
-                        ),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: lens.previewGradient,
+                      Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            width: isSelected ? 56 : 50,
+                            height: isSelected ? 56 : 50,
+                            padding: const EdgeInsets.all(2.5),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: isSelected
+                                  ? const SweepGradient(
+                                      colors: [
+                                        Color(0xFF8B5CF6),
+                                        Color(0xFFEC4899),
+                                        Color(0xFF38BDF8),
+                                        Color(0xFF8B5CF6),
+                                      ],
+                                    )
+                                  : null,
+                              border: isSelected ? null : Border.all(color: Colors.white30, width: 1.5),
+                              boxShadow: isSelected
+                                  ? [
+                                      BoxShadow(
+                                        color: const Color(0xFF8B5CF6).withValues(alpha: 0.5),
+                                        blurRadius: 10,
+                                        spreadRadius: 2,
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: lens.previewGradient,
+                                ),
+                              ),
+                              child: Icon(
+                                lens.icon,
+                                color: Colors.white,
+                                size: isSelected ? 22 : 18,
+                              ),
                             ),
                           ),
-                          child: Icon(
-                            lens.icon,
-                            color: Colors.white,
-                            size: isSelected ? 22 : 18,
-                          ),
-                        ),
+                          if (lens.isAr)
+                            Positioned(
+                              top: -2,
+                              right: -2,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFFC00),
+                                  borderRadius: BorderRadius.circular(6),
+                                  boxShadow: const [
+                                    BoxShadow(color: Colors.black54, blurRadius: 4),
+                                  ],
+                                ),
+                                child: const Text(
+                                  'AR',
+                                  style: TextStyle(
+                                    color: Colors.black,
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: -0.5,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 4),
                       Text(
