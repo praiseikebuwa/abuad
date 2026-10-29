@@ -74,7 +74,7 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _postRepo = ref.read(postRepositoryProvider);
-    _startOverlayTimer();
+    // Overlay UI stays visible by default so creator info and buttons are immediately accessible
     // We'll manage the controller via the provider in build/didUpdateWidget
   }
 
@@ -179,6 +179,9 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
     }
     if (_controller == null || !_controller!.value.isInitialized) return;
     if (widget.isActive && !oldWidget.isActive) {
+      if (!_showOverlayUi) {
+        setState(() => _showOverlayUi = true);
+      }
       _controller!.play();
       _startWatchSessionIfNeeded();
     } else if (!widget.isActive && oldWidget.isActive) {
@@ -283,18 +286,13 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
     }
   }
 
-  void _startOverlayTimer() {
-    _overlayTimer?.cancel();
-    _overlayTimer = Timer(const Duration(seconds: 4), () {
-      if (!mounted) return;
-      setState(() => _showOverlayUi = false);
-    });
-  }
-
-
   void _onSurfaceTap() {
+    if (!_showOverlayUi) {
+      _overlayTimer?.cancel();
+      setState(() => _showOverlayUi = true);
+      return;
+    }
     _togglePlayback();
-    _startOverlayTimer();
   }
 
   void _onDoubleTap(Offset position, WidgetRef ref, domain.Post post) {
@@ -488,10 +486,13 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
                   ),
 
                   Positioned.fill(
-                    child: AnimatedOpacity(
-                      duration: const Duration(milliseconds: 220),
-                      opacity: (_showOverlayUi && !_isHoldingToPause) ? 1 : 0,
-                      child: _buildGradientOverlay(),
+                    child: IgnorePointer(
+                      ignoring: !_showOverlayUi,
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 220),
+                        opacity: (_showOverlayUi && !_isHoldingToPause) ? 1 : 0,
+                        child: _buildGradientOverlay(),
+                      ),
                     ),
                   ),
 
@@ -500,12 +501,15 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
                     left: 16,
                     right: 80,
                     bottom: MediaQuery.of(context).padding.bottom + 22,
-                    child: AnimatedOpacity(
-                      duration: const Duration(milliseconds: 220),
-                      opacity: (_showOverlayUi && !_isHoldingToPause) ? 1 : 0,
-                      child: SafeArea(
-                        top: false,
-                        child: _buildCaptionSection(livePost),
+                    child: IgnorePointer(
+                      ignoring: !_showOverlayUi,
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 220),
+                        opacity: (_showOverlayUi && !_isHoldingToPause) ? 1 : 0,
+                        child: SafeArea(
+                          top: false,
+                          child: _buildCaptionSection(livePost),
+                        ),
                       ),
                     ),
                   ),
@@ -514,16 +518,19 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
                   Positioned(
                     right: 12,
                     bottom: MediaQuery.of(context).padding.bottom + 85,
-                    child: AnimatedOpacity(
-                      duration: const Duration(milliseconds: 220),
-                      opacity: (_showOverlayUi && !_isHoldingToPause) ? 1 : 0,
-                      child: SafeArea(
-                        top: false,
-                        child: _buildActionColumn(
-                          context,
-                          livePost,
-                          isLiked,
-                          likeCount,
+                    child: IgnorePointer(
+                      ignoring: !_showOverlayUi,
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 220),
+                        opacity: (_showOverlayUi && !_isHoldingToPause) ? 1 : 0,
+                        child: SafeArea(
+                          top: false,
+                          child: _buildActionColumn(
+                            context,
+                            livePost,
+                            isLiked,
+                            likeCount,
+                          ),
                         ),
                       ),
                     ),
@@ -533,17 +540,20 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
                   Positioned(
                     right: 12,
                     bottom: MediaQuery.of(context).padding.bottom + 22,
-                    child: AnimatedOpacity(
-                      duration: const Duration(milliseconds: 220),
-                      opacity: (_showOverlayUi && !_isHoldingToPause) ? 1 : 0,
-                      child: SafeArea(
-                        top: false,
-                        child: GestureDetector(
-                          onTap: () {
-                            HapticFeedback.lightImpact();
-                            context.push('/audio-track', extra: livePost);
-                          },
-                          child: _MusicDisc(post: livePost),
+                    child: IgnorePointer(
+                      ignoring: !_showOverlayUi,
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 220),
+                        opacity: (_showOverlayUi && !_isHoldingToPause) ? 1 : 0,
+                        child: SafeArea(
+                          top: false,
+                          child: GestureDetector(
+                            onTap: () {
+                              HapticFeedback.lightImpact();
+                              context.push('/audio-track', extra: livePost);
+                            },
+                            child: _MusicDisc(post: livePost),
+                          ),
                         ),
                       ),
                     ),

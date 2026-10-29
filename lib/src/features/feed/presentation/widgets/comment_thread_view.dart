@@ -12,23 +12,20 @@ import '../../../user/data/user_repository.dart';
 import '../../data/post_repository.dart';
 import '../../domain/post.dart';
 
-/// Distinctive Creator Badge matching the design mockup
+/// Distinctive Creator Badge with clean blue text
 class CreatorBadge extends StatelessWidget {
   final double fontSize;
   const CreatorBadge({super.key, this.fontSize = 10});
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
       decoration: BoxDecoration(
-        color: isDark
-            ? const Color(0xFF78350F).withValues(alpha: 0.45)
-            : const Color(0xFFFEF3C7),
+        color: const Color(0xFF0284C7).withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(5),
         border: Border.all(
-          color: const Color(0xFFF59E0B).withValues(alpha: 0.6),
+          color: const Color(0xFF0284C7).withValues(alpha: 0.35),
           width: 0.8,
         ),
       ),
@@ -36,8 +33,8 @@ class CreatorBadge extends StatelessWidget {
         'Creator',
         style: TextStyle(
           fontSize: fontSize,
-          fontWeight: FontWeight.w800,
-          color: isDark ? const Color(0xFFFBBF24) : const Color(0xFFD97706),
+          fontWeight: FontWeight.w700,
+          color: const Color(0xFF0284C7),
           letterSpacing: 0.2,
         ),
       ),
@@ -49,30 +46,30 @@ class CreatorBadge extends StatelessWidget {
 class CommentThreadData {
   final Map<String, dynamic> rootComment;
   final List<Map<String, dynamic>> replies;
-  final bool hasCreatorInteraction;
+  final bool isPinned;
   final int verificationTier; // 3: Gold, 2: Purple/Violet, 1: Blue, 0: None
   final int engagementScore;
 
   const CommentThreadData({
     required this.rootComment,
     required this.replies,
-    required this.hasCreatorInteraction,
+    required this.isPinned,
     required this.verificationTier,
     required this.engagementScore,
   });
 }
 
-/// Premium Comment & Reply Thread View implementing the exact 5-tier display hierarchy:
-/// Priority 1: Creator Replies & Creator Pinned Conversations (Top)
-/// Priority 2: Gold Verified Users
-/// Priority 3: Purple / Violet Verified Users
-/// Priority 4: Blue Verified Users
-/// Priority 5: Other / Non-Verified Comments (Under "Other comments" divider)
+/// Comment & Reply Thread View:
+/// Priority 0: Explicitly Pinned Conversations (Pinned by creator)
+/// Priority 1: Gold Verified Users
+/// Priority 2: Purple / Violet Verified Users
+/// Priority 3: Blue Verified Users
+/// Priority 4: Other / Non-Verified Comments (Under "Other comments" divider)
 class CommentThreadView extends ConsumerStatefulWidget {
   final Post post;
   final List<Map<String, dynamic>> comments;
   final Function(String commentId, String userName) onReply;
-  final Function(BuildContext context, String commentId, bool isOwn, {String? currentContent})? onMenu;
+  final Function(BuildContext context, String commentId, bool isOwn, {String? currentContent, bool? isPinned})? onMenu;
   final String? currentUserId;
   final bool isScrollable;
 
@@ -142,12 +139,7 @@ class _CommentThreadViewState extends ConsumerState<CommentThreadView> {
     final List<CommentThreadData> threads = topLevelComments.map((root) {
       final rootId = root['id']?.toString() ?? '';
       final replies = repliesByParentId[rootId] ?? const [];
-
-      final rootAuthorId = (root['authorId'] ?? root['userId'] ?? '').toString();
-      final isRootByCreator = creatorId.isNotEmpty && rootAuthorId == creatorId;
-      final hasCreatorReply = creatorId.isNotEmpty &&
-          replies.any((r) => (r['authorId'] ?? r['userId'] ?? '').toString() == creatorId);
-      final hasCreatorInteraction = isRootByCreator || hasCreatorReply;
+      final isPinned = root['isPinned'] == true || root['pinned'] == true;
 
       // Extract verification tier
       final vType = root['authorVerificationType'] ??
@@ -163,27 +155,27 @@ class _CommentThreadViewState extends ConsumerState<CommentThreadView> {
       return CommentThreadData(
         rootComment: root,
         replies: replies,
-        hasCreatorInteraction: hasCreatorInteraction,
+        isPinned: isPinned,
         verificationTier: tierWeight,
         engagementScore: engagementScore,
       );
     }).toList();
 
     // 3. Segment into display priority tiers
-    // Tier 1: Creator Replies & Creator Pinned Threads (Top)
-    final creatorThreads = <CommentThreadData>[];
-    // Tier 2: Gold Verified Users (3)
+    // Tier 0: Explicitly Pinned Threads (Top)
+    final pinnedThreads = <CommentThreadData>[];
+    // Tier 1: Gold Verified Users (3)
     final goldThreads = <CommentThreadData>[];
-    // Tier 3: Purple / Violet Verified Users (2)
+    // Tier 2: Purple / Violet Verified Users (2)
     final purpleThreads = <CommentThreadData>[];
-    // Tier 4: Blue Verified Users (1)
+    // Tier 3: Blue Verified Users (1)
     final blueThreads = <CommentThreadData>[];
-    // Tier 5: Other / Non-Verified Comments (0)
+    // Tier 4: Other / Non-Verified Comments (0)
     final otherThreads = <CommentThreadData>[];
 
     for (final thread in threads) {
-      if (thread.hasCreatorInteraction) {
-        creatorThreads.add(thread);
+      if (thread.isPinned) {
+        pinnedThreads.add(thread);
       } else if (thread.verificationTier == 3) {
         goldThreads.add(thread);
       } else if (thread.verificationTier == 2) {
@@ -205,53 +197,62 @@ class _CommentThreadViewState extends ConsumerState<CommentThreadView> {
       return tsB.compareTo(tsA);
     }
 
-    creatorThreads.sort(compareSecondary);
+    pinnedThreads.sort(compareSecondary);
     goldThreads.sort(compareSecondary);
     purpleThreads.sort(compareSecondary);
     blueThreads.sort(compareSecondary);
     otherThreads.sort(compareSecondary);
 
-    // Auto-expand creator reply threads on first load so users immediately see the creator interaction
-    for (final ct in creatorThreads) {
-      final rootId = ct.rootComment['id']?.toString() ?? '';
-      if (rootId.isNotEmpty && !_autoExpandedInitialized.contains(rootId)) {
-        _autoExpandedInitialized.add(rootId);
-        if (ct.replies.isNotEmpty) {
-          _expandedThreadIds.add(rootId);
+    // Auto-expand threads with replies on first load and keep user/creator reply threads expanded
+    for (final thread in threads) {
+      final rootId = thread.rootComment['id']?.toString() ?? '';
+      if (rootId.isNotEmpty) {
+        if (!_autoExpandedInitialized.contains(rootId)) {
+          _autoExpandedInitialized.add(rootId);
+          if (thread.replies.isNotEmpty) {
+            _expandedThreadIds.add(rootId);
+          }
+        } else if (thread.replies.isNotEmpty) {
+          final hasUserReply = thread.replies.any((r) =>
+              (widget.currentUserId != null && r['authorId'] == widget.currentUserId) ||
+              (creatorId.isNotEmpty && r['authorId'] == creatorId));
+          if (hasUserReply) {
+            _expandedThreadIds.add(rootId);
+          }
         }
       }
     }
 
-    final hasVerifiedOrCreator = creatorThreads.isNotEmpty ||
+    final hasVerifiedOrPinned = pinnedThreads.isNotEmpty ||
         goldThreads.isNotEmpty ||
         purpleThreads.isNotEmpty ||
         blueThreads.isNotEmpty;
 
     final allItems = <Widget>[];
 
-    // Priority 1: Creator Threads
-    for (final t in creatorThreads) {
-      allItems.add(_buildThreadCard(t, isCreatorHighlighted: true, isDark: isDark));
+    // Priority 0: Explicitly Pinned Threads
+    for (final t in pinnedThreads) {
+      allItems.add(_buildThreadCard(t, isDark: isDark));
     }
 
-    // Priority 2: Gold Verified
+    // Priority 1: Gold Verified
     for (final t in goldThreads) {
-      allItems.add(_buildThreadCard(t, isCreatorHighlighted: false, isDark: isDark));
+      allItems.add(_buildThreadCard(t, isDark: isDark));
     }
 
-    // Priority 3: Purple / Violet Verified
+    // Priority 2: Purple / Violet Verified
     for (final t in purpleThreads) {
-      allItems.add(_buildThreadCard(t, isCreatorHighlighted: false, isDark: isDark));
+      allItems.add(_buildThreadCard(t, isDark: isDark));
     }
 
-    // Priority 4: Blue Verified
+    // Priority 3: Blue Verified
     for (final t in blueThreads) {
-      allItems.add(_buildThreadCard(t, isCreatorHighlighted: false, isDark: isDark));
+      allItems.add(_buildThreadCard(t, isDark: isDark));
     }
 
-    // Priority 5: Non-Verified / Other Comments
+    // Priority 4: Non-Verified / Other Comments
     if (otherThreads.isNotEmpty) {
-      if (hasVerifiedOrCreator) {
+      if (hasVerifiedOrPinned) {
         allItems.add(
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -281,7 +282,7 @@ class _CommentThreadViewState extends ConsumerState<CommentThreadView> {
       }
 
       for (final t in otherThreads) {
-        allItems.add(_buildThreadCard(t, isCreatorHighlighted: false, isDark: isDark));
+        allItems.add(_buildThreadCard(t, isDark: isDark));
       }
     }
 
@@ -337,7 +338,6 @@ class _CommentThreadViewState extends ConsumerState<CommentThreadView> {
 
   Widget _buildThreadCard(
     CommentThreadData thread, {
-    required bool isCreatorHighlighted,
     required bool isDark,
   }) {
     final root = thread.rootComment;
@@ -349,8 +349,8 @@ class _CommentThreadViewState extends ConsumerState<CommentThreadView> {
     Widget cardBody = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Pinned by creator banner
-        if (isCreatorHighlighted)
+        // Pinned by creator banner - only shown if explicitly pinned
+        if (thread.isPinned)
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
             child: Row(
@@ -358,7 +358,7 @@ class _CommentThreadViewState extends ConsumerState<CommentThreadView> {
                 const Icon(
                   CupertinoIcons.pin_fill,
                   size: 13,
-                  color: Color(0xFFF59E0B),
+                  color: Color(0xFF0284C7),
                 ),
                 const SizedBox(width: 5),
                 Text(
@@ -366,7 +366,7 @@ class _CommentThreadViewState extends ConsumerState<CommentThreadView> {
                   style: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w700,
-                    color: isDark ? const Color(0xFFFBBF24) : const Color(0xFFD97706),
+                    color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7),
                   ),
                 ),
                 if (isRootByCreator) ...[
@@ -399,7 +399,13 @@ class _CommentThreadViewState extends ConsumerState<CommentThreadView> {
             (root['authorName'] ?? root['userName'] ?? 'Student').toString(),
           ),
           onMenu: widget.onMenu != null
-              ? (ctx, id, isOwn, {content}) => widget.onMenu!(ctx, id, isOwn, currentContent: content)
+              ? (ctx, id, isOwn, {content, isPinned}) => widget.onMenu!(
+                    ctx,
+                    id,
+                    isOwn,
+                    currentContent: content,
+                    isPinned: isPinned ?? (root['isPinned'] == true),
+                  )
               : null,
           currentUserId: widget.currentUserId,
           isDark: isDark,
@@ -410,6 +416,7 @@ class _CommentThreadViewState extends ConsumerState<CommentThreadView> {
           AnimatedCrossFade(
             firstChild: const SizedBox.shrink(),
             secondChild: _RepliesTree(
+              rootId: rootId,
               postId: widget.post.id,
               creatorId: creatorId,
               replies: thread.replies,
@@ -426,31 +433,6 @@ class _CommentThreadViewState extends ConsumerState<CommentThreadView> {
       ],
     );
 
-    // If it's a creator thread, frame it with the golden/amber highlighted card from the mockup
-    if (isCreatorHighlighted) {
-      return Container(
-        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: isDark
-              ? const Color(0xFF1E1A11).withValues(alpha: 0.7)
-              : const Color(0xFFFFFBEB),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: const Color(0xFFF59E0B).withValues(alpha: 0.35),
-            width: 1.2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFFF59E0B).withValues(alpha: 0.08),
-              blurRadius: 10,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: cardBody,
-      );
-    }
-
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       child: cardBody,
@@ -460,15 +442,17 @@ class _CommentThreadViewState extends ConsumerState<CommentThreadView> {
 
 /// Indented Replies Tree with dotted/branched connector lines and node dots
 class _RepliesTree extends StatelessWidget {
+  final String rootId;
   final String postId;
   final String creatorId;
   final List<Map<String, dynamic>> replies;
   final String? currentUserId;
   final Function(String commentId, String userName) onReply;
-  final Function(BuildContext context, String commentId, bool isOwn, {String? currentContent})? onMenu;
+  final Function(BuildContext context, String commentId, bool isOwn, {String? currentContent, bool? isPinned})? onMenu;
   final bool isDark;
 
   const _RepliesTree({
+    required this.rootId,
     required this.postId,
     required this.creatorId,
     required this.replies,
@@ -504,7 +488,7 @@ class _RepliesTree extends StatelessWidget {
                   child: CustomPaint(
                     painter: _ThreadConnectorPainter(
                       isLast: isLast,
-                      color: isCreatorReply ? const Color(0xFFF59E0B) : connectorColor,
+                      color: isCreatorReply ? const Color(0xFF0284C7) : connectorColor,
                       isHighlighted: isCreatorReply,
                     ),
                   ),
@@ -522,11 +506,17 @@ class _RepliesTree extends StatelessWidget {
                       isExpanded: false,
                       onToggleReplies: () {},
                       onReply: () => onReply(
-                        reply['id']?.toString() ?? '',
+                        rootId,
                         (reply['authorName'] ?? reply['userName'] ?? 'Student').toString(),
                       ),
                       onMenu: onMenu != null
-                          ? (ctx, id, isOwn, {content}) => onMenu!(ctx, id, isOwn, currentContent: content)
+                          ? (ctx, id, isOwn, {content, isPinned}) => onMenu!(
+                                ctx,
+                                id,
+                                isOwn,
+                                currentContent: content,
+                                isPinned: isPinned ?? (reply['isPinned'] == true),
+                              )
                           : null,
                       currentUserId: currentUserId,
                       isDark: isDark,
@@ -615,7 +605,7 @@ class _CommentRow extends ConsumerWidget {
   final bool isExpanded;
   final VoidCallback onToggleReplies;
   final VoidCallback onReply;
-  final Function(BuildContext context, String commentId, bool isOwn, {String? content})? onMenu;
+  final Function(BuildContext context, String commentId, bool isOwn, {String? content, bool? isPinned})? onMenu;
   final String? currentUserId;
   final bool isDark;
   final bool isCreatorReply;
@@ -673,7 +663,13 @@ class _CommentRow extends ConsumerWidget {
 
         return InkWell(
           onLongPress: onMenu != null
-              ? () => onMenu!(context, commentId, isOwn, content: content)
+              ? () => onMenu!(
+                    context,
+                    commentId,
+                    isOwn,
+                    content: content,
+                    isPinned: comment['isPinned'] == true,
+                  )
               : null,
           borderRadius: BorderRadius.circular(12),
           child: Padding(
@@ -747,7 +743,13 @@ class _CommentRow extends ConsumerWidget {
                           const Spacer(),
                           if (onMenu != null)
                             GestureDetector(
-                              onTap: () => onMenu!(context, commentId, isOwn, content: content),
+                              onTap: () => onMenu!(
+                                context,
+                                commentId,
+                                isOwn,
+                                content: content,
+                                isPinned: comment['isPinned'] == true,
+                              ),
                               child: Padding(
                                 padding: const EdgeInsets.only(left: 6, bottom: 2),
                                 child: Icon(

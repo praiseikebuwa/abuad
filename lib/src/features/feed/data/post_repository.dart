@@ -158,11 +158,12 @@ class PostRepository {
       'authorVerificationType': authorVerificationType,
       'authorIsVerified': isVerified,
       'content': (raw['content'] ?? raw['text'] ?? '').toString(),
-      'parentId': raw['parentId'] ?? raw['parent_id'] ?? raw['parentCommentId'],
+      'parentId': raw['parentId'] ?? raw['parent_id'] ?? raw['parentCommentId'] ?? raw['commentId'],
       'timestamp': timestamp,
       'createdAt': DateTime.fromMillisecondsSinceEpoch(timestamp).toIso8601String(),
       'likesCount': (raw['likesCount'] ?? raw['likes_count'] ?? raw['_count']?['likes'] ?? 0) as int,
       'isLiked': (raw['isLiked'] ?? raw['is_liked'] ?? false) as bool,
+      'isPinned': (raw['isPinned'] == true || raw['is_pinned'] == true || raw['pinned'] == true),
       'imageUrl': raw['imageUrl'] ?? raw['image_url'],
     };
   }
@@ -339,7 +340,19 @@ class PostRepository {
         final data = jsonDecode(res.body);
         if (data['success'] == true && data['data'] is List) {
           final List list = data['data'];
-          final serverComments = list.map((e) => _normalizeCommentMap(Map<String, dynamic>.from(e))).toList();
+          final serverComments = <Map<String, dynamic>>[];
+          for (final item in list) {
+            final e = Map<String, dynamic>.from(item as Map);
+            serverComments.add(_normalizeCommentMap(e));
+            if (e['replies'] is List) {
+              for (final replyItem in (e['replies'] as List)) {
+                final r = Map<String, dynamic>.from(replyItem as Map);
+                r['parentId'] ??= e['id'];
+                r['postId'] ??= e['postId'] ?? postId;
+                serverComments.add(_normalizeCommentMap(r));
+              }
+            }
+          }
           
           final existingLocal = _localComments[postId] ?? [];
           final serverIds = serverComments.map((c) => c['id'].toString()).toSet();
@@ -601,7 +614,10 @@ class PostRepository {
       if (res.statusCode == 200 || res.statusCode == 201) {
         final data = jsonDecode(res.body);
         if (data['data'] != null) {
-          final serverComment = _normalizeCommentMap(Map<String, dynamic>.from(data['data']));
+          final serverCommentData = Map<String, dynamic>.from(data['data']);
+          serverCommentData['parentId'] ??= parentId ?? parentCommentId;
+          serverCommentData['postId'] ??= postId;
+          final serverComment = _normalizeCommentMap(serverCommentData);
           final list = _localComments[postId];
           if (list != null) {
             final idx = list.indexWhere((c) => c['id'] == tempCommentId);
@@ -660,6 +676,24 @@ class PostRepository {
       await ApiClient.post('/posts/$postId/comment/$commentId/like', {});
     } catch (e) {
       debugPrint('Error toggling comment like: $e');
+    }
+  }
+
+  Future<void> togglePinComment(String postId, String commentId) async {
+    if (_localComments.containsKey(postId)) {
+      final list = _localComments[postId]!;
+      final idx = list.indexWhere((c) => c['id'] == commentId);
+      if (idx != -1) {
+        final currentPinned = list[idx]['isPinned'] == true;
+        list[idx]['isPinned'] = !currentPinned;
+        _commentsController.add(Map.from(_localComments));
+      }
+    }
+
+    try {
+      await ApiClient.post('/posts/$postId/comment/$commentId/pin', {});
+    } catch (e) {
+      debugPrint('Error pinning comment: $e');
     }
   }
 

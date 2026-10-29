@@ -32,6 +32,7 @@ import '../../user/data/user_repository.dart';
 import '../../../core/services/image_upload_service.dart';
 import '../../camera/presentation/camera_screen.dart';
 import '../../../shared/widgets/user_avatar.dart';
+import '../../../shared/widgets/autoplay_live_media_widget.dart';
 import './widgets/shared_post_preview.dart';
 import '../../../core/services/media_saver.dart';
 import '../../marketplace/data/marketplace_repository.dart';
@@ -4818,20 +4819,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             Center(
               child: hasImg
                   ? (stk.imageUrl.startsWith('http')
-                      ? CachedNetworkImage(
-                          imageUrl: stk.imageUrl,
+                      ? AutoPlayLiveMediaWidget(
+                          url: stk.animatedUrl ?? stk.imageUrl,
                           fit: BoxFit.contain,
-                          placeholder: (context, url) => const Center(
-                            child: SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: AppColors.secondaryTeal,
-                              ),
-                            ),
-                          ),
-                          errorWidget: (context, url, error) => Text(
+                          errorWidget: Text(
                             stk.title,
                             textAlign: TextAlign.center,
                             style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
@@ -5059,12 +5050,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ),
                 if (hasImg)
                   Container(
-                    width: 70,
-                    height: 70,
+                    width: 90,
+                    height: 90,
                     margin: const EdgeInsets.only(bottom: 12),
                     child: message.imageUrl!.startsWith('http')
-                        ? CachedNetworkImage(
-                            imageUrl: message.imageUrl!,
+                        ? AutoPlayLiveMediaWidget(
+                            url: message.imageUrl,
                             fit: BoxFit.contain,
                           )
                         : Image.file(
@@ -5122,62 +5113,71 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       onTap: () => _showSaveStickerDialog(message),
       onLongPress: () => _showSaveStickerDialog(message),
       child: Container(
-      constraints: const BoxConstraints(maxWidth: 105, maxHeight: 105),
-      margin: const EdgeInsets.symmetric(vertical: 2),
-      decoration: BoxDecoration(
-        color: hasImg
-            ? Colors.transparent
-            : (isMe ? const Color(0xFF4F46E5) : (isDark ? Colors.black : const Color(0xFFF1F5F9))),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: isDark ? Colors.white12 : Colors.black.withValues(alpha: 0.08),
-          width: 1.2,
+        constraints: const BoxConstraints(maxWidth: 140, maxHeight: 140),
+        margin: const EdgeInsets.symmetric(vertical: 2),
+        decoration: BoxDecoration(
+          color: hasImg
+              ? Colors.transparent
+              : (isMe ? const Color(0xFF4F46E5) : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9))),
+          borderRadius: BorderRadius.circular(14),
+          border: hasImg
+              ? null
+              : Border.all(
+                  color: isDark ? Colors.white12 : Colors.black.withValues(alpha: 0.08),
+                  width: 1.2,
+                ),
+          boxShadow: hasImg
+              ? null
+              : [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.06),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Center(
-        child: hasImg
-            ? (message.imageUrl!.startsWith('http')
-                ? CachedNetworkImage(
-                    imageUrl: message.imageUrl!,
-                    width: 100,
-                    height: 100,
-                    fit: BoxFit.contain,
-                  )
-                : Image.file(
-                    File(message.imageUrl!),
-                    width: 100,
-                    height: 100,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, _, _) => Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: Text(
-                        message.content,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+        child: Center(
+          child: hasImg
+              ? (message.imageUrl!.startsWith('http')
+                  ? AutoPlayLiveMediaWidget(
+                      url: message.imageUrl,
+                      fit: BoxFit.contain,
+                      errorWidget: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Text(
+                          message.content,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
                       ),
+                    )
+                  : Image.file(
+                      File(message.imageUrl!),
+                      fit: BoxFit.contain,
+                      gaplessPlayback: true,
+                      errorBuilder: (_, _, _) => Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Text(
+                          message.content,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                      ),
+                    ))
+              : Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text(
+                    message.content,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: isMe ? Colors.white : (isDark ? Colors.white : const Color(0xFF0F172A)),
                     ),
-                  ))
-            : Padding(
-                padding: const EdgeInsets.all(12),
-                child: Text(
-                  message.content,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: isMe ? Colors.white : (isDark ? Colors.white : const Color(0xFF0F172A)),
                   ),
                 ),
-              ),
+        ),
       ),
-    ),
     );
   }
 

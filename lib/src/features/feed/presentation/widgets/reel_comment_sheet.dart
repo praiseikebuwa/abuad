@@ -104,6 +104,61 @@ class _ReelCommentSheetState extends ConsumerState<ReelCommentSheet> {
     });
   }
 
+  void _showCommentMenu(
+    BuildContext context,
+    String commentId,
+    bool isOwn, {
+    String? currentContent,
+    bool? isPinned,
+  }) {
+    final postId = widget.post.id;
+    final repo = ref.read(postRepositoryProvider);
+    final isPostCreator = widget.post.authorId.isNotEmpty &&
+        widget.post.authorId == repo.currentUserId;
+    final bool pinned = isPinned == true;
+
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isPostCreator)
+              ListTile(
+                leading: Icon(
+                  pinned ? CupertinoIcons.pin_slash : CupertinoIcons.pin_fill,
+                  color: const Color(0xFF0284C7),
+                ),
+                title: Text(
+                  pinned ? 'Unpin Comment' : 'Pin Comment to Top',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  repo.togglePinComment(postId, commentId);
+                },
+              ),
+            if (isOwn) ...[
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text('Delete Comment', style: TextStyle(color: Colors.red)),
+                onTap: () {
+                  Navigator.pop(context);
+                  repo.deleteComment(postId, commentId);
+                },
+              ),
+            ],
+            ListTile(
+              leading: const Icon(Icons.cancel),
+              title: const Text('Cancel'),
+              onTap: () => Navigator.pop(context),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -223,6 +278,7 @@ class _ReelCommentSheetState extends ConsumerState<ReelCommentSheet> {
                         post: widget.post,
                         comments: rawComments,
                         onReply: _setReplyTarget,
+                        onMenu: _showCommentMenu,
                         currentUserId: currentUser?.uid,
                         isScrollable: true,
                       );

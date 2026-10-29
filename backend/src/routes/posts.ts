@@ -1707,7 +1707,15 @@ router.post('/:id/comment', authenticateToken, async (req: AuthenticatedRequest,
         triggerAiCommentReply(String(req.params.id), content, parentCommentId, reply.author.fullName || reply.author.username);
       }
 
-      return res.status(201).json({ success: true, data: reply });
+      return res.status(201).json({
+        success: true,
+        data: {
+          ...reply,
+          parentId: parentCommentId,
+          parentCommentId,
+          postId: String(req.params.id),
+        },
+      });
     }
 
     const comment = await prisma.postComment.create({

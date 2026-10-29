@@ -20,10 +20,13 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-        <!-- Snapchat Camera Kit API Token -->
+        <!-- Snapchat Camera Kit API Configuration -->
         <meta-data
             android:name="com.snap.camerakit.app.id"
             android:value="JIx0KNy0qUo0DstHR_Of1RqC-eQTroKY2ciA2l2HInk" />
+        <meta-data
+            android:name="com.snap.camerakit.api.token"
+            android:value="eyJhbGciOiJIUzI1NiIsImtpZCI6IkNhbnZhc1MyU0hNQUNQcm9kIiwidHlwIjoiSldUIn0.eyJhdWQiOiJjYW52YXMtY2FudmFzYXBpIiwiaXNzIjoiY2FudmFzLXMyc3Rva2VuIiwibmJmIjoxNzkzMDM3MTc5LCJzdWIiOiI5NzYwZjY0ZS00YzQ5LTQ3MDAtYWY2Ny03OTI0MjBjNTVkNWR-UFJPRFVDVElPTn4zYTYyNmFjZi1jYjQyLTQzYzQtYmQ3ZS1lMGY5Y2E0N2IwMDAifQ.YTBGQ4kQdAv40TkAUzbNGqtmtSFzL3I4PWyrWjbrWGA" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

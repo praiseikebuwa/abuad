@@ -190,30 +190,55 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
   Future<void> _exportAndSaveSticker() async {
     setState(() {
       _isExporting = true;
-      _exportStatus = 'Rasterizing die-cut sticker...';
+      _exportStatus = 'Exporting sticker...';
     });
 
     try {
       String finalImageUrl = '';
       String? finalAnimatedUrl;
-      final capturedBytes = await _captureBoundaryToBytes(_photoBoundaryKey);
 
-      if (capturedBytes != null && capturedBytes.isNotEmpty) {
-        setState(() => _exportStatus = 'Uploading to Campus Cloud...');
+      final isWebP = _selectedImage != null && _selectedImage!.name.toLowerCase().endsWith('.webp');
+      final isGif = _selectedImage != null && _selectedImage!.name.toLowerCase().endsWith('.gif');
+      final isMotion = _isMotionMedia || isWebP || isGif;
+
+      // If user uploaded an animated WebP or GIF, preserve raw multi-frame bytes
+      if (isMotion && _selectedImageBytes != null && _selectedImageBytes!.isNotEmpty) {
+        setState(() => _exportStatus = 'Uploading animated sticker...');
         try {
+          final ext = isGif ? 'gif' : 'webp';
+          final mime = isGif ? 'image/gif' : 'image/webp';
           final xfile = XFile.fromData(
-            capturedBytes,
-            name: 'sticker_${DateTime.now().millisecondsSinceEpoch}.png',
-            mimeType: 'image/png',
+            _selectedImageBytes!,
+            name: 'sticker_${DateTime.now().millisecondsSinceEpoch}.$ext',
+            mimeType: mime,
           );
           final uploadResult = await ref.read(imageUploadServiceProvider).uploadImage(xfile);
           finalImageUrl = uploadResult.url;
-          if (_isMotionMedia) {
-            finalAnimatedUrl = finalImageUrl;
-          }
+          finalAnimatedUrl = uploadResult.url;
         } catch (uploadError) {
-          debugPrint('Cloud upload fallback: $uploadError');
-          finalImageUrl = 'https://pub-0014553a7b194df8b2d31efb7c6f4921.r2.dev/uploads/sticker_fallback.png';
+          debugPrint('Cloud upload fallback for animated sticker: $uploadError');
+        }
+      }
+
+      if (finalImageUrl.isEmpty) {
+        final capturedBytes = await _captureBoundaryToBytes(_photoBoundaryKey);
+        if (capturedBytes != null && capturedBytes.isNotEmpty) {
+          setState(() => _exportStatus = 'Uploading to Campus Cloud...');
+          try {
+            final xfile = XFile.fromData(
+              capturedBytes,
+              name: 'sticker_${DateTime.now().millisecondsSinceEpoch}.png',
+              mimeType: 'image/png',
+            );
+            final uploadResult = await ref.read(imageUploadServiceProvider).uploadImage(xfile);
+            finalImageUrl = uploadResult.url;
+            if (_isMotionMedia) {
+              finalAnimatedUrl = finalImageUrl;
+            }
+          } catch (uploadError) {
+            debugPrint('Cloud upload fallback: $uploadError');
+            finalImageUrl = 'https://pub-0014553a7b194df8b2d31efb7c6f4921.r2.dev/uploads/sticker_fallback.png';
+          }
         }
       }
 
@@ -918,10 +943,10 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: stk.imageUrl.isNotEmpty
-                  ? CachedNetworkImage(
-                      imageUrl: stk.imageUrl,
+                  ? AutoPlayLiveMediaWidget(
+                      url: stk.animatedUrl ?? stk.imageUrl,
                       fit: BoxFit.contain,
-                      errorWidget: (context, url, error) => Center(
+                      errorWidget: Center(
                         child: Text(
                           stk.title,
                           textAlign: TextAlign.center,
@@ -1011,24 +1036,24 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
       children: [
         // Live Sticker Preview Box with Smooth Corner Curvature
         Center(
-          child: RepaintBoundary(
-            key: _photoBoundaryKey,
-            child: Container(
-              width: 175,
-              height: 175,
-              decoration: BoxDecoration(
-                borderRadius: borderRadius,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.22),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: borderRadius,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.12),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: RepaintBoundary(
+              key: _photoBoundaryKey,
               child: Container(
+                width: 175,
+                height: 175,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Colors.transparent,
                   borderRadius: borderRadius,
                   border: _hasWhiteContour
                       ? Border.all(color: Colors.white, width: _contourWidth)
@@ -1043,15 +1068,15 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
                       if (_selectedImageBytes != null)
                         Image.memory(
                           _selectedImageBytes!,
-                          fit: BoxFit.cover,
+                          fit: BoxFit.contain,
                           gaplessPlayback: true,
                           errorBuilder: (context, error, stackTrace) => _buildPlaceholderPhoto(),
                         )
                       else if (_selectedImage != null)
-                        Image.network(
-                          _selectedImage!.path,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => _buildPlaceholderPhoto(),
+                        AutoPlayLiveMediaWidget(
+                          url: _selectedImage!.path,
+                          fit: BoxFit.contain,
+                          errorWidget: _buildPlaceholderPhoto(),
                         )
                       else
                         _buildPlaceholderPhoto(),

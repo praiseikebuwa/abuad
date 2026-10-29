@@ -232,13 +232,36 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     String commentId,
     bool isOwn, {
     String? currentContent,
+    bool? isPinned,
   }) {
+    final postId = widget.post?.id ?? widget.postId!;
+    final repo = ref.read(postRepositoryProvider);
+    final isPostCreator = widget.post?.authorId != null &&
+        widget.post!.authorId.isNotEmpty &&
+        widget.post!.authorId == repo.currentUserId;
+    final bool pinned = isPinned == true;
+
     showModalBottomSheet(
       context: context,
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (isPostCreator)
+              ListTile(
+                leading: Icon(
+                  pinned ? CupertinoIcons.pin_slash : CupertinoIcons.pin_fill,
+                  color: const Color(0xFF0284C7),
+                ),
+                title: Text(
+                  pinned ? 'Unpin Comment' : 'Pin Comment to Top',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  repo.togglePinComment(postId, commentId);
+                },
+              ),
             if (isOwn) ...[
               ListTile(
                 leading: const Icon(Icons.edit, color: Colors.blue),

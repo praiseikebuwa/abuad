@@ -17,6 +17,7 @@ import '../../music/domain/audio_track.dart';
 import '../../music/presentation/music_picker_sheet.dart';
 import 'media_editor_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/snap_camera_web_bridge.dart';
 
 enum LensType {
   colorFilter,
@@ -32,6 +33,8 @@ class CameraLensEffect {
   final List<double>? colorMatrix;
   final LensType type;
   final String? arType;
+  final String? snapLensId;
+  final String? iconUrl;
 
   const CameraLensEffect({
     required this.id,
@@ -42,9 +45,40 @@ class CameraLensEffect {
     this.colorMatrix,
     this.type = LensType.colorFilter,
     this.arType,
+    this.snapLensId,
+    this.iconUrl,
   });
 
   bool get isAr => type == LensType.arFaceLens;
+
+  factory CameraLensEffect.fromSnapWebLens(SnapWebLens lens) {
+    return CameraLensEffect(
+      id: 'snap_${lens.id}',
+      snapLensId: lens.id,
+      name: lens.name.isNotEmpty ? lens.name : 'Snap Lens',
+      category: 'Snapchat AR',
+      icon: Icons.auto_awesome,
+      iconUrl: lens.iconUrl.isNotEmpty ? lens.iconUrl : null,
+      previewGradient: const [Color(0xFFFFFC00), Color(0xFFF59E0B)],
+      type: LensType.arFaceLens,
+    );
+  }
+
+  factory CameraLensEffect.fromNativeLens(Lens lens) {
+    final thumb = (lens.thumbnail != null && lens.thumbnail!.isNotEmpty)
+        ? lens.thumbnail!.first
+        : (lens.previews != null && lens.previews!.isNotEmpty ? lens.previews!.first : null);
+    return CameraLensEffect(
+      id: 'snap_${lens.id}',
+      snapLensId: lens.id,
+      name: (lens.name != null && lens.name!.isNotEmpty) ? lens.name! : 'Snap Lens',
+      category: 'Snapchat AR',
+      icon: Icons.auto_awesome,
+      iconUrl: thumb,
+      previewGradient: const [Color(0xFFFFFC00), Color(0xFFF59E0B)],
+      type: LensType.arFaceLens,
+    );
+  }
 }
 
 enum CameraMode { photo, video }
@@ -114,79 +148,6 @@ class _CameraScreenState extends State<CameraScreen>
       icon: Icons.block_rounded,
       previewGradient: [Color(0xFF4B5563), Color(0xFF1F2937)],
       colorMatrix: null,
-    ),
-    // --- Real Snapchat AR Face Lenses ---
-    CameraLensEffect(
-      id: 'ar_dog',
-      name: 'Puppy Dog 🐶',
-      category: 'Snapchat AR',
-      icon: Icons.pets_rounded,
-      previewGradient: [Color(0xFFB45309), Color(0xFFF59E0B)],
-      type: LensType.arFaceLens,
-      arType: 'dog',
-    ),
-    CameraLensEffect(
-      id: 'ar_bunny',
-      name: 'Bunny Ears 🐰',
-      category: 'Snapchat AR',
-      icon: Icons.cruelty_free_rounded,
-      previewGradient: [Color(0xFFEC4899), Color(0xFFFDA4AF)],
-      type: LensType.arFaceLens,
-      arType: 'bunny',
-    ),
-    CameraLensEffect(
-      id: 'ar_crown',
-      name: 'Golden Crown 👑',
-      category: 'Snapchat AR',
-      icon: Icons.emoji_events_rounded,
-      previewGradient: [Color(0xFFF59E0B), Color(0xFFFBBF24)],
-      type: LensType.arFaceLens,
-      arType: 'golden_crown',
-    ),
-    CameraLensEffect(
-      id: 'ar_cyber',
-      name: 'Cyber Visor 🕶️',
-      category: 'Snapchat AR',
-      icon: Icons.remove_red_eye_rounded,
-      previewGradient: [Color(0xFF06B6D4), Color(0xFF8B5CF6)],
-      type: LensType.arFaceLens,
-      arType: 'cyber_visor',
-    ),
-    CameraLensEffect(
-      id: 'ar_hearts',
-      name: 'Heart Blush 🥰',
-      category: 'Snapchat AR',
-      icon: Icons.favorite_rounded,
-      previewGradient: [Color(0xFFF43F5E), Color(0xFFFB7185)],
-      type: LensType.arFaceLens,
-      arType: 'heart_blush',
-    ),
-    CameraLensEffect(
-      id: 'ar_angel',
-      name: 'Angel Halo 😇',
-      category: 'Snapchat AR',
-      icon: Icons.brightness_5_rounded,
-      previewGradient: [Color(0xFF38BDF8), Color(0xFFE0F2FE)],
-      type: LensType.arFaceLens,
-      arType: 'angel_halo',
-    ),
-    CameraLensEffect(
-      id: 'ar_butterflies',
-      name: 'Butterflies 🦋',
-      category: 'Snapchat AR',
-      icon: Icons.flutter_dash_rounded,
-      previewGradient: [Color(0xFF10B981), Color(0xFF6EE7B7)],
-      type: LensType.arFaceLens,
-      arType: 'butterflies',
-    ),
-    CameraLensEffect(
-      id: 'ar_devil',
-      name: 'Neon Horns 😈',
-      category: 'Snapchat AR',
-      icon: Icons.local_fire_department_rounded,
-      previewGradient: [Color(0xFFEF4444), Color(0xFF991B1B)],
-      type: LensType.arFaceLens,
-      arType: 'devil_horns',
     ),
     // --- Aesthetic Color Grading Filters ---
     CameraLensEffect(
@@ -362,9 +323,20 @@ class _CameraScreenState extends State<CameraScreen>
   static const String _snapLensGroupId = '4b594445-eaf3-46cd-8626-fae099b74079';
   static const String _snapWebProductionToken =
       'eyJhbGciOiJIUzI1NiIsImtpZCI6IkNhbnZhc1MyU0hNQUNQcm9kIiwidHlwIjoiSldUIn0.eyJhdWQiOiJjYW52YXMtY2FudmFzYXBpIiwiaXNzIjoiY2FudmFzLXMyc3Rva2VuIiwibmJmIjoxNzkzMDM3MTc5LCJzdWIiOiI5NzYwZjY0ZS00YzQ5LTQ3MDAtYWY2Ny03OTI0MjBjNTVkNWR-UFJPRFVDVElPTn4zYTYyNmFjZi1jYjQyLTQzYzQtYmQ3ZS1lMGY5Y2E0N2IwMDAifQ.YTBGQ4kQdAv40TkAUzbNGqtmtSFzL3I4PWyrWjbrWGA';
-  static const String _snapWebStagingToken =
+  static const String snapWebStagingToken =
       'eyJhbGciOiJIUzI1NiIsImtpZCI6IkNhbnZhc1MyU0hNQUNQcm9kIiwidHlwIjoiSldUIn0.eyJhdWQiOiJjYW52YXMtY2FudmFzYXBpIiwiaXNzIjoiY2FudmFzLXMyc3Rva2VuIiwibmJmIjoxNzkzMDM3MTc5LCJzdWIiOiI5NzYwZjY0ZS00YzQ5LTQ3MDAtYWY2Ny03OTI0MjBjNTVkNWR-U1RBR0lOR35jYjI5ZjBmNS01MTY3LTRmNjgtOWQ4Ny1jYmM0OWQ3NGNjMDQifQ.OLtrkZew0oVv_QNj1ddw-arhFmgSA7QEjwclu--CFB4';
   List<Lens> _snapLenses = [];
+  List<Lens> get snapLenses => _snapLenses;
+  List<CameraLensEffect> _loadedArLenses = [];
+  bool _isWebArActive = false;
+  bool _isInitializingWebAr = false;
+  bool _isLoadingArLenses = false;
+  String? _webArError;
+
+  List<CameraLensEffect> get _allAvailableLenses => [
+    ..._builtinLenses,
+    ..._loadedArLenses,
+  ];
 
   // Timers & Duration
   Timer? _recordingTimer;
@@ -397,6 +369,19 @@ class _CameraScreenState extends State<CameraScreen>
     _initializeCamera();
     _fetchLatestGalleryImage();
     _loadPreferences();
+    _initSnapLenses();
+  }
+
+  void _initSnapLenses() {
+    if (kIsWeb) {
+      _loadWebLenses();
+    } else {
+      try {
+        _cameraKitFlutterImpl.getGroupLenses(groupIds: [_snapLensGroupId]);
+      } catch (e) {
+        debugPrint('[CameraKit] Error requesting lenses: $e');
+      }
+    }
   }
 
   Future<void> _loadPreferences() async {
@@ -469,6 +454,7 @@ class _CameraScreenState extends State<CameraScreen>
     _pulseController.dispose();
     _stopBackgroundMusic();
     _bgMusicPlayer?.dispose();
+    SnapCameraWebBridge.dispose();
     final controller = _controller;
     _controller = null;
     controller?.dispose();
@@ -664,7 +650,12 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
-  void _toggleCamera() {
+  void _toggleCamera() async {
+    if (kIsWeb && _isWebArActive) {
+      HapticFeedback.mediumImpact();
+      await SnapCameraWebBridge.switchCamera();
+      return;
+    }
     if (_cameras.length < 2 || _isRecording || _isCaptureOperationInProgress) return;
     HapticFeedback.mediumImpact();
     _selectedCameraIndex = (_selectedCameraIndex + 1) % _cameras.length;
@@ -1086,7 +1077,11 @@ class _CameraScreenState extends State<CameraScreen>
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheetState) {
-          final filtered = _builtinLenses.where((lens) {
+          final allLenses = _allAvailableLenses;
+          final arLenses = allLenses.where((l) => l.isAr).toList();
+          final colorFilters = allLenses.where((l) => !l.isAr && l.id != 'none').toList();
+
+          final filtered = allLenses.where((lens) {
             if (selectedTab == 1 && !lens.isAr) return false;
             if (selectedTab == 2 && (lens.isAr || lens.id == 'none')) return false;
 
@@ -1126,13 +1121,13 @@ class _CameraScreenState extends State<CameraScreen>
                       child: Row(
                         children: [
                           _buildLensTab(
-                            title: 'All (${_builtinLenses.length})',
+                            title: 'All (${allLenses.length})',
                             isSelected: selectedTab == 0,
                             onTap: () => setSheetState(() => selectedTab = 0),
                           ),
                           const SizedBox(width: 8),
                           _buildLensTab(
-                            title: '✨ Snapchat AR (${_builtinLenses.where((l) => l.isAr).length})',
+                            title: '✨ Snapchat AR (${arLenses.length})',
                             isSelected: selectedTab == 1,
                             accentColor: const Color(0xFFFFFC00),
                             textColor: selectedTab == 1 ? Colors.black : Colors.white,
@@ -1140,7 +1135,7 @@ class _CameraScreenState extends State<CameraScreen>
                           ),
                           const SizedBox(width: 8),
                           _buildLensTab(
-                            title: '🎨 Color Filters (${_builtinLenses.where((l) => !l.isAr && l.id != 'none').length})',
+                            title: '🎨 Color Filters (${colorFilters.length})',
                             isSelected: selectedTab == 2,
                             onTap: () => setSheetState(() => selectedTab = 2),
                           ),
@@ -1164,91 +1159,160 @@ class _CameraScreenState extends State<CameraScreen>
                       },
                     ),
                     const SizedBox(height: 12),
-                    Expanded(
-                      child: GridView.builder(
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          childAspectRatio: 0.95,
-                          crossAxisSpacing: 10,
-                          mainAxisSpacing: 10,
+                    if (selectedTab == 1 && _isLoadingArLenses)
+                      const Expanded(
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CircularProgressIndicator(color: Color(0xFFFFFC00)),
+                              SizedBox(height: 12),
+                              Text('Fetching Snapchat AR lenses...', style: TextStyle(color: Colors.white70)),
+                            ],
+                          ),
                         ),
-                        itemCount: filtered.length,
-                        itemBuilder: (context, i) {
-                          final lens = filtered[i];
-                          final isSelected = _selectedLens?.id == lens.id || (_selectedLens == null && lens.id == 'none');
-                          return GestureDetector(
-                            onTap: () {
-                              HapticFeedback.selectionClick();
-                              setState(() {
-                                _selectedLens = lens.id == 'none' ? null : lens;
-                                _showLensesCarousel = true;
-                              });
-                              Navigator.pop(ctx);
-                            },
-                            child: Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(16),
-                                gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: lens.previewGradient,
-                                ),
-                                border: Border.all(
-                                  color: isSelected ? Colors.white : Colors.white24,
-                                  width: isSelected ? 2.5 : 1,
+                      )
+                    else if (selectedTab == 1 && arLenses.isEmpty)
+                      Expanded(
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.auto_awesome, color: Color(0xFFFFFC00), size: 40),
+                              const SizedBox(height: 12),
+                              const Text(
+                                'No Snapchat AR Lenses Loaded',
+                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                              ),
+                              const SizedBox(height: 6),
+                              const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 32),
+                                child: Text(
+                                  'Could not load lenses from Snap Lens Group. Check your connection or portal credentials.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: Colors.white60, fontSize: 12),
                                 ),
                               ),
-                              padding: const EdgeInsets.all(8),
-                              child: Stack(
-                                children: [
-                                  Center(
-                                    child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(lens.icon, color: Colors.white, size: 26),
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          lens.name,
-                                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                                          textAlign: TextAlign.center,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        Text(
-                                          lens.category,
-                                          style: const TextStyle(color: Colors.white70, fontSize: 10),
-                                        ),
-                                      ],
-                                    ),
+                              const SizedBox(height: 16),
+                              ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFFFFC00),
+                                  foregroundColor: Colors.black,
+                                ),
+                                icon: const Icon(Icons.refresh, size: 18),
+                                label: const Text('Retry Fetching Lenses'),
+                                onPressed: () async {
+                                  if (kIsWeb) {
+                                    await _loadWebLenses();
+                                  } else {
+                                    _cameraKitFlutterImpl.getGroupLenses(groupIds: [_snapLensGroupId]);
+                                  }
+                                  setSheetState(() {});
+                                },
+                              ),
+                              const SizedBox(height: 8),
+                              TextButton(
+                                onPressed: () {
+                                  setSheetState(() => selectedTab = 2);
+                                },
+                                child: const Text('Use Custom Color Filters', style: TextStyle(color: AppColors.secondaryTeal)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    else
+                      Expanded(
+                        child: GridView.builder(
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            childAspectRatio: 0.95,
+                            crossAxisSpacing: 10,
+                            mainAxisSpacing: 10,
+                          ),
+                          itemCount: filtered.length,
+                          itemBuilder: (context, i) {
+                            final lens = filtered[i];
+                            final isSelected = _selectedLens?.id == lens.id || (_selectedLens == null && lens.id == 'none');
+                            return GestureDetector(
+                              onTap: () {
+                                Navigator.pop(ctx);
+                                _applySelectedLens(lens);
+                              },
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(16),
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: lens.previewGradient,
                                   ),
-                                  if (lens.isAr)
-                                    Positioned(
-                                      top: 0,
-                                      right: 0,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFFFFFC00),
-                                          borderRadius: BorderRadius.circular(6),
-                                        ),
-                                        child: const Text(
-                                          'AR',
-                                          style: TextStyle(
-                                            color: Colors.black,
-                                            fontSize: 9,
-                                            fontWeight: FontWeight.w900,
-                                            letterSpacing: -0.5,
+                                  border: Border.all(
+                                    color: isSelected ? (lens.isAr ? const Color(0xFFFFFC00) : Colors.white) : Colors.white24,
+                                    width: isSelected ? 2.5 : 1,
+                                  ),
+                                ),
+                                padding: const EdgeInsets.all(8),
+                                child: Stack(
+                                  children: [
+                                    Center(
+                                      child: Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          lens.iconUrl != null && lens.iconUrl!.isNotEmpty
+                                              ? ClipOval(
+                                                  child: Image.network(
+                                                    lens.iconUrl!,
+                                                    width: 32,
+                                                    height: 32,
+                                                    fit: BoxFit.cover,
+                                                    errorBuilder: (context, error, stackTrace) => Icon(lens.icon, color: Colors.white, size: 26),
+                                                  ),
+                                                )
+                                              : Icon(lens.icon, color: Colors.white, size: 26),
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            lens.name,
+                                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                                            textAlign: TextAlign.center,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          Text(
+                                            lens.category,
+                                            style: const TextStyle(color: Colors.white70, fontSize: 10),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (lens.isAr)
+                                      Positioned(
+                                        top: 0,
+                                        right: 0,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFFFFC00),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: const Text(
+                                            'AR',
+                                            style: TextStyle(
+                                              color: Colors.black,
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.w900,
+                                              letterSpacing: -0.5,
+                                            ),
                                           ),
                                         ),
                                       ),
-                                    ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
-                          );
-                        },
+                            );
+                          },
+                        ),
                       ),
-                    ),
                     const SizedBox(height: 12),
                     ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
@@ -1260,7 +1324,7 @@ class _CameraScreenState extends State<CameraScreen>
                       ),
                       icon: const Icon(Icons.auto_awesome, size: 18, color: Colors.black),
                       label: const Text(
-                        'Launch Snapchat AR Face Lenses',
+                        'Launch Snapchat Camera Kit AR',
                         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                       ),
                       onPressed: () {
@@ -1315,52 +1379,35 @@ class _CameraScreenState extends State<CameraScreen>
     );
   }
 
-  void _openSnapchatLenses() async {
+  Future<void> _openSnapchatLenses({String? targetLensId}) async {
     HapticFeedback.mediumImpact();
-    final firstArLens = _builtinLenses.firstWhere(
-      (l) => l.isAr,
-      orElse: () => _builtinLenses[1],
-    );
-    setState(() {
-      _showLensesCarousel = true;
-      _selectedLens = firstArLens;
-    });
 
     if (kIsWeb) {
-      debugPrint('Initializing Web Camera Kit with token: $_snapWebProductionToken (staging backup: $_snapWebStagingToken)');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: const Color(0xFF1E293B),
-            content: Row(
-              children: [
-                const Icon(Icons.auto_awesome, color: Color(0xFFFFFC00), size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '✨ ${firstArLens.name} active! Swipe carousel to try all AR lenses.',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
-            ),
-            duration: const Duration(seconds: 3),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      setState(() {
+        _showLensesCarousel = true;
+      });
+      await _initWebCameraKitSession(applyLensId: targetLensId);
       return;
     }
+
     try {
       HapticFeedback.mediumImpact();
       // Safely pause camera stream to avoid hardware conflict crash on Android
       await _controller?.pausePreview();
-      await _cameraKitFlutterImpl.openCameraKit(
-        groupIds: [_snapLensGroupId],
-        isHideCloseButton: false,
-      );
+      if (targetLensId != null && targetLensId.isNotEmpty) {
+        await _cameraKitFlutterImpl.openCameraKitWithSingleLens(
+          lensId: targetLensId,
+          groupId: _snapLensGroupId,
+          isHideCloseButton: false,
+        );
+      } else {
+        await _cameraKitFlutterImpl.openCameraKit(
+          groupIds: [_snapLensGroupId],
+          isHideCloseButton: false,
+        );
+      }
     } catch (e) {
-      debugPrint('Error launching Snapchat Camera Kit: $e');
+      debugPrint('[CameraKit] Error launching Snapchat Camera Kit: $e');
       if (mounted) {
         _openLensesSearchSheet();
       }
@@ -1373,12 +1420,144 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
+  Future<void> _initWebCameraKitSession({String? applyLensId}) async {
+    if (!kIsWeb || _isInitializingWebAr) return;
+    setState(() {
+      _isInitializingWebAr = true;
+      _webArError = null;
+    });
+
+    try {
+      await _controller?.pausePreview();
+      final tokenToUse = _snapWebProductionToken.isNotEmpty ? _snapWebProductionToken : snapWebStagingToken;
+      final success = await SnapCameraWebBridge.initSession(
+        apiToken: tokenToUse,
+        lensGroupId: _snapLensGroupId,
+      );
+
+      if (!success) {
+        throw Exception('Failed to initialize Camera Kit Web session. Check token or domain.');
+      }
+
+      setState(() {
+        _isWebArActive = true;
+      });
+
+      await _loadWebLenses(applyLensId: applyLensId);
+    } catch (e) {
+      debugPrint('[SnapCameraKit] Web initialization error: $e');
+      if (mounted) {
+        setState(() {
+          _webArError = e.toString()
+              .replaceAll(_snapWebProductionToken, '[REDACTED]')
+              .replaceAll(snapWebStagingToken, '[REDACTED]');
+          _isWebArActive = false;
+          _selectedLens = null;
+        });
+        try {
+          await _controller?.resumePreview();
+        } catch (_) {}
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_webArError ?? 'Failed to initialize Snapchat AR'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isInitializingWebAr = false);
+      }
+    }
+  }
+
+  Future<void> _loadWebLenses({String? applyLensId}) async {
+    if (!kIsWeb) return;
+    setState(() => _isLoadingArLenses = true);
+    try {
+      final webLenses = await SnapCameraWebBridge.loadLensGroup(_snapLensGroupId);
+      if (mounted) {
+        setState(() {
+          _loadedArLenses = webLenses.map((l) => CameraLensEffect.fromSnapWebLens(l)).toList();
+          _isLoadingArLenses = false;
+        });
+
+        if (applyLensId != null && _isWebArActive) {
+          await SnapCameraWebBridge.applyLens(applyLensId);
+          final matched = _loadedArLenses.firstWhere(
+            (l) => l.snapLensId == applyLensId,
+            orElse: () => _loadedArLenses.first,
+          );
+          setState(() => _selectedLens = matched);
+        } else if (_loadedArLenses.isNotEmpty && _selectedLens == null && _isWebArActive) {
+          final first = _loadedArLenses.first;
+          if (first.snapLensId != null) {
+            await SnapCameraWebBridge.applyLens(first.snapLensId!);
+            setState(() => _selectedLens = first);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[SnapCameraKit] Failed to load lenses: $e');
+      if (mounted) {
+        setState(() => _isLoadingArLenses = false);
+      }
+    }
+  }
+
+  Future<void> _closeWebArSession() async {
+    if (!kIsWeb || !_isWebArActive) return;
+    setState(() {
+      _isWebArActive = false;
+      _selectedLens = null;
+    });
+    await SnapCameraWebBridge.removeLens();
+    try {
+      await _controller?.resumePreview();
+    } catch (_) {}
+  }
+
+  Future<void> _applySelectedLens(CameraLensEffect? lens) async {
+    HapticFeedback.selectionClick();
+    if (lens == null || lens.id == 'none') {
+      if (kIsWeb && _isWebArActive) {
+        await _closeWebArSession();
+      } else {
+        setState(() => _selectedLens = null);
+      }
+      return;
+    }
+
+    if (lens.isAr) {
+      if (kIsWeb) {
+        setState(() => _selectedLens = lens);
+        if (!_isWebArActive) {
+          await _initWebCameraKitSession(applyLensId: lens.snapLensId);
+        } else if (lens.snapLensId != null) {
+          await SnapCameraWebBridge.applyLens(lens.snapLensId!);
+        }
+      } else {
+        setState(() => _selectedLens = lens);
+        await _openSnapchatLenses(targetLensId: lens.snapLensId);
+      }
+    } else {
+      // Local color filter
+      if (kIsWeb && _isWebArActive) {
+        await _closeWebArSession();
+      }
+      setState(() => _selectedLens = lens);
+    }
+  }
+
   @override
   void receivedLenses(List<Lens> lensList) {
     if (mounted) {
       setState(() {
         _snapLenses = lensList;
-        debugPrint('Loaded ${_snapLenses.length} Snapchat Lenses');
+        _loadedArLenses = lensList.map((l) => CameraLensEffect.fromNativeLens(l)).toList();
+        _isLoadingArLenses = false;
       });
     }
   }
@@ -1437,9 +1616,11 @@ class _CameraScreenState extends State<CameraScreen>
 
   Future<void> _takePhoto() async {
     final controller = _controller;
-    if (!_isCameraInitialized || _isRecording || _isCaptureOperationInProgress || controller == null || !controller.value.isInitialized) {
+    final isWebAr = kIsWeb && _isWebArActive;
+    if (!isWebAr && (!_isCameraInitialized || controller == null || !controller.value.isInitialized)) {
       return;
     }
+    if (_isRecording || _isCaptureOperationInProgress) return;
     HapticFeedback.mediumImpact();
 
     if (_timerModeActive) {
@@ -1459,8 +1640,41 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Future<void> _capturePhoto() async {
+    if (_isCaptureOperationInProgress) return;
+
+    if (kIsWeb && _isWebArActive) {
+      _isCaptureOperationInProgress = true;
+      try {
+        final capture = await SnapCameraWebBridge.capturePhoto();
+        if (capture.success && capture.bytes != null) {
+          final xfile = XFile.fromData(
+            capture.bytes!,
+            mimeType: capture.mimeType,
+            name: 'snap_photo_${DateTime.now().millisecondsSinceEpoch}.jpg',
+          );
+          _handleMediaCapture(xfile, CameraMode.photo);
+          return;
+        } else {
+          throw Exception(capture.error ?? 'Failed to capture Snapchat photo');
+        }
+      } catch (e) {
+        debugPrint('[SnapCameraKit] Photo capture failed: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to capture AR photo: $e'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
+      } finally {
+        _isCaptureOperationInProgress = false;
+      }
+      return;
+    }
+
     final controller = _controller;
-    if (controller == null || !controller.value.isInitialized || _isCaptureOperationInProgress) return;
+    if (controller == null || !controller.value.isInitialized) return;
     _isCaptureOperationInProgress = true;
     try {
       final XFile file = await controller.takePicture();
@@ -1473,8 +1687,39 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Future<void> _startVideoRecording() async {
+    if (_isRecording || _isCaptureOperationInProgress) return;
+
+    if (kIsWeb && _isWebArActive) {
+      _isCaptureOperationInProgress = true;
+      HapticFeedback.heavyImpact();
+      try {
+        final started = await SnapCameraWebBridge.startRecording();
+        if (!started) throw Exception('Unable to start Web AR video recording');
+        if (!mounted) return;
+        setState(() {
+          _isRecording = true;
+          _recordingDuration = Duration.zero;
+        });
+        _recordingTimer?.cancel();
+        _recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+          if (!mounted || !_isRecording) return;
+          setState(() => _recordingDuration += const Duration(seconds: 1));
+        });
+      } catch (e) {
+        debugPrint('[SnapCameraKit] Video recording error: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Recording error: $e'), backgroundColor: Colors.redAccent),
+          );
+        }
+      } finally {
+        _isCaptureOperationInProgress = false;
+      }
+      return;
+    }
+
     final controller = _controller;
-    if (!_isCameraInitialized || _isRecording || _isCaptureOperationInProgress || controller == null || !controller.value.isInitialized) {
+    if (!_isCameraInitialized || controller == null || !controller.value.isInitialized) {
       return;
     }
     _isCaptureOperationInProgress = true;
@@ -1499,14 +1744,34 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Future<void> _stopVideoRecording() async {
-    final controller = _controller;
-    if (!_isCameraInitialized || !_isRecording || _isCaptureOperationInProgress || controller == null || !controller.value.isInitialized) {
-      return;
-    }
+    if (!_isRecording || _isCaptureOperationInProgress) return;
     _isCaptureOperationInProgress = true;
     HapticFeedback.mediumImpact();
+
     try {
       _recordingTimer?.cancel();
+
+      if (kIsWeb && _isWebArActive) {
+        final capture = await SnapCameraWebBridge.stopRecording();
+        if (!mounted) return;
+        setState(() => _isRecording = false);
+        if (capture.success && capture.bytes != null) {
+          final xfile = XFile.fromData(
+            capture.bytes!,
+            mimeType: capture.mimeType,
+            name: 'snap_video_${DateTime.now().millisecondsSinceEpoch}.webm',
+          );
+          _handleMediaCapture(xfile, CameraMode.video);
+        } else {
+          throw Exception(capture.error ?? 'Failed to complete video recording');
+        }
+        return;
+      }
+
+      final controller = _controller;
+      if (!_isCameraInitialized || controller == null || !controller.value.isInitialized) {
+        return;
+      }
       final XFile file = await controller.stopVideoRecording();
       if (!mounted) return;
       setState(() => _isRecording = false);
@@ -2260,14 +2525,19 @@ class _CameraScreenState extends State<CameraScreen>
       }
     }
 
-    Widget cameraTexture = CameraPreview(controller);
-    // CRITICAL: On Flutter Web, wrapping HtmlElementView in ColorFiltered blanks out the video feed completely!
-    // Only wrap with ColorFiltered on native mobile platforms.
-    if (!kIsWeb && _selectedLens?.colorMatrix != null) {
-      cameraTexture = ColorFiltered(
-        colorFilter: ColorFilter.matrix(_selectedLens!.colorMatrix!),
-        child: cameraTexture,
-      );
+    Widget cameraTexture;
+    if (kIsWeb && _isWebArActive) {
+      cameraTexture = SnapCameraWebBridge.buildPreviewWidget();
+    } else {
+      cameraTexture = CameraPreview(controller);
+      // CRITICAL: On Flutter Web, wrapping HtmlElementView in ColorFiltered blanks out the video feed completely!
+      // Only wrap with ColorFiltered on native mobile platforms.
+      if (!kIsWeb && _selectedLens?.colorMatrix != null) {
+        cameraTexture = ColorFiltered(
+          colorFilter: ColorFilter.matrix(_selectedLens!.colorMatrix!),
+          child: cameraTexture,
+        );
+      }
     }
 
     return Container(
@@ -2301,566 +2571,31 @@ class _CameraScreenState extends State<CameraScreen>
                   ),
                 ),
               ),
-              // On web, overlay the aesthetic tint gracefully on top of the camera stream
-              if (kIsWeb && _selectedLens != null && !_selectedLens!.isAr)
+              // On web, overlay the aesthetic tint gracefully on top of the camera stream when local filter is selected
+              if (kIsWeb && !_isWebArActive && _selectedLens != null && !_selectedLens!.isAr)
                 _buildWebLensOverlay(_selectedLens!),
-              // Live Interactive Snapchat AR Face Lens Overlay (Web & Mobile!)
-              if (_selectedLens != null && _selectedLens!.isAr)
-                _buildArOverlay(_selectedLens!, Size(targetWidth, targetHeight), isFrontCamera),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildArOverlay(CameraLensEffect lens, Size viewSize, bool isFrontCamera) {
-    return Positioned.fill(
-      child: IgnorePointer(
-        child: SizedBox(
-          width: viewSize.width,
-          height: viewSize.height,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              switch (lens.arType) {
-                'dog' => _buildDogArFilter(viewSize),
-                'bunny' => _buildBunnyArFilter(viewSize),
-                'golden_crown' => _buildCrownArFilter(viewSize),
-                'cyber_visor' => _buildCyberVisorArFilter(viewSize),
-                'heart_blush' => _buildHeartBlushArFilter(viewSize),
-                'angel_halo' => _buildAngelHaloArFilter(viewSize),
-                'butterflies' => _buildButterfliesArFilter(viewSize),
-                'devil_horns' => _buildDevilHornsArFilter(viewSize),
-                _ => const SizedBox.shrink(),
-              },
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // 1. Classic Snapchat Puppy Dog AR Filter (Ears, Nose & Animated Tongue)
-  Widget _buildDogArFilter(Size viewSize) {
-    return Stack(
-      children: [
-        // Left Floppy Dog Ear
-        Positioned(
-          top: viewSize.height * 0.08,
-          left: viewSize.width * 0.16,
-          child: Transform.rotate(
-            angle: -0.3,
-            child: Container(
-              width: 75,
-              height: 110,
-              decoration: BoxDecoration(
-                color: const Color(0xFF8D5B28),
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(50),
-                  bottom: Radius.circular(40),
-                ),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(-3, 6)),
-                ],
-              ),
-              child: Center(
-                child: Container(
-                  width: 45,
-                  height: 75,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFD49A6A),
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                ),
-              ),
-            ),
-          )
-              .animate(onPlay: (controller) => controller.repeat(reverse: true))
-              .rotate(duration: 900.ms, begin: -0.04, end: 0.04)
-              .moveY(duration: 700.ms, begin: -3, end: 3),
-        ),
-        // Right Floppy Dog Ear
-        Positioned(
-          top: viewSize.height * 0.08,
-          right: viewSize.width * 0.16,
-          child: Transform.rotate(
-            angle: 0.3,
-            child: Container(
-              width: 75,
-              height: 110,
-              decoration: BoxDecoration(
-                color: const Color(0xFF8D5B28),
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(50),
-                  bottom: Radius.circular(40),
-                ),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(3, 6)),
-                ],
-              ),
-              child: Center(
-                child: Container(
-                  width: 45,
-                  height: 75,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFD49A6A),
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                ),
-              ),
-            ),
-          )
-              .animate(onPlay: (controller) => controller.repeat(reverse: true))
-              .rotate(duration: 900.ms, begin: 0.04, end: -0.04)
-              .moveY(duration: 700.ms, begin: -3, end: 3),
-        ),
-        // Puppy Dog Nose with White Highlight & Whiskers
-        Positioned(
-          top: viewSize.height * 0.36,
-          left: (viewSize.width / 2) - 45,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 90,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E1E1E),
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(30),
-                    bottom: Radius.circular(24),
-                  ),
-                  boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 3))],
-                ),
-                child: Stack(
-                  children: [
-                    Positioned(
-                      top: 8,
-                      left: 20,
-                      child: Container(
-                        width: 24,
-                        height: 10,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.45),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Cute Animated Panting Dog Tongue
-              Container(
-                width: 38,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFF5376),
-                  borderRadius: const BorderRadius.vertical(bottom: Radius.circular(22)),
-                  border: Border.all(color: const Color(0xFFD81B60), width: 1.5),
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 6, offset: const Offset(0, 3)),
-                  ],
-                ),
-                child: Center(
-                  child: Container(width: 2, height: 26, color: const Color(0xFFD81B60)),
-                ),
-              )
-                  .animate(onPlay: (controller) => controller.repeat(reverse: true))
-                  .scaleY(duration: 500.ms, begin: 0.85, end: 1.15)
-                  .moveY(duration: 500.ms, begin: -2, end: 4),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  // 2. Cute Bunny Ears & Heart Nose
-  Widget _buildBunnyArFilter(Size viewSize) {
-    return Stack(
-      children: [
-        // Bunny Ears
-        Positioned(
-          top: viewSize.height * 0.04,
-          left: (viewSize.width / 2) - 80,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Left Ear
-              Transform.rotate(
-                angle: -0.12,
-                child: Container(
-                  width: 48,
-                  height: 140,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(35),
-                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10)],
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 15),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFAEC9),
-                      borderRadius: BorderRadius.circular(25),
-                    ),
-                  ),
-                ),
-              )
-                  .animate(onPlay: (controller) => controller.repeat(reverse: true))
-                  .rotate(duration: 800.ms, begin: -0.06, end: 0.06),
-              const SizedBox(width: 40),
-              // Right Ear
-              Transform.rotate(
-                angle: 0.12,
-                child: Container(
-                  width: 48,
-                  height: 140,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(35),
-                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10)],
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 15),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFAEC9),
-                      borderRadius: BorderRadius.circular(25),
-                    ),
-                  ),
-                ),
-              )
-                  .animate(onPlay: (controller) => controller.repeat(reverse: true))
-                  .rotate(duration: 800.ms, begin: 0.06, end: -0.06),
-            ],
-          ),
-        ),
-        // Pink Anime Cheek Blush Left
-        Positioned(
-          top: viewSize.height * 0.38,
-          left: viewSize.width * 0.22,
-          child: Container(
-            width: 50,
-            height: 30,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: const Color(0xFFFF4081).withValues(alpha: 0.35),
-            ),
-          ).animate(onPlay: (controller) => controller.repeat(reverse: true)).scale(duration: 1200.ms, begin: const Offset(0.9, 0.9), end: const Offset(1.1, 1.1)),
-        ),
-        // Pink Anime Cheek Blush Right
-        Positioned(
-          top: viewSize.height * 0.38,
-          right: viewSize.width * 0.22,
-          child: Container(
-            width: 50,
-            height: 30,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: const Color(0xFFFF4081).withValues(alpha: 0.35),
-            ),
-          ).animate(onPlay: (controller) => controller.repeat(reverse: true)).scale(duration: 1200.ms, begin: const Offset(0.9, 0.9), end: const Offset(1.1, 1.1)),
-        ),
-        // Bunny Pink Heart Nose
-        Positioned(
-          top: viewSize.height * 0.36,
-          left: (viewSize.width / 2) - 18,
-          child: const Icon(Icons.favorite_rounded, color: Color(0xFFFF4081), size: 36),
-        ),
-      ],
-    );
-  }
-
-  // 3. Royal Golden Crown with Twinkling Sparkles
-  Widget _buildCrownArFilter(Size viewSize) {
-    return Stack(
-      children: [
-        Positioned(
-          top: viewSize.height * 0.07,
-          left: (viewSize.width / 2) - 75,
-          child: Container(
-            width: 150,
-            height: 90,
-            decoration: const BoxDecoration(
-              boxShadow: [
-                BoxShadow(color: Color(0x80F59E0B), blurRadius: 28, spreadRadius: 4),
-              ],
-            ),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                const Icon(
-                  Icons.emoji_events_rounded,
-                  color: Color(0xFFFFD700),
-                  size: 96,
-                ),
-                Positioned(
-                  top: 10,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(width: 8, height: 8, decoration: const BoxDecoration(color: Color(0xFFEF4444), shape: BoxShape.circle)),
-                      const SizedBox(width: 14),
-                      Container(width: 10, height: 10, decoration: const BoxDecoration(color: Color(0xFF3B82F6), shape: BoxShape.circle)),
-                      const SizedBox(width: 14),
-                      Container(width: 8, height: 8, decoration: const BoxDecoration(color: Color(0xFF10B981), shape: BoxShape.circle)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          )
-              .animate(onPlay: (controller) => controller.repeat(reverse: true))
-              .moveY(duration: 1400.ms, begin: -6, end: 6)
-              .shimmer(duration: 1800.ms, color: Colors.white),
-        ),
-        // Twinkling Sparkle Stars
-        Positioned(
-          top: viewSize.height * 0.12,
-          left: viewSize.width * 0.18,
-          child: const Icon(Icons.auto_awesome, color: Color(0xFFFFE082), size: 28)
-              .animate(onPlay: (controller) => controller.repeat(reverse: true))
-              .scale(duration: 600.ms, begin: const Offset(0.6, 0.6), end: const Offset(1.2, 1.2))
-              .rotate(duration: 2000.ms),
-        ),
-        Positioned(
-          top: viewSize.height * 0.09,
-          right: viewSize.width * 0.18,
-          child: const Icon(Icons.auto_awesome, color: Color(0xFFFFE082), size: 32)
-              .animate(onPlay: (controller) => controller.repeat(reverse: true))
-              .scale(duration: 800.ms, begin: const Offset(0.7, 0.7), end: const Offset(1.3, 1.3))
-              .rotate(duration: 2500.ms),
-        ),
-      ],
-    );
-  }
-
-  // 4. Futuristic Cyber Visor with Neon HUD & Targeting Reticle
-  Widget _buildCyberVisorArFilter(Size viewSize) {
-    return Stack(
-      children: [
-        // Visor Bar across eyes
-        Positioned(
-          top: viewSize.height * 0.27,
-          left: viewSize.width * 0.12,
-          right: viewSize.width * 0.12,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
-              child: Container(
-                height: 64,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      const Color(0xFF06B6D4).withValues(alpha: 0.35),
-                      const Color(0xFF8B5CF6).withValues(alpha: 0.35),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFF00F0FF), width: 2),
-                  boxShadow: const [
-                    BoxShadow(color: Color(0x8000F0FF), blurRadius: 16, spreadRadius: 2),
-                  ],
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
+              // Web AR Initializing Overlay
+              if (kIsWeb && _isInitializingWebAr)
+                Container(
+                  color: Colors.black54,
+                  child: const Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('SYS: AR_ONLINE', style: TextStyle(color: Color(0xFF00F0FF), fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-                        Text('FOV: 120° // TRACK: LOCK', style: TextStyle(color: Colors.white70, fontSize: 9)),
+                        CircularProgressIndicator(color: Color(0xFFFFFC00)),
+                        SizedBox(height: 12),
+                        Text(
+                          'Starting Snapchat AR...',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
                       ],
                     ),
-                    Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        border: Border.all(color: const Color(0xFF00F0FF), width: 1.5),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Center(
-                        child: Icon(Icons.filter_center_focus, color: Color(0xFF00F0FF), size: 18),
-                      ),
-                    ).animate(onPlay: (controller) => controller.repeat()).rotate(duration: 3000.ms),
-                    const Text('ABUAD HUD v2.5', style: TextStyle(color: Color(0xFFFF007F), fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-          )
-              .animate(onPlay: (controller) => controller.repeat(reverse: true))
-              .shimmer(duration: 1500.ms, color: const Color(0xFF00F0FF)),
-        ),
-      ],
-    );
-  }
-
-  // 5. Floating Heart Blush & Anime Freckles
-  Widget _buildHeartBlushArFilter(Size viewSize) {
-    return Stack(
-      children: [
-        // Rosy Cheeks
-        Positioned(
-          top: viewSize.height * 0.37,
-          left: viewSize.width * 0.18,
-          child: Container(
-            width: 60,
-            height: 35,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: const Color(0xFFFF1493).withValues(alpha: 0.28),
-            ),
+            ],
           ),
         ),
-        Positioned(
-          top: viewSize.height * 0.37,
-          right: viewSize.width * 0.18,
-          child: Container(
-            width: 60,
-            height: 35,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: const Color(0xFFFF1493).withValues(alpha: 0.28),
-            ),
-          ),
-        ),
-        // Floating Animated Hearts Rising
-        Positioned(
-          top: viewSize.height * 0.28,
-          left: viewSize.width * 0.24,
-          child: const Icon(Icons.favorite, color: Color(0xFFFF3366), size: 26)
-              .animate(onPlay: (controller) => controller.repeat())
-              .moveY(duration: 2000.ms, begin: 20, end: -60)
-              .fadeOut(duration: 2000.ms),
-        ),
-        Positioned(
-          top: viewSize.height * 0.24,
-          right: viewSize.width * 0.22,
-          child: const Icon(Icons.favorite, color: Color(0xFFFF6699), size: 32)
-              .animate(onPlay: (controller) => controller.repeat())
-              .moveY(duration: 2200.ms, begin: 30, end: -70)
-              .fadeOut(duration: 2200.ms),
-        ),
-        Positioned(
-          top: viewSize.height * 0.32,
-          left: viewSize.width * 0.46,
-          child: const Icon(Icons.favorite, color: Color(0xFFFF0066), size: 22)
-              .animate(onPlay: (controller) => controller.repeat())
-              .moveY(duration: 1800.ms, begin: 10, end: -50)
-              .fadeOut(duration: 1800.ms),
-        ),
-      ],
-    );
-  }
-
-  // 6. Glowing Angel Halo & Heavenly Drifting Feathers
-  Widget _buildAngelHaloArFilter(Size viewSize) {
-    return Stack(
-      children: [
-        Positioned(
-          top: viewSize.height * 0.06,
-          left: (viewSize.width / 2) - 80,
-          child: Container(
-            width: 160,
-            height: 48,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(30),
-              border: Border.all(color: const Color(0xFFFFEA00), width: 7),
-              boxShadow: const [
-                BoxShadow(color: Color(0xFFFFEA00), blurRadius: 28, spreadRadius: 6),
-                BoxShadow(color: Colors.white, blurRadius: 10, spreadRadius: 2),
-              ],
-            ),
-          )
-              .animate(onPlay: (controller) => controller.repeat(reverse: true))
-              .moveY(duration: 1600.ms, begin: -8, end: 8),
-        ),
-        // Drifting Feathers
-        Positioned(
-          top: viewSize.height * 0.18,
-          left: viewSize.width * 0.15,
-          child: const Icon(Icons.spa_rounded, color: Colors.white70, size: 24)
-              .animate(onPlay: (controller) => controller.repeat())
-              .moveY(duration: 3000.ms, begin: -10, end: 120)
-              .rotate(duration: 3000.ms)
-              .fadeOut(duration: 3000.ms),
-        ),
-        Positioned(
-          top: viewSize.height * 0.15,
-          right: viewSize.width * 0.18,
-          child: const Icon(Icons.spa_rounded, color: Colors.white70, size: 28)
-              .animate(onPlay: (controller) => controller.repeat())
-              .moveY(duration: 3400.ms, begin: -20, end: 130)
-              .rotate(duration: 3400.ms)
-              .fadeOut(duration: 3400.ms),
-        ),
-      ],
-    );
-  }
-
-  // 7. Fluttering Iridescent Butterflies Orbiting
-  Widget _buildButterfliesArFilter(Size viewSize) {
-    return Stack(
-      children: [
-        Positioned(
-          top: viewSize.height * 0.12,
-          left: viewSize.width * 0.15,
-          child: const Icon(Icons.flutter_dash_rounded, color: Color(0xFF00E5FF), size: 36)
-              .animate(onPlay: (controller) => controller.repeat(reverse: true))
-              .scale(duration: 600.ms, begin: const Offset(0.75, 1.0), end: const Offset(1.15, 0.9))
-              .move(duration: 2000.ms, begin: const Offset(-10, 0), end: const Offset(20, -25)),
-        ),
-        Positioned(
-          top: viewSize.height * 0.09,
-          right: viewSize.width * 0.18,
-          child: const Icon(Icons.flutter_dash_rounded, color: Color(0xFFFFD700), size: 42)
-              .animate(onPlay: (controller) => controller.repeat(reverse: true))
-              .scale(duration: 500.ms, begin: const Offset(0.7, 1.0), end: const Offset(1.2, 0.95))
-              .move(duration: 2200.ms, begin: const Offset(15, 0), end: const Offset(-25, -20)),
-        ),
-        Positioned(
-          top: viewSize.height * 0.22,
-          right: viewSize.width * 0.10,
-          child: const Icon(Icons.flutter_dash_rounded, color: Color(0xFFFF4081), size: 30)
-              .animate(onPlay: (controller) => controller.repeat(reverse: true))
-              .scale(duration: 650.ms, begin: const Offset(0.8, 1.0), end: const Offset(1.1, 0.9))
-              .move(duration: 1800.ms, begin: const Offset(0, 10), end: const Offset(-15, -30)),
-        ),
-      ],
-    );
-  }
-
-  // 8. Glowing Neon Devil Horns
-  Widget _buildDevilHornsArFilter(Size viewSize) {
-    return Stack(
-      children: [
-        Positioned(
-          top: viewSize.height * 0.08,
-          left: viewSize.width * 0.22,
-          child: Transform.rotate(
-            angle: -0.35,
-            child: const Icon(Icons.local_fire_department_rounded, color: Color(0xFFFF1744), size: 54),
-          )
-              .animate(onPlay: (controller) => controller.repeat(reverse: true))
-              .scale(duration: 800.ms, begin: const Offset(0.9, 0.9), end: const Offset(1.1, 1.1))
-              .shimmer(duration: 1200.ms, color: const Color(0xFFFF8A80)),
-        ),
-        Positioned(
-          top: viewSize.height * 0.08,
-          right: viewSize.width * 0.22,
-          child: Transform.rotate(
-            angle: 0.35,
-            child: const Icon(Icons.local_fire_department_rounded, color: Color(0xFFFF1744), size: 54),
-          )
-              .animate(onPlay: (controller) => controller.repeat(reverse: true))
-              .scale(duration: 800.ms, begin: const Offset(0.9, 0.9), end: const Offset(1.1, 1.1))
-              .shimmer(duration: 1200.ms, color: const Color(0xFFFF8A80)),
-        ),
-      ],
+      ),
     );
   }
 
@@ -3100,6 +2835,7 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Widget _buildLensesCarousel() {
+    final lenses = _allAvailableLenses;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -3108,20 +2844,26 @@ class _CameraScreenState extends State<CameraScreen>
             padding: const EdgeInsets.only(bottom: 8),
             child: GestureDetector(
               onTap: () {
-                HapticFeedback.selectionClick();
-                setState(() => _selectedLens = null);
+                _applySelectedLens(null);
               },
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.black54,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppColors.secondaryTeal, width: 0.8),
+                  border: Border.all(
+                    color: _selectedLens!.isAr ? const Color(0xFFFFFC00) : AppColors.secondaryTeal,
+                    width: 0.8,
+                  ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.auto_awesome, color: AppColors.secondaryTeal, size: 12),
+                    Icon(
+                      _selectedLens!.isAr ? Icons.auto_awesome : Icons.palette_rounded,
+                      color: _selectedLens!.isAr ? const Color(0xFFFFFC00) : AppColors.secondaryTeal,
+                      size: 12,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       _selectedLens!.name,
@@ -3139,7 +2881,7 @@ class _CameraScreenState extends State<CameraScreen>
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: _builtinLenses.length + 1,
+            itemCount: lenses.length + 1,
             itemBuilder: (context, index) {
               if (index == 0) {
                 return Padding(
@@ -3175,18 +2917,13 @@ class _CameraScreenState extends State<CameraScreen>
                 );
               }
 
-              final lens = _builtinLenses[index - 1];
+              final lens = lenses[index - 1];
               final isSelected = _selectedLens?.id == lens.id || (_selectedLens == null && lens.id == 'none');
 
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6),
                 child: GestureDetector(
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    setState(() {
-                      _selectedLens = lens.id == 'none' ? null : lens;
-                    });
-                  },
+                  onTap: () => _applySelectedLens(lens),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -3201,20 +2938,29 @@ class _CameraScreenState extends State<CameraScreen>
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               gradient: isSelected
-                                  ? const SweepGradient(
-                                      colors: [
-                                        Color(0xFF8B5CF6),
-                                        Color(0xFFEC4899),
-                                        Color(0xFF38BDF8),
-                                        Color(0xFF8B5CF6),
-                                      ],
-                                    )
+                                  ? (lens.isAr
+                                      ? const SweepGradient(
+                                          colors: [
+                                            Color(0xFFFFFC00),
+                                            Color(0xFFF59E0B),
+                                            Color(0xFFFFFC00),
+                                          ],
+                                        )
+                                      : const SweepGradient(
+                                          colors: [
+                                            Color(0xFF8B5CF6),
+                                            Color(0xFFEC4899),
+                                            Color(0xFF38BDF8),
+                                            Color(0xFF8B5CF6),
+                                          ],
+                                        ))
                                   : null,
                               border: isSelected ? null : Border.all(color: Colors.white30, width: 1.5),
                               boxShadow: isSelected
                                   ? [
                                       BoxShadow(
-                                        color: const Color(0xFF8B5CF6).withValues(alpha: 0.5),
+                                        color: (lens.isAr ? const Color(0xFFFFFC00) : const Color(0xFF8B5CF6))
+                                            .withValues(alpha: 0.5),
                                         blurRadius: 10,
                                         spreadRadius: 2,
                                       ),
@@ -3222,6 +2968,7 @@ class _CameraScreenState extends State<CameraScreen>
                                   : null,
                             ),
                             child: Container(
+                              clipBehavior: Clip.antiAlias,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 gradient: LinearGradient(
@@ -3230,11 +2977,21 @@ class _CameraScreenState extends State<CameraScreen>
                                   colors: lens.previewGradient,
                                 ),
                               ),
-                              child: Icon(
-                                lens.icon,
-                                color: Colors.white,
-                                size: isSelected ? 22 : 18,
-                              ),
+                              child: lens.iconUrl != null && lens.iconUrl!.isNotEmpty
+                                  ? Image.network(
+                                      lens.iconUrl!,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) => Icon(
+                                        lens.icon,
+                                        color: Colors.white,
+                                        size: isSelected ? 22 : 18,
+                                      ),
+                                    )
+                                  : Icon(
+                                      lens.icon,
+                                      color: Colors.white,
+                                      size: isSelected ? 22 : 18,
+                                    ),
                             ),
                           ),
                           if (lens.isAr)
