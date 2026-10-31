@@ -4115,71 +4115,88 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                               }
                                             });
                                           },
-                                        child: Container(
-                                          height: 42,
-                                          width: 42,
-                                          decoration: BoxDecoration(
-                                            color: isDark
-                                                ? Colors.white.withValues(alpha: 0.08)
-                                                : const Color(0xFFF1F5F9),
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: Icon(
-                                            _showAttachmentDrawer ? Icons.close_rounded : Icons.add_rounded,
-                                            color: isDark ? Colors.white70 : const Color(0xFF475569),
-                                            size: 22,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      // Message Pill Input
-                                      Expanded(
-                                        child: Container(
-                                          decoration: BoxDecoration(
-                                            color: isDark
-                                                ? Colors.white.withValues(alpha: 0.06)
-                                                : const Color(0xFFF1F5F9),
-                                            borderRadius: BorderRadius.circular(24),
-                                            border: Border.all(
-                                              color: isDark
-                                                  ? Colors.white10
-                                                  : Colors.black.withValues(alpha: 0.04),
+                                          child: AnimatedContainer(
+                                            duration: const Duration(milliseconds: 180),
+                                            height: 44,
+                                            width: 44,
+                                            decoration: BoxDecoration(
+                                              color: _showAttachmentDrawer
+                                                  ? (isDark ? Colors.white24 : const Color(0xFFCBD5E1))
+                                                  : (isDark
+                                                      ? Colors.white.withValues(alpha: 0.08)
+                                                      : const Color(0xFFF1F5F9)),
+                                              shape: BoxShape.circle,
+                                              border: Border.all(
+                                                color: isDark
+                                                    ? Colors.white12
+                                                    : Colors.black.withValues(alpha: 0.06),
+                                                width: 1,
+                                              ),
+                                            ),
+                                            child: Icon(
+                                              _showAttachmentDrawer ? Icons.close_rounded : Icons.add_rounded,
+                                              color: isDark ? Colors.white : const Color(0xFF334155),
+                                              size: 22,
                                             ),
                                           ),
-                                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                                          child: Row(
-                                            children: [
-                                              Expanded(
-                                                child: TextField(
-                                                  controller: _messageController,
-                                                  focusNode: _messageFocusNode,
-                                                  onChanged: _onTextChanged,
-                                                  maxLines: 4,
-                                                  minLines: 1,
-                                                  style: TextStyle(
-                                                    fontSize: 15,
-                                                    color: isDark ? Colors.white : const Color(0xFF0F172A),
-                                                  ),
-                                                  decoration: InputDecoration(
-                                                    hintText: _editingMessage != null
-                                                        ? "Edit message..."
-                                                        : (isGroup ? "Message $displayName..." : "Message..."),
-                                                    hintStyle: TextStyle(
-                                                      color: isDark ? Colors.white38 : Colors.grey[400],
+                                        ),
+                                        const SizedBox(width: 8),
+                                        // Message Pill Input
+                                        Expanded(
+                                          child: Container(
+                                            constraints: const BoxConstraints(minHeight: 44),
+                                            decoration: BoxDecoration(
+                                              color: isDark
+                                                  ? Colors.white.withValues(alpha: 0.08)
+                                                  : const Color(0xFFF1F5F9),
+                                              borderRadius: BorderRadius.circular(24),
+                                              border: Border.all(
+                                                color: isDark
+                                                    ? Colors.white12
+                                                    : Colors.black.withValues(alpha: 0.06),
+                                                width: 1,
+                                              ),
+                                            ),
+                                            padding: const EdgeInsets.only(left: 14, right: 6),
+                                            child: Row(
+                                              crossAxisAlignment: CrossAxisAlignment.center,
+                                              children: [
+                                                Expanded(
+                                                  child: TextField(
+                                                    controller: _messageController,
+                                                    focusNode: _messageFocusNode,
+                                                    onChanged: _onTextChanged,
+                                                    maxLines: 4,
+                                                    minLines: 1,
+                                                    style: TextStyle(
                                                       fontSize: 15,
+                                                      color: isDark ? Colors.white : const Color(0xFF0F172A),
                                                     ),
-                                                    contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                                                    border: InputBorder.none,
-                                                    isDense: true,
+                                                    decoration: InputDecoration(
+                                                      isDense: true,
+                                                      filled: false,
+                                                      fillColor: Colors.transparent,
+                                                      border: InputBorder.none,
+                                                      enabledBorder: InputBorder.none,
+                                                      focusedBorder: InputBorder.none,
+                                                      errorBorder: InputBorder.none,
+                                                      disabledBorder: InputBorder.none,
+                                                      hintText: _editingMessage != null
+                                                          ? "Edit message..."
+                                                          : (isGroup ? "Message $displayName..." : "Message..."),
+                                                      hintStyle: TextStyle(
+                                                        color: isDark ? Colors.white38 : const Color(0xFF94A3B8),
+                                                        fontSize: 15,
+                                                      ),
+                                                      contentPadding: const EdgeInsets.symmetric(vertical: 11),
+                                                    ),
                                                   ),
                                                 ),
-                                              ),
-                                              _buildEmojiToggle(isDark),
-                                              _buildCameraButton(isDark, otherUserId: otherUserId, displayName: displayName),
-                                            ],
+                                                _buildEmojiToggle(isDark),
+                                              ],
+                                            ),
                                           ),
                                         ),
-                                      ),
                                     ],
                                     const SizedBox(width: 8),
                                     _buildMainActionButton(isDark),
@@ -4351,48 +4368,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         });
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: Icon(
-          _showEmojiPicker ? Icons.keyboard_rounded : Icons.sticky_note_2_rounded,
-          color: isDark ? Colors.white54 : Colors.grey[500],
-          size: 22,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCameraButton(
-    bool isDark, {
-    String? otherUserId,
-    String? displayName,
-  }) {
-    return GestureDetector(
-      onTap: () async {
-        final result = await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => CameraScreen(
-              isForStory: false,
-              cameraContext: CameraContext.snap,
-              directRecipientId: otherUserId,
-              directRecipientName: displayName,
-            ),
+        padding: const EdgeInsets.only(left: 4, right: 6, top: 4, bottom: 4),
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 180),
+          child: Icon(
+            _showEmojiPicker ? Icons.keyboard_rounded : Icons.sticky_note_2_rounded,
+            key: ValueKey<bool>(_showEmojiPicker),
+            color: _showEmojiPicker
+                ? AppColors.secondaryTeal
+                : (isDark ? Colors.white60 : const Color(0xFF64748B)),
+            size: 23,
           ),
-        );
-        if (result != null && result is Map) {
-          _handleCameraMedia(
-            result['file'] as XFile,
-            result['mode'] as CameraMode,
-            otherUserId: otherUserId,
-          );
-        }
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: Icon(
-          Icons.camera_alt_outlined,
-          color: isDark ? Colors.white54 : Colors.grey[500],
-          size: 22,
         ),
       ),
     );
@@ -4401,8 +4387,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Widget _buildActionButtonIcon(bool isDark, {required bool isSend}) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
-      height: 42,
-      width: 42,
+      height: 44,
+      width: 44,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: isSend
@@ -4432,7 +4418,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             isSend ? Icons.send_rounded : Icons.mic_rounded,
             key: ValueKey<bool>(isSend),
             color: Colors.white,
-            size: 20,
+            size: 21,
           ),
         ),
       ),

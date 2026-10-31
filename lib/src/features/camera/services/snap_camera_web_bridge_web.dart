@@ -16,12 +16,18 @@ class SnapCameraWebBridge {
   static const String viewType = 'snap-camerakit-view';
   static bool _viewRegistered = false;
 
+  static String? lastError;
+  static int lastStage = 0;
+  static String lastStageName = 'Not Started';
+
   static JSObject? get _bridge {
     try {
       if (globalContext.has('SnapCameraBridge')) {
         return globalContext.getProperty('SnapCameraBridge'.toJS) as JSObject?;
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[SnapCameraBridge:Web] Error accessing SnapCameraBridge: $e');
+    }
     return null;
   }
 
@@ -32,18 +38,23 @@ class SnapCameraWebBridge {
       viewType,
       (int viewId) {
         final bridge = _bridge;
-        if (bridge != null && bridge.has('getOrCreateContainer')) {
+        if (bridge != null) {
           try {
-            final container = bridge.callMethod('getOrCreateContainer'.toJS) as web.HTMLElement?;
-            if (container != null) {
-              return container;
+            if (bridge.has('attachLiveCanvas')) {
+              bridge.callMethod('attachLiveCanvas'.toJS);
+            }
+            if (bridge.has('getOrCreateContainer')) {
+              final container = bridge.callMethod('getOrCreateContainer'.toJS) as web.HTMLElement?;
+              if (container != null) {
+                return container;
+              }
             }
           } catch (e) {
-            debugPrint('Error getting SnapCameraBridge container: $e');
+            debugPrint('[SnapCameraBridge:Web] Error getting bridge container: $e');
           }
         }
         final fallback = web.document.createElement('div') as web.HTMLDivElement;
-        fallback.id = 'snap-camerakit-fallback';
+        fallback.id = 'snap-camerakit-fallback-$viewId';
         fallback.style.width = '100%';
         fallback.style.height = '100%';
         fallback.style.backgroundColor = '#000000';
@@ -54,15 +65,45 @@ class SnapCameraWebBridge {
 
   static Widget buildPreviewWidget() {
     _ensureViewRegistered();
+    final bridge = _bridge;
+    if (bridge != null && bridge.has('attachLiveCanvas')) {
+      try {
+        bridge.callMethod('attachLiveCanvas'.toJS);
+      } catch (_) {}
+    }
     return const HtmlElementView(viewType: viewType);
   }
 
-  static Future<bool> initSession({String? apiToken, String? lensGroupId}) async {
+  static List<Map<String, dynamic>> getDiagnosticLogs() {
+    final bridge = _bridge;
+    if (bridge == null) return const [];
+    try {
+      if (bridge.has('getDiagnosticLogsJson')) {
+        final resJS = bridge.callMethod('getDiagnosticLogsJson'.toJS) as JSString?;
+        final resStr = resJS?.toDart;
+        if (resStr != null) {
+          final decoded = jsonDecode(resStr);
+          if (decoded is List) {
+            return decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[SnapCameraBridge:Web] Error reading diagnostic logs: $e');
+    }
+    return const [];
+  }
+
+  static Future<SnapInitResult> initSessionDetailed({String? apiToken, String? lensGroupId}) async {
     _ensureViewRegistered();
     final bridge = _bridge;
     if (bridge == null) {
-      debugPrint('SnapCameraBridge not available on window.');
-      return false;
+      const err = 'SnapCameraBridge not available on window. Ensure snap_camerakit_bridge.js loaded.';
+      lastError = err;
+      lastStage = 2;
+      lastStageName = 'The web bridge is available';
+      debugPrint('[SnapCameraKit:Diag] [Stage 2/17: The web bridge is available] status: FAILURE - $err');
+      return SnapInitResult.failure(err, stage: 2, stageName: lastStageName);
     }
 
     try {
@@ -74,31 +115,77 @@ class SnapCameraWebBridge {
         groupJS,
       ) as JSPromise?;
 
-      if (promise == null) return false;
-      final rawResult = await promise.toDart;
+      if (promise == null) {
+        const err = 'Bridge returned null promise during initSessionJson.';
+        lastError = err;
+        lastStage = 4;
+        lastStageName = 'Camera Kit initialization begins';
+        return SnapInitResult.failure(err, stage: 4, stageName: lastStageName);
+      }
+
+      // Add a client-side timeout wrapper in Dart
+      final rawResult = await promise.toDart.timeout(
+        const Duration(seconds: 20),
+        onTimeout: () {
+          throw Exception('SnapCameraBridge.initSession timed out after 20 seconds in Flutter Web.');
+        },
+      );
+
       final resultStr = (rawResult as JSString?)?.toDart;
-      if (resultStr == null) return false;
+      if (resultStr == null) {
+        const err = 'Empty response received from SnapCameraBridge.initSessionJson.';
+        lastError = err;
+        return SnapInitResult.failure(err);
+      }
 
       final Map<String, dynamic> data = jsonDecode(resultStr);
-      return data['success'] == true;
+      final result = SnapInitResult.fromMap(data);
+      lastStage = result.stage;
+      lastStageName = result.stageName;
+      lastError = result.error;
+
+      if (!result.success) {
+        debugPrint('[SnapCameraKit:Diag] Bridge initSession failed at stage ${result.stage} (${result.stageName}): ${result.error}');
+      } else {
+        debugPrint('[SnapCameraKit:Diag] Bridge initSession completed successfully (lenses: ${result.lensCount}, elapsed: ${result.elapsedMs}ms)');
+      }
+
+      return result;
     } catch (e) {
-      debugPrint('SnapCameraWebBridge.initSession error: $e');
-      return false;
+      final err = e.toString();
+      lastError = err;
+      debugPrint('[SnapCameraBridge:Web] initSessionDetailed exception: $err');
+      return SnapInitResult.failure(err, stage: lastStage, stageName: lastStageName);
     }
   }
 
-  static Future<List<SnapWebLens>> loadLensGroup(String groupId) async {
+  static Future<bool> initSession({String? apiToken, String? lensGroupId}) async {
+    final res = await initSessionDetailed(apiToken: apiToken, lensGroupId: lensGroupId);
+    return res.success;
+  }
+
+  static Future<List<SnapWebLens>> loadLensGroup(String groupId, {String? apiToken}) async {
     final bridge = _bridge;
-    if (bridge == null) return const [];
+    if (bridge == null) {
+      lastError = 'Bridge not available on window.';
+      return const [];
+    }
 
     try {
+      final tokenJS = (apiToken ?? '').toJS;
       final promise = bridge.callMethod(
         'loadLensGroupJson'.toJS,
         groupId.toJS,
+        tokenJS,
       ) as JSPromise?;
 
       if (promise == null) return const [];
-      final rawResult = await promise.toDart;
+      final rawResult = await promise.toDart.timeout(
+        const Duration(seconds: 18),
+        onTimeout: () {
+          throw Exception('loadLensGroup timed out after 18 seconds.');
+        },
+      );
       final resultStr = (rawResult as JSString?)?.toDart;
       if (resultStr == null) return const [];
 
@@ -109,9 +196,15 @@ class SnapCameraWebBridge {
             .map((item) => SnapWebLens.fromMap(Map<String, dynamic>.from(item as Map)))
             .toList();
       }
+
+      if (data['error'] != null) {
+        lastError = data['error'].toString();
+        debugPrint('[SnapCameraKit:Diag] loadLensGroup returned error: $lastError');
+      }
       return const [];
     } catch (e) {
-      debugPrint('SnapCameraWebBridge.loadLensGroup error: $e');
+      lastError = e.toString();
+      debugPrint('[SnapCameraBridge:Web] loadLensGroup error: $e');
       return const [];
     }
   }
@@ -137,14 +230,17 @@ class SnapCameraWebBridge {
       }
       return result;
     } catch (e) {
-      debugPrint('SnapCameraWebBridge.getLoadedLenses error: $e');
+      debugPrint('[SnapCameraBridge:Web] getLoadedLenses error: $e');
       return const [];
     }
   }
 
   static Future<bool> applyLens(String lensId) async {
     final bridge = _bridge;
-    if (bridge == null) return false;
+    if (bridge == null) {
+      lastError = 'Bridge not available on window';
+      return false;
+    }
 
     try {
       final promise = bridge.callMethod(
@@ -153,14 +249,25 @@ class SnapCameraWebBridge {
       ) as JSPromise?;
 
       if (promise == null) return false;
-      final rawResult = await promise.toDart;
+      final rawResult = await promise.toDart.timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          throw Exception('applyLens timed out after 15 seconds.');
+        },
+      );
       final resultStr = (rawResult as JSString?)?.toDart;
       if (resultStr == null) return false;
 
       final Map<String, dynamic> data = jsonDecode(resultStr);
-      return data['success'] == true;
+      if (data['success'] == true) {
+        return true;
+      }
+      lastError = data['error']?.toString() ?? 'Failed to apply lens $lensId';
+      debugPrint('[SnapCameraKit:Diag] applyLens failed: $lastError');
+      return false;
     } catch (e) {
-      debugPrint('SnapCameraWebBridge.applyLens error: $e');
+      lastError = e.toString();
+      debugPrint('[SnapCameraBridge:Web] applyLens error: $e');
       return false;
     }
   }
@@ -179,7 +286,7 @@ class SnapCameraWebBridge {
       final Map<String, dynamic> data = jsonDecode(resultStr);
       return data['success'] == true;
     } catch (e) {
-      debugPrint('SnapCameraWebBridge.removeLens error: $e');
+      debugPrint('[SnapCameraBridge:Web] removeLens error: $e');
       return false;
     }
   }
@@ -196,7 +303,12 @@ class SnapCameraWebBridge {
         return const SnapCaptureResult(success: false, error: 'Null capture promise');
       }
 
-      final rawResult = await promise.toDart;
+      final rawResult = await promise.toDart.timeout(
+        const Duration(seconds: 8),
+        onTimeout: () {
+          throw Exception('capturePhoto timed out after 8s');
+        },
+      );
       final resultStr = (rawResult as JSString?)?.toDart;
       if (resultStr == null) {
         return const SnapCaptureResult(success: false, error: 'Empty capture result');
@@ -237,7 +349,7 @@ class SnapCameraWebBridge {
       final Map<String, dynamic> data = jsonDecode(resStr);
       return data['success'] == true;
     } catch (e) {
-      debugPrint('SnapCameraWebBridge.startRecording error: $e');
+      debugPrint('[SnapCameraBridge:Web] startRecording error: $e');
       return false;
     }
   }
@@ -262,7 +374,12 @@ class SnapCameraWebBridge {
         );
       }
 
-      final rawResult = await promise.toDart;
+      final rawResult = await promise.toDart.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('stopRecording timed out after 10s');
+        },
+      );
       final resultStr = (rawResult as JSString?)?.toDart;
       if (resultStr == null) {
         return const SnapCaptureResult(

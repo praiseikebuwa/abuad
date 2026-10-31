@@ -1160,14 +1160,21 @@ class _CameraScreenState extends State<CameraScreen>
                     ),
                     const SizedBox(height: 12),
                     if (selectedTab == 1 && _isLoadingArLenses)
-                      const Expanded(
+                      Expanded(
                         child: Center(
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              CircularProgressIndicator(color: Color(0xFFFFFC00)),
-                              SizedBox(height: 12),
-                              Text('Fetching Snapchat AR lenses...', style: TextStyle(color: Colors.white70)),
+                              const CircularProgressIndicator(color: Color(0xFFFFFC00)),
+                              const SizedBox(height: 12),
+                              const Text('Fetching Snapchat AR lenses...', style: TextStyle(color: Colors.white70)),
+                              const SizedBox(height: 8),
+                              TextButton(
+                                onPressed: () {
+                                  setSheetState(() => selectedTab = 0);
+                                },
+                                child: const Text('View All Lenses', style: TextStyle(color: Colors.white60)),
+                              ),
                             ],
                           ),
                         ),
@@ -1185,12 +1192,13 @@ class _CameraScreenState extends State<CameraScreen>
                                 style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
                               ),
                               const SizedBox(height: 6),
-                              const Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 32),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 32),
                                 child: Text(
-                                  'Could not load lenses from Snap Lens Group. Check your connection or portal credentials.',
+                                  SnapCameraWebBridge.lastError ??
+                                      'Could not load lenses from Snap Lens Group $_snapLensGroupId. Check network or portal credentials.',
                                   textAlign: TextAlign.center,
-                                  style: TextStyle(color: Colors.white60, fontSize: 12),
+                                  style: const TextStyle(color: Colors.white60, fontSize: 12),
                                 ),
                               ),
                               const SizedBox(height: 16),
@@ -1202,12 +1210,15 @@ class _CameraScreenState extends State<CameraScreen>
                                 icon: const Icon(Icons.refresh, size: 18),
                                 label: const Text('Retry Fetching Lenses'),
                                 onPressed: () async {
+                                  setSheetState(() => _isLoadingArLenses = true);
                                   if (kIsWeb) {
                                     await _loadWebLenses();
                                   } else {
                                     _cameraKitFlutterImpl.getGroupLenses(groupIds: [_snapLensGroupId]);
                                   }
-                                  setSheetState(() {});
+                                  if (ctx.mounted) {
+                                    setSheetState(() {});
+                                  }
                                 },
                               ),
                               const SizedBox(height: 8),
@@ -1429,19 +1440,37 @@ class _CameraScreenState extends State<CameraScreen>
 
     try {
       await _controller?.pausePreview();
-      final tokenToUse = _snapWebProductionToken.isNotEmpty ? _snapWebProductionToken : snapWebStagingToken;
-      final success = await SnapCameraWebBridge.initSession(
+      final isLocalhost = Uri.base.host == 'localhost' || Uri.base.host == '127.0.0.1' || Uri.base.host.isEmpty;
+      // As verified in Snap Developer Portal, Staging Camera Kit is "Enabled" (Initial Version) while Production is "Unknown (Version is unset)".
+      // The staging token is valid for both localhost and hosted domains as long as the origin is added to Platform Identifiers (Staging).
+      String tokenToUse = snapWebStagingToken;
+
+      var result = await SnapCameraWebBridge.initSessionDetailed(
         apiToken: tokenToUse,
         lensGroupId: _snapLensGroupId,
       );
 
-      if (!success) {
-        throw Exception('Failed to initialize Camera Kit Web session. Check token or domain.');
+      // If staging failed and not on localhost, attempt production token as fallback
+      if (!result.success && !isLocalhost && _snapWebProductionToken.isNotEmpty) {
+        tokenToUse = _snapWebProductionToken;
+        result = await SnapCameraWebBridge.initSessionDetailed(
+          apiToken: tokenToUse,
+          lensGroupId: _snapLensGroupId,
+        );
       }
 
-      setState(() {
-        _isWebArActive = true;
-      });
+      if (!result.success) {
+        final originHint = Uri.base.origin.isNotEmpty
+            ? ' Check that "${Uri.base.origin}" is added to Platform Identifiers (Staging) in the Snap Developer Portal.'
+            : '';
+        throw Exception('${result.error ?? 'Camera Kit failed at Stage ${result.stage}: ${result.stageName}'}.$originHint');
+      }
+
+      if (mounted) {
+        setState(() {
+          _isWebArActive = true;
+        });
+      }
 
       await _loadWebLenses(applyLensId: applyLensId);
     } catch (e) {
@@ -1477,30 +1506,48 @@ class _CameraScreenState extends State<CameraScreen>
     if (!kIsWeb) return;
     setState(() => _isLoadingArLenses = true);
     try {
-      final webLenses = await SnapCameraWebBridge.loadLensGroup(_snapLensGroupId);
+      final isLocalhost = Uri.base.host == 'localhost' || Uri.base.host == '127.0.0.1' || Uri.base.host.isEmpty;
+      String tokenToUse = snapWebStagingToken;
+
+      var webLenses = await SnapCameraWebBridge.loadLensGroup(
+        _snapLensGroupId,
+        apiToken: tokenToUse,
+      );
+
+      if (webLenses.isEmpty && !isLocalhost && _snapWebProductionToken.isNotEmpty) {
+        tokenToUse = _snapWebProductionToken;
+        webLenses = await SnapCameraWebBridge.loadLensGroup(
+          _snapLensGroupId,
+          apiToken: tokenToUse,
+        );
+      }
       if (mounted) {
         setState(() {
           _loadedArLenses = webLenses.map((l) => CameraLensEffect.fromSnapWebLens(l)).toList();
-          _isLoadingArLenses = false;
         });
 
         if (applyLensId != null && _isWebArActive) {
-          await SnapCameraWebBridge.applyLens(applyLensId);
-          final matched = _loadedArLenses.firstWhere(
-            (l) => l.snapLensId == applyLensId,
-            orElse: () => _loadedArLenses.first,
-          );
-          setState(() => _selectedLens = matched);
+          final applied = await SnapCameraWebBridge.applyLens(applyLensId);
+          if (applied && mounted) {
+            final matched = _loadedArLenses.firstWhere(
+              (l) => l.snapLensId == applyLensId,
+              orElse: () => _loadedArLenses.first,
+            );
+            setState(() => _selectedLens = matched);
+          }
         } else if (_loadedArLenses.isNotEmpty && _selectedLens == null && _isWebArActive) {
           final first = _loadedArLenses.first;
           if (first.snapLensId != null) {
-            await SnapCameraWebBridge.applyLens(first.snapLensId!);
-            setState(() => _selectedLens = first);
+            final applied = await SnapCameraWebBridge.applyLens(first.snapLensId!);
+            if (applied && mounted) {
+              setState(() => _selectedLens = first);
+            }
           }
         }
       }
     } catch (e) {
       debugPrint('[SnapCameraKit] Failed to load lenses: $e');
+    } finally {
       if (mounted) {
         setState(() => _isLoadingArLenses = false);
       }
@@ -1532,11 +1579,23 @@ class _CameraScreenState extends State<CameraScreen>
 
     if (lens.isAr) {
       if (kIsWeb) {
-        setState(() => _selectedLens = lens);
         if (!_isWebArActive) {
           await _initWebCameraKitSession(applyLensId: lens.snapLensId);
         } else if (lens.snapLensId != null) {
-          await SnapCameraWebBridge.applyLens(lens.snapLensId!);
+          final applied = await SnapCameraWebBridge.applyLens(lens.snapLensId!);
+          if (applied && mounted) {
+            setState(() => _selectedLens = lens);
+          } else if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  SnapCameraWebBridge.lastError ?? 'Failed to apply lens "${lens.name}"',
+                ),
+                backgroundColor: Colors.redAccent,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
         }
       } else {
         setState(() => _selectedLens = lens);
@@ -1879,12 +1938,7 @@ class _CameraScreenState extends State<CameraScreen>
             },
             onScaleUpdate: (details) {
               final newZoom = (_baseZoom * details.scale).clamp(_minZoom, _maxZoom);
-              if (newZoom != _currentZoom) {
-                setState(() => _currentZoom = newZoom);
-                if (!kIsWeb) {
-                  _controller?.setZoomLevel(newZoom);
-                }
-              }
+              _setZoom(newZoom);
             },
             onDoubleTap: _toggleCamera,
             onTapUp: (details) => _setFocusPoint(details.globalPosition),
@@ -2330,42 +2384,6 @@ class _CameraScreenState extends State<CameraScreen>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Zoom Pill Selectors (0.5x, 1x, 2x, 3x)
-                  _buildZoomPillSelector(),
-
-                  const SizedBox(height: 12),
-
-                  // Dynamic floating tooltip
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.45),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.white12, width: 0.5),
-                        ),
-                        child: Text(
-                          _isRecording
-                              ? 'recording in progress'
-                              : _currentMode == CameraMode.video
-                                  ? 'tap to record video'
-                                  : 'tap to snap, hold for video',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            letterSpacing: 0.2,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
                   // Lenses / Effects Horizontal Carousel ("cycle cycle cycle")
                   if (_showLensesCarousel) ...[
                     _buildLensesCarousel(),
@@ -2577,16 +2595,46 @@ class _CameraScreenState extends State<CameraScreen>
               // Web AR Initializing Overlay
               if (kIsWeb && _isInitializingWebAr)
                 Container(
-                  color: Colors.black54,
-                  child: const Center(
+                  color: Colors.black87,
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        CircularProgressIndicator(color: Color(0xFFFFFC00)),
-                        SizedBox(height: 12),
+                        const CircularProgressIndicator(color: Color(0xFFFFFC00)),
+                        const SizedBox(height: 16),
                         Text(
-                          'Starting Snapchat AR...',
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                          SnapCameraWebBridge.lastStageName.isNotEmpty
+                              ? 'Snapchat AR: ${SnapCameraWebBridge.lastStageName}...'
+                              : 'Starting Snapchat AR...',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Setting up Camera Kit engine & lens session',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white60, fontSize: 12),
+                        ),
+                        const SizedBox(height: 16),
+                        TextButton.icon(
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.white70,
+                            backgroundColor: Colors.white10,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          icon: const Icon(Icons.close, size: 16),
+                          label: const Text('Cancel AR Setup'),
+                          onPressed: () {
+                            setState(() {
+                              _isInitializingWebAr = false;
+                              _isWebArActive = false;
+                            });
+                            try {
+                              _controller?.resumePreview();
+                            } catch (_) {}
+                          },
                         ),
                       ],
                     ),
@@ -2653,55 +2701,6 @@ class _CameraScreenState extends State<CameraScreen>
       child: IgnorePointer(
         child: Container(
           color: overlayColor.withValues(alpha: opacity),
-        ),
-      ),
-    );
-  }
-
-  // Zoom Pill Selector: [0.5x] [1x] [2x] [3x]
-  Widget _buildZoomPillSelector() {
-    final List<double> zoomOptions = [];
-    if (_minZoom <= 0.6) zoomOptions.add(0.5);
-    zoomOptions.add(1.0);
-    if (_maxZoom >= 2.0) zoomOptions.add(2.0);
-    if (_maxZoom >= 3.0) zoomOptions.add(3.0);
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.4),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white12, width: 0.5),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: zoomOptions.map((z) {
-              final isSelected = (_currentZoom - z).abs() < 0.3;
-              return GestureDetector(
-                onTap: () => _setZoom(z),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: isSelected ? Colors.white : Colors.transparent,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Text(
-                    '${z == 0.5 ? "0.5" : z.toInt()}x',
-                    style: TextStyle(
-                      color: isSelected ? Colors.black : Colors.white70,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
         ),
       ),
     );

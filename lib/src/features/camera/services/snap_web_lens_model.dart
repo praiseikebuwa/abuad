@@ -32,6 +32,47 @@ class SnapWebLens {
   }
 }
 
+class SnapInitResult {
+  final bool success;
+  final int stage;
+  final String stageName;
+  final String? error;
+  final int lensCount;
+  final int elapsedMs;
+  final bool alreadyInitialized;
+
+  const SnapInitResult({
+    required this.success,
+    this.stage = 0,
+    this.stageName = 'Unknown',
+    this.error,
+    this.lensCount = 0,
+    this.elapsedMs = 0,
+    this.alreadyInitialized = false,
+  });
+
+  factory SnapInitResult.fromMap(Map<String, dynamic> map) {
+    return SnapInitResult(
+      success: map['success'] == true,
+      stage: (map['stage'] as num?)?.toInt() ?? 0,
+      stageName: map['stageName']?.toString() ?? '',
+      error: map['error']?.toString(),
+      lensCount: (map['lensCount'] as num?)?.toInt() ?? 0,
+      elapsedMs: (map['elapsedMs'] as num?)?.toInt() ?? 0,
+      alreadyInitialized: map['alreadyInitialized'] == true,
+    );
+  }
+
+  factory SnapInitResult.failure(String error, {int stage = 0, String stageName = 'Initialization'}) {
+    return SnapInitResult(
+      success: false,
+      stage: stage,
+      stageName: stageName,
+      error: error,
+    );
+  }
+}
+
 class SnapCaptureResult {
   final bool success;
   final String? dataUrl;
