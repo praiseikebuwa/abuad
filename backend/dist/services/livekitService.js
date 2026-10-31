@@ -8,7 +8,7 @@ exports.muteLiveKitParticipantTrack = muteLiveKitParticipantTrack;
 const livekit_server_sdk_1 = require("livekit-server-sdk");
 const LIVEKIT_URL = process.env.LIVEKIT_URL || 'wss://abuad-cgeux9e8.livekit.cloud';
 const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || 'APIm3GQ6f4JbJ7a';
-const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || 'ERcJJcvDFFfq2obQvqSjJ0pfUYViEffsfJfWn4gaTElM';
+const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || 'ERcJJcvDFffq2obQvqSjJ0pfUYViEffsfJfWn4gaTElM';
 async function generateLiveKitToken(options) {
     const isSpeaker = options.role === 'HOST' || options.role === 'CO_HOST' || options.role === 'SPEAKER';
     const token = new livekit_server_sdk_1.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
