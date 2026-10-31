@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class AudioRoomUser {
   final String id;
   final String username;
@@ -210,6 +212,9 @@ class AudioRoom {
   final List<AudioParticipant> participants;
   final List<AudioSpeakRequest> requests;
   final int totalParticipants;
+  final List<String> taggedGroupIds;
+  final List<String> taggedUserIds;
+  final List<String> tags;
 
   const AudioRoom({
     required this.id,
@@ -230,6 +235,9 @@ class AudioRoom {
     this.participants = const [],
     this.requests = const [],
     this.totalParticipants = 0,
+    this.taggedGroupIds = const [],
+    this.taggedUserIds = const [],
+    this.tags = const [],
   });
 
   bool get isLive => status == 'LIVE';
@@ -275,6 +283,17 @@ class AudioRoom {
     final countMap = json['_count'] as Map<String, dynamic>?;
     final count = countMap?['participants'] as int? ?? parsedParticipants.length;
 
+    List<String> parseStringList(dynamic raw) {
+      if (raw is List) return raw.map((e) => e.toString()).toList();
+      if (raw is String && raw.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(raw);
+          if (decoded is List) return decoded.map((e) => e.toString()).toList();
+        } catch (_) {}
+      }
+      return const [];
+    }
+
     return AudioRoom(
       id: json['id'] as String? ?? '',
       hostId: json['hostId'] as String? ?? hostObj.id,
@@ -302,6 +321,9 @@ class AudioRoom {
       participants: parsedParticipants,
       requests: parsedRequests,
       totalParticipants: count,
+      taggedGroupIds: parseStringList(json['taggedGroupIds']),
+      taggedUserIds: parseStringList(json['taggedUserIds']),
+      tags: parseStringList(json['tags']),
     );
   }
 }

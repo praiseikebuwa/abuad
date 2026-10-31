@@ -37,6 +37,9 @@ class AudioRoomRepository {
     bool isRecording = false,
     bool isChatEnabled = true,
     DateTime? scheduledAt,
+    List<String> taggedGroupIds = const [],
+    List<String> taggedUserIds = const [],
+    List<String> tags = const [],
   }) async {
     final body = {
       'title': title,
@@ -47,6 +50,9 @@ class AudioRoomRepository {
       'isRecording': isRecording,
       'isChatEnabled': isChatEnabled,
       if (scheduledAt != null) 'scheduledAt': scheduledAt.toIso8601String(),
+      if (taggedGroupIds.isNotEmpty) 'taggedGroupIds': taggedGroupIds,
+      if (taggedUserIds.isNotEmpty) 'taggedUserIds': taggedUserIds,
+      if (tags.isNotEmpty) 'tags': tags,
     };
 
     final res = await ApiClient.post('/audio-rooms', body);

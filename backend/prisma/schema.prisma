@@ -543,6 +543,9 @@ model AudioRoom {
   status             String                 @default("LIVE")     // SCHEDULED, LIVE, ENDED
   isRecording        Boolean                @default(false)
   isChatEnabled      Boolean                @default(true)
+  taggedGroupIds     String?                @default("[]")
+  taggedUserIds      String?                @default("[]")
+  tags               String?                @default("[]")
   scheduledAt        DateTime?
   startedAt          DateTime?
   endedAt            DateTime?

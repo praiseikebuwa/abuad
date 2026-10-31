@@ -68,7 +68,7 @@ router.get('/', auth_1.authenticateToken, async (req, res) => {
 router.post('/', auth_1.authenticateToken, async (req, res) => {
     try {
         const userId = req.user.id;
-        const { title, description, category = 'ACADEMIC', visibility = 'PUBLIC', speakersPermission = 'HOST_APPROVED', isRecording = false, isChatEnabled = true, scheduledAt, } = req.body;
+        const { title, description, category = 'ACADEMIC', visibility = 'PUBLIC', speakersPermission = 'HOST_APPROVED', isRecording = false, isChatEnabled = true, scheduledAt, taggedGroupIds = [], taggedUserIds = [], tags = [], } = req.body;
         if (!title || !title.trim()) {
             return res.status(400).json({ error: 'Room title is required' });
         }
@@ -92,6 +92,9 @@ router.post('/', auth_1.authenticateToken, async (req, res) => {
                 status: roomStatus,
                 isRecording: !!isRecording,
                 isChatEnabled: !!isChatEnabled,
+                taggedGroupIds: JSON.stringify(taggedGroupIds || []),
+                taggedUserIds: JSON.stringify(taggedUserIds || []),
+                tags: JSON.stringify(tags || []),
                 scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
                 startedAt: isScheduled ? null : new Date(),
                 participants: isScheduled
@@ -125,6 +128,59 @@ router.post('/', auth_1.authenticateToken, async (req, res) => {
         // Broadcast new live room to feed and active users
         if (!isScheduled) {
             (0, socket_1.emitToAll)('audio_room:created', { room });
+        }
+        // Dispatch invitations to tagged users and groups
+        const invitedUserIds = new Set();
+        if (Array.isArray(taggedUserIds)) {
+            taggedUserIds.forEach(id => {
+                if (id && id !== userId)
+                    invitedUserIds.add(id);
+            });
+        }
+        if (Array.isArray(taggedGroupIds) && taggedGroupIds.length > 0) {
+            const groups = await db_1.prisma.chatChannel.findMany({
+                where: { id: { in: taggedGroupIds } },
+            });
+            for (const group of groups) {
+                try {
+                    const members = JSON.parse(group.memberIds || '[]');
+                    members.forEach(m => {
+                        if (m && m !== userId)
+                            invitedUserIds.add(m);
+                    });
+                }
+                catch (_) { }
+                // Send announcement message in the group
+                try {
+                    await db_1.prisma.chatMessage.create({
+                        data: {
+                            senderId: userId,
+                            channelId: group.id,
+                            text: `🎙️ ${user.fullName || user.username} started a Live Space: "${room.title}"! Tap to join.`,
+                            type: 'text',
+                            reactions: JSON.stringify({
+                                _liveSpace: {
+                                    roomId: room.id,
+                                    title: room.title,
+                                    category: room.category,
+                                },
+                            }),
+                        },
+                    });
+                    (0, socket_1.emitToAll)('channel:updated', { channelId: group.id, roomId: room.id });
+                }
+                catch (_) { }
+            }
+        }
+        if (invitedUserIds.size > 0) {
+            (0, socket_1.emitToUsers)(Array.from(invitedUserIds), 'audio_room:invitation', {
+                roomId: room.id,
+                title: room.title,
+                host: user,
+                category: room.category,
+                isLive: !isScheduled,
+                scheduledAt: room.scheduledAt,
+            });
         }
         return res.status(201).json({
             success: true,

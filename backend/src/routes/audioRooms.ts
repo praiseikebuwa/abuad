@@ -86,6 +86,9 @@ router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Respo
       isRecording = false,
       isChatEnabled = true,
       scheduledAt,
+      taggedGroupIds = [],
+      taggedUserIds = [],
+      tags = [],
     } = req.body;
 
     if (!title || !title.trim()) {
@@ -114,6 +117,9 @@ router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Respo
         status: roomStatus,
         isRecording: !!isRecording,
         isChatEnabled: !!isChatEnabled,
+        taggedGroupIds: JSON.stringify(taggedGroupIds || []),
+        taggedUserIds: JSON.stringify(taggedUserIds || []),
+        tags: JSON.stringify(tags || []),
         scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
         startedAt: isScheduled ? null : new Date(),
         participants: isScheduled
@@ -149,6 +155,59 @@ router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Respo
     // Broadcast new live room to feed and active users
     if (!isScheduled) {
       emitToAll('audio_room:created', { room });
+    }
+
+    // Dispatch invitations to tagged users and groups
+    const invitedUserIds = new Set<string>();
+    if (Array.isArray(taggedUserIds)) {
+      taggedUserIds.forEach(id => {
+        if (id && id !== userId) invitedUserIds.add(id);
+      });
+    }
+
+    if (Array.isArray(taggedGroupIds) && taggedGroupIds.length > 0) {
+      const groups = await prisma.chatChannel.findMany({
+        where: { id: { in: taggedGroupIds } },
+      });
+      for (const group of groups) {
+        try {
+          const members: string[] = JSON.parse(group.memberIds || '[]');
+          members.forEach(m => {
+            if (m && m !== userId) invitedUserIds.add(m);
+          });
+        } catch (_) {}
+
+        // Send announcement message in the group
+        try {
+          await prisma.chatMessage.create({
+            data: {
+              senderId: userId,
+              channelId: group.id,
+              text: `🎙️ ${user.fullName || user.username} started a Live Space: "${room.title}"! Tap to join.`,
+              type: 'text',
+              reactions: JSON.stringify({
+                _liveSpace: {
+                  roomId: room.id,
+                  title: room.title,
+                  category: room.category,
+                },
+              }),
+            },
+          });
+          emitToAll('channel:updated', { channelId: group.id, roomId: room.id });
+        } catch (_) {}
+      }
+    }
+
+    if (invitedUserIds.size > 0) {
+      emitToUsers(Array.from(invitedUserIds), 'audio_room:invitation', {
+        roomId: room.id,
+        title: room.title,
+        host: user,
+        category: room.category,
+        isLive: !isScheduled,
+        scheduledAt: room.scheduledAt,
+      });
     }
 
     return res.status(201).json({

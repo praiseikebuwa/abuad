@@ -28,6 +28,7 @@ class LiveKitAudioService {
     required String url,
     required String token,
     required bool canPublish,
+    bool autoEnableMic = false,
   }) async {
     try {
       await disconnect();
@@ -80,9 +81,9 @@ class LiveKitAudioService {
 
       await room.connect(url, token);
 
-      if (canPublish) {
-        // Initially keep microphone unmuted if speaker, or let user unmute explicitly
-        // Default to muted on entry to avoid hot mic feedback
+      if (canPublish && autoEnableMic) {
+        await setMicrophoneEnabled(true);
+      } else if (canPublish) {
         await setMicrophoneEnabled(false);
       } else {
         _isMicEnabled = false;
@@ -99,8 +100,12 @@ class LiveKitAudioService {
 
   Future<void> setMicrophoneEnabled(bool enabled) async {
     try {
-      if (_room == null || _room?.localParticipant == null) return;
-      await _room!.localParticipant!.setMicrophoneEnabled(enabled);
+      final participant = _room?.localParticipant;
+      if (participant == null) {
+        debugPrint('⚠️ [LiveKit] Cannot set mic: localParticipant is null');
+        return;
+      }
+      await participant.setMicrophoneEnabled(enabled);
       _isMicEnabled = enabled;
       _micStateController.add(enabled);
       debugPrint('🎙️ [LiveKit] Microphone enabled = $enabled');
@@ -119,11 +124,21 @@ class LiveKitAudioService {
       _listener?.dispose();
       _listener = null;
 
-      if (_room != null) {
+      final roomToClose = _room;
+      _room = null;
+
+      if (roomToClose != null) {
         debugPrint('🎙️ [LiveKit] Disconnecting room...');
-        await _room!.disconnect();
-        await _room!.dispose();
-        _room = null;
+        try {
+          await roomToClose.disconnect();
+        } catch (e) {
+          debugPrint('⚠️ [LiveKit] Disconnect room error: $e');
+        }
+        try {
+          await roomToClose.dispose();
+        } catch (e) {
+          debugPrint('⚠️ [LiveKit] Dispose room error: $e');
+        }
       }
 
       _isMicEnabled = false;

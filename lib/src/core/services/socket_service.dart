@@ -35,6 +35,7 @@ class SocketService {
   final _audioRoomRoleDemotedController = StreamController<Map<String, dynamic>>.broadcast();
   final _audioRoomForceMutedController = StreamController<Map<String, dynamic>>.broadcast();
   final _audioRoomKickedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _audioRoomInvitationController = StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get onNewMessage => _newMessageController.stream;
   Stream<Map<String, dynamic>> get onMessageUpdated => _messageUpdatedController.stream;
@@ -59,6 +60,7 @@ class SocketService {
   Stream<Map<String, dynamic>> get onAudioRoomRoleDemoted => _audioRoomRoleDemotedController.stream;
   Stream<Map<String, dynamic>> get onAudioRoomForceMuted => _audioRoomForceMutedController.stream;
   Stream<Map<String, dynamic>> get onAudioRoomKicked => _audioRoomKickedController.stream;
+  Stream<Map<String, dynamic>> get onAudioRoomInvitation => _audioRoomInvitationController.stream;
 
   String _getSocketUrl() {
     try {
@@ -261,6 +263,27 @@ class SocketService {
 
     _socket!.on('audio_room:kicked', (data) {
       if (data is Map) _audioRoomKickedController.add(Map<String, dynamic>.from(data));
+    });
+
+    _socket!.on('audio_room:invitation', (data) {
+      if (data is Map) {
+        final map = Map<String, dynamic>.from(data);
+        _audioRoomInvitationController.add(map);
+
+        try {
+          final title = map['title']?.toString() ?? 'Live Audio Space';
+          final host = map['host'] is Map ? map['host'] : {};
+          final hostName = host['fullName'] ?? host['username'] ?? 'Someone';
+          final roomId = map['roomId']?.toString();
+
+          NotificationService().showLocalNotification(
+            title: '🎙️ $hostName invited you to a Live Space',
+            body: title,
+            payload: roomId,
+            type: 'audio_space',
+          );
+        } catch (_) {}
+      }
     });
   }
 

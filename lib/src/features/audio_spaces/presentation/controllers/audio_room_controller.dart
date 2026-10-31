@@ -6,6 +6,7 @@ import '../../../../core/services/socket_service.dart';
 import '../../data/audio_room_repository.dart';
 import '../../data/livekit_audio_service.dart';
 import '../../domain/audio_room.dart';
+import '../../services/audio_live_activity_service.dart';
 
 final audioRoomRepositoryProvider = Provider<AudioRoomRepository>((ref) {
   return const AudioRoomRepository();
@@ -342,6 +343,15 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
 
     _micSub = _audioService.micStateStream.listen((isMicOn) {
       state = state.copyWith(isMuted: !isMicOn);
+      if (state.room != null) {
+        try {
+          _ref.read(audioLiveActivityServiceProvider).updateSpaceActivity(
+            roomId: state.room!.id,
+            participantCount: state.room!.totalParticipants,
+            isMuted: !isMicOn,
+          );
+        } catch (_) {}
+      }
     });
   }
 
@@ -399,6 +409,19 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
         messages: messages,
         pendingRequests: room.requests,
       );
+
+      // Launch Live Activity on Join
+      try {
+        _ref.read(audioLiveActivityServiceProvider).startSpaceActivity(
+          roomId: room.id,
+          title: room.title,
+          hostName: room.host.fullName,
+          category: room.category,
+          participantCount: room.totalParticipants,
+          isHost: role == 'HOST',
+          isMuted: true,
+        );
+      } catch (_) {}
     } catch (e) {
       debugPrint('❌ [AudioRoomNotifier] Join error: $e');
       state = state.copyWith(
@@ -409,7 +432,7 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
     }
   }
 
-  Future<void> startRoom({
+  Future<AudioRoom> startRoom({
     required String title,
     String? description,
     String category = 'ACADEMIC',
@@ -417,6 +440,10 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
     String speakersPermission = 'HOST_APPROVED',
     bool isRecording = false,
     bool isChatEnabled = true,
+    DateTime? scheduledAt,
+    List<String> taggedGroupIds = const [],
+    List<String> taggedUserIds = const [],
+    List<String> tags = const [],
   }) async {
     try {
       state = state.copyWith(isConnecting: true, clearError: true);
@@ -429,6 +456,10 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
         speakersPermission: speakersPermission,
         isRecording: isRecording,
         isChatEnabled: isChatEnabled,
+        scheduledAt: scheduledAt,
+        taggedGroupIds: taggedGroupIds,
+        taggedUserIds: taggedUserIds,
+        tags: tags,
       );
 
       final room = result['room'] as AudioRoom;
@@ -443,6 +474,7 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
           url: livekitUrl,
           token: token,
           canPublish: true,
+          autoEnableMic: true,
         );
 
         state = state.copyWith(
@@ -450,11 +482,28 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
           role: 'HOST',
           isConnecting: false,
           isConnected: true,
-          isMuted: true,
+          isMuted: false,
           messages: [],
           pendingRequests: [],
         );
+
+        // Start Live Activity for the host
+        try {
+          _ref.read(audioLiveActivityServiceProvider).startSpaceActivity(
+            roomId: room.id,
+            title: room.title,
+            hostName: room.host.fullName,
+            category: room.category,
+            participantCount: 1,
+            isHost: true,
+            isMuted: false,
+          );
+        } catch (_) {}
+      } else {
+        // Scheduled room created
+        state = state.copyWith(isConnecting: false, isConnected: false);
       }
+      return room;
     } catch (e) {
       debugPrint('❌ [AudioRoomNotifier] Start room error: $e');
       state = state.copyWith(
@@ -517,6 +566,7 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
     if (state.room == null) return;
     final roomId = state.room!.id;
     try {
+      _ref.read(audioLiveActivityServiceProvider).endSpaceActivity(roomId);
       await _repository.endRoom(roomId);
     } catch (_) {}
     await leaveRoom();
@@ -525,6 +575,7 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
   Future<void> leaveRoom() async {
     final roomId = state.room?.id;
     if (roomId != null) {
+      _ref.read(audioLiveActivityServiceProvider).endSpaceActivity(roomId);
       _socketService.leaveAudioRoom(roomId);
       await _repository.leaveRoom(roomId);
     }
