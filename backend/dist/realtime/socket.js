@@ -1,10 +1,12 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.audioRoomName = void 0;
 exports.initSocket = initSocket;
 exports.isUserOnline = isUserOnline;
 exports.emitToChannel = emitToChannel;
 exports.emitToUsers = emitToUsers;
 exports.emitToAll = emitToAll;
+exports.emitToAudioRoom = emitToAudioRoom;
 const socket_io_1 = require("socket.io");
 const jwt_1 = require("../utils/jwt");
 const db_1 = require("../config/db");
@@ -30,6 +32,8 @@ const db_1 = require("../config/db");
 let io = null;
 const onlineCounts = new Map();
 const userRoom = (userId) => `user:${userId}`;
+const audioRoomName = (roomId) => `audio_room:${roomId}`;
+exports.audioRoomName = audioRoomName;
 function initSocket(server) {
     io = new socket_io_1.Server(server, {
         cors: { origin: true, credentials: true },
@@ -78,6 +82,27 @@ function initSocket(server) {
             }
             catch (e) {
                 console.error('Socket typing error:', e);
+            }
+        });
+        // Audio Room Spaces listeners
+        socket.on('audio_room:join', (data) => {
+            if (data?.roomId) {
+                socket.join((0, exports.audioRoomName)(data.roomId));
+            }
+        });
+        socket.on('audio_room:leave', (data) => {
+            if (data?.roomId) {
+                socket.leave((0, exports.audioRoomName)(data.roomId));
+            }
+        });
+        socket.on('audio_room:reaction', (data) => {
+            if (data?.roomId && data?.emoji) {
+                io?.to((0, exports.audioRoomName)(data.roomId)).emit('audio_room:reaction', {
+                    roomId: data.roomId,
+                    userId,
+                    emoji: data.emoji,
+                    timestamp: Date.now(),
+                });
             }
         });
         socket.on('disconnect', () => {
@@ -147,4 +172,10 @@ function emitToAll(event, payload) {
     if (!io)
         return;
     io.emit(event, payload);
+}
+/** Emit an event to all participants in an audio room space. */
+function emitToAudioRoom(roomId, event, payload) {
+    if (!io)
+        return;
+    io.to((0, exports.audioRoomName)(roomId)).emit(event, { roomId, ...payload });
 }

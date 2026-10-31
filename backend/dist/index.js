@@ -23,6 +23,7 @@ const stickers_1 = __importDefault(require("./routes/stickers"));
 const resetPage_1 = __importDefault(require("./routes/resetPage"));
 const sharePreview_1 = __importDefault(require("./routes/sharePreview"));
 const resources_1 = __importDefault(require("./routes/resources"));
+const audioRooms_1 = __importDefault(require("./routes/audioRooms"));
 const http_1 = __importDefault(require("http"));
 const socket_1 = require("./realtime/socket");
 dotenv_1.default.config();
@@ -62,6 +63,7 @@ app.use('/api/music', music_1.default);
 app.use('/api/stickers', stickers_1.default);
 app.use('/api/resources', resources_1.default);
 app.use('/api/admin/resources', resources_1.default);
+app.use('/api/audio-rooms', audioRooms_1.default);
 // Direct collection alias routes for legacy/admin client calls
 app.use('/api/system', admin_1.default);
 app.use('/api/system/config', admin_1.default);

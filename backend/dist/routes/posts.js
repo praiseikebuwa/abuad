@@ -1617,7 +1617,15 @@ router.post('/:id/comment', auth_1.authenticateToken, async (req, res) => {
             if ((0, aiBotService_1.containsAiMention)(content)) {
                 (0, aiBotService_1.triggerAiCommentReply)(String(req.params.id), content, parentCommentId, reply.author.fullName || reply.author.username);
             }
-            return res.status(201).json({ success: true, data: reply });
+            return res.status(201).json({
+                success: true,
+                data: {
+                    ...reply,
+                    parentId: parentCommentId,
+                    parentCommentId,
+                    postId: String(req.params.id),
+                },
+            });
         }
         const comment = await db_1.prisma.postComment.create({
             data: {
