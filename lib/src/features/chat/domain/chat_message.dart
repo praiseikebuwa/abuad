@@ -133,6 +133,11 @@ class ChatMessage {
       (imageUrl != null && (imageUrl!.contains('.mp4') || imageUrl!.contains('video'))) ||
       content.contains('Video');
 
+  bool get isStoryReply =>
+      type == 'story_reply' ||
+      reactions.containsKey('_storyReply') ||
+      (replyToContent != null && replyToContent!.toLowerCase().contains('story'));
+
   int getViewCountFor(String? userId) {
     if (userId == null) return 0;
     if (snapViews.containsKey(userId)) {
@@ -252,12 +257,17 @@ class ChatMessage {
     final parsedDuration = snapDurationVal is num ? snapDurationVal.toInt() : 10;
     final snapMediaTypeVal = (map['snap_media_type'] ?? map['snapMediaType'] ?? reactionsMap['_snapMediaType'] ?? (map['type'] == 'video' ? 'video' : 'image')).toString();
 
-    final isSnapVal = map['is_snap'] == true ||
+    final isStoryReplyVal = map['type'] == 'story_reply' ||
+        reactionsMap['_storyReply'] != null ||
+        (map['reply_to_content']?.toString().toLowerCase().contains('story') == true) ||
+        (map['replyToContent']?.toString().toLowerCase().contains('story') == true);
+
+    final isSnapVal = !isStoryReplyVal && (map['is_snap'] == true ||
         map['isSnap'] == true ||
         map['type'] == 'snap' ||
         reactionsMap['_isSnap'] == true ||
         (map['content']?.toString().contains('Snap') == true) ||
-        (map['text']?.toString().contains('Snap') == true);
+        (map['text']?.toString().contains('Snap') == true));
 
     final resolvedImageUrl = map['image_url'] ??
         map['imageUrl'] ??

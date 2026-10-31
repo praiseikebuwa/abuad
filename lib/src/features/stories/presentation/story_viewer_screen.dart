@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,6 +22,22 @@ import 'package:flutter/services.dart';
 import '../../chat/data/chat_repository.dart';
 import 'package:abuad/src/core/utils/url_validator.dart';
 import 'package:abuad/src/core/widgets/verification_badge.dart';
+
+class _FloatingStoryReaction {
+  final String id;
+  final String emoji;
+  final double startXFraction;
+  final double wiggleOffset;
+  final AnimationController controller;
+
+  _FloatingStoryReaction({
+    required this.id,
+    required this.emoji,
+    required this.startXFraction,
+    required this.wiggleOffset,
+    required this.controller,
+  });
+}
 
 /// Full-screen story viewer with Snapchat-style controls
 class StoryViewerScreen extends ConsumerStatefulWidget {
@@ -62,6 +79,36 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
   DateTime? _touchStartTime;
   Offset? _touchStartPosition;
   bool _isHolding = false;
+  bool _showQuickReactions = false;
+  final List<_FloatingStoryReaction> _floatingReactions = [];
+
+  void _spawnFloatingReaction(String emoji) {
+    final rand = Random();
+    for (int i = 0; i < 5; i++) {
+      final controller = AnimationController(
+        vsync: this,
+        duration: Duration(milliseconds: 1300 + rand.nextInt(500)),
+      );
+      final reaction = _FloatingStoryReaction(
+        id: '${DateTime.now().microsecondsSinceEpoch}_$i',
+        emoji: emoji,
+        startXFraction: 0.2 + (rand.nextDouble() * 0.6),
+        wiggleOffset: (rand.nextDouble() - 0.5) * 70,
+        controller: controller,
+      );
+
+      _floatingReactions.add(reaction);
+      controller.forward().then((_) {
+        if (mounted) {
+          setState(() {
+            _floatingReactions.removeWhere((r) => r.id == reaction.id);
+          });
+        }
+        controller.dispose();
+      });
+    }
+    if (mounted) setState(() {});
+  }
 
   @override
   void initState() {
@@ -101,7 +148,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
       if (_focusNode.hasFocus) {
         _pauseStory();
       } else {
-        if (_messageController.text.isEmpty) {
+        if (_messageController.text.isEmpty && !_showQuickReactions) {
           _resumeStory();
         }
       }
@@ -123,6 +170,10 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
     _bgAudioPlayer?.dispose();
     _userPageController.dispose();
     _messageController.dispose();
+    for (final r in _floatingReactions) {
+      r.controller.dispose();
+    }
+    _floatingReactions.clear();
     _focusNode.dispose();
     super.dispose();
   }
@@ -552,13 +603,21 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
         otherUserAvatar: story.userAvatar,
       );
 
+      if (quickReaction != null) {
+        _spawnFloatingReaction(quickReaction);
+      }
+      setState(() => _showQuickReactions = false);
+
       await chatRepo.sendMessage(
         channelId,
         text,
         type: 'story_reply',
+        receiverId: story.authorId,
+        replyToId: story.id,
         mediaUrl: story.content,
+        imageUrl: story.content,
         replyToContent: story.caption?.isNotEmpty == true
-            ? 'Story: "${story.caption}"'
+            ? story.caption
             : 'Replied to ${story.userName}\'s story',
         replyToSenderId: story.authorId,
       );
@@ -1472,8 +1531,38 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
                               ),
                             ),
 
-                          // Quick Floating Emoji Reactions Bar (When input is focused)
-                          if (_focusNode.hasFocus && !isOwnStory)
+                          // Floating Story Reaction Particles Overlay
+                          ..._floatingReactions.map((r) {
+                            return AnimatedBuilder(
+                              animation: r.controller,
+                              builder: (context, child) {
+                                final progress = r.controller.value;
+                                final bottomOffset = 80.0 + (progress * (MediaQuery.of(context).size.height * 0.65));
+                                final screenWidth = MediaQuery.of(context).size.width;
+                                final xPos = (screenWidth * r.startXFraction) + (sin(progress * pi * 2) * r.wiggleOffset);
+                                final opacity = (1.0 - progress).clamp(0.0, 1.0);
+                                final scale = 1.0 + (progress * 0.8);
+
+                                return Positioned(
+                                  bottom: bottomOffset,
+                                  left: xPos,
+                                  child: Opacity(
+                                    opacity: opacity,
+                                    child: Transform.scale(
+                                      scale: scale,
+                                      child: Text(
+                                        r.emoji,
+                                        style: const TextStyle(fontSize: 32),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            );
+                          }),
+
+                          // Quick Floating Emoji Reactions Bar
+                          if ((_focusNode.hasFocus || _showQuickReactions) && !isOwnStory)
                             Positioned(
                               bottom: effectiveBottom + 58,
                               left: 16,

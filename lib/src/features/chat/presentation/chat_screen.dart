@@ -1924,6 +1924,289 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
+  Widget _buildStoryReplyCard(
+    ChatMessage message,
+    bool isMe,
+    bool isDark,
+    ChatRepository repo,
+    ChatChannel? channel,
+  ) {
+    final isAdmin = channel?.adminIds.contains(repo.currentUserId) ?? false;
+    final isRead = message.isRead || (channel != null && channel.unreadCounts.values.every((c) => c == 0));
+    final hasMedia = message.imageUrl != null && message.imageUrl!.isNotEmpty;
+    final replyContent = message.replyToContent;
+    final text = message.content.trim();
+
+    final isSingleEmoji = text.isNotEmpty &&
+        text.runes.length <= 2 &&
+        ['❤️', '🔥', '😂', '😮', '😢', '👏', '🎉', '💯', '😍', '🙌', '✨', '🥰', '🥺'].contains(text);
+
+    return GestureDetector(
+      onLongPress: () => _showMessageOptions(message, isMe, isAdmin),
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: min(MediaQuery.of(context).size.width * 0.78, 300.0),
+        ),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          gradient: isMe
+              ? const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFF4F46E5),
+                    Color(0xFF6366F1),
+                  ],
+                )
+              : null,
+          color: isMe
+              ? null
+              : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(20),
+            topRight: const Radius.circular(20),
+            bottomLeft: Radius.circular(isMe ? 20 : 4),
+            bottomRight: Radius.circular(isMe ? 4 : 20),
+          ),
+          border: isMe
+              ? null
+              : Border.all(
+                  color: isDark ? Colors.white12 : const Color(0xFFE2E8F0),
+                  width: 1.0,
+                ),
+          boxShadow: [
+            BoxShadow(
+              color: isMe
+                  ? const Color(0xFF6366F1).withValues(alpha: 0.25)
+                  : Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header badge: Instagram/Snapchat story badge
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(3.5),
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [Color(0xFFEC4899), Color(0xFFF43F5E), Color(0xFFF59E0B)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.auto_stories_rounded,
+                    color: Colors.white,
+                    size: 11,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    isMe ? 'Replied to story' : 'Replied to your story',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.2,
+                      color: isMe
+                          ? Colors.white.withValues(alpha: 0.85)
+                          : (isDark ? Colors.white70 : const Color(0xFF64748B)),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+
+            // Story Media Preview Card
+            GestureDetector(
+              onTap: hasMedia ? () => _viewImage(message.imageUrl!) : null,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: isMe
+                      ? Colors.black.withValues(alpha: 0.22)
+                      : (isDark ? const Color(0xFF0F172A) : Colors.white),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isMe
+                        ? Colors.white.withValues(alpha: 0.15)
+                        : (isDark ? Colors.white12 : Colors.grey.withValues(alpha: 0.2)),
+                    width: 0.8,
+                  ),
+                ),
+                padding: const EdgeInsets.all(6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    if (hasMedia)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Stack(
+                          children: [
+                            CachedNetworkImage(
+                              imageUrl: message.imageUrl!,
+                              width: 52,
+                              height: 72,
+                              fit: BoxFit.cover,
+                              placeholder: (_, __) => Container(
+                                width: 52,
+                                height: 72,
+                                color: Colors.grey.withValues(alpha: 0.2),
+                                child: const Center(
+                                  child: SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(strokeWidth: 1.5),
+                                  ),
+                                ),
+                              ),
+                              errorWidget: (_, __, ___) => Container(
+                                width: 52,
+                                height: 72,
+                                color: Colors.grey.withValues(alpha: 0.2),
+                                child: const Icon(Icons.broken_image_rounded, size: 20, color: Colors.grey),
+                              ),
+                            ),
+                            Positioned(
+                              bottom: 3,
+                              right: 3,
+                              child: Container(
+                                padding: const EdgeInsets.all(2.5),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.65),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.fullscreen_rounded,
+                                  color: Colors.white,
+                                  size: 10,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      Container(
+                        width: 52,
+                        height: 72,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.auto_stories_rounded, color: Colors.grey, size: 24),
+                      ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.circle,
+                                size: 6,
+                                color: isMe ? const Color(0xFF38BDF8) : AppColors.secondaryTeal,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                'Original Story',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.3,
+                                  color: isMe
+                                      ? Colors.white.withValues(alpha: 0.75)
+                                      : (isDark ? Colors.white60 : const Color(0xFF64748B)),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            (replyContent != null && replyContent.isNotEmpty)
+                                ? replyContent
+                                : (hasMedia ? 'Tap to view story media' : 'ABUAD Life Story'),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontStyle: (replyContent != null && replyContent.isNotEmpty) ? FontStyle.italic : FontStyle.normal,
+                              color: isMe
+                                  ? Colors.white.withValues(alpha: 0.95)
+                                  : (isDark ? Colors.white : const Color(0xFF1E293B)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            // User Reply Text or Large Emoji
+            if (isSingleEmoji)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+                child: Text(
+                  text,
+                  style: const TextStyle(fontSize: 34),
+                ),
+              )
+            else if (text.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: _buildRichText(text, isMe, isDark),
+              ),
+
+            const SizedBox(height: 4),
+
+            // Timestamp and Read Receipts
+            Align(
+              alignment: Alignment.bottomRight,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Text(
+                    _formatTime(message.timestamp),
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: isMe
+                          ? Colors.white70
+                          : (isDark ? Colors.white54 : Colors.grey[500]),
+                    ),
+                  ),
+                  if (isMe) ...[
+                    const SizedBox(width: 3),
+                    _buildMessageStatusIcon(
+                      message,
+                      isMe: isMe,
+                      isRead: isRead,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showSnapOptionsSheet(ChatMessage message, ChatRepository repo) {
     final currentUserId = repo.currentUserId;
     final isSavedInChat = message.isSavedBy(currentUserId);
@@ -3516,6 +3799,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                                             isDark,
                                                             repo,
                                                           ))
+                                                    : (message.isStoryReply || message.type == 'story_reply')
+                                                    ? _buildStoryReplyCard(
+                                                        message,
+                                                        isMe,
+                                                        isDark,
+                                                        repo,
+                                                        channel,
+                                                      )
                                                     : message.type == 'image' &&
                                                         message.imageUrl != null
                                                     ? _buildImageMessage(

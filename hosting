@@ -76,3 +76,10 @@ git checkout -- dist/
 git pull
 npm run build   # Run this if you need to recompile TypeScript/Babel into dist/
 pm2 restart abuad-backend
+
+
+
+cd ~/abuad/backend
+git pull
+npx prisma generate
+pm2 restart abuad-backend --update-env

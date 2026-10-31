@@ -163,11 +163,19 @@ function formatMessage(msg, requestingUserId) {
     let replyToId = msg.replyToId || msg.reply_to_id || null;
     let replyToContent = msg.replyToContent || msg.reply_to_content || null;
     let replyToSenderId = msg.replyToSenderId || msg.reply_to_sender_id || null;
+    let effectiveMediaUrl = msg.mediaUrl || null;
     if (reactions._reply) {
         replyToId = replyToId || reactions._reply.id || null;
         replyToContent = replyToContent || reactions._reply.content || null;
         replyToSenderId = replyToSenderId || reactions._reply.senderId || null;
         delete reactions._reply;
+    }
+    if (reactions._storyReply) {
+        replyToId = replyToId || reactions._storyReply.storyId || null;
+        replyToContent = replyToContent || reactions._storyReply.caption || null;
+        replyToSenderId = replyToSenderId || reactions._storyReply.authorId || null;
+        effectiveMediaUrl = effectiveMediaUrl || reactions._storyReply.mediaUrl || null;
+        delete reactions._storyReply;
     }
     const isSnap = msg.type === 'snap' || msg.isSnap === true || reactions._isSnap === true;
     const snapViews = reactions._snapViews || {};
@@ -175,7 +183,6 @@ function formatMessage(msg, requestingUserId) {
     const snapMediaType = reactions._snapMediaType || ((msg.mediaUrl && String(msg.mediaUrl).includes('.mp4')) || (msg.text && String(msg.text).includes('Video')) ? 'video' : 'image');
     // Media masking for expired snaps:
     // If the snap has expired for the requesting recipient and is NOT saved in chat, mask mediaUrl
-    let effectiveMediaUrl = msg.mediaUrl || null;
     if (isSnap) {
         if (!msg.mediaUrl || reactions._mediaDeleted === true) {
             effectiveMediaUrl = null;
@@ -926,6 +933,7 @@ router.post('/send', auth_1.authenticateToken, async (req, res) => {
         }
         const effectiveSharedPostId = sharedPostId || (type === 'post' && mediaUrl ? String(mediaUrl).replace('post:', '') : null);
         const isSnapMessage = Boolean(isSnap || type === 'snap');
+        const isStoryReply = Boolean(type === 'story_reply');
         const effectiveType = effectiveSharedPostId ? 'post' : (isSnapMessage ? 'snap' : (type || 'text'));
         const effectiveMediaUrl = mediaUrl || (effectiveSharedPostId ? `post:${effectiveSharedPostId}` : null);
         const effectiveText = text || (effectiveSharedPostId ? 'Shared a post with you' : (isSnapMessage ? '📸 Snap' : ''));
@@ -937,6 +945,14 @@ router.post('/send', auth_1.authenticateToken, async (req, res) => {
                 senderId: replyToSenderId || '',
             };
         }
+        if (isStoryReply) {
+            initialReactions._storyReply = {
+                storyId: replyToId || '',
+                mediaUrl: effectiveMediaUrl || '',
+                caption: replyToContent || '',
+                authorId: replyToSenderId || inferredReceiverId || '',
+            };
+        }
         if (isSnapMessage) {
             initialReactions._isSnap = true;
             initialReactions._snapViews = {};
@@ -946,7 +962,9 @@ router.post('/send', auth_1.authenticateToken, async (req, res) => {
         }
         const lastMsgSummary = isSnapMessage
             ? (initialReactions._snapMediaType === 'video' ? '🎥 Video Snap' : '📸 Snap')
-            : (effectiveType === 'post' ? '📎 Shared a post' : (effectiveText || '📎 Media'));
+            : isStoryReply
+                ? (`Replied to story: ${effectiveText || '❤️'}`)
+                : (effectiveType === 'post' ? '📎 Shared a post' : (effectiveText || '📎 Media'));
         const userId = req.user.id;
         if (inferredReceiverId && inferredReceiverId !== userId) {
             const allChannels = await db_1.prisma.chatChannel.findMany({ where: { type: 'direct' } });
