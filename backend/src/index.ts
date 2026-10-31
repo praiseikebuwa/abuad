@@ -19,6 +19,7 @@ import stickerRoutes from './routes/stickers';
 import resetPageRoutes from './routes/resetPage';
 import sharePreviewRoutes from './routes/sharePreview';
 import resourceRoutes from './routes/resources';
+import audioRoomRoutes from './routes/audioRooms';
 import http from 'http';
 import { initSocket } from './realtime/socket';
 
@@ -65,6 +66,7 @@ app.use('/api/music', musicRoutes);
 app.use('/api/stickers', stickerRoutes);
 app.use('/api/resources', resourceRoutes);
 app.use('/api/admin/resources', resourceRoutes);
+app.use('/api/audio-rooms', audioRoomRoutes);
 
 // Direct collection alias routes for legacy/admin client calls
 app.use('/api/system', adminRoutes);

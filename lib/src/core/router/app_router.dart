@@ -73,6 +73,8 @@ import '../../features/utilities/presentation/study_lounges_screen.dart';
 import '../../features/utilities/presentation/campus_sos_screen.dart';
 import '../../features/utilities/presentation/clinic_queue_screen.dart';
 import '../../features/chat/presentation/sticker_creator_screen.dart';
+import '../../features/audio_spaces/presentation/live_spaces_hub_screen.dart';
+import '../../features/audio_spaces/presentation/live_audio_room_screen.dart';
 
 final rootNavigatorKey = GlobalKey<NavigatorState>();
 final _feedNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'feed');
@@ -518,6 +520,27 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           state: state,
           child: const GroupsScreen(),
         ),
+      ),
+      GoRoute(
+        path: '/spaces',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const LiveSpacesHubScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/spaces/:id',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['id'] ?? '';
+          return buildPageWithAnimation(
+            context: context,
+            state: state,
+            child: LiveAudioRoomScreen(roomId: id),
+          );
+        },
       ),
       GoRoute(
         path: '/portal',

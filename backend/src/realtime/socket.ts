@@ -27,6 +27,7 @@ let io: Server | null = null;
 const onlineCounts = new Map<string, number>();
 
 const userRoom = (userId: string) => `user:${userId}`;
+export const audioRoomName = (roomId: string) => `audio_room:${roomId}`;
 
 export function initSocket(server: HttpServer) {
   io = new Server(server, {
@@ -74,6 +75,30 @@ export function initSocket(server: HttpServer) {
         }
       } catch (e) {
         console.error('Socket typing error:', e);
+      }
+    });
+
+    // Audio Room Spaces listeners
+    socket.on('audio_room:join', (data: { roomId?: string }) => {
+      if (data?.roomId) {
+        socket.join(audioRoomName(data.roomId));
+      }
+    });
+
+    socket.on('audio_room:leave', (data: { roomId?: string }) => {
+      if (data?.roomId) {
+        socket.leave(audioRoomName(data.roomId));
+      }
+    });
+
+    socket.on('audio_room:reaction', (data: { roomId?: string; emoji?: string }) => {
+      if (data?.roomId && data?.emoji) {
+        io?.to(audioRoomName(data.roomId)).emit('audio_room:reaction', {
+          roomId: data.roomId,
+          userId,
+          emoji: data.emoji,
+          timestamp: Date.now(),
+        });
       }
     });
 
@@ -143,3 +168,10 @@ export function emitToAll(event: string, payload: Record<string, unknown>) {
   if (!io) return;
   io.emit(event, payload);
 }
+
+/** Emit an event to all participants in an audio room space. */
+export function emitToAudioRoom(roomId: string, event: string, payload: Record<string, unknown>) {
+  if (!io) return;
+  io.to(audioRoomName(roomId)).emit(event, { roomId, ...payload });
+}
+

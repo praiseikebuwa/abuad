@@ -14,6 +14,8 @@ import '../../notifications/data/notification_repository.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../advertisements/data/advertisement_repository.dart';
 import '../../advertisements/presentation/widgets/sponsored_ad_card.dart';
+import '../../audio_spaces/presentation/controllers/audio_room_controller.dart';
+import '../../audio_spaces/presentation/widgets/live_space_feed_card.dart';
 
 class FeedScreen extends ConsumerStatefulWidget {
   const FeedScreen({super.key});
@@ -253,6 +255,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
             ],
           ),
           actions: [
+            IconButton(
+              icon: const Icon(Icons.podcasts_rounded, color: Color(0xFF7C4DFF)),
+              tooltip: 'Live Audio Spaces',
+              onPressed: () => context.push('/spaces'),
+            ),
             Consumer(
               builder: (context, ref, child) {
                 final notificationsAsync = ref.watch(userNotificationsProvider);
@@ -276,7 +283,9 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                           color: isDark ? Colors.white : Colors.black,
                         ),
                   onSelected: (value) {
-                    if (value == 'notifications') {
+                    if (value == 'spaces') {
+                      context.push('/spaces');
+                    } else if (value == 'notifications') {
                       context.push('/notifications');
                     } else if (value == 'advertisements') {
                       context.push('/advertisements');
@@ -334,6 +343,20 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                               ),
                             ),
                           ],
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'spaces',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.podcasts_rounded,
+                            size: 20,
+                            color: Color(0xFF7C4DFF),
+                          ),
+                          const SizedBox(width: 12),
+                          const Text('Live Audio Spaces'),
                         ],
                       ),
                     ),
@@ -654,6 +677,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                                   );
                                 }
 
+                                final activeRooms = ref.watch(audioRoomsProvider).value?.where((r) => r.isLive).toList() ?? [];
+                                final liveSpaceWidget = (index == 0 && activeRooms.isNotEmpty)
+                                    ? LiveSpaceFeedCard(room: activeRooms.first)
+                                    : null;
+
                                 final post = displayPosts[index];
                                 final showPeopleCarousel = index == 2 || (index > 2 && index % 10 == 2);
 
@@ -699,11 +727,12 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                                       )
                                     : null;
 
-                                if (showPeopleCarousel || showAd) {
+                                if (liveSpaceWidget != null || showPeopleCarousel || showAd) {
                                   return Column(
                                     mainAxisSize: MainAxisSize.min,
                                     crossAxisAlignment: CrossAxisAlignment.stretch,
                                     children: [
+                                      if (liveSpaceWidget != null) liveSpaceWidget,
                                       postWidget,
                                       if (showAd && adWidget != null) adWidget,
                                       if (showPeopleCarousel)

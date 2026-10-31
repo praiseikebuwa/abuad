@@ -22,6 +22,20 @@ class SocketService {
   final _notificationController = StreamController<Map<String, dynamic>>.broadcast();
   final _configUpdatedController = StreamController<Map<String, dynamic>>.broadcast();
 
+  // Audio Spaces Realtime Streams
+  final _audioRoomReactionController = StreamController<Map<String, dynamic>>.broadcast();
+  final _audioRoomMessageController = StreamController<Map<String, dynamic>>.broadcast();
+  final _audioRoomHandRaisedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _audioRoomHandLoweredController = StreamController<Map<String, dynamic>>.broadcast();
+  final _audioRoomParticipantJoinedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _audioRoomParticipantLeftController = StreamController<Map<String, dynamic>>.broadcast();
+  final _audioRoomParticipantUpdatedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _audioRoomEndedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _audioRoomRolePromotedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _audioRoomRoleDemotedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _audioRoomForceMutedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _audioRoomKickedController = StreamController<Map<String, dynamic>>.broadcast();
+
   Stream<Map<String, dynamic>> get onNewMessage => _newMessageController.stream;
   Stream<Map<String, dynamic>> get onMessageUpdated => _messageUpdatedController.stream;
   Stream<Map<String, dynamic>> get onMessageDeleted => _messageDeletedController.stream;
@@ -32,6 +46,19 @@ class SocketService {
   Stream<Map<String, dynamic>> get onSnapSaved => _snapSavedController.stream;
   Stream<Map<String, dynamic>> get onNotification => _notificationController.stream;
   Stream<Map<String, dynamic>> get onConfigUpdated => _configUpdatedController.stream;
+
+  Stream<Map<String, dynamic>> get onAudioRoomReaction => _audioRoomReactionController.stream;
+  Stream<Map<String, dynamic>> get onAudioRoomMessage => _audioRoomMessageController.stream;
+  Stream<Map<String, dynamic>> get onAudioRoomHandRaised => _audioRoomHandRaisedController.stream;
+  Stream<Map<String, dynamic>> get onAudioRoomHandLowered => _audioRoomHandLoweredController.stream;
+  Stream<Map<String, dynamic>> get onAudioRoomParticipantJoined => _audioRoomParticipantJoinedController.stream;
+  Stream<Map<String, dynamic>> get onAudioRoomParticipantLeft => _audioRoomParticipantLeftController.stream;
+  Stream<Map<String, dynamic>> get onAudioRoomParticipantUpdated => _audioRoomParticipantUpdatedController.stream;
+  Stream<Map<String, dynamic>> get onAudioRoomEnded => _audioRoomEndedController.stream;
+  Stream<Map<String, dynamic>> get onAudioRoomRolePromoted => _audioRoomRolePromotedController.stream;
+  Stream<Map<String, dynamic>> get onAudioRoomRoleDemoted => _audioRoomRoleDemotedController.stream;
+  Stream<Map<String, dynamic>> get onAudioRoomForceMuted => _audioRoomForceMutedController.stream;
+  Stream<Map<String, dynamic>> get onAudioRoomKicked => _audioRoomKickedController.stream;
 
   String _getSocketUrl() {
     try {
@@ -186,6 +213,73 @@ class SocketService {
         _configUpdatedController.add(Map<String, dynamic>.from(data));
       }
     });
+
+    // Audio Room Spaces listeners
+    _socket!.on('audio_room:reaction', (data) {
+      if (data is Map) _audioRoomReactionController.add(Map<String, dynamic>.from(data));
+    });
+
+    _socket!.on('audio_room:message', (data) {
+      if (data is Map) _audioRoomMessageController.add(Map<String, dynamic>.from(data));
+    });
+
+    _socket!.on('audio_room:hand_raised', (data) {
+      if (data is Map) _audioRoomHandRaisedController.add(Map<String, dynamic>.from(data));
+    });
+
+    _socket!.on('audio_room:hand_lowered', (data) {
+      if (data is Map) _audioRoomHandLoweredController.add(Map<String, dynamic>.from(data));
+    });
+
+    _socket!.on('audio_room:participant_joined', (data) {
+      if (data is Map) _audioRoomParticipantJoinedController.add(Map<String, dynamic>.from(data));
+    });
+
+    _socket!.on('audio_room:participant_left', (data) {
+      if (data is Map) _audioRoomParticipantLeftController.add(Map<String, dynamic>.from(data));
+    });
+
+    _socket!.on('audio_room:participant_updated', (data) {
+      if (data is Map) _audioRoomParticipantUpdatedController.add(Map<String, dynamic>.from(data));
+    });
+
+    _socket!.on('audio_room:ended', (data) {
+      if (data is Map) _audioRoomEndedController.add(Map<String, dynamic>.from(data));
+    });
+
+    _socket!.on('audio_room:role_promoted', (data) {
+      if (data is Map) _audioRoomRolePromotedController.add(Map<String, dynamic>.from(data));
+    });
+
+    _socket!.on('audio_room:role_demoted', (data) {
+      if (data is Map) _audioRoomRoleDemotedController.add(Map<String, dynamic>.from(data));
+    });
+
+    _socket!.on('audio_room:force_muted', (data) {
+      if (data is Map) _audioRoomForceMutedController.add(Map<String, dynamic>.from(data));
+    });
+
+    _socket!.on('audio_room:kicked', (data) {
+      if (data is Map) _audioRoomKickedController.add(Map<String, dynamic>.from(data));
+    });
+  }
+
+  void joinAudioRoom(String roomId) {
+    if (_socket != null && _socket!.connected) {
+      _socket!.emit('audio_room:join', {'roomId': roomId});
+    }
+  }
+
+  void leaveAudioRoom(String roomId) {
+    if (_socket != null && _socket!.connected) {
+      _socket!.emit('audio_room:leave', {'roomId': roomId});
+    }
+  }
+
+  void sendAudioRoomReaction(String roomId, String emoji) {
+    if (_socket != null && _socket!.connected) {
+      _socket!.emit('audio_room:reaction', {'roomId': roomId, 'emoji': emoji});
+    }
   }
 
   void sendTyping(String channelId, bool isTyping) {

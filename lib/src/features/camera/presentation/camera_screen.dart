@@ -149,150 +149,6 @@ class _CameraScreenState extends State<CameraScreen>
       previewGradient: [Color(0xFF4B5563), Color(0xFF1F2937)],
       colorMatrix: null,
     ),
-    // --- Aesthetic Color Grading Filters ---
-    CameraLensEffect(
-      id: 'golden',
-      name: 'Golden Hour',
-      category: 'Aesthetic',
-      icon: Icons.wb_sunny_rounded,
-      previewGradient: [Color(0xFFFF9900), Color(0xFFFF5E36)],
-      colorMatrix: [
-        1.20, 0.05, 0.00, 0.00, 15.0,
-        0.05, 1.08, 0.00, 0.00, 8.0,
-        0.00, 0.00, 0.82, 0.00, -12.0,
-        0.00, 0.00, 0.00, 1.00, 0.0,
-      ],
-    ),
-    CameraLensEffect(
-      id: 'noir',
-      name: 'Noir B&W',
-      category: 'Classic',
-      icon: Icons.filter_b_and_w_rounded,
-      previewGradient: [Color(0xFF374151), Color(0xFF111827)],
-      colorMatrix: [
-        0.33, 0.59, 0.11, 0.00, -5.0,
-        0.33, 0.59, 0.11, 0.00, -5.0,
-        0.33, 0.59, 0.11, 0.00, -5.0,
-        0.00, 0.00, 0.00, 1.00, 0.0,
-      ],
-    ),
-    CameraLensEffect(
-      id: 'cyberpunk',
-      name: 'Cyberpunk',
-      category: 'Vibrant',
-      icon: Icons.electric_bolt_rounded,
-      previewGradient: [Color(0xFF8B5CF6), Color(0xFF06B6D4)],
-      colorMatrix: [
-        1.25, 0.00, 0.35, 0.00, 20.0,
-        0.00, 0.90, 0.15, 0.00, -8.0,
-        0.30, 0.00, 1.45, 0.00, 35.0,
-        0.00, 0.00, 0.00, 1.00, 0.0,
-      ],
-    ),
-    CameraLensEffect(
-      id: 'vintage',
-      name: "Vintage '90s",
-      category: 'Retro',
-      icon: Icons.camera_roll_rounded,
-      previewGradient: [Color(0xFFD97706), Color(0xFF78350F)],
-      colorMatrix: [
-        1.08, 0.02, 0.00, 0.00, 16.0,
-        0.02, 1.02, 0.00, 0.00, 10.0,
-        0.00, 0.00, 0.82, 0.00, -10.0,
-        0.00, 0.00, 0.00, 1.00, 0.0,
-      ],
-    ),
-    CameraLensEffect(
-      id: 'beauty',
-      name: 'Soft Beauty',
-      category: 'Beauty',
-      icon: Icons.face_retouching_natural_rounded,
-      previewGradient: [Color(0xFFF472B6), Color(0xFFFDA4AF)],
-      colorMatrix: [
-        1.12, 0.00, 0.00, 0.00, 18.0,
-        0.00, 1.06, 0.00, 0.00, 12.0,
-        0.00, 0.00, 1.04, 0.00, 12.0,
-        0.00, 0.00, 0.00, 1.00, 0.0,
-      ],
-    ),
-    CameraLensEffect(
-      id: 'aqua',
-      name: 'Aqua Marine',
-      category: 'Cinematic',
-      icon: Icons.water_drop_rounded,
-      previewGradient: [Color(0xFF0D9488), Color(0xFF0284C7)],
-      colorMatrix: [
-        1.08, 0.00, 0.00, 0.00, 4.0,
-        0.00, 1.18, 0.10, 0.00, 12.0,
-        0.00, 0.15, 1.30, 0.00, 24.0,
-        0.00, 0.00, 0.00, 1.00, 0.0,
-      ],
-    ),
-    CameraLensEffect(
-      id: 'emerald',
-      name: 'Emerald Lush',
-      category: 'Nature',
-      icon: Icons.forest_rounded,
-      previewGradient: [Color(0xFF059669), Color(0xFF047857)],
-      colorMatrix: [
-        0.88, 0.10, 0.00, 0.00, -8.0,
-        0.00, 1.28, 0.00, 0.00, 18.0,
-        0.00, 0.10, 0.90, 0.00, -2.0,
-        0.00, 0.00, 0.00, 1.00, 0.0,
-      ],
-    ),
-    CameraLensEffect(
-      id: 'crimson',
-      name: 'Crimson Mood',
-      category: 'Aesthetic',
-      icon: Icons.favorite_rounded,
-      previewGradient: [Color(0xFFE11D48), Color(0xFF881337)],
-      colorMatrix: [
-        1.30, 0.00, 0.15, 0.00, 22.0,
-        0.00, 0.92, 0.08, 0.00, -4.0,
-        0.10, 0.00, 1.12, 0.00, 12.0,
-        0.00, 0.00, 0.00, 1.00, 0.0,
-      ],
-    ),
-    CameraLensEffect(
-      id: 'pop',
-      name: 'Vibrant Pop',
-      category: 'Vibrant',
-      icon: Icons.palette_rounded,
-      previewGradient: [Color(0xFFEC4899), Color(0xFFF59E0B)],
-      colorMatrix: [
-        1.25, -0.10, -0.10, 0.00, 0.0,
-        -0.10, 1.25, -0.10, 0.00, 0.0,
-        -0.10, -0.10, 1.25, 0.00, 0.0,
-        0.00, 0.00, 0.00, 1.00, 0.0,
-      ],
-    ),
-    CameraLensEffect(
-      id: 'sepia',
-      name: 'Sepia Dream',
-      category: 'Retro',
-      icon: Icons.history_edu_rounded,
-      previewGradient: [Color(0xFFB45309), Color(0xFF78350F)],
-      colorMatrix: [
-        0.393, 0.769, 0.189, 0.00, 0.0,
-        0.349, 0.686, 0.168, 0.00, 0.0,
-        0.272, 0.534, 0.131, 0.00, 0.0,
-        0.000, 0.000, 0.000, 1.00, 0.0,
-      ],
-    ),
-    CameraLensEffect(
-      id: 'moonlight',
-      name: 'Moonlight',
-      category: 'Cinematic',
-      icon: Icons.nightlight_round,
-      previewGradient: [Color(0xFF3B82F6), Color(0xFF1E1B4B)],
-      colorMatrix: [
-        0.85, 0.00, 0.10, 0.00, -10.0,
-        0.00, 0.95, 0.15, 0.00, 0.0,
-        0.10, 0.15, 1.35, 0.00, 25.0,
-        0.00, 0.00, 0.00, 1.00, 0.0,
-      ],
-    ),
   ];
 
   // Lifecycle & disposal guard
@@ -1115,35 +971,36 @@ class _CameraScreenState extends State<CameraScreen>
                       ],
                     ),
                     const SizedBox(height: 12),
-                    // Tabs: All | ✨ Snapchat AR | 🎨 Color Filters
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          _buildLensTab(
-                            title: 'All (${allLenses.length})',
-                            isSelected: selectedTab == 0,
-                            onTap: () => setSheetState(() => selectedTab = 0),
-                          ),
-                          const SizedBox(width: 8),
-                          _buildLensTab(
-                            title: '✨ Snapchat AR (${arLenses.length})',
-                            isSelected: selectedTab == 1,
-                            accentColor: const Color(0xFFFFFC00),
-                            textColor: selectedTab == 1 ? Colors.black : Colors.white,
-                            onTap: () => setSheetState(() => selectedTab = 1),
-                          ),
-                          const SizedBox(width: 8),
-                          _buildLensTab(
-                            title: '🎨 Color Filters (${colorFilters.length})',
-                            isSelected: selectedTab == 2,
-                            onTap: () => setSheetState(() => selectedTab = 2),
-                          ),
-                        ],
+                    if (colorFilters.isNotEmpty) ...[
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            _buildLensTab(
+                              title: 'All (${allLenses.length})',
+                              isSelected: selectedTab == 0,
+                              onTap: () => setSheetState(() => selectedTab = 0),
+                            ),
+                            const SizedBox(width: 8),
+                            _buildLensTab(
+                              title: '✨ Snapchat AR (${arLenses.length})',
+                              isSelected: selectedTab == 1,
+                              accentColor: const Color(0xFFFFFC00),
+                              textColor: selectedTab == 1 ? Colors.black : Colors.white,
+                              onTap: () => setSheetState(() => selectedTab = 1),
+                            ),
+                            const SizedBox(width: 8),
+                            _buildLensTab(
+                              title: '🎨 Color Filters (${colorFilters.length})',
+                              isSelected: selectedTab == 2,
+                              onTap: () => setSheetState(() => selectedTab = 2),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
+                      const SizedBox(height: 12),
+                    ],
+                                        TextField(
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
                         prefixIcon: const Icon(Icons.search, color: Colors.white60),
@@ -1159,27 +1016,20 @@ class _CameraScreenState extends State<CameraScreen>
                       },
                     ),
                     const SizedBox(height: 12),
-                    if (selectedTab == 1 && _isLoadingArLenses)
-                      Expanded(
+                    if (_isLoadingArLenses && arLenses.isEmpty)
+                      const Expanded(
                         child: Center(
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const CircularProgressIndicator(color: Color(0xFFFFFC00)),
-                              const SizedBox(height: 12),
-                              const Text('Fetching Snapchat AR lenses...', style: TextStyle(color: Colors.white70)),
-                              const SizedBox(height: 8),
-                              TextButton(
-                                onPressed: () {
-                                  setSheetState(() => selectedTab = 0);
-                                },
-                                child: const Text('View All Lenses', style: TextStyle(color: Colors.white60)),
-                              ),
+                              CircularProgressIndicator(color: Color(0xFFFFFC00)),
+                              SizedBox(height: 12),
+                              Text('Fetching Snapchat AR lenses...', style: TextStyle(color: Colors.white70)),
                             ],
                           ),
                         ),
                       )
-                    else if (selectedTab == 1 && arLenses.isEmpty)
+                    else if (arLenses.isEmpty)
                       Expanded(
                         child: Center(
                           child: Column(
@@ -1221,18 +1071,11 @@ class _CameraScreenState extends State<CameraScreen>
                                   }
                                 },
                               ),
-                              const SizedBox(height: 8),
-                              TextButton(
-                                onPressed: () {
-                                  setSheetState(() => selectedTab = 2);
-                                },
-                                child: const Text('Use Custom Color Filters', style: TextStyle(color: AppColors.secondaryTeal)),
-                              ),
                             ],
                           ),
                         ),
                       )
-                    else
+                                        else
                       Expanded(
                         child: GridView.builder(
                           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(

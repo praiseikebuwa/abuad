@@ -1,0 +1,307 @@
+class AudioRoomUser {
+  final String id;
+  final String username;
+  final String fullName;
+  final String? avatarUrl;
+  final String? department;
+  final String? level;
+  final bool isVerified;
+  final String verificationType;
+
+  const AudioRoomUser({
+    required this.id,
+    required this.username,
+    required this.fullName,
+    this.avatarUrl,
+    this.department,
+    this.level,
+    this.isVerified = false,
+    this.verificationType = 'NONE',
+  });
+
+  factory AudioRoomUser.fromJson(Map<String, dynamic> json) {
+    return AudioRoomUser(
+      id: json['id'] as String? ?? '',
+      username: json['username'] as String? ?? '',
+      fullName: json['fullName'] as String? ?? '',
+      avatarUrl: json['avatarUrl'] as String?,
+      department: json['department'] as String?,
+      level: json['level'] as String?,
+      isVerified: json['isVerified'] as bool? ?? false,
+      verificationType: json['verificationType'] as String? ?? 'NONE',
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'username': username,
+    'fullName': fullName,
+    'avatarUrl': avatarUrl,
+    'department': department,
+    'level': level,
+    'isVerified': isVerified,
+    'verificationType': verificationType,
+  };
+}
+
+class AudioParticipant {
+  final String id;
+  final String roomId;
+  final String userId;
+  final String role; // HOST, CO_HOST, SPEAKER, LISTENER
+  final bool isMuted;
+  final DateTime joinedAt;
+  final AudioRoomUser user;
+  final bool isSpeaking;
+
+  const AudioParticipant({
+    required this.id,
+    required this.roomId,
+    required this.userId,
+    required this.role,
+    this.isMuted = true,
+    required this.joinedAt,
+    required this.user,
+    this.isSpeaking = false,
+  });
+
+  bool get isHost => role == 'HOST';
+  bool get isCoHost => role == 'CO_HOST';
+  bool get isSpeaker => role == 'SPEAKER' || isHost || isCoHost;
+  bool get isListener => role == 'LISTENER';
+
+  AudioParticipant copyWith({
+    String? role,
+    bool? isMuted,
+    bool? isSpeaking,
+  }) {
+    return AudioParticipant(
+      id: id,
+      roomId: roomId,
+      userId: userId,
+      role: role ?? this.role,
+      isMuted: isMuted ?? this.isMuted,
+      joinedAt: joinedAt,
+      user: user,
+      isSpeaking: isSpeaking ?? this.isSpeaking,
+    );
+  }
+
+  factory AudioParticipant.fromJson(Map<String, dynamic> json) {
+    final rawUser = json['user'];
+    final userObj = rawUser is Map<String, dynamic>
+        ? AudioRoomUser.fromJson(rawUser)
+        : AudioRoomUser(
+            id: json['userId'] as String? ?? '',
+            username: 'User',
+            fullName: 'Participant',
+          );
+
+    return AudioParticipant(
+      id: json['id'] as String? ?? '',
+      roomId: json['roomId'] as String? ?? '',
+      userId: json['userId'] as String? ?? userObj.id,
+      role: (json['role'] as String? ?? 'LISTENER').toUpperCase(),
+      isMuted: json['isMuted'] as bool? ?? true,
+      joinedAt: json['joinedAt'] != null
+          ? DateTime.tryParse(json['joinedAt'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+      user: userObj,
+    );
+  }
+}
+
+class AudioSpeakRequest {
+  final String id;
+  final String roomId;
+  final String userId;
+  final String status; // PENDING, ACCEPTED, REJECTED
+  final DateTime createdAt;
+  final AudioRoomUser user;
+
+  const AudioSpeakRequest({
+    required this.id,
+    required this.roomId,
+    required this.userId,
+    required this.status,
+    required this.createdAt,
+    required this.user,
+  });
+
+  factory AudioSpeakRequest.fromJson(Map<String, dynamic> json) {
+    final rawUser = json['user'];
+    final userObj = rawUser is Map<String, dynamic>
+        ? AudioRoomUser.fromJson(rawUser)
+        : AudioRoomUser(
+            id: json['userId'] as String? ?? '',
+            username: 'User',
+            fullName: 'Participant',
+          );
+
+    return AudioSpeakRequest(
+      id: json['id'] as String? ?? '',
+      roomId: json['roomId'] as String? ?? '',
+      userId: json['userId'] as String? ?? userObj.id,
+      status: json['status'] as String? ?? 'PENDING',
+      createdAt: json['createdAt'] != null
+          ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+      user: userObj,
+    );
+  }
+}
+
+class AudioRoomMessageItem {
+  final String id;
+  final String roomId;
+  final String userId;
+  final String message;
+  final DateTime createdAt;
+  final AudioRoomUser user;
+
+  const AudioRoomMessageItem({
+    required this.id,
+    required this.roomId,
+    required this.userId,
+    required this.message,
+    required this.createdAt,
+    required this.user,
+  });
+
+  factory AudioRoomMessageItem.fromJson(Map<String, dynamic> json) {
+    final rawUser = json['user'];
+    final userObj = rawUser is Map<String, dynamic>
+        ? AudioRoomUser.fromJson(rawUser)
+        : AudioRoomUser(
+            id: json['userId'] as String? ?? '',
+            username: 'User',
+            fullName: 'Participant',
+          );
+
+    return AudioRoomMessageItem(
+      id: json['id'] as String? ?? '',
+      roomId: json['roomId'] as String? ?? '',
+      userId: json['userId'] as String? ?? userObj.id,
+      message: json['message'] as String? ?? '',
+      createdAt: json['createdAt'] != null
+          ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+      user: userObj,
+    );
+  }
+}
+
+class AudioRoom {
+  final String id;
+  final String hostId;
+  final String title;
+  final String? description;
+  final String category; // ACADEMIC, SOCIAL, DEBATE, COMMUNITY
+  final String visibility; // PUBLIC, FOLLOWERS, PRIVATE
+  final String speakersPermission; // EVERYONE, HOST_APPROVED
+  final String status; // SCHEDULED, LIVE, ENDED
+  final bool isRecording;
+  final bool isChatEnabled;
+  final DateTime? scheduledAt;
+  final DateTime? startedAt;
+  final DateTime? endedAt;
+  final DateTime createdAt;
+  final AudioRoomUser host;
+  final List<AudioParticipant> participants;
+  final List<AudioSpeakRequest> requests;
+  final int totalParticipants;
+
+  const AudioRoom({
+    required this.id,
+    required this.hostId,
+    required this.title,
+    this.description,
+    this.category = 'ACADEMIC',
+    this.visibility = 'PUBLIC',
+    this.speakersPermission = 'HOST_APPROVED',
+    this.status = 'LIVE',
+    this.isRecording = false,
+    this.isChatEnabled = true,
+    this.scheduledAt,
+    this.startedAt,
+    this.endedAt,
+    required this.createdAt,
+    required this.host,
+    this.participants = const [],
+    this.requests = const [],
+    this.totalParticipants = 0,
+  });
+
+  bool get isLive => status == 'LIVE';
+  bool get isScheduled => status == 'SCHEDULED';
+  bool get isEnded => status == 'ENDED';
+
+  List<AudioParticipant> get speakers =>
+      participants.where((p) => p.isSpeaker).toList();
+
+  List<AudioParticipant> get listeners =>
+      participants.where((p) => p.isListener).toList();
+
+  factory AudioRoom.fromJson(Map<String, dynamic> json) {
+    final rawHost = json['host'];
+    final hostObj = rawHost is Map<String, dynamic>
+        ? AudioRoomUser.fromJson(rawHost)
+        : AudioRoomUser(
+            id: json['hostId'] as String? ?? '',
+            username: 'Host',
+            fullName: 'Room Host',
+          );
+
+    final rawParticipants = json['participants'];
+    final parsedParticipants = <AudioParticipant>[];
+    if (rawParticipants is List) {
+      for (final p in rawParticipants) {
+        if (p is Map<String, dynamic>) {
+          parsedParticipants.add(AudioParticipant.fromJson(p));
+        }
+      }
+    }
+
+    final rawRequests = json['requests'];
+    final parsedRequests = <AudioSpeakRequest>[];
+    if (rawRequests is List) {
+      for (final r in rawRequests) {
+        if (r is Map<String, dynamic>) {
+          parsedRequests.add(AudioSpeakRequest.fromJson(r));
+        }
+      }
+    }
+
+    final countMap = json['_count'] as Map<String, dynamic>?;
+    final count = countMap?['participants'] as int? ?? parsedParticipants.length;
+
+    return AudioRoom(
+      id: json['id'] as String? ?? '',
+      hostId: json['hostId'] as String? ?? hostObj.id,
+      title: json['title'] as String? ?? '',
+      description: json['description'] as String?,
+      category: (json['category'] as String? ?? 'ACADEMIC').toUpperCase(),
+      visibility: (json['visibility'] as String? ?? 'PUBLIC').toUpperCase(),
+      speakersPermission: (json['speakersPermission'] as String? ?? 'HOST_APPROVED').toUpperCase(),
+      status: (json['status'] as String? ?? 'LIVE').toUpperCase(),
+      isRecording: json['isRecording'] as bool? ?? false,
+      isChatEnabled: json['isChatEnabled'] as bool? ?? true,
+      scheduledAt: json['scheduledAt'] != null
+          ? DateTime.tryParse(json['scheduledAt'].toString())
+          : null,
+      startedAt: json['startedAt'] != null
+          ? DateTime.tryParse(json['startedAt'].toString())
+          : null,
+      endedAt: json['endedAt'] != null
+          ? DateTime.tryParse(json['endedAt'].toString())
+          : null,
+      createdAt: json['createdAt'] != null
+          ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+      host: hostObj,
+      participants: parsedParticipants,
+      requests: parsedRequests,
+      totalParticipants: count,
+    );
+  }
+}

@@ -83,6 +83,10 @@ model User {
   closeFriendsWith       CloseFriend[]    @relation("Friend")
   stickers               Sticker[]        @relation("UserStickers")
   savedStickers          UserSavedSticker[]
+  audioRoomsHosted       AudioRoom[]             @relation("HostedAudioRooms")
+  audioRoomParticipations AudioRoomParticipant[]  @relation("AudioRoomParticipations")
+  audioRoomRequests      AudioRoomRequest[]      @relation("AudioRoomRequests")
+  audioRoomMessages      AudioRoomMessage[]      @relation("AudioRoomMessages")
 }
 
 model Follower {
@@ -523,4 +527,92 @@ model UserSavedSticker {
   @@unique([userId, stickerId])
   @@index([userId])
 }
+
+// ==========================================
+// CAMPUS LIVE AUDIO SPACES (LiveKit Powered)
+// ==========================================
+
+model AudioRoom {
+  id                 String                 @id @default(uuid())
+  hostId             String
+  title              String
+  description        String?
+  category           String                 @default("ACADEMIC") // ACADEMIC, SOCIAL, DEBATE, COMMUNITY
+  visibility         String                 @default("PUBLIC")   // PUBLIC, FOLLOWERS, PRIVATE
+  speakersPermission String                 @default("HOST_APPROVED") // EVERYONE, HOST_APPROVED
+  status             String                 @default("LIVE")     // SCHEDULED, LIVE, ENDED
+  isRecording        Boolean                @default(false)
+  isChatEnabled      Boolean                @default(true)
+  scheduledAt        DateTime?
+  startedAt          DateTime?
+  endedAt            DateTime?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  host               User                   @relation("HostedAudioRooms", fields: [hostId], references: [id], onDelete: Cascade)
+  participants       AudioRoomParticipant[]
+  requests           AudioRoomRequest[]
+  messages           AudioRoomMessage[]
+  recordings         AudioRoomRecording[]
+
+  @@index([status, category])
+  @@index([hostId])
+}
+
+model AudioRoomParticipant {
+  id        String    @id @default(uuid())
+  roomId    String
+  userId    String
+  role      String    @default("LISTENER") // HOST, CO_HOST, SPEAKER, LISTENER
+  isMuted   Boolean   @default(true)
+  joinedAt  DateTime  @default(now())
+
+  room      AudioRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user      User      @relation("AudioRoomParticipations", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+  @@index([roomId])
+  @@index([userId])
+}
+
+model AudioRoomRequest {
+  id        String    @id @default(uuid())
+  roomId    String
+  userId    String
+  status    String    @default("PENDING") // PENDING, ACCEPTED, REJECTED
+  createdAt DateTime  @default(now())
+
+  room      AudioRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user      User      @relation("AudioRoomRequests", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([roomId])
+  @@index([userId])
+}
+
+model AudioRoomMessage {
+  id        String    @id @default(uuid())
+  roomId    String
+  userId    String
+  message   String
+  createdAt DateTime  @default(now())
+
+  room      AudioRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user      User      @relation("AudioRoomMessages", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([roomId])
+  @@index([userId])
+}
+
+model AudioRoomRecording {
+  id           String    @id @default(uuid())
+  roomId       String
+  recordingUrl String
+  duration     Int       @default(0) // seconds
+  createdAt    DateTime  @default(now())
+
+  room         AudioRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId])
+}
+
 

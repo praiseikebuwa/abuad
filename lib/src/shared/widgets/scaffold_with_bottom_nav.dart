@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/user/data/user_repository.dart';
 import '../../features/chat/data/chat_repository.dart';
 import 'package:flutter/cupertino.dart';
+import '../../features/audio_spaces/presentation/widgets/floating_audio_space_bar.dart';
 
 
 class ScaffoldWithBottomNav extends ConsumerWidget {
@@ -37,7 +38,17 @@ class ScaffoldWithBottomNav extends ConsumerWidget {
     final isAiActive = location.startsWith('/ai');
 
     return Scaffold(
-      body: navigationShell,
+      body: Stack(
+        children: [
+          navigationShell,
+          const Positioned(
+            left: 0,
+            right: 0,
+            bottom: 4,
+            child: FloatingAudioSpaceBar(),
+          ),
+        ],
+      ),
       bottomNavigationBar: SafeArea(
         child: ClipRect(
           child: BackdropFilter(
