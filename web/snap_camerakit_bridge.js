@@ -151,11 +151,17 @@
       // Stage 4: Camera Kit initialization begins
       this.logStage(4, 'Camera Kit initialization begins', 'PENDING', `Origin: ${window.location.hostname || 'localhost'}`);
       
-      this.cameraKit = await withTimeout(
-        window.SnapCameraKit.bootstrapCameraKit({ apiToken: token }),
-        15000,
-        'Camera Kit initialization (bootstrapCameraKit) timed out after 15s. Check network access to cf-st.sc-cdn.net and camera-kit-api.snapar.com.'
-      );
+      try {
+        this.cameraKit = await withTimeout(
+          window.SnapCameraKit.bootstrapCameraKit({ apiToken: token }),
+          15000,
+          'Camera Kit initialization (bootstrapCameraKit) timed out after 15s. Check network access to cf-st.sc-cdn.net and camera-kit-api.snapar.com.'
+        );
+      } catch (bootErr) {
+        const msg = bootErr && bootErr.message ? bootErr.message : String(bootErr);
+        this.logStage(4, 'Camera Kit initialization begins', 'FAILURE', msg);
+        throw bootErr;
+      }
 
       // Stage 5: Camera Kit initialization completes
       this.logStage(5, 'Camera Kit initialization completes', 'SUCCESS', 'CameraKit instance created');
@@ -650,6 +656,28 @@
       return JSON.stringify(res);
     }
   }
+
+  // Handle Snap Camera Kit background unhandled network errors gracefully
+  window.addEventListener('unhandledrejection', function(event) {
+    const reason = event && event.reason;
+    const msg = reason && (reason.message || String(reason));
+    if (msg && (msg.includes('namespaces') || msg.includes('snap_camerakit') || msg.includes('CacheKeyNotFoundError'))) {
+      console.warn('[SnapCameraBridge] Handled background Camera Kit network/cache timeout:', msg);
+      if (typeof event.preventDefault === 'function') {
+        event.preventDefault();
+      }
+    }
+  });
+
+  window.addEventListener('error', function(event) {
+    const msg = event && (event.message || (event.error && event.error.message) || String(event.error));
+    if (msg && (msg.includes('namespaces') || msg.includes('snap_camerakit') || msg.includes('CacheKeyNotFoundError'))) {
+      console.warn('[SnapCameraBridge] Handled background Camera Kit network error:', msg);
+      if (typeof event.preventDefault === 'function') {
+        event.preventDefault();
+      }
+    }
+  });
 
   window.SnapCameraBridge = new SnapCameraBridgeController();
 })();
