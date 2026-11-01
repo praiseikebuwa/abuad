@@ -263,8 +263,10 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
 
     _socketPartJoinedSub = _socketService.onAudioRoomParticipantJoined.listen((data) {
       final rawPart = data['participant'];
-      if (rawPart is Map && state.room != null) {
-        final participant = AudioParticipant.fromJson(Map<String, dynamic>.from(rawPart));
+      if (state.room != null && (rawPart is Map || rawPart is AudioParticipant)) {
+        final participant = rawPart is AudioParticipant
+            ? rawPart
+            : AudioParticipant.fromJson(Map<String, dynamic>.from(rawPart as Map));
         final currentParticipants = List<AudioParticipant>.from(state.room!.participants);
         final idx = currentParticipants.indexWhere((p) => p.userId == participant.userId);
         if (idx >= 0) {
@@ -475,7 +477,8 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
       try {
         final freshRoom = await _repository.getRoomDetails(roomId);
         if (mounted && state.room != null && state.room!.id == roomId) {
-          final selfId = _ref.read(authRepositoryProvider).currentUserId;
+          final authRepo = _ref.read(authRepositoryProvider);
+          final selfId = authRepo.currentUser?.uid ?? authRepo.currentUserId;
           final updatedParts = List<AudioParticipant>.from(freshRoom.participants);
           // Keep self participant if missing from fresh fetch
           if (selfId != null && !updatedParts.any((p) => p.userId == selfId)) {
@@ -491,7 +494,12 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
                 joinedAt: DateTime.now(),
                 user: state.room!.host.id == selfId
                     ? state.room!.host
-                    : AudioRoomUser(id: selfId, username: 'Me', fullName: 'You'),
+                    : AudioRoomUser(
+                        id: selfId,
+                        username: authRepo.currentUser?.handle ?? 'You',
+                        fullName: authRepo.currentUser?.displayName ?? 'You',
+                        avatarUrl: authRepo.currentUser?.avatarUrl,
+                      ),
               ),
             );
             updatedParts.add(existingSelf);
@@ -509,6 +517,50 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
         }
       } catch (_) {}
     });
+  }
+
+  Future<void> refreshRoom() async {
+    if (state.room == null) return;
+    final roomId = state.room!.id;
+    try {
+      final freshRoom = await _repository.getRoomDetails(roomId);
+      if (!mounted || state.room?.id != roomId) return;
+      final authRepo = _ref.read(authRepositoryProvider);
+      final selfId = authRepo.currentUser?.uid ?? authRepo.currentUserId;
+      final updatedParts = List<AudioParticipant>.from(freshRoom.participants);
+      if (selfId != null && !updatedParts.any((p) => p.userId == selfId)) {
+        final existingSelf = state.room!.participants.firstWhere(
+          (p) => p.userId == selfId,
+          orElse: () => AudioParticipant(
+            id: 'self_$selfId',
+            roomId: roomId,
+            userId: selfId,
+            role: state.role,
+            isMuted: state.isMuted,
+            connectionStatus: 'ONLINE',
+            joinedAt: DateTime.now(),
+            user: state.room!.host.id == selfId
+                ? state.room!.host
+                : AudioRoomUser(
+                    id: selfId,
+                    username: authRepo.currentUser?.handle ?? 'You',
+                    fullName: authRepo.currentUser?.displayName ?? 'You',
+                    avatarUrl: authRepo.currentUser?.avatarUrl,
+                  ),
+          ),
+        );
+        updatedParts.add(existingSelf);
+      }
+      state = state.copyWith(
+        room: state.room!.copyWith(
+          participants: updatedParts,
+          totalParticipants: math.max(freshRoom.totalParticipants, updatedParts.length),
+          isLocked: freshRoom.isLocked,
+          status: freshRoom.status,
+        ),
+        pendingRequests: freshRoom.requests,
+      );
+    } catch (_) {}
   }
 
   void _cancelSubscriptions() {
@@ -555,11 +607,20 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
 
       // 4. Ensure current user is in participants list so they always see themselves
       final participants = List<AudioParticipant>.from(room.participants);
-      final selfId = _ref.read(authRepositoryProvider).currentUserId;
+      final authRepo = _ref.read(authRepositoryProvider);
+      final authUser = authRepo.currentUser;
+      final selfId = authUser?.uid ?? authRepo.currentUserId;
       final rawPart = joinResult['participant'];
-      if (rawPart is Map) {
-        final selfPart = AudioParticipant.fromJson(Map<String, dynamic>.from(rawPart));
-        final idx = participants.indexWhere((p) => p.userId == selfPart.userId);
+
+      AudioParticipant? selfPart;
+      if (rawPart is AudioParticipant) {
+        selfPart = rawPart;
+      } else if (rawPart is Map) {
+        selfPart = AudioParticipant.fromJson(Map<String, dynamic>.from(rawPart));
+      }
+
+      if (selfPart != null) {
+        final idx = participants.indexWhere((p) => p.userId == selfPart!.userId);
         if (idx >= 0) {
           participants[idx] = selfPart;
         } else {
@@ -574,7 +635,12 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
           isMuted: role != 'HOST',
           connectionStatus: 'ONLINE',
           joinedAt: DateTime.now(),
-          user: AudioRoomUser(id: selfId, username: 'Me', fullName: 'You'),
+          user: AudioRoomUser(
+            id: selfId,
+            username: authUser?.handle ?? 'You',
+            fullName: authUser?.displayName ?? 'You',
+            avatarUrl: authUser?.avatarUrl,
+          ),
         ));
       }
 
@@ -740,7 +806,8 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
 
   Future<void> toggleHandRaise() async {
     if (state.room == null) return;
-    final selfId = _ref.read(authRepositoryProvider).currentUserId;
+    final authRepo = _ref.read(authRepositoryProvider);
+    final selfId = authRepo.currentUser?.uid ?? authRepo.currentUserId;
     final nextState = !state.isHandRaised;
 
     // Optimistic UI update
@@ -773,7 +840,8 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
 
   void sendReaction(String emoji) {
     if (state.room == null) return;
-    final selfId = _ref.read(authRepositoryProvider).currentUserId ?? 'self';
+    final authRepo = _ref.read(authRepositoryProvider);
+    final selfId = authRepo.currentUser?.uid ?? authRepo.currentUserId ?? 'self';
     final reaction = AudioReactionEvent(
       id: '${DateTime.now().millisecondsSinceEpoch}_$selfId',
       emoji: emoji,

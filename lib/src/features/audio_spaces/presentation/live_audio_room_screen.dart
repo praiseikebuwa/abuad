@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'controllers/audio_room_controller.dart';
 import '../domain/audio_room.dart';
+import '../../auth/data/auth_repository.dart';
 import 'widgets/in_room_chat_sheet.dart';
 import 'widgets/moderation_sheet.dart';
 import 'widgets/live_space_share_sheet.dart';
@@ -29,6 +30,10 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
     )..repeat(reverse: true);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final activeState = ref.read(activeAudioRoomNotifierProvider);
+      if (activeState.room == null || activeState.room!.id != widget.roomId) {
+        ref.read(activeAudioRoomNotifierProvider.notifier).joinRoom(widget.roomId);
+      }
       ref.read(liveKitAudioServiceProvider).startAudio();
     });
   }
@@ -179,6 +184,8 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
 
     final speakers = room.speakers;
     final listeners = room.listeners;
+    final authRepo = ref.watch(authRepositoryProvider);
+    final currentUserId = authRepo.currentUser?.uid ?? authRepo.currentUserId;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F0F1A),
@@ -254,6 +261,20 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
                               style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
                             ),
                           ],
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      // Quick sync / refresh button
+                      InkWell(
+                        onTap: () => ref.read(activeAudioRoomNotifierProvider.notifier).refreshRoom(),
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.06),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.sync_rounded, color: Colors.white70, size: 16),
                         ),
                       ),
                       const Spacer(),
@@ -432,9 +453,11 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
                           itemBuilder: (context, index) {
                             final speaker = speakers[index];
                             final isSpeaking = state.activeSpeakerIds.contains(speaker.userId);
+                            final isSelf = currentUserId != null && currentUserId == speaker.userId;
                             return _SpeakerAvatarTile(
                               participant: speaker,
                               isSpeaking: isSpeaking,
+                              isSelf: isSelf,
                               pulseAnimation: _pulseController,
                               onTap: () {
                                 if (isHost || isCoHost) {
@@ -450,40 +473,103 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
                         // Listeners section header
                         Padding(
                           padding: const EdgeInsets.only(left: 4, bottom: 12),
-                          child: Text(
-                            'LISTENERS (${listeners.length})',
-                            style: const TextStyle(
-                              color: Colors.white54,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 1.2,
-                            ),
+                          child: Row(
+                            children: [
+                              Text(
+                                'LISTENERS (${listeners.length})',
+                                style: const TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                              const Spacer(),
+                              if (listeners.isNotEmpty && (isHost || isCoHost))
+                                Text(
+                                  'Tap avatar to manage',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.3),
+                                    fontSize: 10,
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
 
-                        // Listeners Grid
-                        GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 4,
-                            crossAxisSpacing: 10,
-                            mainAxisSpacing: 14,
-                            childAspectRatio: 0.75,
+                        // Listeners Grid or Empty State
+                        if (listeners.isEmpty)
+                          Container(
+                            width: double.infinity,
+                            margin: const EdgeInsets.only(top: 4, bottom: 20),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.03),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Colors.white.withOpacity(0.06)),
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.headphones_outlined, size: 28, color: Colors.white.withOpacity(0.35)),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'No listeners in the room yet',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.8),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Invite friends or coursemates to tune in and listen live',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.45),
+                                    fontSize: 11,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 12),
+                                OutlinedButton.icon(
+                                  icon: const Icon(Icons.share_rounded, size: 14),
+                                  label: const Text('Invite Listeners', style: TextStyle(fontSize: 12)),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: const Color(0xFFB388FF),
+                                    side: const BorderSide(color: Color(0xFF7C4DFF)),
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                  ),
+                                  onPressed: () => _shareSpace(room),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          GridView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 4,
+                              crossAxisSpacing: 10,
+                              mainAxisSpacing: 14,
+                              childAspectRatio: 0.72,
+                            ),
+                            itemCount: listeners.length,
+                            itemBuilder: (context, index) {
+                              final listener = listeners[index];
+                              final isSelf = currentUserId != null && currentUserId == listener.userId;
+                              return _ListenerAvatarTile(
+                                participant: listener,
+                                isSelf: isSelf,
+                                onTap: () {
+                                  if (isHost || isCoHost) {
+                                    _openModeration();
+                                  }
+                                },
+                              );
+                            },
                           ),
-                          itemCount: listeners.length,
-                          itemBuilder: (context, index) {
-                            final listener = listeners[index];
-                            return _ListenerAvatarTile(
-                              participant: listener,
-                              onTap: () {
-                                if (isHost || isCoHost) {
-                                  _openModeration();
-                                }
-                              },
-                            );
-                          },
-                        ),
                         const SizedBox(height: 90),
                       ],
                     ),
@@ -557,12 +643,14 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
 class _SpeakerAvatarTile extends StatelessWidget {
   final AudioParticipant participant;
   final bool isSpeaking;
+  final bool isSelf;
   final AnimationController pulseAnimation;
   final VoidCallback onTap;
 
   const _SpeakerAvatarTile({
     required this.participant,
     required this.isSpeaking,
+    this.isSelf = false,
     required this.pulseAnimation,
     required this.onTap,
   });
@@ -591,7 +679,11 @@ class _SpeakerAvatarTile extends StatelessWidget {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: isSpeaking ? const Color(0xFF00E676) : Colors.transparent,
+                          color: isSpeaking
+                              ? const Color(0xFF00E676)
+                              : isSelf
+                                  ? const Color(0xFFD4AF37)
+                                  : Colors.transparent,
                           width: 3,
                         ),
                         boxShadow: isSpeaking
@@ -602,7 +694,15 @@ class _SpeakerAvatarTile extends StatelessWidget {
                                   spreadRadius: 2,
                                 ),
                               ]
-                            : null,
+                            : isSelf
+                                ? [
+                                    BoxShadow(
+                                      color: const Color(0xFFD4AF37).withOpacity(0.35),
+                                      blurRadius: 8,
+                                      spreadRadius: 1,
+                                    ),
+                                  ]
+                                : null,
                       ),
                     ),
                     // Avatar Image
@@ -676,10 +776,10 @@ class _SpeakerAvatarTile extends StatelessWidget {
             ),
             child: Text(
               participant.isHost
-                  ? 'Host'
+                  ? (isSelf ? 'Host (You)' : 'Host')
                   : participant.isCoHost
-                      ? 'Co-Host'
-                      : 'Speaker',
+                      ? (isSelf ? 'Co-Host (You)' : 'Co-Host')
+                      : (isSelf ? 'Speaker (You)' : 'Speaker'),
               style: TextStyle(
                 color: participant.isHost
                     ? const Color(0xFFB388FF)
@@ -699,10 +799,12 @@ class _SpeakerAvatarTile extends StatelessWidget {
 
 class _ListenerAvatarTile extends StatelessWidget {
   final AudioParticipant participant;
+  final bool isSelf;
   final VoidCallback? onTap;
 
   const _ListenerAvatarTile({
     required this.participant,
+    this.isSelf = false,
     this.onTap,
   });
 
@@ -717,22 +819,40 @@ class _ListenerAvatarTile extends StatelessWidget {
           Stack(
             clipBehavior: Clip.none,
             children: [
-              CircleAvatar(
-                radius: 22,
-                backgroundColor: const Color(0xFF222232),
-                backgroundImage: participant.user.avatarUrl != null &&
-                        participant.user.avatarUrl!.isNotEmpty
-                    ? NetworkImage(participant.user.avatarUrl!)
-                    : null,
-                child: participant.user.avatarUrl == null ||
-                        participant.user.avatarUrl!.isEmpty
-                    ? Text(
-                        participant.user.fullName.isNotEmpty
-                            ? participant.user.fullName[0].toUpperCase()
-                            : '?',
-                        style: const TextStyle(color: Colors.white, fontSize: 13),
-                      )
-                    : null,
+              Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isSelf ? const Color(0xFFD4AF37) : Colors.transparent,
+                    width: 2,
+                  ),
+                  boxShadow: isSelf
+                      ? [
+                          BoxShadow(
+                            color: const Color(0xFFD4AF37).withOpacity(0.4),
+                            blurRadius: 8,
+                            spreadRadius: 1,
+                          ),
+                        ]
+                      : null,
+                ),
+                child: CircleAvatar(
+                  radius: 22,
+                  backgroundColor: const Color(0xFF222232),
+                  backgroundImage: participant.user.avatarUrl != null &&
+                          participant.user.avatarUrl!.isNotEmpty
+                      ? NetworkImage(participant.user.avatarUrl!)
+                      : null,
+                  child: participant.user.avatarUrl == null ||
+                          participant.user.avatarUrl!.isEmpty
+                      ? Text(
+                          participant.user.fullName.isNotEmpty
+                              ? participant.user.fullName[0].toUpperCase()
+                              : '?',
+                          style: const TextStyle(color: Colors.white, fontSize: 13),
+                        )
+                      : null,
+                ),
               ),
               if (participant.isHandRaised)
                 Positioned(
@@ -745,7 +865,7 @@ class _ListenerAvatarTile extends StatelessWidget {
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.amber.withValues(alpha: 0.6),
+                          color: Colors.amber.withOpacity(0.6),
                           blurRadius: 8,
                           spreadRadius: 1,
                         ),
@@ -767,10 +887,22 @@ class _ListenerAvatarTile extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.8),
+              color: isSelf ? const Color(0xFFD4AF37) : Colors.white.withOpacity(0.8),
               fontSize: 11,
+              fontWeight: isSelf ? FontWeight.bold : FontWeight.normal,
             ),
           ),
+          if (isSelf)
+            Container(
+              margin: const EdgeInsets.only(top: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(
+                color: const Color(0xFFD4AF37).withOpacity(0.2),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: const Color(0xFFD4AF37).withOpacity(0.4), width: 0.5),
+              ),
+              child: const Text('You', style: TextStyle(color: Color(0xFFD4AF37), fontSize: 9, fontWeight: FontWeight.bold)),
+            ),
         ],
       ),
     );
