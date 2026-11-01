@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:livekit_client/livekit_client.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class LiveKitAudioService {
   Room? _room;
@@ -81,6 +82,12 @@ class LiveKitAudioService {
 
       await room.connect(url, token);
 
+      try {
+        await room.startAudio();
+      } catch (e) {
+        debugPrint('⚠️ [LiveKit] startAudio non-fatal: $e');
+      }
+
       if (canPublish && autoEnableMic) {
         await setMicrophoneEnabled(true);
       } else if (canPublish) {
@@ -100,6 +107,19 @@ class LiveKitAudioService {
 
   Future<void> setMicrophoneEnabled(bool enabled) async {
     try {
+      if (enabled && !kIsWeb) {
+        try {
+          final status = await Permission.microphone.request();
+          if (!status.isGranted) {
+            debugPrint('⚠️ [LiveKit] Microphone permission denied');
+            _isMicEnabled = false;
+            _micStateController.add(false);
+            return;
+          }
+        } catch (pe) {
+          debugPrint('⚠️ [LiveKit] Permission request check non-fatal: $pe');
+        }
+      }
       final participant = _room?.localParticipant;
       if (participant == null) {
         debugPrint('⚠️ [LiveKit] Cannot set mic: localParticipant is null');
@@ -121,9 +141,6 @@ class LiveKitAudioService {
 
   Future<void> disconnect() async {
     try {
-      _listener?.dispose();
-      _listener = null;
-
       final roomToClose = _room;
       _room = null;
 
@@ -140,6 +157,11 @@ class LiveKitAudioService {
           debugPrint('⚠️ [LiveKit] Dispose room error: $e');
         }
       }
+
+      try {
+        _listener?.dispose();
+      } catch (_) {}
+      _listener = null;
 
       _isMicEnabled = false;
       _activeSpeakerIds = [];

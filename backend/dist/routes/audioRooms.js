@@ -176,6 +176,9 @@ router.get('/', auth_1.authenticateToken, async (req, res) => {
     }
     catch (error) {
         console.error('[AudioRooms] Failed to list rooms:', error);
+        if (error?.message?.includes('does not exist') || error?.code === 'P2021') {
+            return res.json({ success: true, data: [] });
+        }
         return res.status(500).json({ error: 'Failed to fetch audio rooms', details: error.message });
     }
 });

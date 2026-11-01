@@ -11,7 +11,6 @@ import 'package:audioplayers/audioplayers.dart';
 import '../../../core/theme/app_colors.dart';
 import '../domain/story.dart';
 import '../data/story_repository.dart';
-import 'package:abuad/src/features/user/data/user_repository.dart';
 import '../../feed/domain/report.dart';
 import '../../feed/presentation/widgets/report_bottom_sheet.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -20,6 +19,7 @@ import 'package:share_plus/share_plus.dart';
 import 'create_story_screen.dart';
 import 'package:flutter/services.dart';
 import '../../chat/data/chat_repository.dart';
+import '../../auth/data/auth_repository.dart';
 import 'package:abuad/src/core/utils/url_validator.dart';
 import 'package:abuad/src/core/widgets/verification_badge.dart';
 
@@ -147,6 +147,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
       if (mounted) setState(() {});
       if (_focusNode.hasFocus) {
         _pauseStory();
+        _showQuickReactions = true;
       } else {
         if (_messageController.text.isEmpty && !_showQuickReactions) {
           _resumeStory();
@@ -579,20 +580,44 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
     final text = quickReaction ?? _messageController.text.trim();
     if (text.isEmpty || _isSendingReply) return;
 
-    final myId = ref.read(currentUserProvider).value?.uid;
-    if (myId == null) return;
+    final authRepo = ref.read(authRepositoryProvider);
+    final myId = authRepo.currentUser?.uid ??
+        authRepo.currentUserId ??
+        ref.read(currentUserProvider).value?.uid;
 
-    if (story.authorId == myId) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("You cannot reply to your own story"),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+    if (myId == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Please sign in to reply to stories"),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
       return;
     }
 
-    setState(() => _isSendingReply = true);
+    if (story.authorId == myId) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("You cannot reply to your own story"),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (quickReaction != null) {
+      _spawnFloatingReaction(quickReaction);
+      HapticFeedback.lightImpact();
+    }
+
+    setState(() {
+      _isSendingReply = true;
+      _showQuickReactions = false;
+    });
     _pauseStory();
 
     try {
@@ -602,11 +627,6 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
         otherUserName: story.userName,
         otherUserAvatar: story.userAvatar,
       );
-
-      if (quickReaction != null) {
-        _spawnFloatingReaction(quickReaction);
-      }
-      setState(() => _showQuickReactions = false);
 
       await chatRepo.sendMessage(
         channelId,
@@ -801,8 +821,13 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
 
             // Only navigate if it was a quick, deliberate tap and NOT a hold to view
             if (durationMs < 300 && dxDiff < 25 && !_isHolding) {
-              final width = MediaQuery.of(context).size.width;
-              if (details.globalPosition.dx < width * 0.35) {
+              final size = MediaQuery.of(context).size;
+              // Ignore taps in bottom interactive area (reply bar, emojis, actions)
+              if (details.globalPosition.dy > size.height - 160) {
+                _resumeStory();
+                return;
+              }
+              if (details.globalPosition.dx < size.width * 0.35) {
                 _previousStory();
               } else {
                 _nextStory();

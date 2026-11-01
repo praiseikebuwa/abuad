@@ -2,18 +2,18 @@ import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 
 const LIVEKIT_URL = process.env.LIVEKIT_URL || 'wss://abuad-cgeux9e8.livekit.cloud';
 const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || 'APIm3GQ6f4JbJ7a';
-const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || 'ERcJJcvDFffq2obQvqSjJ0pfUYViEffsfJfWn4gaTElM';
+const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || 'ERcJJcvDFFfq2obQvqSjJ0pfUYViEffsfJfWn4gaTElM';
 
 export interface TokenOptions {
   roomId: string;
   userId: string;
   userName: string;
   userAvatar?: string | null;
-  role: 'HOST' | 'CO_HOST' | 'SPEAKER' | 'LISTENER';
+  role: 'HOST' | 'CO_HOST' | 'MODERATOR' | 'SPEAKER' | 'LISTENER';
 }
 
 export async function generateLiveKitToken(options: TokenOptions): Promise<string> {
-  const isSpeaker = options.role === 'HOST' || options.role === 'CO_HOST' || options.role === 'SPEAKER';
+  const isSpeaker = options.role === 'HOST' || options.role === 'CO_HOST' || options.role === 'SPEAKER' || options.role === 'MODERATOR';
 
   const token = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
     identity: options.userId,
