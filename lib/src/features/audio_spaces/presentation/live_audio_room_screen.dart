@@ -28,6 +28,10 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     )..repeat(reverse: true);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(liveKitAudioServiceProvider).startAudio();
+    });
   }
 
   @override
@@ -179,9 +183,12 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F0F1A),
-      body: Stack(
-        children: [
-          // Background Gradient
+      body: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) => ref.read(liveKitAudioServiceProvider).startAudio(),
+        child: Stack(
+          children: [
+            // Background Gradient
           Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
@@ -521,8 +528,9 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 class _SpeakerAvatarTile extends StatelessWidget {

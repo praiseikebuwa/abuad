@@ -25,14 +25,39 @@ class LiveKitAudioService {
   List<String> _activeSpeakerIds = [];
   List<String> get activeSpeakerIds => _activeSpeakerIds;
 
+  String? _currentUrl;
+  String? _currentToken;
+  bool _isConnecting = false;
+
   Future<void> connect({
     required String url,
     required String token,
     required bool canPublish,
     bool autoEnableMic = false,
   }) async {
+    // If we are already connected to the same room with the same token, do not reconnect
+    if (_room != null && isConnected && _currentToken == token && _currentUrl == url) {
+      debugPrint('🎙️ [LiveKit] Already connected to room with current token. Updating mic/publish permissions.');
+      if (canPublish && autoEnableMic) {
+        await setMicrophoneEnabled(true);
+      } else if (!canPublish) {
+        await setMicrophoneEnabled(false);
+      }
+      return;
+    }
+
+    if (_isConnecting && _currentToken == token) {
+      debugPrint('🎙️ [LiveKit] Connection already in progress with this token. Skipping redundant connect.');
+      return;
+    }
+
+    _isConnecting = true;
+
     try {
       await disconnect();
+
+      _currentUrl = url;
+      _currentToken = token;
 
       debugPrint('🎙️ [LiveKit] Connecting to $url...');
 
@@ -63,9 +88,20 @@ class LiveKitAudioService {
           _activeSpeakerIds = [];
         })
         ..on<ActiveSpeakersChangedEvent>((event) {
-          final speakerIds = event.speakers.map((s) => s.identity).toList();
+          final speakerIds = event.speakers
+              .map((s) => s.identity)
+              .where((id) => id.isNotEmpty)
+              .toList();
           _activeSpeakerIds = speakerIds;
           _speakersController.add(speakerIds);
+        })
+        ..on<AudioPlaybackStatusChanged>((event) async {
+          if (!room.canPlaybackAudio) {
+            debugPrint('⚠️ [LiveKit] Audio autoplay blocked. Attempting startAudio...');
+            try {
+              await room.startAudio();
+            } catch (_) {}
+          }
         })
         ..on<TrackMutedEvent>((event) {
           if (event.participant == room.localParticipant) {
@@ -82,6 +118,16 @@ class LiveKitAudioService {
 
       await room.connect(url, token);
 
+      // Route audio to speakerphone on mobile
+      if (!kIsWeb) {
+        try {
+          await AudioManager.instance.setSpeakerOutputPreferred(true);
+        } catch (he) {
+          debugPrint('⚠️ [LiveKit] setSpeakerOutputPreferred warning: $he');
+        }
+      }
+
+      // Unlock HTML5 Web Audio / AudioContext
       try {
         await room.startAudio();
       } catch (e) {
@@ -100,8 +146,23 @@ class LiveKitAudioService {
       _connectionStateController.add(ConnectionState.connected);
     } catch (e) {
       debugPrint('❌ [LiveKit] Connection failed: $e');
+      _currentUrl = null;
+      _currentToken = null;
       await disconnect();
       rethrow;
+    } finally {
+      _isConnecting = false;
+    }
+  }
+
+  Future<void> startAudio() async {
+    final r = _room;
+    if (r != null) {
+      try {
+        await r.startAudio();
+      } catch (e) {
+        debugPrint('⚠️ [LiveKit] startAudio error: $e');
+      }
     }
   }
 
@@ -140,6 +201,10 @@ class LiveKitAudioService {
   }
 
   Future<void> disconnect() async {
+    _currentToken = null;
+    _currentUrl = null;
+    _isConnecting = false;
+
     try {
       final roomToClose = _room;
       _room = null;
@@ -181,4 +246,3 @@ class LiveKitAudioService {
     _micStateController.close();
   }
 }
-

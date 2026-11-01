@@ -16,8 +16,13 @@ class AudioLiveActivityService {
   String? _currentActivityId;
   StreamSubscription? _urlSchemeSub;
 
+  bool get _isSupportedPlatform =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.android);
+
   Future<void> init() async {
-    if (_isInitialized) return;
+    if (!_isSupportedPlatform || _isInitialized) return;
     try {
       await _liveActivities.init(
         appGroupId: 'group.com.abuad.life',
@@ -40,6 +45,7 @@ class AudioLiveActivityService {
     bool isHost = false,
     bool isMuted = false,
   }) async {
+    if (!_isSupportedPlatform) return null;
     try {
       await init();
       final activityData = <String, dynamic>{
@@ -82,6 +88,7 @@ class AudioLiveActivityService {
     required String category,
     required String inviterName,
   }) async {
+    if (!_isSupportedPlatform) return null;
     try {
       await init();
       final activityData = <String, dynamic>{
@@ -116,14 +123,18 @@ class AudioLiveActivityService {
     bool isMuted = false,
     String? currentSpeakerName,
   }) async {
+    if (!_isSupportedPlatform) return;
     try {
       if (_currentActivityId == null) return;
-      await _liveActivities.updateActivity(_currentActivityId!, {
+      final updatePayload = <String, dynamic>{
         'participantCount': participantCount,
         'isMuted': isMuted,
-        if (currentSpeakerName != null) 'currentSpeaker': currentSpeakerName,
         'updatedAt': DateTime.now().millisecondsSinceEpoch,
-      });
+      };
+      if (currentSpeakerName != null) {
+        updatePayload['currentSpeaker'] = currentSpeakerName;
+      }
+      await _liveActivities.updateActivity(_currentActivityId!, updatePayload);
     } catch (e) {
       debugPrint('[AudioLiveActivity] Error updating space activity: $e');
     }
@@ -131,6 +142,7 @@ class AudioLiveActivityService {
 
   /// End and remove the Live Activity when leaving or ending the space
   Future<void> endSpaceActivity([String? roomId]) async {
+    if (!_isSupportedPlatform) return;
     try {
       final idToEnd = roomId != null ? 'space_$roomId' : _currentActivityId;
       if (idToEnd != null) {
@@ -148,7 +160,8 @@ class AudioLiveActivityService {
   }
 
   /// Listen to deep links from Dynamic Island or Lock Screen taps
-  Stream<UrlSchemeData> get urlSchemeStream => _liveActivities.urlSchemeStream();
+  Stream<UrlSchemeData> get urlSchemeStream =>
+      _isSupportedPlatform ? _liveActivities.urlSchemeStream() : const Stream.empty();
 
   void dispose() {
     _urlSchemeSub?.cancel();
