@@ -79,26 +79,83 @@ export function initSocket(server: HttpServer) {
     });
 
     // Audio Room Spaces listeners
-    socket.on('audio_room:join', (data: { roomId?: string }) => {
-      if (data?.roomId) {
-        socket.join(audioRoomName(data.roomId));
+    socket.on('audio_room:join', (data: any) => {
+      const roomId = typeof data === 'string' ? data : data?.roomId;
+      if (roomId) {
+        socket.join(audioRoomName(roomId));
+        console.log(`⚡ [Socket] User ${userId} joined audio room: ${roomId}`);
       }
     });
 
-    socket.on('audio_room:leave', (data: { roomId?: string }) => {
-      if (data?.roomId) {
-        socket.leave(audioRoomName(data.roomId));
+    socket.on('audio_room:leave', (data: any) => {
+      const roomId = typeof data === 'string' ? data : data?.roomId;
+      if (roomId) {
+        socket.leave(audioRoomName(roomId));
+        console.log(`⚡ [Socket] User ${userId} left audio room: ${roomId}`);
       }
     });
 
-    socket.on('audio_room:reaction', (data: { roomId?: string; emoji?: string }) => {
-      if (data?.roomId && data?.emoji) {
-        io?.to(audioRoomName(data.roomId)).emit('audio_room:reaction', {
-          roomId: data.roomId,
+    socket.on('audio_room:reaction', (data: any) => {
+      const roomId = typeof data === 'string' ? null : data?.roomId;
+      const emoji = data?.emoji;
+      if (roomId && emoji) {
+        io?.to(audioRoomName(roomId)).emit('audio_room:reaction', {
+          roomId,
           userId,
-          emoji: data.emoji,
+          emoji,
+          xOffset: typeof data?.xOffset === 'number' ? data.xOffset : (Math.random() * 0.8),
           timestamp: Date.now(),
         });
+      }
+    });
+
+    socket.on('audio_room:send_message', async (data: any) => {
+      const roomId = data?.roomId;
+      const content = data?.message || data?.content;
+      if (!roomId || !content || !content.trim()) return;
+
+      try {
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            id: true,
+            username: true,
+            fullName: true,
+            avatarUrl: true,
+            department: true,
+            level: true,
+            isVerified: true,
+            verificationType: true,
+          },
+        });
+
+        const chatMsg = await (prisma as any).audioRoomMessage.create({
+          data: {
+            roomId,
+            userId,
+            message: content.trim(),
+            isAnnouncement: !!data?.isAnnouncement,
+            isPinned: !!data?.isPinned,
+          },
+          include: {
+            user: {
+              select: {
+                id: true,
+                username: true,
+                fullName: true,
+                avatarUrl: true,
+                department: true,
+                level: true,
+                isVerified: true,
+                verificationType: true,
+              },
+            },
+          },
+        });
+
+        emitToAudioRoom(roomId, 'audio_room:message', { message: chatMsg });
+      } catch (err) {
+        console.error('Failed to create socket audio room message:', err);
       }
     });
 

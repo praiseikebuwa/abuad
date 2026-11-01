@@ -537,7 +537,7 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
                   alignment: Alignment.bottomRight,
                   children: state.floatingReactions.map((reaction) {
                     return Positioned(
-                      key: ValueKey(reaction.id),
+                      key: ValueKey(reaction.id.isNotEmpty ? reaction.id : '${DateTime.now().microsecondsSinceEpoch}_${reaction.emoji}'),
                       bottom: 0,
                       right: 10 + (reaction.xOffset * 60),
                       child: _FloatingEmojiItem(emoji: reaction.emoji),

@@ -75,7 +75,7 @@ class AudioParticipant {
   bool get isCoHost => role == 'CO_HOST';
   bool get isModerator => role == 'MODERATOR';
   bool get isSpeaker => role == 'SPEAKER' || isHost || isCoHost || isModerator;
-  bool get isListener => role == 'LISTENER';
+  bool get isListener => !isSpeaker;
   bool get canModerate => isHost || isCoHost || isModerator;
 
   AudioParticipant copyWith({
@@ -101,8 +101,8 @@ class AudioParticipant {
 
   factory AudioParticipant.fromJson(Map<String, dynamic> json) {
     final rawUser = json['user'];
-    final userObj = rawUser is Map<String, dynamic>
-        ? AudioRoomUser.fromJson(rawUser)
+    final userObj = rawUser is Map
+        ? AudioRoomUser.fromJson(Map<String, dynamic>.from(rawUser))
         : AudioRoomUser(
             id: json['userId'] as String? ?? '',
             username: 'User',
@@ -146,9 +146,10 @@ class AudioRoomHostTransferProposal {
     final rawPrev = json['previousHost'];
     String prevName = 'Host';
     String? prevAvatar;
-    if (rawPrev is Map<String, dynamic>) {
-      prevName = rawPrev['fullName'] as String? ?? rawPrev['username'] as String? ?? 'Host';
-      prevAvatar = rawPrev['avatarUrl'] as String?;
+    if (rawPrev is Map) {
+      final prevMap = Map<String, dynamic>.from(rawPrev);
+      prevName = prevMap['fullName'] as String? ?? prevMap['username'] as String? ?? 'Host';
+      prevAvatar = prevMap['avatarUrl'] as String?;
     }
     return AudioRoomHostTransferProposal(
       transferId: json['transferId'] as String? ?? '',
@@ -180,8 +181,8 @@ class AudioSpeakRequest {
 
   factory AudioSpeakRequest.fromJson(Map<String, dynamic> json) {
     final rawUser = json['user'];
-    final userObj = rawUser is Map<String, dynamic>
-        ? AudioRoomUser.fromJson(rawUser)
+    final userObj = rawUser is Map
+        ? AudioRoomUser.fromJson(Map<String, dynamic>.from(rawUser))
         : AudioRoomUser(
             id: json['userId'] as String? ?? '',
             username: 'User',
@@ -220,8 +221,8 @@ class AudioRoomMessageItem {
 
   factory AudioRoomMessageItem.fromJson(Map<String, dynamic> json) {
     final rawUser = json['user'];
-    final userObj = rawUser is Map<String, dynamic>
-        ? AudioRoomUser.fromJson(rawUser)
+    final userObj = rawUser is Map
+        ? AudioRoomUser.fromJson(Map<String, dynamic>.from(rawUser))
         : AudioRoomUser(
             id: json['userId'] as String? ?? '',
             username: 'User',
@@ -362,8 +363,8 @@ class AudioRoom {
 
   factory AudioRoom.fromJson(Map<String, dynamic> json) {
     final rawHost = json['host'];
-    final hostObj = rawHost is Map<String, dynamic>
-        ? AudioRoomUser.fromJson(rawHost)
+    final hostObj = rawHost is Map
+        ? AudioRoomUser.fromJson(Map<String, dynamic>.from(rawHost))
         : AudioRoomUser(
             id: json['hostId'] as String? ?? '',
             username: 'Host',
@@ -374,8 +375,8 @@ class AudioRoom {
     final parsedParticipants = <AudioParticipant>[];
     if (rawParticipants is List) {
       for (final p in rawParticipants) {
-        if (p is Map<String, dynamic>) {
-          parsedParticipants.add(AudioParticipant.fromJson(p));
+        if (p is Map) {
+          parsedParticipants.add(AudioParticipant.fromJson(Map<String, dynamic>.from(p)));
         }
       }
     }
@@ -384,13 +385,13 @@ class AudioRoom {
     final parsedRequests = <AudioSpeakRequest>[];
     if (rawRequests is List) {
       for (final r in rawRequests) {
-        if (r is Map<String, dynamic>) {
-          parsedRequests.add(AudioSpeakRequest.fromJson(r));
+        if (r is Map) {
+          parsedRequests.add(AudioSpeakRequest.fromJson(Map<String, dynamic>.from(r)));
         }
       }
     }
 
-    final countMap = json['_count'] as Map<String, dynamic>?;
+    final countMap = json['_count'] is Map ? Map<String, dynamic>.from(json['_count'] as Map) : null;
     final count = countMap?['participants'] as int? ?? parsedParticipants.length;
 
     List<String> parseStringList(dynamic raw) {

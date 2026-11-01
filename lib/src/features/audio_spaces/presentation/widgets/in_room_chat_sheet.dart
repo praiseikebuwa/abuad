@@ -17,6 +17,8 @@ class _InRoomChatSheetState extends ConsumerState<InRoomChatSheet> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   bool _isSending = false;
+  AudioRoomMessageItem? _replyingTo;
+  String _selectedFilter = 'ALL'; // ALL, QUESTIONS, SPEAKERS
 
   final List<String> _quickEmojis = ['❤️', '🔥', '👏', '😂', '💡', '🎓', '🎉', '💯'];
 
@@ -40,14 +42,26 @@ class _InRoomChatSheetState extends ConsumerState<InRoomChatSheet> {
   }
 
   Future<void> _sendMessage() async {
-    final text = _textController.text.trim();
-    if (text.isEmpty || _isSending) return;
+    final rawText = _textController.text.trim();
+    if (rawText.isEmpty || _isSending) return;
+
+    String finalMessage = rawText;
+    if (_replyingTo != null) {
+      final replyTarget = _replyingTo!.user.fullName.isNotEmpty
+          ? _replyingTo!.user.fullName
+          : _replyingTo!.user.username;
+      finalMessage = 'Replying to @$replyTarget: $rawText';
+    }
+
     _textController.clear();
-    setState(() => _isSending = true);
+    setState(() {
+      _isSending = true;
+      _replyingTo = null;
+    });
     HapticFeedback.lightImpact();
 
     try {
-      await ref.read(activeAudioRoomNotifierProvider.notifier).sendChatMessage(text);
+      await ref.read(activeAudioRoomNotifierProvider.notifier).sendChatMessage(finalMessage);
       _scrollToBottom();
     } catch (e) {
       if (mounted) {
@@ -72,10 +86,35 @@ class _InRoomChatSheetState extends ConsumerState<InRoomChatSheet> {
   Widget build(BuildContext context) {
     final state = ref.watch(activeAudioRoomNotifierProvider);
     final room = state.room;
-    final messages = state.messages;
+    final allMessages = state.messages;
+
+    // Filter messages
+    final filteredMessages = allMessages.where((m) {
+      if (_selectedFilter == 'QUESTIONS') {
+        return m.message.contains('?') ||
+            m.message.toLowerCase().contains('how') ||
+            m.message.toLowerCase().contains('why') ||
+            m.message.toLowerCase().contains('what');
+      }
+      if (_selectedFilter == 'SPEAKERS') {
+        final p = room?.participants.firstWhere(
+          (part) => part.userId == m.userId,
+          orElse: () => AudioParticipant(
+            id: '',
+            roomId: widget.roomId,
+            userId: m.userId,
+            role: room?.hostId == m.userId ? 'HOST' : 'LISTENER',
+            joinedAt: DateTime.now(),
+            user: m.user,
+          ),
+        );
+        return p?.isSpeaker ?? false;
+      }
+      return true;
+    }).toList();
 
     return Container(
-      height: MediaQuery.of(context).size.height * 0.72,
+      height: MediaQuery.of(context).size.height * 0.78,
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
@@ -98,7 +137,7 @@ class _InRoomChatSheetState extends ConsumerState<InRoomChatSheet> {
 
           // Header
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
             child: Row(
               children: [
                 Container(
@@ -122,12 +161,36 @@ class _InRoomChatSheetState extends ConsumerState<InRoomChatSheet> {
                       ),
                     ),
                     Text(
-                      '${messages.length} messages',
+                      '${allMessages.length} messages • ${room?.totalParticipants ?? 0} in room',
                       style: const TextStyle(color: Colors.white54, fontSize: 11),
                     ),
                   ],
                 ),
                 const Spacer(),
+                // Quick Raise Hand shortcut inside chat for listeners
+                if (!state.isSpeaker)
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      backgroundColor: state.isHandRaised
+                          ? Colors.amber.withValues(alpha: 0.2)
+                          : Colors.white.withValues(alpha: 0.08),
+                      foregroundColor: state.isHandRaised ? Colors.amber : Colors.white70,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    ),
+                    icon: Icon(
+                      state.isHandRaised ? Icons.pan_tool_rounded : Icons.pan_tool_outlined,
+                      size: 14,
+                    ),
+                    label: Text(
+                      state.isHandRaised ? 'Hand Up' : 'Ask to Speak',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                    onPressed: () {
+                      ref.read(activeAudioRoomNotifierProvider.notifier).toggleHandRaise();
+                    },
+                  ),
+                const SizedBox(width: 4),
                 IconButton(
                   icon: const Icon(Icons.close_rounded, color: Colors.white70),
                   onPressed: () => Navigator.of(context).pop(),
@@ -135,6 +198,21 @@ class _InRoomChatSheetState extends ConsumerState<InRoomChatSheet> {
               ],
             ),
           ),
+
+          // Filter bar (All, Questions, Speakers)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Row(
+              children: [
+                _buildFilterChip('ALL', 'All (${allMessages.length})'),
+                const SizedBox(width: 8),
+                _buildFilterChip('QUESTIONS', 'Questions'),
+                const SizedBox(width: 8),
+                _buildFilterChip('SPEAKERS', 'Stage Only'),
+              ],
+            ),
+          ),
+
           const Divider(color: Colors.white12, height: 1),
 
           // Pinned Message / Space Rules Header Banner
@@ -165,7 +243,7 @@ class _InRoomChatSheetState extends ConsumerState<InRoomChatSheet> {
 
           // Messages list
           Expanded(
-            child: messages.isEmpty
+            child: filteredMessages.isEmpty
                 ? Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -179,13 +257,15 @@ class _InRoomChatSheetState extends ConsumerState<InRoomChatSheet> {
                           child: const Icon(Icons.chat_bubble_outline_rounded, size: 36, color: Colors.white30),
                         ),
                         const SizedBox(height: 12),
-                        const Text(
-                          'No messages yet',
-                          style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                        Text(
+                          _selectedFilter == 'QUESTIONS'
+                              ? 'No questions asked yet'
+                              : 'No messages yet',
+                          style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 4),
                         const Text(
-                          'Be the first to share your thoughts or questions!',
+                          'Share your thoughts, ask a question, or cheer on speakers!',
                           style: TextStyle(color: Colors.white54, fontSize: 12),
                         ),
                       ],
@@ -194,10 +274,9 @@ class _InRoomChatSheetState extends ConsumerState<InRoomChatSheet> {
                 : ListView.builder(
                     controller: _scrollController,
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    itemCount: messages.length,
+                    itemCount: filteredMessages.length,
                     itemBuilder: (context, index) {
-                      final msg = messages[index];
-                      // Find participant role if available
+                      final msg = filteredMessages[index];
                       final participant = room?.participants.firstWhere(
                         (p) => p.userId == msg.userId,
                         orElse: () => AudioParticipant(
@@ -213,10 +292,38 @@ class _InRoomChatSheetState extends ConsumerState<InRoomChatSheet> {
                       return _ChatMessageTile(
                         message: msg,
                         participantRole: participant.role,
+                        onReply: () {
+                          setState(() => _replyingTo = msg);
+                        },
                       );
                     },
                   ),
           ),
+
+          // Reply Context Banner
+          if (_replyingTo != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              color: const Color(0xFF222238),
+              child: Row(
+                children: [
+                  const Icon(Icons.reply_rounded, color: Color(0xFFB388FF), size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Replying to ${_replyingTo!.user.fullName}: "${_replyingTo!.message}"',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 16, color: Colors.white54),
+                    onPressed: () => setState(() => _replyingTo = null),
+                  ),
+                ],
+              ),
+            ),
 
           // Quick Emoji Selector Bar
           Container(
@@ -261,7 +368,9 @@ class _InRoomChatSheetState extends ConsumerState<InRoomChatSheet> {
                     controller: _textController,
                     style: const TextStyle(color: Colors.white, fontSize: 14),
                     decoration: InputDecoration(
-                      hintText: 'Share a question or thought...',
+                      hintText: _replyingTo != null
+                          ? 'Reply to ${_replyingTo!.user.fullName}...'
+                          : 'Share a question or thought...',
                       hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 13),
                       filled: true,
                       fillColor: const Color(0xFF242436),
@@ -298,15 +407,45 @@ class _InRoomChatSheetState extends ConsumerState<InRoomChatSheet> {
       ),
     );
   }
+
+  Widget _buildFilterChip(String filterKey, String label) {
+    final isSelected = _selectedFilter == filterKey;
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => setState(() => _selectedFilter = filterKey),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? const Color(0xFF7C4DFF).withValues(alpha: 0.25)
+              : Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF7C4DFF) : Colors.white10,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? const Color(0xFFB388FF) : Colors.white60,
+            fontSize: 11,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _ChatMessageTile extends StatelessWidget {
   final AudioRoomMessageItem message;
   final String participantRole;
+  final VoidCallback onReply;
 
   const _ChatMessageTile({
     required this.message,
     required this.participantRole,
+    required this.onReply,
   });
 
   @override
@@ -340,72 +479,81 @@ class _ChatMessageTile extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CircleAvatar(
-            radius: 17,
-            backgroundColor: roleColor.withValues(alpha: 0.2),
-            backgroundImage: message.user.avatarUrl != null && message.user.avatarUrl!.isNotEmpty
-                ? NetworkImage(message.user.avatarUrl!)
-                : null,
-            child: message.user.avatarUrl == null || message.user.avatarUrl!.isEmpty
-                ? Text(
-                    message.user.fullName.isNotEmpty ? message.user.fullName[0].toUpperCase() : '?',
-                    style: TextStyle(color: roleColor, fontSize: 13, fontWeight: FontWeight.bold),
-                  )
-                : null,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      message.user.fullName,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onLongPress: onReply,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              radius: 17,
+              backgroundColor: roleColor.withValues(alpha: 0.2),
+              backgroundImage: message.user.avatarUrl != null && message.user.avatarUrl!.isNotEmpty
+                  ? NetworkImage(message.user.avatarUrl!)
+                  : null,
+              child: message.user.avatarUrl == null || message.user.avatarUrl!.isEmpty
+                  ? Text(
+                      message.user.fullName.isNotEmpty ? message.user.fullName[0].toUpperCase() : '?',
+                      style: TextStyle(color: roleColor, fontWeight: FontWeight.bold, fontSize: 13),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          message.user.fullName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                      decoration: BoxDecoration(
-                        color: roleColor.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(6),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: roleColor.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: roleColor.withValues(alpha: 0.4)),
+                        ),
+                        child: Text(
+                          roleLabel,
+                          style: TextStyle(color: roleColor, fontSize: 9, fontWeight: FontWeight.bold),
+                        ),
                       ),
-                      child: Text(
-                        roleLabel,
-                        style: TextStyle(color: roleColor, fontSize: 9, fontWeight: FontWeight.bold),
+                      const SizedBox(width: 6),
+                      Text(
+                        timeStr,
+                        style: const TextStyle(color: Colors.white38, fontSize: 10),
                       ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      timeStr,
-                      style: const TextStyle(color: Colors.white38, fontSize: 10),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF222234),
-                    borderRadius: BorderRadius.circular(14),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.reply_rounded, size: 14, color: Colors.white38),
+                        onPressed: onReply,
+                        constraints: const BoxConstraints(),
+                        padding: EdgeInsets.zero,
+                      ),
+                    ],
                   ),
-                  child: Text(
+                  const SizedBox(height: 3),
+                  Text(
                     message.message,
                     style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.3),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -193,8 +193,8 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
 
     _socketMessageSub = _socketService.onAudioRoomMessage.listen((data) {
       final rawMsg = data['message'];
-      if (rawMsg is Map<String, dynamic>) {
-        final message = AudioRoomMessageItem.fromJson(rawMsg);
+      if (rawMsg is Map) {
+        final message = AudioRoomMessageItem.fromJson(Map<String, dynamic>.from(rawMsg));
         if (!state.messages.any((m) => m.id == message.id)) {
           state = state.copyWith(
             messages: [...state.messages, message],
@@ -205,8 +205,8 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
 
     _socketHandRaisedSub = _socketService.onAudioRoomHandRaised.listen((data) {
       final rawReq = data['request'];
-      if (rawReq is Map<String, dynamic>) {
-        final req = AudioSpeakRequest.fromJson(rawReq);
+      if (rawReq is Map) {
+        final req = AudioSpeakRequest.fromJson(Map<String, dynamic>.from(rawReq));
         final existing = state.pendingRequests.indexWhere((r) => r.userId == req.userId);
         List<AudioSpeakRequest> updatedRequests;
         if (existing >= 0) {
@@ -263,8 +263,8 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
 
     _socketPartJoinedSub = _socketService.onAudioRoomParticipantJoined.listen((data) {
       final rawPart = data['participant'];
-      if (rawPart is Map<String, dynamic> && state.room != null) {
-        final participant = AudioParticipant.fromJson(rawPart);
+      if (rawPart is Map && state.room != null) {
+        final participant = AudioParticipant.fromJson(Map<String, dynamic>.from(rawPart));
         final currentParticipants = List<AudioParticipant>.from(state.room!.participants);
         final idx = currentParticipants.indexWhere((p) => p.userId == participant.userId);
         if (idx >= 0) {
@@ -287,8 +287,8 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
 
     _socketPartUpdatedSub = _socketService.onAudioRoomParticipantUpdated.listen((data) {
       final rawPart = data['participant'];
-      if (rawPart is Map<String, dynamic> && state.room != null) {
-        final participant = AudioParticipant.fromJson(rawPart);
+      if (rawPart is Map && state.room != null) {
+        final participant = AudioParticipant.fromJson(Map<String, dynamic>.from(rawPart));
         final current = List<AudioParticipant>.from(state.room!.participants);
         final idx = current.indexWhere((p) => p.userId == participant.userId);
         if (idx >= 0) {
@@ -557,8 +557,8 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
       final participants = List<AudioParticipant>.from(room.participants);
       final selfId = _ref.read(authRepositoryProvider).currentUserId;
       final rawPart = joinResult['participant'];
-      if (rawPart is Map<String, dynamic>) {
-        final selfPart = AudioParticipant.fromJson(rawPart);
+      if (rawPart is Map) {
+        final selfPart = AudioParticipant.fromJson(Map<String, dynamic>.from(rawPart));
         final idx = participants.indexWhere((p) => p.userId == selfPart.userId);
         if (idx >= 0) {
           participants[idx] = selfPart;

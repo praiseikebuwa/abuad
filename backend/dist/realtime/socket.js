@@ -86,23 +86,78 @@ function initSocket(server) {
         });
         // Audio Room Spaces listeners
         socket.on('audio_room:join', (data) => {
-            if (data?.roomId) {
-                socket.join((0, exports.audioRoomName)(data.roomId));
+            const roomId = typeof data === 'string' ? data : data?.roomId;
+            if (roomId) {
+                socket.join((0, exports.audioRoomName)(roomId));
+                console.log(`⚡ [Socket] User ${userId} joined audio room: ${roomId}`);
             }
         });
         socket.on('audio_room:leave', (data) => {
-            if (data?.roomId) {
-                socket.leave((0, exports.audioRoomName)(data.roomId));
+            const roomId = typeof data === 'string' ? data : data?.roomId;
+            if (roomId) {
+                socket.leave((0, exports.audioRoomName)(roomId));
+                console.log(`⚡ [Socket] User ${userId} left audio room: ${roomId}`);
             }
         });
         socket.on('audio_room:reaction', (data) => {
-            if (data?.roomId && data?.emoji) {
-                io?.to((0, exports.audioRoomName)(data.roomId)).emit('audio_room:reaction', {
-                    roomId: data.roomId,
+            const roomId = typeof data === 'string' ? null : data?.roomId;
+            const emoji = data?.emoji;
+            if (roomId && emoji) {
+                io?.to((0, exports.audioRoomName)(roomId)).emit('audio_room:reaction', {
+                    roomId,
                     userId,
-                    emoji: data.emoji,
+                    emoji,
+                    xOffset: typeof data?.xOffset === 'number' ? data.xOffset : (Math.random() * 0.8),
                     timestamp: Date.now(),
                 });
+            }
+        });
+        socket.on('audio_room:send_message', async (data) => {
+            const roomId = data?.roomId;
+            const content = data?.message || data?.content;
+            if (!roomId || !content || !content.trim())
+                return;
+            try {
+                const user = await db_1.prisma.user.findUnique({
+                    where: { id: userId },
+                    select: {
+                        id: true,
+                        username: true,
+                        fullName: true,
+                        avatarUrl: true,
+                        department: true,
+                        level: true,
+                        isVerified: true,
+                        verificationType: true,
+                    },
+                });
+                const chatMsg = await db_1.prisma.audioRoomMessage.create({
+                    data: {
+                        roomId,
+                        userId,
+                        message: content.trim(),
+                        isAnnouncement: !!data?.isAnnouncement,
+                        isPinned: !!data?.isPinned,
+                    },
+                    include: {
+                        user: {
+                            select: {
+                                id: true,
+                                username: true,
+                                fullName: true,
+                                avatarUrl: true,
+                                department: true,
+                                level: true,
+                                isVerified: true,
+                                verificationType: true,
+                            },
+                        },
+                    },
+                });
+                emitToAudioRoom(roomId, 'audio_room:message', { message: chatMsg });
+            }
+            catch (err) {
+                console.error('Failed to create socket audio room message:', err);
             }
         });
         socket.on('audio_room:heartbeat', async (data) => {

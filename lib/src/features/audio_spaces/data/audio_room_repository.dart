@@ -58,8 +58,10 @@ class AudioRoomRepository {
     final res = await ApiClient.post('/audio-rooms', body);
     if (res.statusCode >= 200 && res.statusCode < 300) {
       final json = jsonDecode(res.body);
-      final data = json['data'] as Map<String, dynamic>;
-      final room = AudioRoom.fromJson(data['room'] as Map<String, dynamic>);
+      final rawData = json['data'];
+      final data = rawData is Map ? Map<String, dynamic>.from(rawData) : <String, dynamic>{};
+      final rawRoom = data['room'];
+      final room = AudioRoom.fromJson(rawRoom is Map ? Map<String, dynamic>.from(rawRoom) : <String, dynamic>{});
       final token = data['token'] as String?;
       final role = data['role'] as String? ?? 'HOST';
       return {
@@ -75,7 +77,8 @@ class AudioRoomRepository {
     final res = await ApiClient.get('/audio-rooms/$roomId');
     if (res.statusCode >= 200 && res.statusCode < 300) {
       final json = jsonDecode(res.body);
-      return AudioRoom.fromJson(json['data'] as Map<String, dynamic>);
+      final rawData = json['data'];
+      return AudioRoom.fromJson(rawData is Map ? Map<String, dynamic>.from(rawData) : <String, dynamic>{});
     }
     throw Exception('Failed to load room details (${res.statusCode})');
   }
@@ -84,11 +87,13 @@ class AudioRoomRepository {
     final res = await ApiClient.post('/audio-rooms/$roomId/join', {'role': role});
     if (res.statusCode >= 200 && res.statusCode < 300) {
       final json = jsonDecode(res.body);
-      final data = json['data'] as Map<String, dynamic>;
+      final rawData = json['data'];
+      final data = rawData is Map ? Map<String, dynamic>.from(rawData) : <String, dynamic>{};
+      final rawPart = data['participant'];
       return {
-        'token': data['token'] as String,
+        'token': data['token'] as String? ?? '',
         'role': data['role'] as String? ?? 'LISTENER',
-        'participant': AudioParticipant.fromJson(data['participant'] as Map<String, dynamic>),
+        'participant': rawPart is Map ? AudioParticipant.fromJson(Map<String, dynamic>.from(rawPart)) : null,
       };
     }
     throw Exception('Failed to join audio room (${res.statusCode}): ${res.body}');
@@ -137,7 +142,10 @@ class AudioRoomRepository {
     if (res.statusCode >= 200 && res.statusCode < 300) {
       final json = jsonDecode(res.body);
       final list = json['data'] as List? ?? [];
-      return list.map((item) => AudioRoomMessageItem.fromJson(item as Map<String, dynamic>)).toList();
+      return list
+          .whereType<Map>()
+          .map((item) => AudioRoomMessageItem.fromJson(Map<String, dynamic>.from(item)))
+          .toList();
     }
     return [];
   }
@@ -146,7 +154,8 @@ class AudioRoomRepository {
     final res = await ApiClient.post('/audio-rooms/$roomId/messages', {'message': message});
     if (res.statusCode >= 200 && res.statusCode < 300) {
       final json = jsonDecode(res.body);
-      return AudioRoomMessageItem.fromJson(json['data'] as Map<String, dynamic>);
+      final rawData = json['data'];
+      return AudioRoomMessageItem.fromJson(rawData is Map ? Map<String, dynamic>.from(rawData) : <String, dynamic>{});
     }
     throw Exception('Failed to send message: ${res.body}');
   }
