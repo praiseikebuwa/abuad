@@ -56,6 +56,9 @@ dependencies:
   go_router: ^17.0.1
   intl: any
   permission_handler: ^13.0.2
+
+dependency_overrides:
+  permission_handler_android: 13.0.1
   google_fonts: ^7.1.0
   shimmer: ^3.0.0
   toastification: ^3.0.3
