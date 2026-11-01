@@ -50,8 +50,10 @@ class AudioParticipant {
   final String id;
   final String roomId;
   final String userId;
-  final String role; // HOST, CO_HOST, SPEAKER, LISTENER
+  final String role; // HOST, CO_HOST, MODERATOR, SPEAKER, LISTENER
   final bool isMuted;
+  final bool isHandRaised;
+  final String connectionStatus; // ONLINE, DISCONNECTED
   final DateTime joinedAt;
   final AudioRoomUser user;
   final bool isSpeaking;
@@ -62,6 +64,8 @@ class AudioParticipant {
     required this.userId,
     required this.role,
     this.isMuted = true,
+    this.isHandRaised = false,
+    this.connectionStatus = 'ONLINE',
     required this.joinedAt,
     required this.user,
     this.isSpeaking = false,
@@ -69,12 +73,16 @@ class AudioParticipant {
 
   bool get isHost => role == 'HOST';
   bool get isCoHost => role == 'CO_HOST';
-  bool get isSpeaker => role == 'SPEAKER' || isHost || isCoHost;
+  bool get isModerator => role == 'MODERATOR';
+  bool get isSpeaker => role == 'SPEAKER' || isHost || isCoHost || isModerator;
   bool get isListener => role == 'LISTENER';
+  bool get canModerate => isHost || isCoHost || isModerator;
 
   AudioParticipant copyWith({
     String? role,
     bool? isMuted,
+    bool? isHandRaised,
+    String? connectionStatus,
     bool? isSpeaking,
   }) {
     return AudioParticipant(
@@ -83,6 +91,8 @@ class AudioParticipant {
       userId: userId,
       role: role ?? this.role,
       isMuted: isMuted ?? this.isMuted,
+      isHandRaised: isHandRaised ?? this.isHandRaised,
+      connectionStatus: connectionStatus ?? this.connectionStatus,
       joinedAt: joinedAt,
       user: user,
       isSpeaking: isSpeaking ?? this.isSpeaking,
@@ -105,10 +115,48 @@ class AudioParticipant {
       userId: json['userId'] as String? ?? userObj.id,
       role: (json['role'] as String? ?? 'LISTENER').toUpperCase(),
       isMuted: json['isMuted'] as bool? ?? true,
+      isHandRaised: json['isHandRaised'] as bool? ?? false,
+      connectionStatus: json['connectionStatus'] as String? ?? 'ONLINE',
       joinedAt: json['joinedAt'] != null
           ? DateTime.tryParse(json['joinedAt'].toString()) ?? DateTime.now()
           : DateTime.now(),
       user: userObj,
+    );
+  }
+}
+
+class AudioRoomHostTransferProposal {
+  final String transferId;
+  final String roomId;
+  final String previousHostId;
+  final String previousHostName;
+  final String? previousHostAvatar;
+  final String roomTitle;
+
+  const AudioRoomHostTransferProposal({
+    required this.transferId,
+    required this.roomId,
+    required this.previousHostId,
+    required this.previousHostName,
+    this.previousHostAvatar,
+    required this.roomTitle,
+  });
+
+  factory AudioRoomHostTransferProposal.fromJson(Map<String, dynamic> json) {
+    final rawPrev = json['previousHost'];
+    String prevName = 'Host';
+    String? prevAvatar;
+    if (rawPrev is Map<String, dynamic>) {
+      prevName = rawPrev['fullName'] as String? ?? rawPrev['username'] as String? ?? 'Host';
+      prevAvatar = rawPrev['avatarUrl'] as String?;
+    }
+    return AudioRoomHostTransferProposal(
+      transferId: json['transferId'] as String? ?? '',
+      roomId: json['roomId'] as String? ?? '',
+      previousHostId: json['previousHostId'] as String? ?? '',
+      previousHostName: prevName,
+      previousHostAvatar: prevAvatar,
+      roomTitle: json['roomTitle'] as String? ?? 'Live Space',
     );
   }
 }
@@ -196,6 +244,7 @@ class AudioRoomMessageItem {
 class AudioRoom {
   final String id;
   final String hostId;
+  final String? currentHostId;
   final String title;
   final String? description;
   final String category; // ACADEMIC, SOCIAL, DEBATE, COMMUNITY
@@ -204,6 +253,9 @@ class AudioRoom {
   final String status; // SCHEDULED, LIVE, ENDED
   final bool isRecording;
   final bool isChatEnabled;
+  final bool isLocked;
+  final int maxSpeakers;
+  final DateTime? hostGracePeriodEndsAt;
   final DateTime? scheduledAt;
   final DateTime? startedAt;
   final DateTime? endedAt;
@@ -219,6 +271,7 @@ class AudioRoom {
   const AudioRoom({
     required this.id,
     required this.hostId,
+    this.currentHostId,
     required this.title,
     this.description,
     this.category = 'ACADEMIC',
@@ -227,6 +280,9 @@ class AudioRoom {
     this.status = 'LIVE',
     this.isRecording = false,
     this.isChatEnabled = true,
+    this.isLocked = false,
+    this.maxSpeakers = 15,
+    this.hostGracePeriodEndsAt,
     this.scheduledAt,
     this.startedAt,
     this.endedAt,
@@ -297,6 +353,7 @@ class AudioRoom {
     return AudioRoom(
       id: json['id'] as String? ?? '',
       hostId: json['hostId'] as String? ?? hostObj.id,
+      currentHostId: json['currentHostId'] as String?,
       title: json['title'] as String? ?? '',
       description: json['description'] as String?,
       category: (json['category'] as String? ?? 'ACADEMIC').toUpperCase(),
@@ -305,6 +362,11 @@ class AudioRoom {
       status: (json['status'] as String? ?? 'LIVE').toUpperCase(),
       isRecording: json['isRecording'] as bool? ?? false,
       isChatEnabled: json['isChatEnabled'] as bool? ?? true,
+      isLocked: json['isLocked'] as bool? ?? false,
+      maxSpeakers: json['maxSpeakers'] as int? ?? 15,
+      hostGracePeriodEndsAt: json['hostGracePeriodEndsAt'] != null
+          ? DateTime.tryParse(json['hostGracePeriodEndsAt'].toString())
+          : null,
       scheduledAt: json['scheduledAt'] != null
           ? DateTime.tryParse(json['scheduledAt'].toString())
           : null,

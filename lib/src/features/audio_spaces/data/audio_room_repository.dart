@@ -157,4 +157,71 @@ class AudioRoomRepository {
       throw Exception('Failed to end room: ${res.body}');
     }
   }
+
+  Future<void> transferHost(String roomId, String proposedHostId) async {
+    final res = await ApiClient.post('/audio-rooms/$roomId/transfer-host', {
+      'proposedHostId': proposedHostId,
+    });
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('Failed to propose host transfer: ${res.body}');
+    }
+  }
+
+  Future<Map<String, dynamic>> respondHostTransfer(
+    String roomId, {
+    required String transferId,
+    required bool accept,
+  }) async {
+    final res = await ApiClient.post('/audio-rooms/$roomId/respond-host-transfer', {
+      'transferId': transferId,
+      'accept': accept,
+    });
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      final json = jsonDecode(res.body);
+      return json as Map<String, dynamic>;
+    }
+    throw Exception('Failed to respond to host transfer: ${res.body}');
+  }
+
+  Future<void> sendHeartbeat(String roomId) async {
+    try {
+      await ApiClient.post('/audio-rooms/$roomId/heartbeat', {});
+    } catch (_) {}
+  }
+
+  Future<void> muteAll(String roomId) async {
+    final res = await ApiClient.post('/audio-rooms/$roomId/moderate', {
+      'action': 'MUTE_ALL',
+    });
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('Failed to mute all: ${res.body}');
+    }
+  }
+
+  Future<void> toggleRoomLock(String roomId, bool lock) async {
+    final res = await ApiClient.post('/audio-rooms/$roomId/moderate', {
+      'action': lock ? 'LOCK_ROOM' : 'UNLOCK_ROOM',
+    });
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('Failed to change room lock: ${res.body}');
+    }
+  }
+
+  Future<String> shareSpace(
+    String roomId, {
+    List<String> channelIds = const [],
+    List<String> userIds = const [],
+    String? message,
+  }) async {
+    final res = await ApiClient.post('/audio-rooms/$roomId/share', {
+      if (channelIds.isNotEmpty) 'channelIds': channelIds,
+      if (userIds.isNotEmpty) 'userIds': userIds,
+      if (message != null && message.isNotEmpty) 'message': message,
+    });
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      final json = jsonDecode(res.body);
+      return json['shareUrl'] as String? ?? 'https://abuadapp.com.ng/spaces/$roomId';
+    }
+    return 'https://abuadapp.com.ng/spaces/$roomId';
+  }
 }

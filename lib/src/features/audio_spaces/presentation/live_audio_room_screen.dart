@@ -6,6 +6,8 @@ import 'controllers/audio_room_controller.dart';
 import '../domain/audio_room.dart';
 import 'widgets/in_room_chat_sheet.dart';
 import 'widgets/moderation_sheet.dart';
+import 'widgets/live_space_share_sheet.dart';
+import 'widgets/live_space_closing_sheet.dart';
 
 class LiveAudioRoomScreen extends ConsumerStatefulWidget {
   final String roomId;
@@ -35,11 +37,20 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
   }
 
   void _shareSpace(AudioRoom room) {
-    Clipboard.setData(ClipboardData(
-      text: 'Join me in this ABUAD Live Space: "${room.title}" on ABUAD Life!',
-    ));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Space link copied to clipboard!')),
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => LiveSpaceShareSheet(room: room),
+    );
+  }
+
+  void _promptClosing(AudioRoom room, bool isHost) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => LiveSpaceClosingSheet(room: room, isHost: isHost),
     );
   }
 
@@ -61,10 +72,60 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
     );
   }
 
+  void _showTransferProposalDialog(AudioRoomHostTransferProposal proposal) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E2C),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.workspace_premium_rounded, color: Colors.amber),
+            SizedBox(width: 8),
+            Text('Host Transfer Request', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Text(
+          '${proposal.previousHostName} has requested to transfer primary Host ownership of "${proposal.roomTitle}" to you.\n\nDo you accept becoming the room Host?',
+          style: const TextStyle(color: Colors.white70, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            child: const Text('Decline', style: TextStyle(color: Colors.white60)),
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              ref.read(activeAudioRoomNotifierProvider.notifier).respondToHostTransfer(false);
+            },
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF7C4DFF),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Accept Ownership'),
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              ref.read(activeAudioRoomNotifierProvider.notifier).respondToHostTransfer(true);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(activeAudioRoomNotifierProvider);
     final room = state.room;
+
+    ref.listen<ActiveAudioRoomState>(activeAudioRoomNotifierProvider, (previous, next) {
+      if (next.pendingTransferProposal != null &&
+          previous?.pendingTransferProposal?.transferId != next.pendingTransferProposal?.transferId) {
+        _showTransferProposalDialog(next.pendingTransferProposal!);
+      }
+    });
 
     if (state.isConnecting && room == null) {
       return Scaffold(
@@ -237,7 +298,7 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF7C4DFF).withOpacity(0.2),
+                              color: const Color(0xFF7C4DFF).withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
@@ -245,12 +306,31 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
                               style: const TextStyle(color: Color(0xFFB388FF), fontSize: 11, fontWeight: FontWeight.bold),
                             ),
                           ),
+                          if (room.isLocked) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: Colors.redAccent.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: Colors.redAccent.withValues(alpha: 0.3)),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.lock_rounded, color: Colors.redAccent, size: 10),
+                                  SizedBox(width: 4),
+                                  Text('LOCKED', style: TextStyle(color: Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                            ),
+                          ],
                           if (room.isRecording) ...[
                             const SizedBox(width: 8),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                               decoration: BoxDecoration(
-                                color: Colors.redAccent.withOpacity(0.2),
+                                color: Colors.redAccent.withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: const Row(
@@ -265,6 +345,29 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
                           ],
                         ],
                       ),
+                      if (state.isHostDisconnected) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.timer_outlined, color: Colors.amber, size: 16),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  'Host disconnected. 60-second reconnection grace period active.',
+                                  style: TextStyle(color: Colors.amber.shade200, fontSize: 11, fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 6),
                       Text(
                         room.title,
@@ -390,14 +493,8 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
                     ref.read(activeAudioRoomNotifierProvider.notifier).sendReaction(emoji);
                   },
                   onOpenChat: _openChat,
-                  onLeaveRoom: () {
-                    ref.read(activeAudioRoomNotifierProvider.notifier).leaveRoom();
-                    Navigator.of(context).pop();
-                  },
-                  onEndRoom: () {
-                    ref.read(activeAudioRoomNotifierProvider.notifier).endRoom();
-                    Navigator.of(context).pop();
-                  },
+                  onLeaveRoom: () => _promptClosing(room, isHost),
+                  onEndRoom: () => _promptClosing(room, isHost),
                 ),
               ],
             ),

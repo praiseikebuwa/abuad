@@ -105,6 +105,17 @@ function initSocket(server) {
                 });
             }
         });
+        socket.on('audio_room:heartbeat', async (data) => {
+            if (data?.roomId) {
+                try {
+                    await db_1.prisma.audioRoomParticipant.updateMany({
+                        where: { roomId: data.roomId, userId },
+                        data: { lastHeartbeatAt: new Date(), connectionStatus: 'ONLINE' },
+                    });
+                }
+                catch (_) { }
+            }
+        });
         socket.on('disconnect', () => {
             const left = (onlineCounts.get(userId) || 1) - 1;
             if (left <= 0) {

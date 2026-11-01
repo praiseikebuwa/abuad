@@ -102,6 +102,17 @@ export function initSocket(server: HttpServer) {
       }
     });
 
+    socket.on('audio_room:heartbeat', async (data: { roomId?: string }) => {
+      if (data?.roomId) {
+        try {
+          await (prisma as any).audioRoomParticipant.updateMany({
+            where: { roomId: data.roomId, userId },
+            data: { lastHeartbeatAt: new Date(), connectionStatus: 'ONLINE' },
+          });
+        } catch (_) {}
+      }
+    });
+
     socket.on('disconnect', () => {
       const left = (onlineCounts.get(userId) || 1) - 1;
       if (left <= 0) {
