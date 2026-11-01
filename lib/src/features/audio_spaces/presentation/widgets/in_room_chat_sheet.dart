@@ -103,7 +103,7 @@ class _InRoomChatSheetState extends ConsumerState<InRoomChatSheet> {
             id: '',
             roomId: widget.roomId,
             userId: m.userId,
-            role: room?.hostId == m.userId ? 'HOST' : 'LISTENER',
+            role: room != null && room.hostId == m.userId ? 'HOST' : 'LISTENER',
             joinedAt: DateTime.now(),
             user: m.user,
           ),
@@ -283,7 +283,7 @@ class _InRoomChatSheetState extends ConsumerState<InRoomChatSheet> {
                           id: '',
                           roomId: widget.roomId,
                           userId: msg.userId,
-                          role: room?.hostId == msg.userId ? 'HOST' : 'LISTENER',
+                          role: room != null && room.hostId == msg.userId ? 'HOST' : 'LISTENER',
                           joinedAt: DateTime.now(),
                           user: msg.user,
                         ),
@@ -291,7 +291,7 @@ class _InRoomChatSheetState extends ConsumerState<InRoomChatSheet> {
 
                       return _ChatMessageTile(
                         message: msg,
-                        participantRole: participant.role,
+                        participantRole: participant?.role ?? 'LISTENER',
                         onReply: () {
                           setState(() => _replyingTo = msg);
                         },
