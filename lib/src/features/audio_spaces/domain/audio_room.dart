@@ -306,6 +306,60 @@ class AudioRoom {
   List<AudioParticipant> get listeners =>
       participants.where((p) => p.isListener).toList();
 
+  AudioRoom copyWith({
+    String? hostId,
+    String? currentHostId,
+    String? title,
+    String? description,
+    String? category,
+    String? visibility,
+    String? speakersPermission,
+    String? status,
+    bool? isRecording,
+    bool? isChatEnabled,
+    bool? isLocked,
+    int? maxSpeakers,
+    DateTime? hostGracePeriodEndsAt,
+    DateTime? scheduledAt,
+    DateTime? startedAt,
+    DateTime? endedAt,
+    AudioRoomUser? host,
+    List<AudioParticipant>? participants,
+    List<AudioSpeakRequest>? requests,
+    int? totalParticipants,
+    List<String>? taggedGroupIds,
+    List<String>? taggedUserIds,
+    List<String>? tags,
+  }) {
+    return AudioRoom(
+      id: id,
+      hostId: hostId ?? this.hostId,
+      currentHostId: currentHostId ?? this.currentHostId,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      category: category ?? this.category,
+      visibility: visibility ?? this.visibility,
+      speakersPermission: speakersPermission ?? this.speakersPermission,
+      status: status ?? this.status,
+      isRecording: isRecording ?? this.isRecording,
+      isChatEnabled: isChatEnabled ?? this.isChatEnabled,
+      isLocked: isLocked ?? this.isLocked,
+      maxSpeakers: maxSpeakers ?? this.maxSpeakers,
+      hostGracePeriodEndsAt: hostGracePeriodEndsAt ?? this.hostGracePeriodEndsAt,
+      scheduledAt: scheduledAt ?? this.scheduledAt,
+      startedAt: startedAt ?? this.startedAt,
+      endedAt: endedAt ?? this.endedAt,
+      createdAt: createdAt,
+      host: host ?? this.host,
+      participants: participants ?? this.participants,
+      requests: requests ?? this.requests,
+      totalParticipants: totalParticipants ?? this.totalParticipants,
+      taggedGroupIds: taggedGroupIds ?? this.taggedGroupIds,
+      taggedUserIds: taggedUserIds ?? this.taggedUserIds,
+      tags: tags ?? this.tags,
+    );
+  }
+
   factory AudioRoom.fromJson(Map<String, dynamic> json) {
     final rawHost = json['host'];
     final hostObj = rawHost is Map<String, dynamic>

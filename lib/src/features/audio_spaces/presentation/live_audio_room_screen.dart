@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -475,7 +474,14 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
                           itemCount: listeners.length,
                           itemBuilder: (context, index) {
                             final listener = listeners[index];
-                            return _ListenerAvatarTile(participant: listener);
+                            return _ListenerAvatarTile(
+                              participant: listener,
+                              onTap: () {
+                                if (isHost || isCoHost) {
+                                  _openModeration();
+                                }
+                              },
+                            );
                           },
                         ),
                         const SizedBox(height: 90),
@@ -484,12 +490,23 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
                   ),
                 ),
 
+                // Live In-Room Floating Chat Preview (latest message)
+                if (state.messages.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    child: _LiveChatFloatingPreview(
+                      message: state.messages.last,
+                      onTap: _openChat,
+                    ),
+                  ),
+
                 // Bottom Action Bar
                 _BottomSpaceActionBar(
                   isSpeaker: isSpeaker,
                   isHost: isHost,
                   isMuted: isMuted,
                   isHandRaised: isHandRaised,
+                  messageCount: state.messages.length,
                   onToggleMic: () {
                     ref.read(activeAudioRoomNotifierProvider.notifier).toggleMicrophone();
                   },
@@ -509,17 +526,21 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
 
           // Floating Reactions Overlay
           Positioned(
-            right: 20,
-            bottom: 110,
+            right: 16,
+            bottom: 120,
             child: IgnorePointer(
               child: SizedBox(
-                width: 100,
-                height: 250,
+                width: 140,
+                height: 280,
                 child: Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.bottomRight,
                   children: state.floatingReactions.map((reaction) {
-                    return _FloatingEmojiWidget(
+                    return Positioned(
                       key: ValueKey(reaction.id),
-                      emoji: reaction.emoji,
+                      bottom: 0,
+                      right: 10 + (reaction.xOffset * 60),
+                      child: _FloatingEmojiItem(emoji: reaction.emoji),
                     );
                   }).toList(),
                 ),
@@ -678,42 +699,150 @@ class _SpeakerAvatarTile extends StatelessWidget {
 
 class _ListenerAvatarTile extends StatelessWidget {
   final AudioParticipant participant;
-  const _ListenerAvatarTile({required this.participant});
+  final VoidCallback? onTap;
+
+  const _ListenerAvatarTile({
+    required this.participant,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        CircleAvatar(
-          radius: 22,
-          backgroundColor: const Color(0xFF222232),
-          backgroundImage: participant.user.avatarUrl != null &&
-                  participant.user.avatarUrl!.isNotEmpty
-              ? NetworkImage(participant.user.avatarUrl!)
-              : null,
-          child: participant.user.avatarUrl == null ||
-                  participant.user.avatarUrl!.isEmpty
-              ? Text(
-                  participant.user.fullName.isNotEmpty
-                      ? participant.user.fullName[0].toUpperCase()
-                      : '?',
-                  style: const TextStyle(color: Colors.white, fontSize: 13),
-                )
-              : null,
-        ),
-        const SizedBox(height: 4),
-        Text(
-          participant.user.fullName,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.white.withOpacity(0.8),
-            fontSize: 11,
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: const Color(0xFF222232),
+                backgroundImage: participant.user.avatarUrl != null &&
+                        participant.user.avatarUrl!.isNotEmpty
+                    ? NetworkImage(participant.user.avatarUrl!)
+                    : null,
+                child: participant.user.avatarUrl == null ||
+                        participant.user.avatarUrl!.isEmpty
+                    ? Text(
+                        participant.user.fullName.isNotEmpty
+                            ? participant.user.fullName[0].toUpperCase()
+                            : '?',
+                        style: const TextStyle(color: Colors.white, fontSize: 13),
+                      )
+                    : null,
+              ),
+              if (participant.isHandRaised)
+                Positioned(
+                  right: -4,
+                  bottom: -4,
+                  child: Container(
+                    padding: const EdgeInsets.all(3.5),
+                    decoration: BoxDecoration(
+                      color: Colors.amber,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.amber.withValues(alpha: 0.6),
+                          blurRadius: 8,
+                          spreadRadius: 1,
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.pan_tool_rounded,
+                      color: Colors.black,
+                      size: 11,
+                    ),
+                  ),
+                ),
+            ],
           ),
+          const SizedBox(height: 4),
+          Text(
+            participant.user.fullName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.8),
+              fontSize: 11,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LiveChatFloatingPreview extends StatelessWidget {
+  final AudioRoomMessageItem message;
+  final VoidCallback onTap;
+
+  const _LiveChatFloatingPreview({
+    required this.message,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E1E2E).withValues(alpha: 0.92),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFF7C4DFF).withValues(alpha: 0.3)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
-      ],
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircleAvatar(
+              radius: 12,
+              backgroundColor: const Color(0xFF7C4DFF).withValues(alpha: 0.3),
+              backgroundImage: message.user.avatarUrl != null && message.user.avatarUrl!.isNotEmpty
+                  ? NetworkImage(message.user.avatarUrl!)
+                  : null,
+              child: message.user.avatarUrl == null || message.user.avatarUrl!.isEmpty
+                  ? Text(
+                      message.user.fullName.isNotEmpty ? message.user.fullName[0].toUpperCase() : '?',
+                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${message.user.fullName}: ',
+              style: const TextStyle(
+                color: Color(0xFFB388FF),
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Flexible(
+              child: Text(
+                message.message,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white38, size: 10),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -723,6 +852,7 @@ class _BottomSpaceActionBar extends StatelessWidget {
   final bool isHost;
   final bool isMuted;
   final bool isHandRaised;
+  final int messageCount;
   final VoidCallback onToggleMic;
   final VoidCallback onToggleHand;
   final ValueChanged<String> onSendReaction;
@@ -735,6 +865,7 @@ class _BottomSpaceActionBar extends StatelessWidget {
     required this.isHost,
     required this.isMuted,
     required this.isHandRaised,
+    required this.messageCount,
     required this.onToggleMic,
     required this.onToggleHand,
     required this.onSendReaction,
@@ -809,10 +940,32 @@ class _BottomSpaceActionBar extends StatelessWidget {
 
               const Spacer(),
 
-              // In-Room Chat Button
-              IconButton(
-                icon: const Icon(Icons.chat_bubble_outline_rounded, color: Colors.white),
-                onPressed: onOpenChat,
+              // In-Room Chat Button with Message Badge
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.chat_bubble_outline_rounded, color: Colors.white),
+                    onPressed: onOpenChat,
+                  ),
+                  if (messageCount > 0)
+                    Positioned(
+                      right: 4,
+                      top: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF7C4DFF),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFF0F0F1A), width: 1.5),
+                        ),
+                        child: Text(
+                          messageCount > 99 ? '99+' : '$messageCount',
+                          style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                ],
               ),
 
               const SizedBox(width: 8),
@@ -821,7 +974,7 @@ class _BottomSpaceActionBar extends StatelessWidget {
               if (isHost)
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.redAccent.withOpacity(0.2),
+                    backgroundColor: Colors.redAccent.withValues(alpha: 0.2),
                     foregroundColor: Colors.redAccent,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
@@ -861,7 +1014,10 @@ class _ReactionPill extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: InkWell(
-        onTap: onTap,
+        onTap: () {
+          HapticFeedback.lightImpact();
+          onTap();
+        },
         borderRadius: BorderRadius.circular(18),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -877,34 +1033,40 @@ class _ReactionPill extends StatelessWidget {
   }
 }
 
-class _FloatingEmojiWidget extends StatefulWidget {
+class _FloatingEmojiItem extends StatefulWidget {
   final String emoji;
-  const _FloatingEmojiWidget({super.key, required this.emoji});
+  const _FloatingEmojiItem({required this.emoji});
 
   @override
-  State<_FloatingEmojiWidget> createState() => _FloatingEmojiWidgetState();
+  State<_FloatingEmojiItem> createState() => _FloatingEmojiItemState();
 }
 
-class _FloatingEmojiWidgetState extends State<_FloatingEmojiWidget>
+class _FloatingEmojiItemState extends State<_FloatingEmojiItem>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  late Animation<double> _yAnim;
-  late Animation<double> _opacityAnim;
-  final double _randomX = (math.Random().nextDouble() * 40) - 20;
+  late Animation<double> _translateY;
+  late Animation<double> _scale;
+  late Animation<double> _opacity;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2800),
+      duration: const Duration(milliseconds: 2200),
     )..forward();
 
-    _yAnim = Tween<double>(begin: 0, end: -180).animate(
+    _translateY = Tween<double>(begin: 0, end: -220).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
     );
 
-    _opacityAnim = TweenSequence([
+    _scale = TweenSequence([
+      TweenSequenceItem(tween: Tween<double>(begin: 0.4, end: 1.25), weight: 20),
+      TweenSequenceItem(tween: Tween<double>(begin: 1.25, end: 1.0), weight: 20),
+      TweenSequenceItem(tween: ConstantTween<double>(1.0), weight: 60),
+    ]).animate(_controller);
+
+    _opacity = TweenSequence([
       TweenSequenceItem(tween: Tween<double>(begin: 0.0, end: 1.0), weight: 15),
       TweenSequenceItem(tween: ConstantTween<double>(1.0), weight: 55),
       TweenSequenceItem(tween: Tween<double>(begin: 1.0, end: 0.0), weight: 30),
@@ -922,12 +1084,14 @@ class _FloatingEmojiWidgetState extends State<_FloatingEmojiWidget>
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
-        return Positioned(
-          bottom: 10 - _yAnim.value,
-          right: 30 + _randomX,
-          child: Opacity(
-            opacity: _opacityAnim.value.clamp(0.0, 1.0),
-            child: Text(widget.emoji, style: const TextStyle(fontSize: 32)),
+        return Transform.translate(
+          offset: Offset(0, _translateY.value),
+          child: Transform.scale(
+            scale: _scale.value,
+            child: Opacity(
+              opacity: _opacity.value.clamp(0.0, 1.0),
+              child: Text(widget.emoji, style: const TextStyle(fontSize: 34)),
+            ),
           ),
         );
       },

@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import '../../../../core/services/socket_service.dart';
+import '../../../auth/data/auth_repository.dart';
 import '../../domain/audio_room.dart';
 import '../../data/audio_room_repository.dart';
 import '../../data/livekit_audio_service.dart';
@@ -165,12 +167,15 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
     _socketReactionSub = _socketService.onAudioRoomReaction.listen((data) {
       final emoji = data['emoji'] as String?;
       final userId = data['userId'] as String?;
-      if (emoji != null && userId != null) {
+      final currentUserId = _ref.read(authRepositoryProvider).currentUserId;
+      // If the reaction was triggered by someone else, display it
+      if (emoji != null && userId != null && userId != currentUserId) {
         final reaction = AudioReactionEvent(
           id: '${DateTime.now().millisecondsSinceEpoch}_$userId',
           emoji: emoji,
           userId: userId,
-          xOffset: (data['xOffset'] as num?)?.toDouble() ?? 0.5,
+          xOffset: (data['xOffset'] as num?)?.toDouble() ??
+              ((DateTime.now().millisecond % 80) / 100.0),
         );
         state = state.copyWith(
           floatingReactions: [...state.floatingReactions, reaction],
@@ -190,9 +195,11 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
       final rawMsg = data['message'];
       if (rawMsg is Map<String, dynamic>) {
         final message = AudioRoomMessageItem.fromJson(rawMsg);
-        state = state.copyWith(
-          messages: [...state.messages, message],
-        );
+        if (!state.messages.any((m) => m.id == message.id)) {
+          state = state.copyWith(
+            messages: [...state.messages, message],
+          );
+        }
       }
     });
 
@@ -201,12 +208,28 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
       if (rawReq is Map<String, dynamic>) {
         final req = AudioSpeakRequest.fromJson(rawReq);
         final existing = state.pendingRequests.indexWhere((r) => r.userId == req.userId);
+        List<AudioSpeakRequest> updatedRequests;
         if (existing >= 0) {
-          final updated = List<AudioSpeakRequest>.from(state.pendingRequests);
-          updated[existing] = req;
-          state = state.copyWith(pendingRequests: updated);
+          updatedRequests = List<AudioSpeakRequest>.from(state.pendingRequests);
+          updatedRequests[existing] = req;
         } else {
-          state = state.copyWith(pendingRequests: [...state.pendingRequests, req]);
+          updatedRequests = [...state.pendingRequests, req];
+        }
+
+        // Update participant isHandRaised flag in state.room
+        if (state.room != null) {
+          final updatedParts = state.room!.participants.map((p) {
+            if (p.userId == req.userId) {
+              return p.copyWith(isHandRaised: true);
+            }
+            return p;
+          }).toList();
+          state = state.copyWith(
+            pendingRequests: updatedRequests,
+            room: state.room!.copyWith(participants: updatedParts),
+          );
+        } else {
+          state = state.copyWith(pendingRequests: updatedRequests);
         }
       }
     });
@@ -214,10 +237,27 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
     _socketHandLoweredSub = _socketService.onAudioRoomHandLowered.listen((data) {
       final userId = data['userId'] as String?;
       if (userId != null) {
-        state = state.copyWith(
-          pendingRequests: state.pendingRequests.where((r) => r.userId != userId).toList(),
-          isHandRaised: userId == state.room?.hostId ? false : state.isHandRaised,
-        );
+        final currentUserId = _ref.read(authRepositoryProvider).currentUserId;
+        final updatedRequests =
+            state.pendingRequests.where((r) => r.userId != userId).toList();
+        if (state.room != null) {
+          final updatedParts = state.room!.participants.map((p) {
+            if (p.userId == userId) {
+              return p.copyWith(isHandRaised: false);
+            }
+            return p;
+          }).toList();
+          state = state.copyWith(
+            pendingRequests: updatedRequests,
+            room: state.room!.copyWith(participants: updatedParts),
+            isHandRaised: userId == currentUserId ? false : state.isHandRaised,
+          );
+        } else {
+          state = state.copyWith(
+            pendingRequests: updatedRequests,
+            isHandRaised: userId == currentUserId ? false : state.isHandRaised,
+          );
+        }
       }
     });
 
@@ -418,37 +458,56 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
   void _updateRoomParticipants(List<AudioParticipant> currentParticipants) {
     if (state.room == null) return;
     state = state.copyWith(
-      room: AudioRoom(
-        id: state.room!.id,
-        hostId: state.room!.hostId,
-        currentHostId: state.room!.currentHostId,
-        title: state.room!.title,
-        description: state.room!.description,
-        category: state.room!.category,
-        visibility: state.room!.visibility,
-        speakersPermission: state.room!.speakersPermission,
-        status: state.room!.status,
-        isRecording: state.room!.isRecording,
-        isChatEnabled: state.room!.isChatEnabled,
-        isLocked: state.room!.isLocked,
-        maxSpeakers: state.room!.maxSpeakers,
-        scheduledAt: state.room!.scheduledAt,
-        startedAt: state.room!.startedAt,
-        endedAt: state.room!.endedAt,
-        createdAt: state.room!.createdAt,
-        host: state.room!.host,
+      room: state.room!.copyWith(
         participants: currentParticipants,
-        requests: state.pendingRequests,
-        totalParticipants: currentParticipants.length,
+        totalParticipants: math.max(state.room!.totalParticipants, currentParticipants.length),
       ),
     );
   }
 
   void _startHeartbeat(String roomId) {
     _heartbeatTimer?.cancel();
-    _heartbeatTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
       _repository.sendHeartbeat(roomId);
       _socketService.sendAudioHeartbeat(roomId);
+
+      // Periodically refresh room details from backend to prevent state drift
+      try {
+        final freshRoom = await _repository.getRoomDetails(roomId);
+        if (mounted && state.room != null && state.room!.id == roomId) {
+          final selfId = _ref.read(authRepositoryProvider).currentUserId;
+          final updatedParts = List<AudioParticipant>.from(freshRoom.participants);
+          // Keep self participant if missing from fresh fetch
+          if (selfId != null && !updatedParts.any((p) => p.userId == selfId)) {
+            final existingSelf = state.room!.participants.firstWhere(
+              (p) => p.userId == selfId,
+              orElse: () => AudioParticipant(
+                id: 'self_$selfId',
+                roomId: roomId,
+                userId: selfId,
+                role: state.role,
+                isMuted: state.isMuted,
+                connectionStatus: 'ONLINE',
+                joinedAt: DateTime.now(),
+                user: state.room!.host.id == selfId
+                    ? state.room!.host
+                    : AudioRoomUser(id: selfId, username: 'Me', fullName: 'You'),
+              ),
+            );
+            updatedParts.add(existingSelf);
+          }
+
+          state = state.copyWith(
+            room: state.room!.copyWith(
+              participants: updatedParts,
+              totalParticipants: math.max(freshRoom.totalParticipants, updatedParts.length),
+              isLocked: freshRoom.isLocked,
+              status: freshRoom.status,
+            ),
+            pendingRequests: freshRoom.requests,
+          );
+        }
+      } catch (_) {}
     });
   }
 
@@ -481,14 +540,48 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
     try {
       state = state.copyWith(isConnecting: true, clearError: true);
 
-      final room = await _repository.getRoomDetails(roomId);
+      // 1. Join room on backend to register participant in DB
       final joinResult = await _repository.joinRoom(roomId);
       final token = joinResult['token'] as String;
       final role = joinResult['role'] as String;
 
+      // 2. Setup subscriptions and join socket room
       _setupSubscriptions();
       _socketService.joinAudioRoom(roomId);
       _startHeartbeat(roomId);
+
+      // 3. Fetch fresh room details containing all participants
+      final room = await _repository.getRoomDetails(roomId);
+
+      // 4. Ensure current user is in participants list so they always see themselves
+      final participants = List<AudioParticipant>.from(room.participants);
+      final selfId = _ref.read(authRepositoryProvider).currentUserId;
+      final rawPart = joinResult['participant'];
+      if (rawPart is Map<String, dynamic>) {
+        final selfPart = AudioParticipant.fromJson(rawPart);
+        final idx = participants.indexWhere((p) => p.userId == selfPart.userId);
+        if (idx >= 0) {
+          participants[idx] = selfPart;
+        } else {
+          participants.add(selfPart);
+        }
+      } else if (selfId != null && !participants.any((p) => p.userId == selfId)) {
+        participants.add(AudioParticipant(
+          id: 'self_$selfId',
+          roomId: roomId,
+          userId: selfId,
+          role: role,
+          isMuted: role != 'HOST',
+          connectionStatus: 'ONLINE',
+          joinedAt: DateTime.now(),
+          user: AudioRoomUser(id: selfId, username: 'Me', fullName: 'You'),
+        ));
+      }
+
+      final updatedRoom = room.copyWith(
+        participants: participants,
+        totalParticipants: math.max(room.totalParticipants, participants.length),
+      );
 
       const livekitUrl = 'wss://abuad-cgeux9e8.livekit.cloud';
       final canPublish = role == 'HOST' || role == 'CO_HOST' || role == 'MODERATOR' || role == 'SPEAKER';
@@ -503,13 +596,13 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
       final messages = await _repository.getMessages(roomId);
 
       state = state.copyWith(
-        room: room,
+        room: updatedRoom,
         role: role,
         isConnecting: false,
         isConnected: true,
         isMuted: role != 'HOST',
         messages: messages,
-        pendingRequests: room.requests,
+        pendingRequests: updatedRoom.requests,
       );
 
       try {
@@ -518,7 +611,7 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
           title: room.title,
           hostName: room.host.fullName,
           category: room.category,
-          participantCount: room.totalParticipants,
+          participantCount: updatedRoom.totalParticipants,
           isHost: role == 'HOST',
           isMuted: role != 'HOST',
         );
@@ -571,6 +664,26 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
         _socketService.joinAudioRoom(room.id);
         _startHeartbeat(room.id);
 
+        // Ensure host participant is present in participants list
+        final participants = List<AudioParticipant>.from(room.participants);
+        if (!participants.any((p) => p.userId == room.hostId)) {
+          participants.add(AudioParticipant(
+            id: 'host_${room.hostId}',
+            roomId: room.id,
+            userId: room.hostId,
+            role: 'HOST',
+            isMuted: false,
+            connectionStatus: 'ONLINE',
+            joinedAt: DateTime.now(),
+            user: room.host,
+          ));
+        }
+
+        final updatedRoom = room.copyWith(
+          participants: participants,
+          totalParticipants: math.max(1, participants.length),
+        );
+
         const livekitUrl = 'wss://abuad-cgeux9e8.livekit.cloud';
         await _audioService.connect(
           url: livekitUrl,
@@ -580,7 +693,7 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
         );
 
         state = state.copyWith(
-          room: room,
+          room: updatedRoom,
           role: 'HOST',
           isConnecting: false,
           isConnected: true,
@@ -627,27 +740,75 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
 
   Future<void> toggleHandRaise() async {
     if (state.room == null) return;
+    final selfId = _ref.read(authRepositoryProvider).currentUserId;
+    final nextState = !state.isHandRaised;
+
+    // Optimistic UI update
+    state = state.copyWith(isHandRaised: nextState);
+    if (state.room != null && selfId != null) {
+      final updatedParts = state.room!.participants.map((p) {
+        if (p.userId == selfId) {
+          return p.copyWith(isHandRaised: nextState);
+        }
+        return p;
+      }).toList();
+      state = state.copyWith(room: state.room!.copyWith(participants: updatedParts));
+    }
+
     try {
-      if (state.isHandRaised) {
-        await _repository.lowerHand(state.room!.id);
-        state = state.copyWith(isHandRaised: false);
-      } else {
+      if (nextState) {
         await _repository.raiseHand(state.room!.id);
-        state = state.copyWith(isHandRaised: true);
+      } else {
+        await _repository.lowerHand(state.room!.id);
       }
     } catch (e) {
-      state = state.copyWith(errorMessage: 'Failed to update hand raise: $e');
+      debugPrint('❌ [AudioRoomNotifier] Hand raise error: $e');
+      // Revert if error
+      state = state.copyWith(
+        isHandRaised: !nextState,
+        errorMessage: 'Failed to update hand raise: $e',
+      );
     }
   }
 
   void sendReaction(String emoji) {
     if (state.room == null) return;
+    final selfId = _ref.read(authRepositoryProvider).currentUserId ?? 'self';
+    final reaction = AudioReactionEvent(
+      id: '${DateTime.now().millisecondsSinceEpoch}_$selfId',
+      emoji: emoji,
+      userId: selfId,
+      xOffset: ((DateTime.now().millisecond % 80) / 100.0),
+    );
+
+    // Optimistically show reaction immediately for local user
+    state = state.copyWith(
+      floatingReactions: [...state.floatingReactions, reaction],
+    );
+    Future.delayed(const Duration(milliseconds: 2500), () {
+      if (!mounted) return;
+      state = state.copyWith(
+        floatingReactions: state.floatingReactions
+            .where((r) => r.id != reaction.id)
+            .toList(),
+      );
+    });
+
+    // Broadcast to room via socket
     _socketService.sendAudioRoomReaction(state.room!.id, emoji);
   }
 
   Future<void> sendChatMessage(String text) async {
     if (state.room == null || text.trim().isEmpty) return;
-    await _repository.sendMessage(state.room!.id, text);
+    try {
+      final sentMsg = await _repository.sendMessage(state.room!.id, text);
+      if (!state.messages.any((m) => m.id == sentMsg.id)) {
+        state = state.copyWith(messages: [...state.messages, sentMsg]);
+      }
+    } catch (e) {
+      debugPrint('❌ [AudioRoomNotifier] Send message error: $e');
+      rethrow;
+    }
   }
 
   Future<void> moderate({

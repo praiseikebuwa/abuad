@@ -121,6 +121,10 @@ class SocketService {
 
     _socket!.onConnect((_) {
       debugPrint('⚡ SocketService: Connected successfully!');
+      if (_activeAudioRoomId != null) {
+        debugPrint('⚡ SocketService: Re-joining active audio room: $_activeAudioRoomId');
+        _socket!.emit('audio_room:join', {'roomId': _activeAudioRoomId});
+      }
     });
 
     _socket!.onDisconnect((_) {
@@ -329,6 +333,8 @@ class SocketService {
     });
   }
 
+  String? _activeAudioRoomId;
+
   void sendAudioHeartbeat(String roomId) {
     if (_socket != null && _socket!.connected) {
       _socket!.emit('audio_room:heartbeat', {'roomId': roomId});
@@ -336,14 +342,23 @@ class SocketService {
   }
 
   void joinAudioRoom(String roomId) {
+    _activeAudioRoomId = roomId;
     if (_socket != null && _socket!.connected) {
       _socket!.emit('audio_room:join', {'roomId': roomId});
+      debugPrint('⚡ SocketService: Joined audio room socket: $roomId');
+    } else {
+      debugPrint('⚡ SocketService: Queued audio room socket join: $roomId');
+      connect();
     }
   }
 
   void leaveAudioRoom(String roomId) {
+    if (_activeAudioRoomId == roomId) {
+      _activeAudioRoomId = null;
+    }
     if (_socket != null && _socket!.connected) {
       _socket!.emit('audio_room:leave', {'roomId': roomId});
+      debugPrint('⚡ SocketService: Left audio room socket: $roomId');
     }
   }
 

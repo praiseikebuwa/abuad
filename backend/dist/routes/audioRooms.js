@@ -752,16 +752,27 @@ router.post('/:id/raise-hand', auth_1.authenticateToken, async (req, res) => {
     try {
         const userId = req.user.id;
         const roomId = req.params.id;
-        const request = await db_1.prisma.audioRoomRequest.upsert({
-            where: { id: `${roomId}_${userId}` },
-            update: { status: 'PENDING', createdAt: new Date() },
-            create: {
-                roomId,
-                userId,
-                status: 'PENDING',
-            },
+        let request = await db_1.prisma.audioRoomRequest.findFirst({
+            where: { roomId, userId },
             include: { user: { select: userSelect } },
         });
+        if (request) {
+            request = await db_1.prisma.audioRoomRequest.update({
+                where: { id: request.id },
+                data: { status: 'PENDING', createdAt: new Date() },
+                include: { user: { select: userSelect } },
+            });
+        }
+        else {
+            request = await db_1.prisma.audioRoomRequest.create({
+                data: {
+                    roomId,
+                    userId,
+                    status: 'PENDING',
+                },
+                include: { user: { select: userSelect } },
+            });
+        }
         await db_1.prisma.audioRoomParticipant.updateMany({
             where: { roomId, userId },
             data: { isHandRaised: true },
