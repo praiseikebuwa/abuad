@@ -79,10 +79,10 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
     final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0A0F1D) : Colors.white,
+      backgroundColor: isDark ? const Color.fromARGB(255, 0, 0, 0) : Colors.white,
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: isDark ? const Color(0xFF0A0F1D) : Colors.white,
+        backgroundColor: isDark ? const Color.fromARGB(255, 0, 0, 0) : Colors.white,
         surfaceTintColor: Colors.transparent,
         scrolledUnderElevation: 0,
         titleSpacing: 18,
@@ -94,7 +94,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
               style: TextStyle(
                 fontWeight: FontWeight.w900,
                 fontSize: 28,
-                color: isDark ? Colors.white : const Color(0xFF0F172A),
+                color: isDark ? Colors.white : const Color.fromARGB(255, 3, 3, 3),
                 letterSpacing: -0.8,
               ),
             ),
