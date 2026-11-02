@@ -1,3 +1,4 @@
+import 'widgets/dynamic_group_avatar.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,7 +7,6 @@ import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 
-import '../../../core/theme/app_colors.dart';
 import '../data/chat_repository.dart';
 import '../domain/chat_channel.dart';
 import '../../user/data/user_repository.dart';
@@ -805,34 +805,29 @@ class _SnapchatListItem extends ConsumerWidget {
 
       final senderName = msg['sender_name'] ?? (isGroup ? 'Member' : '');
 
+      final senderFirstName = senderName.isNotEmpty
+          ? senderName.split(' ').first
+          : (!isGroup && displayName.isNotEmpty ? displayName.split(' ').first : '');
+      final fromSuffix = senderFirstName.isNotEmpty ? ' from $senderFirstName' : '';
+
       // Check for unread snaps or mixed unread messages
       if (hasUnreadSnap) {
-        final snapText = unreadSnapsCount > 1
+        final snapText = (unreadSnapsCount > 1
             ? '$unreadSnapsCount Snaps'
-            : (isVideoSnap ? 'New Video Snap' : 'New Snap');
+            : (isVideoSnap ? 'New Video Snap' : 'New Snap'));
 
         if (unreadMessagesCount > 0) {
-          final msgText = unreadMessagesCount == 1 ? '1 Message' : '$unreadMessagesCount Messages';
           return Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 11,
-                height: 11,
-                decoration: BoxDecoration(
-                  color: snapColor,
-                  borderRadius: BorderRadius.circular(3),
-                ),
-              ),
-              const SizedBox(width: 6),
               Flexible(
                 child: Text(
-                  '$snapText · $msgText',
+                  'New Chats and Snaps · ' + formatTime(channel.lastMessageTime),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 14,
-                    color: snapColor,
+                    color: Color(0xFF0EA5E9),
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -854,7 +849,7 @@ class _SnapchatListItem extends ConsumerWidget {
               const SizedBox(width: 6),
               Flexible(
                 child: Text(
-                  snapText,
+                  '$snapText$fromSuffix',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -867,6 +862,39 @@ class _SnapchatListItem extends ConsumerWidget {
             ],
           );
         }
+      }
+
+      // Check for unread messages with "X messages from [Name]"
+      if (unreadMessagesCount > 0 && !isLastSentByMe) {
+        final msgText = unreadMessagesCount > 1
+            ? '$unreadMessagesCount new messages$fromSuffix'
+            : 'New message$fromSuffix';
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(
+                color: Color(0xFF3B82F6),
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                msgText,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF2563EB),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
       }
 
       if (isSnapLast) {
@@ -1130,7 +1158,59 @@ class _SnapchatListItem extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 5),
-                  if (hasUnreadSnap)
+                  if (hasUnreadSnap && unreadMessagesCount > 0)
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => _openQuickSnap(context, ref, channel, displayName, displayAvatar),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.1)
+                                  : Colors.black.withValues(alpha: 0.06),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Positioned(
+                                  left: 7,
+                                  top: 7,
+                                  child: Icon(
+                                    Icons.chat_bubble_rounded,
+                                    size: 15,
+                                    color: Color(0xFFA855F7),
+                                  ),
+                                ),
+                                Positioned(
+                                  right: 7,
+                                  bottom: 7,
+                                  child: Icon(
+                                    Icons.chat_bubble_rounded,
+                                    size: 15,
+                                    color: Color(0xFF0EA5E9),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          const Text(
+                            'View',
+                            style: TextStyle(
+                              color: Color(0xFFA855F7),
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else if (hasUnreadSnap)
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: () => _openQuickSnap(context, ref, channel, displayName, displayAvatar),
@@ -1158,7 +1238,7 @@ class _SnapchatListItem extends ConsumerWidget {
                             if (unreadSnapsCount > 1) ...[
                               const SizedBox(width: 3),
                               Text(
-                                '$unreadSnapsCount',
+                                '',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 11,
@@ -1411,98 +1491,10 @@ class _SnapchatListItem extends ConsumerWidget {
 
   Widget _buildListAvatar(String? displayAvatar, String displayName, bool isOnline, bool isGroup) {
     if (isGroup) {
-      final avatars = (channel.memberAvatars.values.where((a) => a != null && a.isNotEmpty).cast<String>().toList());
-      if (avatars.length >= 3) {
-        return SizedBox(
-          width: 50,
-          height: 50,
-          child: Stack(
-            children: [
-              Positioned(
-                left: 0,
-                top: 0,
-                child: CircleAvatar(
-                  radius: 14,
-                  backgroundImage: NetworkImage(avatars[0]),
-                  backgroundColor: const Color(0xFF6366F1),
-                ),
-              ),
-              Positioned(
-                right: 0,
-                top: 2,
-                child: CircleAvatar(
-                  radius: 13,
-                  backgroundImage: NetworkImage(avatars[1]),
-                  backgroundColor: const Color(0xFF10B981),
-                ),
-              ),
-              Positioned(
-                left: 10,
-                bottom: 0,
-                child: Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 1.5),
-                  ),
-                  child: CircleAvatar(
-                    radius: 13,
-                    backgroundImage: NetworkImage(avatars[2]),
-                    backgroundColor: const Color(0xFFF59E0B),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      } else if (displayAvatar != null && displayAvatar.isNotEmpty) {
-        return Stack(
-          clipBehavior: Clip.none,
-          children: [
-            CircleAvatar(
-              radius: 25,
-              backgroundImage: NetworkImage(displayAvatar),
-              backgroundColor: Colors.black,
-            ),
-            Positioned(
-              right: -2,
-              bottom: -2,
-              child: Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 1.5),
-                ),
-                child: const CircleAvatar(
-                  radius: 10,
-                  backgroundColor: Color(0xFF6366F1),
-                  child: Icon(Icons.person, size: 12, color: Colors.white),
-                ),
-              ),
-            ),
-          ],
-        );
-      }
-
-      return Container(
-        width: 50,
-        height: 50,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          shape: BoxShape.circle,
-        ),
-        child: Center(
-          child: Text(
-            displayName.isNotEmpty ? displayName[0].toUpperCase() : 'G',
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 20,
-            ),
-          ),
-        ),
+      return DynamicGroupAvatar(
+        channel: channel,
+        size: 50,
+        borderColor: isDark ? const Color(0xFF0F172A) : Colors.white,
       );
     }
 
@@ -1657,13 +1649,16 @@ class _CapsuleSwitcher extends StatelessWidget {
     final indicatorWidth = (width - (padding * 2)) / 2;
     final borderRadius = height / 2;
 
+    final unselectedTextColor = isDark ? Colors.white60 : const Color(0xFF475569);
+    final activePillColor = const Color(0xFF0F4C47); // Dark teal pill matching Image 4
+
     return Container(
       width: width,
       height: height,
       decoration: BoxDecoration(
         color: isCompact
             ? Colors.white.withValues(alpha: 0.15)
-            : (isDark ? const Color(0xFF1A1A1A) : Colors.grey[200]),
+            : (isDark ? const Color(0xFF1A1A1A) : const Color(0xFFE2E8F0)),
         borderRadius: BorderRadius.circular(borderRadius),
         border: isCompact
             ? Border.all(color: Colors.white.withValues(alpha: 0.25), width: 1)
@@ -1672,9 +1667,9 @@ class _CapsuleSwitcher extends StatelessWidget {
             ? null
             : [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.2),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
+                  color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.06),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
                 ),
               ],
       ),
@@ -1690,19 +1685,15 @@ class _CapsuleSwitcher extends StatelessWidget {
             child: Container(
               width: indicatorWidth,
               decoration: BoxDecoration(
-                color: isCompact
-                    ? AppColors.secondaryTeal
-                    : const Color(0xFF2E7D32),
+                color: activePillColor,
                 borderRadius: BorderRadius.circular(borderRadius - padding),
-                boxShadow: isCompact
-                    ? [
-                        BoxShadow(
-                          color: AppColors.secondaryTeal.withValues(alpha: 0.4),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ]
-                    : null,
+                boxShadow: [
+                  BoxShadow(
+                    color: activePillColor.withValues(alpha: 0.35),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1.5),
+                  ),
+                ],
               ),
             ),
           ),
@@ -1721,10 +1712,10 @@ class _CapsuleSwitcher extends StatelessWidget {
                           Icons.chat_bubble_outline_rounded,
                           color: currentIndex == 0
                               ? Colors.white
-                              : (isCompact ? Colors.white70 : Colors.grey),
-                          size: isCompact ? 14 : 18,
+                              : unselectedTextColor,
+                          size: isCompact ? 14 : 17,
                         ),
-                        SizedBox(width: isCompact ? 4 : 8),
+                        SizedBox(width: isCompact ? 4 : 7),
                         Text(
                           'Chat',
                           style: TextStyle(
@@ -1732,7 +1723,7 @@ class _CapsuleSwitcher extends StatelessWidget {
                             fontWeight: FontWeight.bold,
                             color: currentIndex == 0
                                 ? Colors.white
-                                : (isCompact ? Colors.white70 : Colors.grey),
+                                : unselectedTextColor,
                           ),
                         ),
                       ],
@@ -1752,10 +1743,10 @@ class _CapsuleSwitcher extends StatelessWidget {
                           Icons.camera_outlined,
                           color: currentIndex == 1
                               ? Colors.white
-                              : (isCompact ? Colors.white70 : Colors.grey),
-                          size: isCompact ? 14 : 18,
+                              : unselectedTextColor,
+                          size: isCompact ? 14 : 17,
                         ),
-                        SizedBox(width: isCompact ? 4 : 8),
+                        SizedBox(width: isCompact ? 4 : 7),
                         Text(
                           'Status',
                           style: TextStyle(
@@ -1763,7 +1754,7 @@ class _CapsuleSwitcher extends StatelessWidget {
                             fontWeight: FontWeight.bold,
                             color: currentIndex == 1
                                 ? Colors.white
-                                : (isCompact ? Colors.white70 : Colors.grey),
+                                : unselectedTextColor,
                           ),
                         ),
                       ],

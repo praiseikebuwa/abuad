@@ -22,6 +22,7 @@ class ChatChannel {
   final DateTime? streakExpiry;
   final List<String> pinnedBy;
   final List<String> archivedBy;
+  final bool allowSnaps;
 
   ChatChannel({
     required this.id,
@@ -45,6 +46,7 @@ class ChatChannel {
     this.streakExpiry,
     this.pinnedBy = const [],
     this.archivedBy = const [],
+    this.allowSnaps = true,
   });
 
   bool get isGroup => type == 'group' || memberIds.length > 2 || id.startsWith('group_');
@@ -74,6 +76,7 @@ class ChatChannel {
       'streak_expiry': streakExpiry?.toIso8601String(),
       'pinned_by': pinnedBy,
       'archived_by': archivedBy,
+      'allow_snaps': allowSnaps,
     };
   }
 
@@ -163,6 +166,7 @@ class ChatChannel {
       streakExpiry: map['streak_expiry'] != null ? parseTime(map['streak_expiry']) : null,
       pinnedBy: parseList(map['pinned_by'] ?? map['pinnedBy']),
       archivedBy: parseList(map['archived_by'] ?? map['archivedBy']),
+      allowSnaps: map['allow_snaps'] ?? map['allowSnaps'] ?? true,
     );
   }
 
@@ -188,6 +192,7 @@ class ChatChannel {
     DateTime? streakExpiry,
     List<String>? pinnedBy,
     List<String>? archivedBy,
+    bool? allowSnaps,
   }) {
     return ChatChannel(
       id: id ?? this.id,
@@ -211,6 +216,7 @@ class ChatChannel {
       streakExpiry: streakExpiry ?? this.streakExpiry,
       pinnedBy: pinnedBy ?? this.pinnedBy,
       archivedBy: archivedBy ?? this.archivedBy,
+      allowSnaps: allowSnaps ?? this.allowSnaps,
     );
   }
 }

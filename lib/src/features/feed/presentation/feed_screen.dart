@@ -732,7 +732,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                                     mainAxisSize: MainAxisSize.min,
                                     crossAxisAlignment: CrossAxisAlignment.stretch,
                                     children: [
-                                      if (liveSpaceWidget != null) liveSpaceWidget,
+                                      ?liveSpaceWidget,
                                       postWidget,
                                       if (showAd && adWidget != null) adWidget,
                                       if (showPeopleCarousel)

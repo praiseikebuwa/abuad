@@ -445,6 +445,28 @@ class AbuadMarkdownContent extends ConsumerWidget {
     );
   }
 
+  Widget _defaultMentionAvatar(String handle, double size) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        color: Color(0xFF6366F1),
+        shape: BoxShape.circle,
+      ),
+      child: Center(
+        child: Text(
+          handle.isNotEmpty ? handle[0].toUpperCase() : '?',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: size * 0.65,
+            fontWeight: FontWeight.bold,
+            height: 1,
+          ),
+        ),
+      ),
+    );
+  }
+
   InlineSpan _buildMentionSpan(
     BuildContext context,
     WidgetRef ref,
@@ -452,15 +474,14 @@ class AbuadMarkdownContent extends ConsumerWidget {
     Color linkColor,
     TextStyle baseStyle,
   ) {
-    return TextSpan(
-      text: '@$handle',
-      style: TextStyle(
-        color: linkColor,
-        fontWeight: FontWeight.bold,
-        fontSize: baseStyle.fontSize,
-      ),
-      recognizer: TapGestureRecognizer()
-        ..onTap = () async {
+    final fontSize = baseStyle.fontSize ?? 14.0;
+    final avatarSize = fontSize + 2.0;
+
+    return WidgetSpan(
+      alignment: PlaceholderAlignment.middle,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () async {
           final clean = handle.toLowerCase();
           if (clean == 'ai' || clean == 'abuad_ai') {
             context.push('/user/abuad_ai');
@@ -469,17 +490,55 @@ class AbuadMarkdownContent extends ConsumerWidget {
           final user = await ref.read(userRepositoryProvider).getUserByHandle(handle);
           if (context.mounted) {
             if (user != null) {
-              context.push('/user/${user.uid}');
+              context.push('/user/');
             } else {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('User @$handle not found'),
+                  content: Text('User @ not found'),
                   duration: const Duration(seconds: 2),
                 ),
               );
             }
           }
         },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2.0),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              FutureBuilder<AppUser?>(
+                future: ref.read(userRepositoryProvider).getUserByHandle(handle),
+                builder: (context, snapshot) {
+                  final avatarUrl = snapshot.data?.avatarUrl;
+                  if (avatarUrl != null && avatarUrl.isNotEmpty) {
+                    return ClipRRect(
+                      borderRadius: BorderRadius.circular(avatarSize / 2),
+                      child: CachedNetworkImage(
+                        imageUrl: avatarUrl,
+                        width: avatarSize,
+                        height: avatarSize,
+                        fit: BoxFit.cover,
+                        errorWidget: (_, __, ___) => _defaultMentionAvatar(handle, avatarSize),
+                      ),
+                    );
+                  }
+                  return _defaultMentionAvatar(handle, avatarSize);
+                },
+              ),
+              const SizedBox(width: 3),
+              Text(
+                handle,
+                style: TextStyle(
+                  color: linkColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: fontSize,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

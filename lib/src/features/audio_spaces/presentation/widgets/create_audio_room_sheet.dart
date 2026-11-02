@@ -21,7 +21,7 @@ class _CreateAudioRoomSheetState extends ConsumerState<CreateAudioRoomSheet> {
   final TextEditingController _customTagController = TextEditingController();
 
   String _category = 'ACADEMIC';
-  String _visibility = 'PUBLIC';
+  final String _visibility = 'PUBLIC';
   String _speakersPermission = 'HOST_APPROVED';
   bool _isRecording = false;
   bool _isChatEnabled = true;
@@ -271,7 +271,7 @@ class _CreateAudioRoomSheetState extends ConsumerState<CreateAudioRoomSheet> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF7C4DFF).withOpacity(0.2),
+                  color: const Color(0xFF7C4DFF).withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(Icons.podcasts_rounded, color: Color(0xFF7C4DFF), size: 24),
@@ -286,7 +286,7 @@ class _CreateAudioRoomSheetState extends ConsumerState<CreateAudioRoomSheet> {
                   ),
                   Text(
                     'Campus Audio Rooms with Live Activities',
-                    style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11),
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
                   ),
                 ],
               ),
@@ -398,7 +398,7 @@ class _CreateAudioRoomSheetState extends ConsumerState<CreateAudioRoomSheet> {
                         decoration: BoxDecoration(
                           color: const Color(0xFF222232),
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFF7C4DFF).withOpacity(0.5)),
+                          border: Border.all(color: const Color(0xFF7C4DFF).withValues(alpha: 0.5)),
                         ),
                         child: Row(
                           children: [
@@ -445,7 +445,7 @@ class _CreateAudioRoomSheetState extends ConsumerState<CreateAudioRoomSheet> {
                     style: const TextStyle(color: Colors.white, fontSize: 15.5, fontWeight: FontWeight.w600),
                     decoration: InputDecoration(
                       hintText: 'e.g. MTH 102 - Integration Exam Prep 🔥',
-                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 14),
+                      hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 14),
                       filled: true,
                       fillColor: const Color(0xFF222232),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -464,7 +464,7 @@ class _CreateAudioRoomSheetState extends ConsumerState<CreateAudioRoomSheet> {
                     maxLines: 2,
                     decoration: InputDecoration(
                       hintText: 'Add an optional agenda or speakers list...',
-                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 13),
+                      hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 13),
                       filled: true,
                       fillColor: const Color(0xFF222232),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -493,7 +493,7 @@ class _CreateAudioRoomSheetState extends ConsumerState<CreateAudioRoomSheet> {
                       TextButton.icon(
                         style: TextButton.styleFrom(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          backgroundColor: const Color(0xFF38BDF8).withOpacity(0.12),
+                          backgroundColor: const Color(0xFF38BDF8).withValues(alpha: 0.12),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
                         onPressed: _showGroupPickerSheet,
@@ -507,7 +507,7 @@ class _CreateAudioRoomSheetState extends ConsumerState<CreateAudioRoomSheet> {
                   ),
                   Text(
                     'Members of tagged groups get Live Activity & lock screen alerts to join',
-                    style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 11),
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 11),
                   ),
                   const SizedBox(height: 8),
                   if (_selectedGroups.isNotEmpty)
@@ -549,7 +549,7 @@ class _CreateAudioRoomSheetState extends ConsumerState<CreateAudioRoomSheet> {
                       TextButton.icon(
                         style: TextButton.styleFrom(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          backgroundColor: const Color(0xFFF43F5E).withOpacity(0.12),
+                          backgroundColor: const Color(0xFFF43F5E).withValues(alpha: 0.12),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
                         onPressed: _showUserPickerSheet,
@@ -563,7 +563,7 @@ class _CreateAudioRoomSheetState extends ConsumerState<CreateAudioRoomSheet> {
                   ),
                   Text(
                     'Tagged friends receive Dynamic Island & Live Activities notifications to drop in',
-                    style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 11),
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 11),
                   ),
                   const SizedBox(height: 8),
                   if (_selectedUsers.isNotEmpty)
@@ -638,7 +638,7 @@ class _CreateAudioRoomSheetState extends ConsumerState<CreateAudioRoomSheet> {
                       return FilterChip(
                         label: Text(tag),
                         selected: isSelected,
-                        selectedColor: const Color(0xFF7C4DFF).withOpacity(0.3),
+                        selectedColor: const Color(0xFF7C4DFF).withValues(alpha: 0.3),
                         checkmarkColor: const Color(0xFF7C4DFF),
                         backgroundColor: const Color(0xFF222232),
                         side: BorderSide(
@@ -671,7 +671,7 @@ class _CreateAudioRoomSheetState extends ConsumerState<CreateAudioRoomSheet> {
                           decoration: InputDecoration(
                             isDense: true,
                             hintText: 'Add custom hashtag (e.g. #FreshersDebate)',
-                            hintStyle: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 12),
+                            hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 12),
                             filled: true,
                             fillColor: const Color(0xFF222232),
                             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -712,7 +712,7 @@ class _CreateAudioRoomSheetState extends ConsumerState<CreateAudioRoomSheet> {
                             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
                             decoration: BoxDecoration(
                               color: _speakersPermission == 'HOST_APPROVED'
-                                  ? const Color(0xFF7C4DFF).withOpacity(0.25)
+                                  ? const Color(0xFF7C4DFF).withValues(alpha: 0.25)
                                   : const Color(0xFF222232),
                               borderRadius: BorderRadius.circular(14),
                               border: Border.all(
@@ -737,7 +737,7 @@ class _CreateAudioRoomSheetState extends ConsumerState<CreateAudioRoomSheet> {
                                 ),
                                 Text(
                                   'Listeners raise hand',
-                                  style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 10),
+                                  style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 10),
                                 ),
                               ],
                             ),
@@ -753,7 +753,7 @@ class _CreateAudioRoomSheetState extends ConsumerState<CreateAudioRoomSheet> {
                             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
                             decoration: BoxDecoration(
                               color: _speakersPermission == 'EVERYONE'
-                                  ? const Color(0xFF7C4DFF).withOpacity(0.25)
+                                  ? const Color(0xFF7C4DFF).withValues(alpha: 0.25)
                                   : const Color(0xFF222232),
                               borderRadius: BorderRadius.circular(14),
                               border: Border.all(
@@ -778,7 +778,7 @@ class _CreateAudioRoomSheetState extends ConsumerState<CreateAudioRoomSheet> {
                                 ),
                                 Text(
                                   'Anyone can speak',
-                                  style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 10),
+                                  style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 10),
                                 ),
                               ],
                             ),
@@ -800,18 +800,18 @@ class _CreateAudioRoomSheetState extends ConsumerState<CreateAudioRoomSheet> {
                       children: [
                         SwitchListTile(
                           title: const Text('Enable In-Space Chat', style: TextStyle(color: Colors.white, fontSize: 13.5)),
-                          subtitle: Text('Allow text messages while listening', style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11)),
+                          subtitle: Text('Allow text messages while listening', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11)),
                           value: _isChatEnabled,
-                          activeColor: const Color(0xFF7C4DFF),
+                          activeThumbColor: const Color(0xFF7C4DFF),
                           onChanged: (val) => setState(() => _isChatEnabled = val),
                           contentPadding: EdgeInsets.zero,
                         ),
                         const Divider(color: Colors.white10, height: 1),
                         SwitchListTile(
                           title: const Text('Record this Session', style: TextStyle(color: Colors.white, fontSize: 13.5)),
-                          subtitle: Text('Save audio replay for students who missed it', style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11)),
+                          subtitle: Text('Save audio replay for students who missed it', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11)),
                           value: _isRecording,
-                          activeColor: const Color(0xFF7C4DFF),
+                          activeThumbColor: const Color(0xFF7C4DFF),
                           onChanged: (val) => setState(() => _isRecording = val),
                           contentPadding: EdgeInsets.zero,
                         ),
@@ -926,7 +926,7 @@ class _GroupPickerSheetState extends ConsumerState<_GroupPickerSheet> {
             decoration: InputDecoration(
               isDense: true,
               hintText: 'Search groups (e.g. Law, 200L, SUG)...',
-              hintStyle: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 13),
+              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 13),
               prefixIcon: const Icon(Icons.search_rounded, color: Colors.white54, size: 20),
               filled: true,
               fillColor: const Color(0xFF222232),
@@ -958,7 +958,7 @@ class _GroupPickerSheetState extends ConsumerState<_GroupPickerSheet> {
                         const SizedBox(height: 8),
                         Text(
                           _search.isEmpty ? 'No campus groups joined yet' : 'No matching groups found',
-                          style: TextStyle(color: Colors.white.withOpacity(0.5)),
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
                         ),
                       ],
                     ),
@@ -984,7 +984,7 @@ class _GroupPickerSheetState extends ConsumerState<_GroupPickerSheet> {
                           width: 38,
                           height: 38,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF7C4DFF).withOpacity(0.2),
+                            color: const Color(0xFF7C4DFF).withValues(alpha: 0.2),
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(Icons.groups_rounded, color: Color(0xFF7C4DFF), size: 20),
@@ -995,7 +995,7 @@ class _GroupPickerSheetState extends ConsumerState<_GroupPickerSheet> {
                         ),
                         subtitle: Text(
                           '${group.memberIds.length} members · Live Activity invite',
-                          style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11),
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
                         ),
                         onChanged: (val) {
                           setState(() {
@@ -1104,7 +1104,7 @@ class _UserPickerSheetState extends ConsumerState<_UserPickerSheet> {
             decoration: InputDecoration(
               isDense: true,
               hintText: 'Search by name or @handle...',
-              hintStyle: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 13),
+              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 13),
               prefixIcon: const Icon(Icons.search_rounded, color: Colors.white54, size: 20),
               filled: true,
               fillColor: const Color(0xFF222232),
@@ -1123,7 +1123,7 @@ class _UserPickerSheetState extends ConsumerState<_UserPickerSheet> {
                     ? Center(
                         child: Text(
                           'No students found',
-                          style: TextStyle(color: Colors.white.withOpacity(0.5)),
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
                         ),
                       )
                     : ListView.builder(
@@ -1154,7 +1154,7 @@ class _UserPickerSheetState extends ConsumerState<_UserPickerSheet> {
                               ),
                               subtitle: Text(
                                 '@${user.handle}${user.department != null ? ' · ${user.department}' : ''}',
-                                style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11),
+                                style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
                               ),
                               onChanged: (val) {
                                 setState(() {

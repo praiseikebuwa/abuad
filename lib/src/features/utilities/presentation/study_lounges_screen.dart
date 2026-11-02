@@ -30,7 +30,7 @@ class _StudyLoungesScreenState extends ConsumerState<StudyLoungesScreen>
   String _aiMode = 'EXPLAIN'; // EXPLAIN, QUIZ, AUDIO
   StudyExplanation? _explanationResult;
   List<StudyQuizQuestion>? _quizQuestions;
-  Map<String, int> _selectedQuizAnswers = {};
+  final Map<String, int> _selectedQuizAnswers = {};
   AudioLectureSession? _audioLectureResult;
   String? _aiError;
 
@@ -169,25 +169,27 @@ class _StudyLoungesScreenState extends ConsumerState<StudyLoungesScreen>
 
   @override
   Widget build(BuildContext context) {
-    const navyBg = Color(0xFF0A1128);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final navyBg = isDark ? const Color(0xFF0A1128) : const Color(0xFFF8FAFC);
+    final appBarBg = isDark ? const Color(0xFF0D1B2A) : Colors.white;
     const goldAccent = Color(0xFFD4AF37);
 
     return Scaffold(
       backgroundColor: navyBg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0D1B2A),
+        backgroundColor: appBarBg,
         elevation: 0,
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.school_rounded, color: goldAccent, size: 24),
-            SizedBox(width: 10),
+            const Icon(Icons.school_rounded, color: goldAccent, size: 24),
+            const SizedBox(width: 10),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Study Lounges',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: isDark ? Colors.white : const Color(0xFF0F172A),
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                   ),
@@ -195,7 +197,7 @@ class _StudyLoungesScreenState extends ConsumerState<StudyLoungesScreen>
                 Text(
                   'Collaborative Audio & ABUAD AI Hub',
                   style: TextStyle(
-                    color: Color(0xFFF3C64F),
+                    color: isDark ? const Color(0xFFF3C64F) : const Color(0xFFB45309),
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
                   ),
@@ -209,7 +211,7 @@ class _StudyLoungesScreenState extends ConsumerState<StudyLoungesScreen>
           indicatorColor: goldAccent,
           indicatorWeight: 3,
           labelColor: goldAccent,
-          unselectedLabelColor: Colors.white60,
+          unselectedLabelColor: isDark ? Colors.white60 : Colors.black54,
           labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
           tabs: const [
             Tab(icon: Icon(Icons.mic_external_on_rounded, size: 18), text: 'Live Lounges'),
@@ -1379,7 +1381,7 @@ class _CreateStudyLoungeSheetState extends State<_CreateStudyLoungeSheet> {
             const SizedBox(height: 14),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              activeColor: goldAccent,
+              activeThumbColor: goldAccent,
               title: const Text('Schedule for Later', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
               subtitle: Text(
                 _isScheduled

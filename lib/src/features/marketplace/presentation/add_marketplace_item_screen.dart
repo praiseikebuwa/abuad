@@ -344,13 +344,23 @@ class _AddMarketplaceItemScreenState
   }
 
   Widget _buildGlassCard({required Widget child, String? title, Widget? action}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.08)),
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -362,7 +372,7 @@ class _AddMarketplaceItemScreenState
                 Text(
                   title,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.5),
+                    color: isDark ? Colors.white.withValues(alpha: 0.5) : const Color(0xFF64748B),
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 1.2,
@@ -381,10 +391,13 @@ class _AddMarketplaceItemScreenState
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFF04060E), Color(0xFF0A1128)],
+          colors: isDark
+              ? const [Color(0xFF04060E), Color(0xFF0A1128)]
+              : const [Color(0xFFF8FAFC), Color(0xFFF1F5F9)],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),
@@ -392,9 +405,16 @@ class _AddMarketplaceItemScreenState
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
-          title: const Text('New Listing', style: TextStyle(fontWeight: FontWeight.bold)),
+          title: Text(
+            'New Listing',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : const Color(0xFF0F172A),
+            ),
+          ),
           backgroundColor: Colors.transparent,
           elevation: 0,
+          iconTheme: IconThemeData(color: isDark ? Colors.white : const Color(0xFF0F172A)),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new, size: 20),
             onPressed: () => context.pop(),
@@ -443,7 +463,7 @@ class _AddMarketplaceItemScreenState
                           children: [
                             TextFormField(
                               controller: _titleController,
-                              style: const TextStyle(color: Colors.white, fontSize: 18),
+                              style: TextStyle(color: isDark ? Colors.white : const Color(0xFF0F172A), fontSize: 18),
                               decoration: _glassInputDecoration('What are you selling?', Icons.shopping_bag_outlined),
                               validator: (v) => v!.isEmpty ? 'Title is required' : null,
                             ),
@@ -466,8 +486,8 @@ class _AddMarketplaceItemScreenState
                           children: [
                             DropdownButtonFormField<String>(
                               initialValue: _selectedCategory,
-                              dropdownColor: AppColors.surfaceDark,
-                              style: const TextStyle(color: Colors.white),
+                              dropdownColor: isDark ? AppColors.surfaceDark : Colors.white,
+                              style: TextStyle(color: isDark ? Colors.white : const Color(0xFF0F172A)),
                               decoration: _glassInputDecoration('Category', Icons.category_outlined),
                               items: _categories.map((c) => DropdownMenuItem(value: c['value'], child: Text(c['label']!))).toList(),
                               onChanged: (v) => setState(() => _selectedCategory = v!),
@@ -619,13 +639,16 @@ class _AddMarketplaceItemScreenState
   }
 
   InputDecoration _glassInputDecoration(String label, IconData icon) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return InputDecoration(
       labelText: label,
-      labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
+      labelStyle: TextStyle(color: isDark ? Colors.white.withValues(alpha: 0.4) : const Color(0xFF64748B)),
       prefixIcon: Icon(icon, color: AppColors.secondaryTeal, size: 20),
       border: InputBorder.none,
-      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
-      focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: AppColors.secondaryTeal)),
+      enabledBorder: UnderlineInputBorder(
+        borderSide: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.15) : Colors.black.withValues(alpha: 0.12)),
+      ),
+      focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: AppColors.secondaryTeal, width: 2)),
     );
   }
 }

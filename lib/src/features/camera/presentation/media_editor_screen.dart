@@ -1,3 +1,4 @@
+import '../../chat/domain/chat_channel.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -527,13 +528,18 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
 
   Future<void> _sendSnapToRecipient(AppUser recipient) => _sendSnapToRecipients([recipient]);
 
-  Future<void> _sendSnapToRecipients(List<AppUser> recipients, [XFile? preExportedFile]) async {
-    if (recipients.isEmpty) return;
+  Future<void> _sendSnapToRecipients(
+    List<AppUser> recipients, [
+    XFile? preExportedFile,
+    List<ChatChannel> groups = const [],
+  ]) async {
+    if (recipients.isEmpty && groups.isEmpty) return;
     HapticFeedback.mediumImpact();
 
-    final label = recipients.length == 1
-        ? '@${recipients.first.handle}'
-        : '${recipients.length} friends';
+    final count = recipients.length + groups.length;
+    final label = count == 1
+        ? (groups.isNotEmpty ? (groups.first.displayName ?? 'Group') : '@${recipients.first.handle}')
+        : '$count recipients';
 
     final messenger = ScaffoldMessenger.of(context);
     final chatRepo = ref.read(chatRepositoryProvider);
@@ -575,7 +581,7 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
             : imageService.uploadImage(exportedFile, path: 'chat_snaps/multi/'));
 
         // Dispatch snaps concurrently to each recipient channel
-        await Future.wait(recipients.map((recipient) async {
+        final friendDispatches = recipients.map((recipient) async {
           try {
             final channelId = await chatRepo.createOrGetChannel(
               recipient.uid,
@@ -597,7 +603,27 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
           } catch (err) {
             debugPrint('Error delivering snap to ${recipient.uid}: $err');
           }
-        }));
+        });
+
+        // Dispatch snaps concurrently to each allowed group
+        final groupDispatches = groups.map((group) async {
+          try {
+            await chatRepo.sendMessage(
+              group.id,
+              isVideo ? '🎥 Video Snap' : '📸 Snap',
+              type: isVideo ? 'video' : 'image',
+              imageUrl: result.url,
+              imageWidth: result.width,
+              imageHeight: result.height,
+              isSnap: true,
+              duration: snapDuration,
+            );
+          } catch (err) {
+            debugPrint('Error delivering snap to group ${group.id}: $err');
+          }
+        });
+
+        await Future.wait([...friendDispatches, ...groupDispatches]);
 
         messenger.hideCurrentSnackBar();
         messenger.showSnackBar(
@@ -640,14 +666,14 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => _SendToSheet(
-        onSend: (recipients, postToStory) async {
+        onSend: (recipients, groups, postToStory) async {
           Navigator.pop(ctx);
           final exportedFile = await _exportCompositedMedia();
           if (postToStory) {
             _handleMyStory(exportedFile);
           }
-          if (recipients.isNotEmpty) {
-            _sendSnapToRecipients(recipients, exportedFile);
+          if (recipients.isNotEmpty || groups.isNotEmpty) {
+            _sendSnapToRecipients(recipients, exportedFile, groups);
           }
         },
       ),
@@ -2662,7 +2688,7 @@ const List<EditorFilter> kEditorFilters = [
 // ── Send to Friends Bottom Sheet ─────────────────────────────────────────────
 
 class _SendToSheet extends ConsumerStatefulWidget {
-  final Function(List<AppUser> recipients, bool postToStory) onSend;
+  final Function(List<AppUser> recipients, List<ChatChannel> groups, bool postToStory) onSend;
 
   const _SendToSheet({required this.onSend});
 
@@ -2673,6 +2699,8 @@ class _SendToSheet extends ConsumerStatefulWidget {
 class _SendToSheetState extends ConsumerState<_SendToSheet> {
   final TextEditingController _searchCtrl = TextEditingController();
   final Map<String, AppUser> _selectedUsers = {};
+  final Map<String, ChatChannel> _selectedGroups = {};
+  int _activeCategory = 0; // 0: Friends, 1: Allowed Groups
   bool _postToMyStory = false;
   String _query = '';
   List<AppUser> _directoryResults = [];
@@ -2848,13 +2876,90 @@ class _SendToSheetState extends ConsumerState<_SendToSheet> {
               ),
             ),
             const SizedBox(height: 12),
+            // Category switch: Friends vs Allowed Groups
+            Builder(
+              builder: (context) {
+                final allChannels = ref.watch(chatRepositoryProvider).channels;
+                final allowedGroups = allChannels.where((c) => c.isGroup && c.allowSnaps).toList();
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: () => setState(() => _activeCategory = 0),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            decoration: BoxDecoration(
+                              color: _activeCategory == 0
+                                  ? const Color(0xFF8B5CF6).withValues(alpha: 0.25)
+                                  : const Color(0xFF27272A),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: _activeCategory == 0
+                                    ? const Color(0xFF8B5CF6)
+                                    : Colors.transparent,
+                                width: 1.2,
+                              ),
+                            ),
+                            child: const Center(
+                              child: Text(
+                                'Friends',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: InkWell(
+                          onTap: () => setState(() => _activeCategory = 1),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            decoration: BoxDecoration(
+                              color: _activeCategory == 1
+                                  ? const Color(0xFF10B981).withValues(alpha: 0.25)
+                                  : const Color(0xFF27272A),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: _activeCategory == 1
+                                    ? const Color(0xFF10B981)
+                                    : Colors.transparent,
+                                width: 1.2,
+                              ),
+                            ),
+                            child: Center(
+                              child: Text(
+                                'Allowed Groups (${allowedGroups.length})',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
             // Search field
             TextField(
               controller: _searchCtrl,
               onChanged: _onSearchChanged,
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
-                hintText: 'Search friends or classmates...',
+                hintText: _activeCategory == 0 ? 'Search friends or classmates...' : 'Search allowed groups...',
                 hintStyle: const TextStyle(color: Colors.white38),
                 prefixIcon: const Icon(Icons.search, color: Colors.white38),
                 suffixIcon: _isSearchingDirectory
@@ -2877,9 +2982,117 @@ class _SendToSheetState extends ConsumerState<_SendToSheet> {
               ),
             ),
             const SizedBox(height: 16),
-            // Friends List / Directory Search
+            // Friends or Allowed Groups List
             Expanded(
-              child: followingAsync.when(
+              child: _activeCategory == 1
+                  ? Builder(
+                      builder: (context) {
+                        final allChannels = ref.watch(chatRepositoryProvider).channels;
+                        var groups = allChannels.where((c) => c.isGroup && c.allowSnaps).toList();
+                        if (_query.isNotEmpty) {
+                          groups = groups.where((g) =>
+                              (g.displayName ?? '').toLowerCase().contains(_query)).toList();
+                        }
+
+                        if (groups.isEmpty) {
+                          return Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 24),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.groups_rounded, size: 48, color: Colors.white.withValues(alpha: 0.3)),
+                                  const SizedBox(height: 12),
+                                  const Text(
+                                    'No groups allow snaps yet',
+                                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  const Text(
+                                    'Enable "Allow Snaps in group" in Group Settings to send snaps to your classes or groups.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(color: Colors.white54, fontSize: 13),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+
+                        return ListView.separated(
+                          controller: scrollController,
+                          itemCount: groups.length,
+                          separatorBuilder: (_, _) => const Divider(height: 1, color: Colors.white10),
+                          itemBuilder: (context, index) {
+                            final group = groups[index];
+                            final isSelected = _selectedGroups.containsKey(group.id);
+                            return InkWell(
+                              onTap: () {
+                                HapticFeedback.selectionClick();
+                                setState(() {
+                                  if (isSelected) {
+                                    _selectedGroups.remove(group.id);
+                                  } else {
+                                    _selectedGroups[group.id] = group;
+                                  }
+                                });
+                              },
+                              borderRadius: BorderRadius.circular(14),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                                child: Row(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 22,
+                                      backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.2),
+                                      child: const Icon(Icons.groups_rounded, color: Color(0xFF10B981), size: 24),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            group.displayName ?? 'Group',
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 15,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            '\${group.memberIds.length} members · Snaps allowed 🔥',
+                                            style: const TextStyle(color: Color(0xFF10B981), fontSize: 12),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    AnimatedContainer(
+                                      duration: const Duration(milliseconds: 200),
+                                      width: 24,
+                                      height: 24,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: isSelected ? const Color(0xFF10B981) : Colors.transparent,
+                                        border: Border.all(
+                                          color: isSelected ? const Color(0xFF10B981) : Colors.white38,
+                                          width: 2,
+                                        ),
+                                      ),
+                                      child: isSelected
+                                          ? const Icon(Icons.check_rounded, color: Colors.white, size: 16)
+                                          : null,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    )
+                  : followingAsync.when(
                 data: (friends) {
                   // If searching: combine local following matches and directory search results
                   if (_query.isNotEmpty) {
@@ -3014,7 +3227,7 @@ class _SendToSheetState extends ConsumerState<_SendToSheet> {
                 ),
               ),
             ),
-            if (_selectedUsers.isNotEmpty || _postToMyStory)
+            if (_selectedUsers.isNotEmpty || _selectedGroups.isNotEmpty || _postToMyStory)
               Container(
                 padding: const EdgeInsets.only(top: 12, bottom: 6),
                 child: SizedBox(
@@ -3029,15 +3242,19 @@ class _SendToSheetState extends ConsumerState<_SendToSheet> {
                     ),
                     icon: const Icon(Icons.send_rounded, size: 20),
                     label: Text(
-                      _postToMyStory && _selectedUsers.isNotEmpty
+                      _postToMyStory && (_selectedUsers.isNotEmpty || _selectedGroups.isNotEmpty)
                           ? 'Send Snap & Add to Story 🔥'
                           : _postToMyStory
                               ? 'Add to My Story (24h) 🔥'
-                              : 'Send Snap to ${_selectedUsers.length} ${_selectedUsers.length == 1 ? "Friend" : "Friends"} 🔥',
+                              : 'Send Snap to ${_selectedUsers.length + _selectedGroups.length} recipients 🔥',
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                     ),
                     onPressed: () {
-                      widget.onSend(_selectedUsers.values.toList(), _postToMyStory);
+                      widget.onSend(
+                        _selectedUsers.values.toList(),
+                        _selectedGroups.values.toList(),
+                        _postToMyStory,
+                      );
                     },
                   ),
                 ),

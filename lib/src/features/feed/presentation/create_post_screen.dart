@@ -1,3 +1,5 @@
+import 'package:video_player/video_player.dart';
+import '../../camera/presentation/media_editor_screen.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -1758,54 +1760,31 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                             ),
                           ),
 
-                        // Selected Video Preview
+                        // Selected Video Preview (Watch/Preview + Edit before posting)
                         if (_selectedVideo != null)
                           Padding(
                             padding: const EdgeInsets.only(top: 12),
-                            child: Stack(
-                              children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(16),
-                                  child: Container(
-                                    height: 240,
-                                    width: double.infinity,
-                                    color: Colors.black,
-                                    child: Center(
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          const Icon(
-                                            Icons.play_circle_fill,
-                                            size: 56,
-                                            color: Colors.white,
-                                          ),
-                                          const SizedBox(height: 8),
-                                          const Text(
-                                            'Video Selected',
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          Text(
-                                            _selectedVideo!.name,
-                                            style: const TextStyle(
-                                              color: Colors.white70,
-                                              fontSize: 12,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ],
-                                      ),
+                            child: _PostVideoPreviewPlayer(
+                              key: ValueKey(_selectedVideo!.path),
+                              videoFile: _selectedVideo!,
+                              onRemove: () => setState(() => _selectedVideo = null),
+                              onEdit: () async {
+                                final edited = await Navigator.of(context).push<XFile>(
+                                  MaterialPageRoute(
+                                    builder: (context) => MediaEditorScreen(
+                                      mediaFile: _selectedVideo!,
+                                      isVideo: true,
+                                      isForStory: false,
+                                      onMediaExported: (file, mode) {
+                                        Navigator.of(context).pop(file);
+                                      },
                                     ),
                                   ),
-                                ),
-                                _buildRemoveButton(
-                                  () => setState(() => _selectedVideo = null),
-                                ),
-                              ],
+                                );
+                                if (edited != null && mounted) {
+                                  setState(() => _selectedVideo = edited);
+                                }
+                              },
                             ),
                           ),
 
@@ -2735,3 +2714,259 @@ class _SecretTagStudentSheetState extends ConsumerState<_SecretTagStudentSheet> 
   }
 }
 
+
+
+/// Interactive Video Watch / Preview & Edit player before posting
+class _PostVideoPreviewPlayer extends StatefulWidget {
+  final XFile videoFile;
+  final VoidCallback onRemove;
+  final VoidCallback onEdit;
+
+  const _PostVideoPreviewPlayer({
+    super.key,
+    required this.videoFile,
+    required this.onRemove,
+    required this.onEdit,
+  });
+
+  @override
+  State<_PostVideoPreviewPlayer> createState() => _PostVideoPreviewPlayerState();
+}
+
+class _PostVideoPreviewPlayerState extends State<_PostVideoPreviewPlayer> {
+  VideoPlayerController? _controller;
+  bool _isInitialized = false;
+  bool _isPlaying = false;
+  bool _isMuted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initPlayer();
+  }
+
+  Future<void> _initPlayer() async {
+    try {
+      if (kIsWeb) {
+        _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoFile.path));
+      } else {
+        _controller = VideoPlayerController.file(File(widget.videoFile.path));
+      }
+      await _controller!.initialize();
+      _controller!.setLooping(true);
+      _controller!.addListener(() {
+        if (mounted && _controller != null) {
+          final isPlaying = _controller!.value.isPlaying;
+          if (isPlaying != _isPlaying) {
+            setState(() => _isPlaying = isPlaying);
+          }
+        }
+      });
+      if (mounted) {
+        setState(() => _isInitialized = true);
+      }
+    } catch (e) {
+      debugPrint('Error initializing video player: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  void _togglePlay() {
+    if (_controller == null || !_isInitialized) return;
+    setState(() {
+      if (_controller!.value.isPlaying) {
+        _controller!.pause();
+      } else {
+        _controller!.play();
+      }
+    });
+  }
+
+  void _toggleMute() {
+    if (_controller == null) return;
+    setState(() {
+      _isMuted = !_isMuted;
+      _controller!.setVolume(_isMuted ? 0.0 : 1.0);
+    });
+  }
+
+  String _formatDuration(Duration d) {
+    final m = d.inMinutes;
+    final s = d.inSeconds % 60;
+    return '${m}:${s.toString().padLeft(2, "0")}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        color: Colors.black,
+        constraints: const BoxConstraints(maxHeight: 380),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            if (_isInitialized && _controller != null)
+              Center(
+                child: AspectRatio(
+                  aspectRatio: _controller!.value.aspectRatio,
+                  child: VideoPlayer(_controller!),
+                ),
+              )
+            else
+              const SizedBox(
+                height: 240,
+                child: Center(
+                  child: CircularProgressIndicator(color: Colors.white),
+                ),
+              ),
+
+            // Tap area to play/pause
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _togglePlay,
+                child: Center(
+                  child: AnimatedOpacity(
+                    opacity: _isPlaying ? 0.0 : 1.0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Container(
+                      width: 58,
+                      height: 58,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.6),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white54, width: 1.5),
+                      ),
+                      child: const Icon(
+                        Icons.play_arrow_rounded,
+                        color: Colors.white,
+                        size: 36,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // Top control bar: Edit Video pill on left, Remove button on right
+            Positioned(
+              top: 10,
+              left: 10,
+              right: 10,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Edit Video Button
+                  GestureDetector(
+                    onTap: widget.onEdit,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white24, width: 1),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.tune_rounded, color: Colors.white, size: 16),
+                          SizedBox(width: 5),
+                          Text(
+                            'Edit / Trim Video',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // Close / Remove button
+                  GestureDetector(
+                    onTap: widget.onRemove,
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.7),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white24, width: 1),
+                      ),
+                      child: const Icon(Icons.close, color: Colors.white, size: 18),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Bottom control bar: duration + progress bar + mute button
+            if (_isInitialized && _controller != null)
+              Positioned(
+                bottom: 8,
+                left: 12,
+                right: 12,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    VideoProgressIndicator(
+                      _controller!,
+                      allowScrubbing: true,
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      colors: const VideoProgressColors(
+                        playedColor: Color(0xFF00A3FF),
+                        bufferedColor: Colors.white24,
+                        backgroundColor: Colors.white10,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        ValueListenableBuilder(
+                          valueListenable: _controller!,
+                          builder: (context, VideoPlayerValue val, _) {
+                            return Text(
+                              '${_formatDuration(val.position)} / ${_formatDuration(val.duration)}',
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            );
+                          },
+                        ),
+                        GestureDetector(
+                          onTap: _toggleMute,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.6),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              _isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}

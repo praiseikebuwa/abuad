@@ -1,3 +1,4 @@
+import '../../../core/services/notification_service.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
@@ -39,6 +40,7 @@ class ChatRepository {
   final Map<String, StreamController<Map<String, bool>>> _typingControllers = {};
   final Map<String, Map<String, bool>> _typingStatus = {};
   bool _socketInitialized = false;
+  String? currentActiveChannelId;
 
   static const String _channelsCacheKey = 'cached_chat_channels_v2';
 
@@ -206,6 +208,41 @@ class ChatRepository {
         // INSTANT REALTIME TOP-OF-LIST UPDATE
         _handleIncomingRealtimeMessage(channelId, newMsg, Map<String, dynamic>.from(msgMap));
         _fetchChannels();
+
+        // Dispatch local notification if from someone else and channel is not currently open
+        if (currentUserId != null && currentUserId!.isNotEmpty && newMsg.senderId != currentUserId) {
+          if (currentActiveChannelId != channelId) {
+            final cachedChannel = getCachedChannel(channelId);
+            final senderName = data['senderName']?.toString() ??
+                data['sender_name']?.toString() ??
+                (cachedChannel?.memberNames[newMsg.senderId]) ??
+                'New Message';
+            String body = newMsg.content;
+            if (newMsg.isSnap) {
+              body = '📸 Sent a Snap';
+            } else if (newMsg.type == 'image') {
+              body = '📷 Photo';
+            } else if (newMsg.type == 'sticker') {
+              body = 'Sticker';
+            } else if (newMsg.type == 'voice') {
+              body = '🎤 Voice message';
+            } else if (newMsg.type == 'location') {
+              body = '📍 Shared location';
+            }
+            final title = (cachedChannel?.isGroup == true && cachedChannel?.displayName != null)
+                ? '${cachedChannel!.displayName}'
+                : senderName;
+            final fullBody = (cachedChannel?.isGroup == true && cachedChannel?.displayName != null)
+                ? '$senderName: $body'
+                : body;
+            NotificationService().showLocalNotification(
+              title: title,
+              body: fullBody,
+              payload: channelId,
+              type: 'chat',
+            );
+          }
+        }
       }
     });
 

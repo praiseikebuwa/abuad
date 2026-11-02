@@ -19,6 +19,7 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
   bool _editGroupInfo = false;
   String _sendMessagesPermission = 'All Members';
   bool _addOtherMembers = true;
+  bool _allowSnaps = true;
   bool _approveNewMembers = true;
   bool _participantHistory = true;
   int _activeInviteLinks = 1;
@@ -28,6 +29,12 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
   @override
   void initState() {
     super.initState();
+    final cached = ref.read(chatRepositoryProvider).getCachedChannel(widget.channelId);
+    if (cached != null) {
+      _allowSnaps = cached.allowSnaps;
+      _editGroupInfo = cached.restrictInfoUpdates;
+      _sendMessagesPermission = cached.restrictMessaging ? 'Only Admins' : 'All Members';
+    }
     _channelFuture = ref.read(chatRepositoryProvider).getChannel(widget.channelId);
   }
 
@@ -146,6 +153,19 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
                       onChanged: (val) {
                         setState(() => _addOtherMembers = val);
                         repo.updateGroupSettings(widget.channelId, settings: {'addOtherMembers': val});
+                      },
+                      textPrimary: textPrimary,
+                      textSecondary: textSecondary,
+                      isDark: isDark,
+                    ),
+                    _buildDivider(isDark),
+                    _buildSwitchRow(
+                      title: 'Allow Snaps in group',
+                      subtitle: 'Allow group members to share and send disappearing snaps.',
+                      value: _allowSnaps,
+                      onChanged: (val) {
+                        setState(() => _allowSnaps = val);
+                        repo.updateGroupSettings(widget.channelId, settings: {'allowSnaps': val});
                       },
                       textPrimary: textPrimary,
                       textSecondary: textSecondary,

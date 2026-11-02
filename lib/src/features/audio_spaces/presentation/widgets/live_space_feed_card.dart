@@ -24,13 +24,13 @@ class LiveSpaceFeedCard extends ConsumerWidget {
           end: Alignment.bottomRight,
         ),
         border: Border.all(
-          color: isLive ? const Color(0xFF818CF8).withOpacity(0.4) : Colors.white12,
+          color: isLive ? const Color(0xFF818CF8).withValues(alpha: 0.4) : Colors.white12,
           width: 1.5,
         ),
         boxShadow: [
           if (isLive)
             BoxShadow(
-              color: const Color(0xFF6366F1).withOpacity(0.2),
+              color: const Color(0xFF6366F1).withValues(alpha: 0.2),
               blurRadius: 16,
               offset: const Offset(0, 4),
             ),
@@ -61,7 +61,7 @@ class LiveSpaceFeedCard extends ConsumerWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFEF4444).withOpacity(0.2),
+                          color: const Color(0xFFEF4444).withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: const Color(0xFFEF4444), width: 1),
                         ),
@@ -86,7 +86,7 @@ class LiveSpaceFeedCard extends ConsumerWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: Colors.amber.withOpacity(0.2),
+                          color: Colors.amber.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Text(
@@ -103,7 +103,7 @@ class LiveSpaceFeedCard extends ConsumerWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.08),
+                        color: Colors.white.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
@@ -119,13 +119,13 @@ class LiveSpaceFeedCard extends ConsumerWidget {
                     Icon(
                       Icons.headphones_rounded,
                       size: 14,
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha: 0.6),
                     ),
                     const SizedBox(width: 4),
                     Text(
                       '${room.totalParticipants}',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.7),
+                        color: Colors.white.withValues(alpha: 0.7),
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
@@ -154,7 +154,7 @@ class LiveSpaceFeedCard extends ConsumerWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha: 0.6),
                       fontSize: 12,
                     ),
                   ),
@@ -194,7 +194,7 @@ class LiveSpaceFeedCard extends ConsumerWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.5),
+                              color: Colors.white.withValues(alpha: 0.5),
                               fontSize: 10,
                             ),
                           ),
@@ -212,7 +212,7 @@ class LiveSpaceFeedCard extends ConsumerWidget {
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF6366F1).withOpacity(0.4),
+                            color: const Color(0xFF6366F1).withValues(alpha: 0.4),
                             blurRadius: 8,
                             offset: const Offset(0, 2),
                           ),

@@ -1,3 +1,4 @@
+import 'media_docs_links_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -198,6 +199,7 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
                   textPrimary: textPrimary,
                   textSecondary: textSecondary,
                   isDark: isDark,
+                  channelName: channel.displayName ?? 'Group',
                 ),
 
                 const SizedBox(height: 16),
@@ -497,6 +499,7 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
     required Color textPrimary,
     required Color textSecondary,
     required bool isDark,
+    String channelName = 'Group',
   }) {
     return StreamBuilder<List<ChatMessage>>(
       stream: repo.watchMessages(widget.channelId),
@@ -539,23 +542,36 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
                       ),
                     ),
                     if (mediaItems.isNotEmpty)
-                      Row(
-                        children: [
-                          Text(
-                            'View All (${mediaItems.length})',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
+                      InkWell(
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => MediaDocsLinksScreen(
+                                channelId: widget.channelId,
+                                channelName: channelName,
+                              ),
+                            ),
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(8),
+                        child: Row(
+                          children: [
+                            Text(
+                              'View All ()',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF2563EB),
+                              ),
+                            ),
+                            const SizedBox(width: 2),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              size: 18,
                               color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF2563EB),
                             ),
-                          ),
-                          const SizedBox(width: 2),
-                          Icon(
-                            Icons.chevron_right_rounded,
-                            size: 18,
-                            color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF2563EB),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                   ],
                 ),
@@ -596,11 +612,25 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
                         iconColor = const Color(0xFF3B82F6);
                       }
 
-                      return _buildMediaThumbnail(
-                        title: title,
-                        icon: icon,
-                        iconColor: iconColor,
-                        isDark: isDark,
+                      return InkWell(
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => MediaDocsLinksScreen(
+                                channelId: widget.channelId,
+                                channelName: channelName,
+                                initialTabIndex: isPdf ? 1 : (isLink ? 2 : 0),
+                              ),
+                            ),
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        child: _buildMediaThumbnail(
+                          title: title,
+                          icon: icon,
+                          iconColor: iconColor,
+                          isDark: isDark,
+                        ),
                       );
                     },
                   ),

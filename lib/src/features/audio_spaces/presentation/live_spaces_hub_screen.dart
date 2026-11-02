@@ -30,19 +30,24 @@ class LiveSpacesHubScreen extends ConsumerWidget {
       {'id': 'COMMUNITY', 'label': 'Communities', 'icon': '👥'},
     ];
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? const Color(0xFF0F0F1A) : const Color(0xFFF8FAFC);
+    final appBarBg = isDark ? const Color(0xFF0F0F1A) : Colors.white;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F1A),
+      backgroundColor: bg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F0F1A),
+        backgroundColor: appBarBg,
         elevation: 0,
-        title: const Row(
+        iconTheme: IconThemeData(color: isDark ? Colors.white : const Color(0xFF0F172A)),
+        title: Row(
           children: [
-            Icon(Icons.podcasts_rounded, color: Color(0xFF7C4DFF), size: 26),
-            SizedBox(width: 10),
+            const Icon(Icons.podcasts_rounded, color: Color(0xFF7C4DFF), size: 26),
+            const SizedBox(width: 10),
             Text(
               'Live Audio Spaces',
               style: TextStyle(
-                color: Colors.white,
+                color: isDark ? Colors.white : const Color(0xFF0F172A),
                 fontWeight: FontWeight.w800,
                 fontSize: 20,
               ),
@@ -157,7 +162,7 @@ class LiveSpacesHubScreen extends ConsumerWidget {
                             Container(
                               padding: const EdgeInsets.all(20),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF7C4DFF).withOpacity(0.15),
+                                color: const Color(0xFF7C4DFF).withValues(alpha: 0.15),
                                 shape: BoxShape.circle,
                               ),
                               child: const Icon(
@@ -180,7 +185,7 @@ class LiveSpacesHubScreen extends ConsumerWidget {
                               'Be the first to start a conversation, tutorial, or faculty town hall!',
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.6),
+                                color: Colors.white.withValues(alpha: 0.6),
                                 fontSize: 13,
                               ),
                             ),

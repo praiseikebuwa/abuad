@@ -146,7 +146,7 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
               const SizedBox(height: 16),
               Text(
                 'Connecting to Live Audio Space...',
-                style: TextStyle(color: Colors.white.withOpacity(0.7)),
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
               ),
             ],
           ),
@@ -187,8 +187,10 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
     final authRepo = ref.watch(authRepositoryProvider);
     final currentUserId = authRepo.currentUser?.uid ?? authRepo.currentUserId;
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F1A),
+      backgroundColor: isDark ? const Color(0xFF0F0F1A) : const Color(0xFFF8FAFC),
       body: Listener(
         behavior: HitTestBehavior.translucent,
         onPointerDown: (_) => ref.read(liveKitAudioServiceProvider).startAudio(),
@@ -196,13 +198,19 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
           children: [
             // Background Gradient
           Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [
-                  Color(0xFF1E1035),
-                  Color(0xFF0F0F1A),
-                  Color(0xFF080811),
-                ],
+                colors: isDark
+                    ? const [
+                        Color(0xFF1E1035),
+                        Color(0xFF0F0F1A),
+                        Color(0xFF080811),
+                      ]
+                    : const [
+                        Color(0xFFEDE9FE),
+                        Color(0xFFF8FAFC),
+                        Color(0xFFF1F5F9),
+                      ],
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
               ),
@@ -228,7 +236,7 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFEF4444).withOpacity(0.2),
+                          color: const Color(0xFFEF4444).withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: const Color(0xFFEF4444)),
                         ),
@@ -271,7 +279,7 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
                         child: Container(
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.06),
+                            color: Colors.white.withValues(alpha: 0.06),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: const Icon(Icons.sync_rounded, color: Colors.white70, size: 16),
@@ -409,7 +417,7 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
                         const SizedBox(height: 4),
                         Text(
                           room.description!,
-                          style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13),
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 13),
                         ),
                       ],
                     ],
@@ -489,7 +497,7 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
                                 Text(
                                   'Tap avatar to manage',
                                   style: TextStyle(
-                                    color: Colors.white.withOpacity(0.3),
+                                    color: Colors.white.withValues(alpha: 0.3),
                                     fontSize: 10,
                                   ),
                                 ),
@@ -504,19 +512,19 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
                             margin: const EdgeInsets.only(top: 4, bottom: 20),
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.03),
+                              color: Colors.white.withValues(alpha: 0.03),
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: Colors.white.withOpacity(0.06)),
+                              border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
                             ),
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.headphones_outlined, size: 28, color: Colors.white.withOpacity(0.35)),
+                                Icon(Icons.headphones_outlined, size: 28, color: Colors.white.withValues(alpha: 0.35)),
                                 const SizedBox(height: 8),
                                 Text(
                                   'No listeners in the room yet',
                                   style: TextStyle(
-                                    color: Colors.white.withOpacity(0.8),
+                                    color: Colors.white.withValues(alpha: 0.8),
                                     fontSize: 13,
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -525,7 +533,7 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
                                 Text(
                                   'Invite friends or coursemates to tune in and listen live',
                                   style: TextStyle(
-                                    color: Colors.white.withOpacity(0.45),
+                                    color: Colors.white.withValues(alpha: 0.45),
                                     fontSize: 11,
                                   ),
                                   textAlign: TextAlign.center,
@@ -689,7 +697,7 @@ class _SpeakerAvatarTile extends StatelessWidget {
                         boxShadow: isSpeaking
                             ? [
                                 BoxShadow(
-                                  color: const Color(0xFF00E676).withOpacity(0.5),
+                                  color: const Color(0xFF00E676).withValues(alpha: 0.5),
                                   blurRadius: 12,
                                   spreadRadius: 2,
                                 ),
@@ -697,7 +705,7 @@ class _SpeakerAvatarTile extends StatelessWidget {
                             : isSelf
                                 ? [
                                     BoxShadow(
-                                      color: const Color(0xFFD4AF37).withOpacity(0.35),
+                                      color: const Color(0xFFD4AF37).withValues(alpha: 0.35),
                                       blurRadius: 8,
                                       spreadRadius: 1,
                                     ),
@@ -768,9 +776,9 @@ class _SpeakerAvatarTile extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
             decoration: BoxDecoration(
               color: participant.isHost
-                  ? const Color(0xFF7C4DFF).withOpacity(0.3)
+                  ? const Color(0xFF7C4DFF).withValues(alpha: 0.3)
                   : participant.isCoHost
-                      ? Colors.amber.withOpacity(0.3)
+                      ? Colors.amber.withValues(alpha: 0.3)
                       : Colors.white10,
               borderRadius: BorderRadius.circular(4),
             ),
@@ -829,7 +837,7 @@ class _ListenerAvatarTile extends StatelessWidget {
                   boxShadow: isSelf
                       ? [
                           BoxShadow(
-                            color: const Color(0xFFD4AF37).withOpacity(0.4),
+                            color: const Color(0xFFD4AF37).withValues(alpha: 0.4),
                             blurRadius: 8,
                             spreadRadius: 1,
                           ),
@@ -865,7 +873,7 @@ class _ListenerAvatarTile extends StatelessWidget {
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.amber.withOpacity(0.6),
+                          color: Colors.amber.withValues(alpha: 0.6),
                           blurRadius: 8,
                           spreadRadius: 1,
                         ),
@@ -887,7 +895,7 @@ class _ListenerAvatarTile extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: isSelf ? const Color(0xFFD4AF37) : Colors.white.withOpacity(0.8),
+              color: isSelf ? const Color(0xFFD4AF37) : Colors.white.withValues(alpha: 0.8),
               fontSize: 11,
               fontWeight: isSelf ? FontWeight.bold : FontWeight.normal,
             ),
@@ -897,9 +905,9 @@ class _ListenerAvatarTile extends StatelessWidget {
               margin: const EdgeInsets.only(top: 2),
               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
               decoration: BoxDecoration(
-                color: const Color(0xFFD4AF37).withOpacity(0.2),
+                color: const Color(0xFFD4AF37).withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: const Color(0xFFD4AF37).withOpacity(0.4), width: 0.5),
+                border: Border.all(color: const Color(0xFFD4AF37).withValues(alpha: 0.4), width: 0.5),
               ),
               child: const Text('You', style: TextStyle(color: Color(0xFFD4AF37), fontSize: 9, fontWeight: FontWeight.bold)),
             ),

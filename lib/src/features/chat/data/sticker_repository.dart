@@ -15,6 +15,20 @@ class StickerRepository {
 
   final List<StickerItem> _curatedSeeds = const [];
 
+  Future<String> _resolveUserId(String? explicitId) async {
+    if (explicitId != null && explicitId.isNotEmpty) return explicitId;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getString('cachedUser');
+      if (cached != null && cached.isNotEmpty) {
+        final decoded = jsonDecode(cached);
+        final uid = decoded['uid'] ?? decoded['id'];
+        if (uid != null && uid.toString().isNotEmpty) return uid.toString();
+      }
+    } catch (_) {}
+    return 'default_user';
+  }
+
   /// Fetch trending stickers sorted by student usage count
   Future<List<StickerItem>> getTrendingStickers() async {
     try {
@@ -82,10 +96,10 @@ class StickerRepository {
     return filtered;
   }
 
-  /// Fetch user's saved favorites tray and personal creations
-  Future<List<StickerItem>> getMyStickers() async {
-    List<StickerItem> localSaved = await _loadLocalSavedStickers();
-    List<StickerItem> localCreated = await _loadLocalCreatedStickers();
+  /// Fetch user's personal saved favorites tray and creations
+  Future<List<StickerItem>> getMyStickers({String? userId}) async {
+    List<StickerItem> localSaved = await _loadLocalSavedStickers(userId: userId);
+    List<StickerItem> localCreated = await _loadLocalCreatedStickers(userId: userId);
 
     try {
       final res = await ApiClient.get('/stickers/my');
@@ -137,6 +151,7 @@ class StickerRepository {
     required String category,
     List<String> tags = const [],
     bool isPublic = true,
+    String? userId,
   }) async {
     final body = {
       'title': title,
@@ -177,7 +192,7 @@ class StickerRepository {
       createdAt: DateTime.now(),
     );
 
-    await _saveLocalCreatedSticker(createdItem);
+    await _saveLocalCreatedSticker(createdItem, userId: userId);
     return createdItem;
   }
 
@@ -188,28 +203,30 @@ class StickerRepository {
     } catch (_) {}
   }
 
-  /// Save sticker to collection
-  Future<void> saveSticker(StickerItem sticker) async {
+  /// Save sticker to user's personalized collection / favorites
+  Future<void> saveSticker(StickerItem sticker, {String? userId}) async {
     try {
       await ApiClient.post('/stickers/${sticker.id}/save', {});
     } catch (_) {}
-    await _addLocalSavedSticker(sticker.copyWith(isSaved: true));
+    await _addLocalSavedSticker(sticker.copyWith(isSaved: true), userId: userId);
   }
 
-  /// Remove sticker from collection
-  Future<void> unsaveSticker(String stickerId) async {
+  /// Remove sticker from user's personalized collection / favorites
+  Future<void> unsaveSticker(String stickerId, {String? userId}) async {
     try {
       await ApiClient.delete('/stickers/$stickerId/save');
     } catch (_) {}
-    await _removeLocalSavedSticker(stickerId);
+    await _removeLocalSavedSticker(stickerId, userId: userId);
   }
 
-  // ── Local Storage Cache ──────────────────────────────────────────────────
+  // ── Local Storage Cache (Per-User) ────────────────────────────────────────
 
-  Future<List<StickerItem>> _loadLocalSavedStickers() async {
+  Future<List<StickerItem>> _loadLocalSavedStickers({String? userId}) async {
     try {
+      final effectiveUid = await _resolveUserId(userId);
+      final key = '${_savedStickersKey}_$effectiveUid';
       final prefs = await SharedPreferences.getInstance();
-      final str = prefs.getString(_savedStickersKey);
+      final str = prefs.getString(key) ?? prefs.getString(_savedStickersKey);
       if (str != null && str.isNotEmpty) {
         final list = (jsonDecode(str) as List)
             .map((e) => StickerItem.fromJson(e as Map<String, dynamic>))
@@ -222,33 +239,39 @@ class StickerRepository {
     return [];
   }
 
-  Future<void> _addLocalSavedSticker(StickerItem item) async {
+  Future<void> _addLocalSavedSticker(StickerItem item, {String? userId}) async {
     try {
-      final list = await _loadLocalSavedStickers();
+      final effectiveUid = await _resolveUserId(userId);
+      final key = '${_savedStickersKey}_$effectiveUid';
+      final list = await _loadLocalSavedStickers(userId: effectiveUid);
       list.removeWhere((s) => s.id == item.id || (s.imageUrl.isNotEmpty && s.imageUrl == item.imageUrl));
       list.insert(0, item);
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_savedStickersKey, jsonEncode(list.map((e) => e.toJson()).toList()));
+      await prefs.setString(key, jsonEncode(list.map((e) => e.toJson()).toList()));
     } catch (e) {
       debugPrint('Error adding saved sticker: $e');
     }
   }
 
-  Future<void> _removeLocalSavedSticker(String stickerId) async {
+  Future<void> _removeLocalSavedSticker(String stickerId, {String? userId}) async {
     try {
-      final list = await _loadLocalSavedStickers();
+      final effectiveUid = await _resolveUserId(userId);
+      final key = '${_savedStickersKey}_$effectiveUid';
+      final list = await _loadLocalSavedStickers(userId: effectiveUid);
       list.removeWhere((s) => s.id == stickerId);
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_savedStickersKey, jsonEncode(list.map((e) => e.toJson()).toList()));
+      await prefs.setString(key, jsonEncode(list.map((e) => e.toJson()).toList()));
     } catch (e) {
       debugPrint('Error removing saved sticker: $e');
     }
   }
 
-  Future<List<StickerItem>> _loadLocalCreatedStickers() async {
+  Future<List<StickerItem>> _loadLocalCreatedStickers({String? userId}) async {
     try {
+      final effectiveUid = await _resolveUserId(userId);
+      final key = '${_myCreationsKey}_$effectiveUid';
       final prefs = await SharedPreferences.getInstance();
-      final str = prefs.getString(_myCreationsKey);
+      final str = prefs.getString(key) ?? prefs.getString(_myCreationsKey);
       if (str != null && str.isNotEmpty) {
         final list = (jsonDecode(str) as List)
             .map((e) => StickerItem.fromJson(e as Map<String, dynamic>))
@@ -261,13 +284,15 @@ class StickerRepository {
     return [];
   }
 
-  Future<void> _saveLocalCreatedSticker(StickerItem item) async {
+  Future<void> _saveLocalCreatedSticker(StickerItem item, {String? userId}) async {
     try {
-      final list = await _loadLocalCreatedStickers();
+      final effectiveUid = await _resolveUserId(userId);
+      final key = '${_myCreationsKey}_$effectiveUid';
+      final list = await _loadLocalCreatedStickers(userId: effectiveUid);
       list.removeWhere((s) => s.id == item.id);
       list.insert(0, item);
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_myCreationsKey, jsonEncode(list.map((e) => e.toJson()).toList()));
+      await prefs.setString(key, jsonEncode(list.map((e) => e.toJson()).toList()));
     } catch (e) {
       debugPrint('Error saving created sticker: $e');
     }

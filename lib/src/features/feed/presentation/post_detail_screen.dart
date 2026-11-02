@@ -9,6 +9,8 @@ import 'package:timeago/timeago.dart' as timeago;
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:share_plus/share_plus.dart';
+import '../../chat/domain/sticker_item.dart';
+import '../../chat/presentation/sticker_creator_screen.dart';
 import '../../../core/utils/url_validator.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../data/post_repository.dart';
@@ -43,6 +45,7 @@ class PostDetailScreen extends ConsumerStatefulWidget {
 
 class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
   final _commentController = TextEditingController();
+  StickerItem? _selectedSticker;
   final ScrollController _scrollController = ScrollController();
   bool _isPosting = false;
   bool _fetchFailed = false;
@@ -92,9 +95,17 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
 
   Future<void> _postComment() async {
     if (_isPosting) return;
-    final content = _commentController.text.trim();
-    if (content.isEmpty) {
+    final text = _commentController.text.trim();
+    if (text.isEmpty && _selectedSticker == null) {
       return;
+    }
+
+    final String finalContent;
+    if (_selectedSticker != null) {
+      final stickerMd = '![sticker](${_selectedSticker!.imageUrl})';
+      finalContent = text.isNotEmpty ? '$text\n\n$stickerMd' : stickerMd;
+    } else {
+      finalContent = text;
     }
 
     setState(() => _isPosting = true);
@@ -103,9 +114,10 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
       final repo = ref.read(postRepositoryProvider);
       final postId = widget.post?.id ?? widget.postId!;
 
-      await repo.addComment(postId, content, parentId: _replyToCommentId);
+      await repo.addComment(postId, finalContent, parentId: _replyToCommentId);
 
       _commentController.clear();
+      setState(() => _selectedSticker = null);
       _cancelReply();
 
       // Scroll to bottom (optional)
@@ -1395,6 +1407,46 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                               ],
                             ),
                           ),
+                        // Selected Sticker Preview Banner
+                        if (_selectedSticker != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            color: isDark
+                                ? const Color(0xFF1E293B)
+                                : const Color(0xFFF1F5F9),
+                            child: Row(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: CachedNetworkImage(
+                                    imageUrl: _selectedSticker!.imageUrl,
+                                    width: 42,
+                                    height: 42,
+                                    fit: BoxFit.contain,
+                                    errorWidget: (_, __, ___) => const Icon(Icons.sticky_note_2_rounded),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    _selectedSticker!.title,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                      color: isDark ? Colors.white : Colors.black87,
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.close, size: 18),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  onPressed: () => setState(() => _selectedSticker = null),
+                                ),
+                              ],
+                            ),
+                          ),
+
                         // Visibility Indicator
                         if (_replyToCommentId == null)
                           Padding(
@@ -1444,7 +1496,28 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                 displayName: currentUser?.displayName,
                                 radius: 18,
                               ),
-                              const SizedBox(width: 10),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                                icon: const Icon(
+                                  Icons.sticky_note_2_outlined,
+                                  color: AppColors.secondaryTeal,
+                                  size: 24,
+                                ),
+                                tooltip: 'Add Sticker',
+                                onPressed: () async {
+                                  final chosen = await Navigator.of(context).push<StickerItem>(
+                                    MaterialPageRoute(
+                                      builder: (context) => const StickerCreatorScreen(initialMode: 'MY'),
+                                    ),
+                                  );
+                                  if (chosen != null && mounted) {
+                                    setState(() => _selectedSticker = chosen);
+                                  }
+                                },
+                              ),
+                              const SizedBox(width: 4),
                               Expanded(
                                 child: Container(
                                   decoration: BoxDecoration(

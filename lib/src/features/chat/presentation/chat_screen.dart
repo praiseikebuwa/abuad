@@ -1,3 +1,4 @@
+import 'widgets/dynamic_group_avatar.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
@@ -173,6 +174,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _messageController.text = widget.initialText!;
       _hasText = true;
     }
+    ref.read(chatRepositoryProvider).currentActiveChannelId = widget.channelId;
     // Mark messages as read when screen loads & prefetch stickers
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(chatRepositoryProvider).markMessagesAsRead(widget.channelId);
@@ -310,6 +312,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   void dispose() {
+    if (ref.read(chatRepositoryProvider).currentActiveChannelId == widget.channelId) {
+      ref.read(chatRepositoryProvider).currentActiveChannelId = null;
+    }
     _messageController.dispose();
     _messageFocusNode.dispose();
     _conversationSearchController.dispose();
@@ -406,6 +411,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
+  String? _getReplyContentSnippet(ChatMessage? msg) {
+    if (msg == null) return null;
+    if (msg.isSnap) return '📸 Snap';
+    if (msg.type == 'image' || (msg.imageUrl != null && msg.imageUrl!.isNotEmpty)) return '📷 Photo';
+    if (msg.type == 'sticker') return 'Sticker';
+    if (msg.type == 'voice' || msg.audioUrl != null) return '🎤 Voice message';
+    if (msg.type == 'video') return '🎥 Video';
+    if (msg.type == 'location') return '📍 Location';
+    if (msg.type == 'document') return '📄 Document';
+    if (msg.content.trim().isNotEmpty) return msg.content.trim();
+    return 'Message';
+  }
+
   Widget _buildReplyQuoteInsideBubble({
     required ChatMessage message,
     required bool isMe,
@@ -415,7 +433,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     required Color themeColor,
     required List<dynamic> items,
   }) {
-    if (message.replyToContent == null) return const SizedBox.shrink();
+    if (message.replyToContent == null && message.replyToId == null) return const SizedBox.shrink();
 
     final replySenderName = message.replyToSenderId == repo.currentUserId
         ? 'You'
@@ -423,6 +441,140 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 channel!.memberNames[message.replyToSenderId]!.isNotEmpty
             ? channel.memberNames[message.replyToSenderId]!
             : 'Friend');
+
+    ChatMessage? originalMsg;
+    if (message.replyToId != null && message.replyToId!.isNotEmpty) {
+      for (final item in items) {
+        if (item is ChatMessage && item.id == message.replyToId) {
+          originalMsg = item;
+          break;
+        }
+      }
+    }
+
+    final rawContent = message.replyToContent ?? '';
+    final isPhoto = (originalMsg?.imageUrl != null && originalMsg!.imageUrl!.isNotEmpty) ||
+        originalMsg?.type == 'image' ||
+        originalMsg?.isSnap == true ||
+        rawContent.toLowerCase().contains('photo') ||
+        rawContent.startsWith('http') ||
+        rawContent.contains('chat_media') ||
+        rawContent.contains('chat_snaps') ||
+        rawContent.contains('camera');
+
+    final isSticker = originalMsg?.type == 'sticker' ||
+        rawContent.toLowerCase().contains('sticker');
+
+    final isVoice = originalMsg?.type == 'voice' ||
+        originalMsg?.audioUrl != null ||
+        rawContent.toLowerCase().contains('voice') ||
+        rawContent.toLowerCase().contains('audio');
+
+    Widget bodyWidget;
+    if (isPhoto) {
+      bodyWidget = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (originalMsg?.imageUrl != null && originalMsg!.imageUrl!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(right: 5),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: CachedNetworkImage(
+                  imageUrl: originalMsg.imageUrl!,
+                  width: 17,
+                  height: 17,
+                  fit: BoxFit.cover,
+                  errorWidget: (_, _, _) => Icon(
+                    Icons.camera_alt_rounded,
+                    size: 14,
+                    color: isMe ? Colors.white70 : themeColor,
+                  ),
+                ),
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.only(right: 5),
+              child: Icon(
+                Icons.camera_alt_rounded,
+                size: 14,
+                color: isMe ? Colors.white70 : themeColor,
+              ),
+            ),
+          Text(
+            'Photo',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: isMe
+                  ? Colors.white.withValues(alpha: 0.95)
+                  : (isDark ? Colors.white : Colors.black87),
+            ),
+          ),
+        ],
+      );
+    } else if (isSticker) {
+      bodyWidget = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 5),
+            child: Icon(
+              Icons.sticky_note_2_rounded,
+              size: 14,
+              color: isMe ? Colors.white70 : themeColor,
+            ),
+          ),
+          Text(
+            'Sticker',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: isMe
+                  ? Colors.white.withValues(alpha: 0.95)
+                  : (isDark ? Colors.white : Colors.black87),
+            ),
+          ),
+        ],
+      );
+    } else if (isVoice) {
+      bodyWidget = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 5),
+            child: Icon(
+              Icons.mic_rounded,
+              size: 14,
+              color: isMe ? Colors.white70 : themeColor,
+            ),
+          ),
+          Text(
+            'Voice note',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: isMe
+                  ? Colors.white.withValues(alpha: 0.95)
+                  : (isDark ? Colors.white : Colors.black87),
+            ),
+          ),
+        ],
+      );
+    } else {
+      bodyWidget = Text(
+        rawContent,
+        style: TextStyle(
+          fontSize: 12,
+          color: isMe
+              ? Colors.white.withValues(alpha: 0.9)
+              : (isDark ? Colors.white70 : Colors.black87),
+        ),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
 
     return GestureDetector(
       onTap: () => _scrollToMessage(message.replyToId, items),
@@ -467,17 +619,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ],
             ),
             const SizedBox(height: 2),
-            Text(
-              message.replyToContent!,
-              style: TextStyle(
-                fontSize: 12,
-                color: isMe
-                    ? Colors.white.withValues(alpha: 0.9)
-                    : (isDark ? Colors.white70 : Colors.black87),
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
+            bodyWidget,
           ],
         ),
       ),
@@ -1105,7 +1247,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             widget.channelId,
             content,
             replyToId: _replyingTo?.id,
-            replyToContent: _replyingTo?.content,
+            replyToContent: _getReplyContentSnippet(_replyingTo),
             replyToSenderId: _replyingTo?.senderId,
           );
     }
@@ -1160,7 +1302,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             imageHeight: result.height,
             isSnap: isSnap,
             replyToId: _replyingTo?.id,
-            replyToContent: _replyingTo?.content,
+            replyToContent: _getReplyContentSnippet(_replyingTo),
             replyToSenderId: _replyingTo?.senderId,
           );
 
@@ -1212,7 +1354,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             latitude: position.latitude,
             longitude: position.longitude,
             replyToId: _replyingTo?.id,
-            replyToContent: _replyingTo?.content,
+            replyToContent: _getReplyContentSnippet(_replyingTo),
             replyToSenderId: _replyingTo?.senderId,
           );
 
@@ -1310,7 +1452,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             isSnap: true,
             receiverId: otherUserId,
             replyToId: _replyingTo?.id,
-            replyToContent: _replyingTo?.content,
+            replyToContent: _getReplyContentSnippet(_replyingTo),
             replyToSenderId: _replyingTo?.senderId,
           );
 
@@ -1517,170 +1659,231 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   ) {
     final currentUserId = repo.currentUserId;
     final isSavedByMe = message.isSavedBy(currentUserId);
+    final otherSavers = message.savedBy.where((id) => id != currentUserId).toList();
+    final headerName = isSavedByMe
+        ? 'You'
+        : (otherSavers.isNotEmpty ? 'Friend' : 'Saved');
 
-    return GestureDetector(
-      onTap: () {
-        if (message.isVideoSnap) {
-          _viewSnap(message, repo);
-        } else if (message.imageUrl != null) {
-          _viewImage(message.imageUrl!);
-        }
-      },
-      onLongPress: () => _showSnapOptionsSheet(message, repo),
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: min(MediaQuery.of(context).size.width * 0.72, 260.0),
-        ),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: const Color(0xFF6366F1).withValues(alpha: 0.5),
-            width: 1.5,
+    return Column(
+      crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Top Header: User name and UNSAVE IN CHAT button (Image 7)
+        Container(
+          constraints: BoxConstraints(
+            maxWidth: min(MediaQuery.of(context).size.width * 0.72, 260.0),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF6366F1).withValues(alpha: 0.18),
-              blurRadius: 10,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(15),
-          child: Stack(
+          padding: const EdgeInsets.only(left: 12, right: 4, bottom: 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              if (message.imageUrl != null)
-                CachedNetworkImage(
-                  imageUrl: message.imageUrl!,
-                  width: min(MediaQuery.of(context).size.width * 0.72, 260.0),
-                  height: 280,
-                  fit: BoxFit.cover,
-                  placeholder: (context, url) => Container(
-                    height: 240,
-                    color: isDark ? Colors.black45 : Colors.grey[200],
-                    child: const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  ),
-                  errorWidget: (context, url, error) => Container(
-                    height: 180,
-                    color: isDark ? Colors.black45 : Colors.grey[200],
-                    child: const Center(
-                      child: Icon(Icons.broken_image_rounded, color: Colors.grey),
-                    ),
-                  ),
-                )
-              else
-                Container(
-                  height: 180,
-                  color: isDark ? Colors.black : Colors.grey[200],
-                  child: const Center(child: Icon(Icons.photo, size: 40)),
+              Text(
+                headerName,
+                style: TextStyle(
+                  color: isDark ? Colors.white70 : Colors.black87,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
                 ),
-
-              // Gradient Overlay at top and bottom for readability
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withValues(alpha: 0.4),
-                        Colors.transparent,
-                        Colors.transparent,
-                        Colors.black.withValues(alpha: 0.55),
-                      ],
-                      stops: const [0.0, 0.25, 0.7, 1.0],
+              ),
+              GestureDetector(
+                onTap: () async {
+                  await repo.toggleSaveMessage(widget.channelId, message.id);
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Text(
+                    'UNSAVE IN CHAT',
+                    style: TextStyle(
+                      color: isDark ? Colors.white54 : Colors.black45,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
                     ),
                   ),
                 ),
               ),
+            ],
+          ),
+        ),
 
-              // Top pill: "Saved in chat"
-              Positioned(
-                top: 8,
-                left: 8,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.65),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: const Color(0xFF6366F1).withValues(alpha: 0.6),
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+        // Main preview with Cyan-Blue left border and floating action pill
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Left blue accent line (Image 7)
+            Container(
+              width: 3.5,
+              height: 270,
+              margin: const EdgeInsets.only(right: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF00A3FF),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            GestureDetector(
+              onTap: () {
+                if (message.isVideoSnap) {
+                  _viewSnap(message, repo);
+                } else if (message.imageUrl != null) {
+                  _viewImage(message.imageUrl!);
+                }
+              },
+              onLongPress: () => _showSnapOptionsSheet(message, repo),
+              child: Container(
+                constraints: BoxConstraints(
+                  maxWidth: min(MediaQuery.of(context).size.width * 0.70, 255.0),
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  color: isDark ? const Color(0xFF27272A) : const Color(0xFFE4E4E7),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: Stack(
                     children: [
-                      const Icon(
-                        Icons.bookmark_rounded,
-                        size: 12,
-                        color: Color(0xFF818CF8),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        isSavedByMe ? 'Saved by you' : 'Saved in chat',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
+                      if (message.imageUrl != null)
+                        CachedNetworkImage(
+                          imageUrl: message.imageUrl!,
+                          width: min(MediaQuery.of(context).size.width * 0.70, 255.0),
+                          height: 270,
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) => Container(
+                            height: 240,
+                            color: isDark ? Colors.black45 : Colors.grey[200],
+                            child: const Center(
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
+                          errorWidget: (context, url, error) => Container(
+                            height: 180,
+                            color: isDark ? Colors.black45 : Colors.grey[200],
+                            child: const Center(
+                              child: Icon(Icons.broken_image_rounded, color: Colors.grey),
+                            ),
+                          ),
+                        )
+                      else
+                        Container(
+                          height: 180,
+                          color: isDark ? Colors.black : Colors.grey[200],
+                          child: const Center(child: Icon(Icons.photo, size: 40)),
+                        ),
+
+                      // If video, show center play icon
+                      if (message.isVideoSnap)
+                        Positioned.fill(
+                          child: Center(
+                            child: Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.55),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white70, width: 2),
+                              ),
+                              child: const Icon(
+                                Icons.play_arrow_rounded,
+                                color: Colors.white,
+                                size: 30,
+                              ),
+                            ),
+                          ),
+                        ),
+
+                      // Floating Top-Right Action Pill (Image 7: reaction, unsave, reply)
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.78),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: Colors.white12,
+                              width: 0.8,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.3),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // React
+                              GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () => _showMessageOptions(message, isMe, false),
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                  child: Icon(
+                                    Icons.add_reaction_outlined,
+                                    size: 16,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                width: 1,
+                                height: 12,
+                                color: Colors.white24,
+                                margin: const EdgeInsets.symmetric(horizontal: 3),
+                              ),
+                              // Unsave
+                              GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () async {
+                                  await repo.toggleSaveMessage(widget.channelId, message.id);
+                                },
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                  child: Icon(
+                                    Icons.bookmark_remove_rounded,
+                                    size: 16,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                width: 1,
+                                height: 12,
+                                color: Colors.white24,
+                                margin: const EdgeInsets.symmetric(horizontal: 3),
+                              ),
+                              // Reply
+                              GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () {
+                                  setState(() {
+                                    _replyingTo = message;
+                                  });
+                                },
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                  child: Icon(
+                                    Icons.reply_rounded,
+                                    size: 16,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
-
-              // If video, show center play icon
-              if (message.isVideoSnap)
-                Positioned.fill(
-                  child: Center(
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.55),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white70, width: 2),
-                      ),
-                      child: const Icon(
-                        Icons.play_arrow_rounded,
-                        color: Colors.white,
-                        size: 30,
-                      ),
-                    ),
-                  ),
-                ),
-
-              // Bottom row: Time and fullscreen icon
-              Positioned(
-                bottom: 6,
-                right: 8,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _formatTime(message.timestamp),
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    const Icon(
-                      Icons.fullscreen_rounded,
-                      size: 15,
-                      color: Colors.white70,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
-      ),
+      ],
     );
   }
 
@@ -1756,167 +1959,233 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final isExpired = message.isSnapExpiredFor(currentUserId);
     final canReplay = message.canReplay(currentUserId);
 
-    final String statusText;
-    final IconData statusIcon;
-    final bool isHollow;
-    Color statusColor = const Color(0xFFEF4444);
+    // State A: Not viewed yet by recipient (Image 5 - media_1793641690714_08a0095a.png)
+    final bool isUnopened = !isMe && viewCount == 0 && !isExpired;
 
+    if (isUnopened) {
+      return GestureDetector(
+        onTap: () => _viewSnap(message, repo),
+        onLongPress: () => _showSnapOptionsSheet(message, repo),
+        child: Container(
+          constraints: const BoxConstraints(minWidth: 170, maxWidth: 220),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF18181B) : const Color(0xFFF4F4F5),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isDark ? Colors.white12 : Colors.black12,
+              width: 1.0,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 16,
+                height: 16,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF2A55),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'New Snap',
+                      style: TextStyle(
+                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    const SizedBox(height: 1.5),
+                    Text(
+                      'Click to view',
+                      style: TextStyle(
+                        color: isDark ? Colors.white60 : Colors.black54,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // State B: Opened / Replay / Save (Image 6 - media_1793641707381_de3d7383.png)
+    final String labelText;
     if (isMe) {
       final isOpenedByRecipient = message.readBy.length > 1;
-      final otherViews = message.snapViews.entries
-          .where((e) => e.key != currentUserId)
-          .fold<int>(0, (sum, e) => sum + e.value);
-
-      if (isSaved) {
-        statusText = 'Saved in chat';
-        statusIcon = Icons.bookmark_rounded;
-        isHollow = false;
-        statusColor = const Color(0xFF6366F1);
-      } else if (otherViews >= 2) {
-        statusText = 'Opened';
-        statusIcon = Icons.arrow_outward_rounded;
-        isHollow = true;
-      } else if (isOpenedByRecipient || otherViews >= 1) {
-        statusText = 'Opened · Replay available';
-        statusIcon = Icons.arrow_outward_rounded;
-        isHollow = true;
-      } else {
-        statusText = 'Delivered';
-        statusIcon = Icons.send_rounded;
-        isHollow = false;
-      }
+      labelText = isOpenedByRecipient ? 'Opened' : 'Delivered';
+    } else if (isExpired) {
+      labelText = 'Expired';
     } else {
-      if (isSaved) {
-        statusText = 'Saved in Chat';
-        statusIcon = Icons.bookmark_rounded;
-        isHollow = false;
-        statusColor = const Color(0xFF6366F1);
-      } else if (isExpired) {
-        statusText = 'Expired';
-        statusIcon = Icons.lock_clock_rounded;
-        isHollow = true;
-        statusColor = isDark ? Colors.white38 : Colors.grey;
-      } else if (canReplay) {
-        statusText = 'Opened · Tap to replay';
-        statusIcon = Icons.replay_rounded;
-        isHollow = true;
-      } else {
-        statusText = message.isVideoSnap ? 'Tap to view video' : 'Tap to view';
-        statusIcon = message.isVideoSnap
-            ? Icons.videocam_rounded
-            : Icons.camera_alt_rounded;
-        isHollow = false;
-      }
+      labelText = 'Right click to replay or save';
     }
 
     return GestureDetector(
       onTap: () {
-        if (isExpired && !isMe) {
+        if (!isMe && canReplay) {
+          _viewSnap(message, repo);
+        } else if (!isMe && isExpired) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('This Snap has expired after 1 replay.'),
               duration: Duration(seconds: 2),
             ),
           );
-          return;
         }
-        _viewSnap(message, repo);
       },
       onLongPress: () => _showSnapOptionsSheet(message, repo),
       child: Container(
-        constraints: const BoxConstraints(minWidth: 180, maxWidth: 250),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        constraints: const BoxConstraints(minWidth: 230, maxWidth: 310),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: isDark ? Colors.black : Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          color: isDark ? const Color(0xFF18181B) : const Color(0xFFF4F4F5),
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: statusColor.withValues(alpha: isHollow ? 0.35 : 0.8),
-            width: 1.5,
+            color: isDark ? Colors.white12 : Colors.black12,
+            width: 1.0,
           ),
-          boxShadow: [
-            BoxShadow(
-              color: statusColor.withValues(alpha: isHollow ? 0.06 : 0.22),
-              blurRadius: 10,
-              offset: const Offset(0, 3),
-            ),
-          ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 38,
-              height: 38,
+              width: 16,
+              height: 16,
               decoration: BoxDecoration(
-                color: isHollow ? Colors.transparent : statusColor,
-                borderRadius: BorderRadius.circular(10),
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(4),
                 border: Border.all(
-                  color: statusColor,
-                  width: 2.2,
-                ),
-              ),
-              child: Center(
-                child: Icon(
-                  statusIcon,
-                  color: isHollow ? statusColor : Colors.white,
-                  size: 19,
+                  color: isExpired
+                      ? (isDark ? Colors.white38 : Colors.grey)
+                      : const Color(0xFFFF2A55),
+                  width: 2,
                 ),
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8),
             Flexible(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        message.isVideoSnap ? 'Video Snap' : 'Snap',
-                        style: TextStyle(
-                          color: isDark ? Colors.white : Colors.black87,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 15,
-                          letterSpacing: 0.2,
-                        ),
-                      ),
-                      if (isSaved) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 5,
-                            vertical: 1,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF6366F1).withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Text(
-                            'Saved',
-                            style: TextStyle(
-                              color: Color(0xFF6366F1),
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    statusText,
-                    style: TextStyle(
-                      color: isDark ? Colors.white60 : Colors.black54,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+              child: Text(
+                labelText,
+                style: TextStyle(
+                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  letterSpacing: -0.2,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
+            ),
+            const SizedBox(width: 8),
+            // Right circular action buttons (Image 6)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Replay button
+                if (!isMe)
+                  Container(
+                    width: 30,
+                    height: 30,
+                    margin: const EdgeInsets.only(right: 6),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.12)
+                          : Colors.black.withValues(alpha: 0.08),
+                    ),
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      iconSize: 15,
+                      icon: Icon(
+                        Icons.replay_rounded,
+                        color: canReplay
+                            ? (isDark ? Colors.white : Colors.black87)
+                            : (isDark ? Colors.white38 : Colors.grey),
+                      ),
+                      tooltip: 'Replay Snap',
+                      onPressed: () {
+                        if (canReplay) {
+                          _viewSnap(message, repo);
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Replay limit reached.'),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                // Save in chat button
+                Container(
+                  width: 30,
+                  height: 30,
+                  margin: const EdgeInsets.only(right: 6),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.12)
+                        : Colors.black.withValues(alpha: 0.08),
+                  ),
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    iconSize: 15,
+                    icon: Icon(
+                      Icons.archive_outlined,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                    tooltip: 'Save in chat',
+                    onPressed: () async {
+                      await repo.toggleSaveMessage(widget.channelId, message.id);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Snap saved in chat!'),
+                            duration: Duration(seconds: 1),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ),
+                // Reply / Snap back button
+                Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.12)
+                        : Colors.black.withValues(alpha: 0.08),
+                  ),
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    iconSize: 15,
+                    icon: Icon(
+                      Icons.camera_alt_rounded,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                    tooltip: 'Reply to Snap',
+                    onPressed: () {
+                      setState(() {
+                        _replyingTo = message;
+                      });
+                    },
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -2058,7 +2327,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               width: 52,
                               height: 72,
                               fit: BoxFit.cover,
-                              placeholder: (_, __) => Container(
+                              placeholder: (_, _) => Container(
                                 width: 52,
                                 height: 72,
                                 color: Colors.grey.withValues(alpha: 0.2),
@@ -2070,7 +2339,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                   ),
                                 ),
                               ),
-                              errorWidget: (_, __, ___) => Container(
+                              errorWidget: (_, _, _) => Container(
                                 width: 52,
                                 height: 72,
                                 color: Colors.grey.withValues(alpha: 0.2),
@@ -3536,8 +3805,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               key: Key(message.id),
                               startActionPane: ActionPane(
                                 motion: const BehindMotion(),
-                                extentRatio: 0.22,
+                                extentRatio: 0.15,
                                 dismissible: DismissiblePane(
+                                  dismissThreshold: 0.10,
                                   onDismissed: () {
                                     setState(() {
                                       _replyingTo = message;
@@ -3578,8 +3848,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               ),
                               endActionPane: ActionPane(
                                 motion: const BehindMotion(),
-                                extentRatio: 0.22,
+                                extentRatio: 0.15,
                                 dismissible: DismissiblePane(
+                                  dismissThreshold: 0.10,
                                   onDismissed: () {
                                     setState(() {
                                       _replyingTo = message;
@@ -4523,15 +4794,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ? channel.memberNames[senderId]!
             : 'Friend');
 
-    String previewText = _replyingTo!.content;
-    if (_replyingTo!.isSnap) {
-      previewText = '📸 Snap';
-    } else if (_replyingTo!.type == 'image') {
-      previewText = '📷 Photo';
-    } else if (_replyingTo!.type == 'voice') {
-      previewText = '🎤 Voice message';
+    final hasMedia = _replyingTo?.imageUrl != null && _replyingTo!.imageUrl!.isNotEmpty;
+    final isPhoto = hasMedia || _replyingTo!.type == 'image' || _replyingTo!.isSnap;
+    final isSticker = _replyingTo!.type == 'sticker';
+    final isVoice = _replyingTo!.type == 'voice' || _replyingTo!.audioUrl != null;
+
+    String previewLabel;
+    IconData? previewIcon;
+    if (isPhoto) {
+      previewLabel = 'Photo';
+      previewIcon = Icons.camera_alt_rounded;
+    } else if (isSticker) {
+      previewLabel = 'Sticker';
+      previewIcon = Icons.sticky_note_2_rounded;
+    } else if (isVoice) {
+      previewLabel = 'Voice message';
+      previewIcon = Icons.mic_rounded;
     } else if (_replyingTo!.type == 'location') {
-      previewText = '📍 Shared location';
+      previewLabel = 'Location';
+      previewIcon = Icons.location_on_rounded;
+    } else {
+      previewLabel = _replyingTo!.content;
     }
 
     return Container(
@@ -4548,12 +4831,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.reply_rounded,
-            size: 18,
-            color: Color(0xFF6366F1),
-          ),
-          const SizedBox(width: 8),
+          if (hasMedia)
+            Padding(
+              padding: const EdgeInsets.only(right: 10),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: CachedNetworkImage(
+                  imageUrl: _replyingTo!.imageUrl!,
+                  width: 36,
+                  height: 36,
+                  fit: BoxFit.cover,
+                  errorWidget: (_, _, _) => const Icon(Icons.broken_image_rounded, size: 24),
+                ),
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Icon(
+                previewIcon ?? Icons.reply_rounded,
+                size: 20,
+                color: const Color(0xFF6366F1),
+              ),
+            ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -4568,7 +4868,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  previewText,
+                  previewLabel,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -5290,7 +5590,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       imageWidth: 100,
       imageHeight: 100,
       replyToId: _replyingTo?.id,
-      replyToContent: _replyingTo?.content,
+      replyToContent: _getReplyContentSnippet(_replyingTo),
       replyToSenderId: _replyingTo?.senderId,
     );
     setState(() {
@@ -5515,89 +5815,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-    Widget _buildGroupAvatarCluster(ChatChannel? channel, String? displayAvatar, String displayName) {
-    if (displayAvatar != null && displayAvatar.isNotEmpty) {
-      return UserAvatar(
-        userId: channel?.id ?? '',
-        avatarUrl: displayAvatar,
-        displayName: displayName,
-        radius: 19,
-      );
+  Widget _buildGroupAvatarCluster(ChatChannel? channel, String? displayAvatar, String displayName) {
+    if (channel != null) {
+      return DynamicGroupAvatar(channel: channel, size: 38);
     }
-
-    final avatars = (channel?.memberAvatars.values.where((a) => a != null && a.isNotEmpty).cast<String>().toList() ?? []);
-    if (avatars.length >= 3) {
-      return SizedBox(
-        width: 38,
-        height: 38,
-        child: Stack(
-          children: [
-            Positioned(
-              left: 0,
-              top: 0,
-              child: CircleAvatar(
-                radius: 11,
-                backgroundImage: NetworkImage(avatars[0]),
-                backgroundColor: const Color(0xFF6366F1),
-              ),
-            ),
-            Positioned(
-              right: 0,
-              top: 0,
-              child: CircleAvatar(
-                radius: 11,
-                backgroundImage: NetworkImage(avatars[1]),
-                backgroundColor: const Color(0xFF10B981),
-              ),
-            ),
-            Positioned(
-              left: 8,
-              bottom: 0,
-              child: Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 1.5),
-                ),
-                child: CircleAvatar(
-                  radius: 11,
-                  backgroundImage: NetworkImage(avatars[2]),
-                  backgroundColor: const Color(0xFFF59E0B),
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Container(
-      width: 38,
-      height: 38,
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        shape: BoxShape.circle,
-      ),
-      child: Center(
-        child: Text(
-          displayName.isNotEmpty ? displayName[0].toUpperCase() : 'G',
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-          ),
+    return CircleAvatar(
+      radius: 19,
+      backgroundColor: const Color(0xFF10B981),
+      child: Text(
+        displayName.isNotEmpty ? displayName[0].toUpperCase() : 'G',
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+          fontSize: 16,
         ),
       ),
     );
   }
 
+
   Widget _buildAnnouncementBanner(ChatChannel? channel, bool isDark) {
     return const SizedBox.shrink();
     if (_hideAnnouncement) return const SizedBox.shrink();
-    const text = "Midterm on Friday, Room 402 @ 10 AM — Liam (Class Rep)";
+    const text = "";
 
     return Container(
       width: double.infinity,

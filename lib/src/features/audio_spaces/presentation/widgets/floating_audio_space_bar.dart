@@ -39,7 +39,7 @@ class FloatingAudioSpaceBar extends ConsumerWidget {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(28),
                 border: Border.all(
-                  color: const Color(0xFF7C4DFF).withOpacity(0.5),
+                  color: const Color(0xFF7C4DFF).withValues(alpha: 0.5),
                   width: 1.5,
                 ),
                 gradient: const LinearGradient(
@@ -62,7 +62,7 @@ class FloatingAudioSpaceBar extends ConsumerWidget {
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFFFF416C).withOpacity(0.4),
+                          color: const Color(0xFFFF416C).withValues(alpha: 0.4),
                           blurRadius: 8,
                           spreadRadius: 2,
                         ),
@@ -97,7 +97,7 @@ class FloatingAudioSpaceBar extends ConsumerWidget {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF7C4DFF).withOpacity(0.2),
+                                color: const Color(0xFF7C4DFF).withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
@@ -113,7 +113,7 @@ class FloatingAudioSpaceBar extends ConsumerWidget {
                             Text(
                               '${room.totalParticipants} listening',
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.6),
+                                color: Colors.white.withValues(alpha: 0.6),
                                 fontSize: 11,
                               ),
                             ),

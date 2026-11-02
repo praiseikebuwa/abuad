@@ -1,3 +1,4 @@
+import 'package:go_router/go_router.dart';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -461,34 +462,48 @@ class _ShareRecipientItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: GestureDetector(
-        onTap: onToggle,
-        child: Column(
-          children: [
-            Stack(
-              children: [
-                UserAvatar(userId: userId, avatarUrl: avatarUrl, radius: 30),
-                if (isSelected)
-                  Positioned(
-                    right: 0,
-                    bottom: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: const BoxDecoration(
-                        color: AppColors.secondaryTeal,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.check,
-                        color: Colors.white,
-                        size: 14,
-                      ),
+      child: Column(
+        children: [
+          Stack(
+            children: [
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  if (userId.isNotEmpty) {
+                    Navigator.of(context).pop();
+                    context.push('/user/' + userId);
+                  }
+                },
+                child: UserAvatar(userId: userId, avatarUrl: avatarUrl, radius: 30),
+              ),
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: GestureDetector(
+                  onTap: onToggle,
+                  child: Container(
+                    padding: const EdgeInsets.all(2.5),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? AppColors.secondaryTeal
+                          : Colors.black.withValues(alpha: 0.55),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 1.5),
+                    ),
+                    child: Icon(
+                      isSelected ? Icons.check : Icons.add,
+                      color: Colors.white,
+                      size: 13,
                     ),
                   ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          GestureDetector(
+            onTap: onToggle,
+            child: SizedBox(
               width: 70,
               child: Text(
                 name.split(' ')[0],
@@ -498,11 +513,12 @@ class _ShareRecipientItem extends StatelessWidget {
                   color: isSelected ? AppColors.secondaryTeal : null,
                 ),
                 textAlign: TextAlign.center,
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -524,10 +540,17 @@ class _ShareListTile extends StatelessWidget {
     return ListTile(
       onTap: onToggle,
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-      leading: UserAvatar(
-        userId: user.uid,
-        avatarUrl: user.avatarUrl,
-        radius: 20,
+      leading: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          Navigator.of(context).pop();
+          context.push('/user/' + user.uid);
+        },
+        child: UserAvatar(
+          userId: user.uid,
+          avatarUrl: user.avatarUrl,
+          radius: 20,
+        ),
       ),
       title: Text(
         user.displayName,
