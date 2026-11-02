@@ -1,0 +1,160 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 220" width="100%" height="220">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#080C16" />
+      <stop offset="50%" stop-color="#0F172A" />
+      <stop offset="100%" stop-color="#050811" />
+    </linearGradient>
+
+    <!-- Moving Aurora Gradient -->
+    <linearGradient id="aurora" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.8">
+        <animate attributeName="stop-color" values="#38BDF8;#818CF8;#C084FC;#F472B6;#38BDF8" dur="8s" repeatCount="indefinite" />
+      </stop>
+      <stop offset="50%" stop-color="#818CF8" stop-opacity="0.8">
+        <animate attributeName="stop-color" values="#818CF8;#C084FC;#F472B6;#38BDF8;#818CF8" dur="8s" repeatCount="indefinite" />
+      </stop>
+      <stop offset="100%" stop-color="#F472B6" stop-opacity="0.8">
+        <animate attributeName="stop-color" values="#F472B6;#38BDF8;#818CF8;#C084FC;#F472B6" dur="8s" repeatCount="indefinite" />
+      </stop>
+    </linearGradient>
+
+    <!-- Shimmer Glow Filter -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+
+    <filter id="subtleGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <style>
+    .brand-title {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      font-weight: 900;
+      font-size: 46px;
+      letter-spacing: 4px;
+      fill: url(#aurora);
+      filter: url(#subtleGlow);
+    }
+    .brand-sub {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      font-weight: 500;
+      font-size: 14px;
+      letter-spacing: 3px;
+      fill: #94A3B8;
+      text-transform: uppercase;
+    }
+    .badge-text {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      font-weight: 700;
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      fill: #38BDF8;
+    }
+  </style>
+
+  <!-- Container Box with Rounded Glass Border -->
+  <rect x="2" y="2" width="796" height="216" rx="20" fill="url(#bgGrad)" stroke="#1E293B" stroke-width="2" />
+
+  <!-- Animated Glowing Mesh Orbs -->
+  <circle cx="150" cy="110" r="130" fill="#38BDF8" opacity="0.12" filter="url(#glow)">
+    <animate attributeName="cx" values="150;250;150" dur="10s" repeatCount="indefinite" />
+    <animate attributeName="cy" values="110;80;110" dur="8s" repeatCount="indefinite" />
+    <animate attributeName="r" values="130;160;130" dur="9s" repeatCount="indefinite" />
+  </circle>
+
+  <circle cx="650" cy="110" r="140" fill="#F472B6" opacity="0.12" filter="url(#glow)">
+    <animate attributeName="cx" values="650;550;650" dur="11s" repeatCount="indefinite" />
+    <animate attributeName="cy" values="110;140;110" dur="9s" repeatCount="indefinite" />
+    <animate attributeName="r" values="140;170;140" dur="10s" repeatCount="indefinite" />
+  </circle>
+
+  <!-- Decorative Grid Dots -->
+  <g opacity="0.15" fill="#94A3B8">
+    <circle cx="40" cy="40" r="1.5" /><circle cx="60" cy="40" r="1.5" /><circle cx="80" cy="40" r="1.5" /><circle cx="100" cy="40" r="1.5" />
+    <circle cx="40" cy="60" r="1.5" /><circle cx="60" cy="60" r="1.5" /><circle cx="80" cy="60" r="1.5" /><circle cx="100" cy="60" r="1.5" />
+    <circle cx="40" cy="80" r="1.5" /><circle cx="60" cy="80" r="1.5" /><circle cx="80" cy="80" r="1.5" /><circle cx="100" cy="80" r="1.5" />
+    <circle cx="700" cy="140" r="1.5" /><circle cx="720" cy="140" r="1.5" /><circle cx="740" cy="140" r="1.5" /><circle cx="760" cy="140" r="1.5" />
+    <circle cx="700" cy="160" r="1.5" /><circle cx="720" cy="160" r="1.5" /><circle cx="740" cy="160" r="1.5" /><circle cx="760" cy="160" r="1.5" />
+    <circle cx="700" cy="180" r="1.5" /><circle cx="720" cy="180" r="1.5" /><circle cx="740" cy="180" r="1.5" /><circle cx="760" cy="180" r="1.5" />
+  </g>
+
+  <!-- Animated Sound Waveform Bars (Representing Reels & Media) -->
+  <g transform="translate(620, 75)" opacity="0.8">
+    <!-- Bar 1 -->
+    <rect x="0" y="25" width="4" height="20" rx="2" fill="url(#aurora)">
+      <animate attributeName="height" values="20;50;15;40;20" dur="1.2s" repeatCount="indefinite" />
+      <animate attributeName="y" values="25;10;27;15;25" dur="1.2s" repeatCount="indefinite" />
+    </rect>
+    <!-- Bar 2 -->
+    <rect x="9" y="15" width="4" height="40" rx="2" fill="url(#aurora)">
+      <animate attributeName="height" values="40;15;60;25;40" dur="1.0s" repeatCount="indefinite" />
+      <animate attributeName="y" values="15;27;5;22;15" dur="1.0s" repeatCount="indefinite" />
+    </rect>
+    <!-- Bar 3 -->
+    <rect x="18" y="10" width="4" height="50" rx="2" fill="url(#aurora)">
+      <animate attributeName="height" values="50;70;30;60;50" dur="1.4s" repeatCount="indefinite" />
+      <animate attributeName="y" values="10;0;20;5;10" dur="1.4s" repeatCount="indefinite" />
+    </rect>
+    <!-- Bar 4 -->
+    <rect x="27" y="20" width="4" height="30" rx="2" fill="url(#aurora)">
+      <animate attributeName="height" values="30;60;20;45;30" dur="0.9s" repeatCount="indefinite" />
+      <animate attributeName="y" values="20;5;25;12;20" dur="0.9s" repeatCount="indefinite" />
+    </rect>
+    <!-- Bar 5 -->
+    <rect x="36" y="28" width="4" height="15" rx="2" fill="url(#aurora)">
+      <animate attributeName="height" values="15;35;10;40;15" dur="1.3s" repeatCount="indefinite" />
+      <animate attributeName="y" values="28;17;30;15;28" dur="1.3s" repeatCount="indefinite" />
+    </rect>
+  </g>
+
+  <!-- Left Camera Aperture / Glowing Shutter Ring Widget -->
+  <g transform="translate(110, 110)">
+    <!-- Outer Glow Ring -->
+    <circle cx="0" cy="0" r="42" fill="none" stroke="url(#aurora)" stroke-width="2.5" opacity="0.6">
+      <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="12s" repeatCount="indefinite" />
+    </circle>
+    <!-- Dashed Rotating Ring -->
+    <circle cx="0" cy="0" r="34" fill="none" stroke="#38BDF8" stroke-width="1.5" stroke-dasharray="6,6" opacity="0.8">
+      <animateTransform attributeName="transform" type="rotate" from="360" to="0" dur="8s" repeatCount="indefinite" />
+    </circle>
+    <!-- Center Pulsing Core -->
+    <circle cx="0" cy="0" r="22" fill="#0F172A" stroke="url(#aurora)" stroke-width="2">
+      <animate attributeName="r" values="22;24;22" dur="2s" repeatCount="indefinite" />
+    </circle>
+    <!-- Inner Dot -->
+    <circle cx="0" cy="0" r="7" fill="#38BDF8" filter="url(#subtleGlow)">
+      <animate attributeName="opacity" values="0.7;1;0.7" dur="2s" repeatCount="indefinite" />
+    </circle>
+  </g>
+
+  <!-- Status Pill Badge -->
+  <g transform="translate(200, 42)">
+    <rect x="0" y="0" width="180" height="24" rx="12" fill="#0F172A" stroke="#38BDF8" stroke-width="1" opacity="0.9" />
+    <!-- Blinking Green Online Dot -->
+    <circle cx="16" cy="12" r="4" fill="#10B981">
+      <animate attributeName="opacity" values="1;0.3;1" dur="1.5s" repeatCount="indefinite" />
+    </circle>
+    <text x="30" y="16" class="badge-text">CAMPUS SUPER APP</text>
+  </g>
+
+  <!-- Center Typography -->
+  <text x="200" y="112" class="brand-title">ABUAD LIFE</text>
+  <text x="203" y="142" class="brand-sub">The Elite Campus Digital Ecosystem</text>
+
+  <!-- Floating Sparkles -->
+  <g fill="#F472B6" opacity="0.7">
+    <path d="M 500 50 Q 500 55 505 55 Q 500 55 500 60 Q 500 55 495 55 Q 500 55 500 50 Z">
+      <animate attributeName="opacity" values="0.2;1;0.2" dur="2.5s" repeatCount="indefinite" />
+      <animateTransform attributeName="transform" type="scale" values="0.8;1.3;0.8" dur="2.5s" repeatCount="indefinite" transform-origin="500 55" />
+    </path>
+    <path d="M 570 150 Q 570 154 574 154 Q 570 154 570 158 Q 570 154 566 154 Q 570 154 570 150 Z">
+      <animate attributeName="opacity" values="1;0.2;1" dur="3s" repeatCount="indefinite" />
+    </path>
+  </g>
+</svg>

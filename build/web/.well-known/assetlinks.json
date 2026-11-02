@@ -1,0 +1,13 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.pronown.abuad",
+      "sha256_cert_fingerprints": [
+        "5B:5A:77:64:2D:D8:3A:65:A3:5A:CB:68:05:33:76:E8:AF:07:9A:80:98:7D:03:64:1F:BB:C8:8A:53:FC:3C:90"
+      ]
+    }
+  }
+]
+
