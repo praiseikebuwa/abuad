@@ -17,6 +17,42 @@
   ],
   "rewrites": [
     {
+      "source": "/share/(.*)",
+      "destination": "https://api.abuadapp.com.ng/share/$1"
+    },
+    {
+      "source": "/post/(.*)",
+      "destination": "https://api.abuadapp.com.ng/share/post/$1"
+    },
+    {
+      "source": "/p/(.*)",
+      "destination": "https://api.abuadapp.com.ng/share/post/$1"
+    },
+    {
+      "source": "/user/(.*)",
+      "destination": "https://api.abuadapp.com.ng/share/user/$1"
+    },
+    {
+      "source": "/u/(.*)",
+      "destination": "https://api.abuadapp.com.ng/share/user/$1"
+    },
+    {
+      "source": "/spaces/(.*)",
+      "destination": "https://api.abuadapp.com.ng/share/spaces/$1"
+    },
+    {
+      "source": "/marketplace/(.*)",
+      "destination": "https://api.abuadapp.com.ng/share/marketplace/$1"
+    },
+    {
+      "source": "/group/(.*)",
+      "destination": "https://api.abuadapp.com.ng/share/group/$1"
+    },
+    {
+      "source": "/join/group/(.*)",
+      "destination": "https://api.abuadapp.com.ng/share/group/$1"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
