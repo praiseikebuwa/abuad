@@ -1,5 +1,162 @@
 {
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "headers": [
+    {
+      "source": "/.well-known/(.*)",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ]
+    }
+  ],
   "rewrites": [
+    {
+      "source": "/.well-known/(.*)",
+      "destination": "/.well-known/$1"
+    },
+    {
+      "source": "/post/:id",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(bot|facebookexternalhit|whatsapp|twitter|telegram|discord|slack|linkedin|applebot|preview|meta|pinterest|skype|viber).*"
+        }
+      ],
+      "destination": "https://api.abuadapp.com.ng/share/post/:id"
+    },
+    {
+      "source": "/p/:id",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(bot|facebookexternalhit|whatsapp|twitter|telegram|discord|slack|linkedin|applebot|preview|meta|pinterest|skype|viber).*"
+        }
+      ],
+      "destination": "https://api.abuadapp.com.ng/share/post/:id"
+    },
+    {
+      "source": "/spaces/:id",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(bot|facebookexternalhit|whatsapp|twitter|telegram|discord|slack|linkedin|applebot|preview|meta|pinterest|skype|viber).*"
+        }
+      ],
+      "destination": "https://api.abuadapp.com.ng/share/spaces/:id"
+    },
+    {
+      "source": "/space/:id",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(bot|facebookexternalhit|whatsapp|twitter|telegram|discord|slack|linkedin|applebot|preview|meta|pinterest|skype|viber).*"
+        }
+      ],
+      "destination": "https://api.abuadapp.com.ng/share/spaces/:id"
+    },
+    {
+      "source": "/marketplace/item/:id",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(bot|facebookexternalhit|whatsapp|twitter|telegram|discord|slack|linkedin|applebot|preview|meta|pinterest|skype|viber).*"
+        }
+      ],
+      "destination": "https://api.abuadapp.com.ng/share/marketplace/:id"
+    },
+    {
+      "source": "/marketplace/detail",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(bot|facebookexternalhit|whatsapp|twitter|telegram|discord|slack|linkedin|applebot|preview|meta|pinterest|skype|viber).*"
+        }
+      ],
+      "destination": "https://api.abuadapp.com.ng/share/marketplace/detail"
+    },
+    {
+      "source": "/user/:id",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(bot|facebookexternalhit|whatsapp|twitter|telegram|discord|slack|linkedin|applebot|preview|meta|pinterest|skype|viber).*"
+        }
+      ],
+      "destination": "https://api.abuadapp.com.ng/share/user/:id"
+    },
+    {
+      "source": "/profile/:id",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(bot|facebookexternalhit|whatsapp|twitter|telegram|discord|slack|linkedin|applebot|preview|meta|pinterest|skype|viber).*"
+        }
+      ],
+      "destination": "https://api.abuadapp.com.ng/share/user/:id"
+    },
+    {
+      "source": "/u/:id",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(bot|facebookexternalhit|whatsapp|twitter|telegram|discord|slack|linkedin|applebot|preview|meta|pinterest|skype|viber).*"
+        }
+      ],
+      "destination": "https://api.abuadapp.com.ng/share/user/:id"
+    },
+    {
+      "source": "/join/group/:id",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(bot|facebookexternalhit|whatsapp|twitter|telegram|discord|slack|linkedin|applebot|preview|meta|pinterest|skype|viber).*"
+        }
+      ],
+      "destination": "https://api.abuadapp.com.ng/share/group/:id"
+    },
+    {
+      "source": "/group/:id",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(bot|facebookexternalhit|whatsapp|twitter|telegram|discord|slack|linkedin|applebot|preview|meta|pinterest|skype|viber).*"
+        }
+      ],
+      "destination": "https://api.abuadapp.com.ng/share/group/:id"
+    },
+    {
+      "source": "/event/:id",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(bot|facebookexternalhit|whatsapp|twitter|telegram|discord|slack|linkedin|applebot|preview|meta|pinterest|skype|viber).*"
+        }
+      ],
+      "destination": "https://api.abuadapp.com.ng/share/event/:id"
+    },
+    {
+      "source": "/share/(.*)",
+      "destination": "https://api.abuadapp.com.ng/share/$1"
+    },
     {
       "source": "/(.*)",
       "destination": "/index.html"

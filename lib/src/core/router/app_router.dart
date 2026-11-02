@@ -132,23 +132,77 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           : authRepo.authStateChanges,
     ),
     redirect: (context, state) {
+      // 1. Normalize custom scheme 'abuad://<host>/<path>' or external URLs into internal router paths
+      if (state.uri.scheme == 'abuad') {
+        final host = state.uri.host;
+        final path = state.uri.path;
+        final query = state.uri.hasQuery ? '?${state.uri.query}' : '';
+        return '/$host$path$query';
+      }
+
+      // Normalize web domain if received directly
+      if (state.uri.host == 'abuadapp.com.ng' ||
+          state.uri.host == 'app.abuad.edu.ng' ||
+          state.uri.host == 'abuadapp.web.app' ||
+          state.uri.host == 'api.abuadapp.com.ng') {
+        final path = state.uri.path;
+        final query = state.uri.hasQuery ? '?${state.uri.query}' : '';
+        return '$path$query';
+      }
+
+      // Normalize /share/... endpoints to native app routes
+      final uriPath = state.uri.path;
+      if (uriPath.startsWith('/share/')) {
+        final remaining = uriPath.replaceFirst('/share/', '');
+        final query = state.uri.hasQuery ? '?${state.uri.query}' : '';
+        if (remaining.startsWith('marketplace/')) {
+          final id = remaining.replaceFirst('marketplace/', '');
+          return '/marketplace/detail?id=$id';
+        } else if (remaining.startsWith('space/') || remaining.startsWith('spaces/')) {
+          final id = remaining.replaceFirst(RegExp(r'^spaces?\/'), '');
+          return '/spaces/$id';
+        } else if (remaining.startsWith('post/') || remaining.startsWith('p/')) {
+          final id = remaining.replaceFirst(RegExp(r'^(post|p)\/'), '');
+          return '/post/$id';
+        } else if (remaining.startsWith('user/') || remaining.startsWith('profile/') || remaining.startsWith('u/')) {
+          final id = remaining.replaceFirst(RegExp(r'^(user|profile|u)\/'), '');
+          return '/user/$id';
+        } else if (remaining.startsWith('group/') || remaining.startsWith('join/group/')) {
+          final id = remaining.replaceFirst(RegExp(r'^(group|join\/group)\/'), '');
+          return '/join/group/$id';
+        } else if (remaining.startsWith('event/')) {
+          return '/events';
+        }
+        return '/$remaining$query';
+      }
+
       final isLoggedIn = authRepo.currentUser != null;
       final isFirstLaunch = ref
           .read(firstLaunchRepositoryProvider)
           .isFirstLaunch();
 
-      final isLoggingIn = state.uri.toString() == '/login';
-      final isSigningUp = state.uri.toString() == '/signup';
-      final isOnboarding = state.uri.toString() == '/onboarding';
-      final isCompletingProfile = state.uri.toString() == '/complete-profile';
-      final isBanned = state.uri.toString() == '/banned';
+      final isLoggingIn = uriPath == '/login';
+      final isSigningUp = uriPath == '/signup';
+      final isOnboarding = uriPath == '/onboarding';
+      final isCompletingProfile = uriPath == '/complete-profile';
+      final isBanned = uriPath == '/banned';
 
-      final uriPath = state.uri.path;
-      final isPublicPostRoute = uriPath.startsWith('/post/') ||
+      final isPublicRoute = uriPath.startsWith('/post/') ||
           uriPath.startsWith('/p/') ||
-          uriPath == '/post-detail';
+          uriPath == '/post-detail' ||
+          uriPath.startsWith('/spaces/') ||
+          uriPath.startsWith('/space/') ||
+          uriPath.startsWith('/marketplace/detail') ||
+          uriPath.startsWith('/marketplace/item/') ||
+          uriPath.startsWith('/user/') ||
+          uriPath.startsWith('/profile/') ||
+          uriPath.startsWith('/u/') ||
+          uriPath.startsWith('/join/group/') ||
+          uriPath.startsWith('/groups/join/') ||
+          uriPath.startsWith('/store/') ||
+          uriPath.startsWith('/hashtag/');
 
-      if (isFirstLaunch && !isOnboarding && !isPublicPostRoute) {
+      if (isFirstLaunch && !isOnboarding && !isPublicRoute) {
         return '/onboarding';
       }
 
@@ -156,7 +210,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           !isLoggingIn &&
           !isSigningUp &&
           !isOnboarding &&
-          !isPublicPostRoute) {
+          !isPublicRoute) {
+        final target = state.uri.toString();
+        if (target != '/' && target.isNotEmpty) {
+          return '/login?redirect=${Uri.encodeComponent(target)}';
+        }
         return '/login';
       }
 
@@ -172,12 +230,16 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             return '/banned';
           }
 
-          if (isIncomplete && !isCompletingProfile && !isPublicPostRoute) {
+          if (isIncomplete && !isCompletingProfile && !isPublicRoute) {
             return '/complete-profile';
           }
 
           if (!isIncomplete &&
               (isLoggingIn || isSigningUp || isCompletingProfile || isBanned)) {
+            final redirectUrl = state.uri.queryParameters['redirect'];
+            if (redirectUrl != null && redirectUrl.isNotEmpty && redirectUrl != '/') {
+              return redirectUrl;
+            }
             return '/';
           }
         }
@@ -541,6 +603,26 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             child: LiveAudioRoomScreen(roomId: id),
           );
         },
+      ),
+      GoRoute(
+        path: '/space/:id',
+        parentNavigatorKey: rootNavigatorKey,
+        redirect: (context, state) => '/spaces/${state.pathParameters['id']}',
+      ),
+      GoRoute(
+        path: '/store/:sellerId',
+        parentNavigatorKey: rootNavigatorKey,
+        redirect: (context, state) => '/marketplace/seller/${state.pathParameters['sellerId']}',
+      ),
+      GoRoute(
+        path: '/hashtag/:tag',
+        parentNavigatorKey: rootNavigatorKey,
+        redirect: (context, state) => '/feed/hashtag/${state.pathParameters['tag']}',
+      ),
+      GoRoute(
+        path: '/event/:id',
+        parentNavigatorKey: rootNavigatorKey,
+        redirect: (context, state) => '/events',
       ),
       GoRoute(
         path: '/portal',

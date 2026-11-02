@@ -1,0 +1,26 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "TEAMID.com.pronown.abuad",
+        "paths": [
+          "/post/*",
+          "/p/*",
+          "/spaces/*",
+          "/space/*",
+          "/marketplace/*",
+          "/user/*",
+          "/profile/*",
+          "/u/*",
+          "/join/group/*",
+          "/group/*",
+          "/event/*",
+          "/store/*",
+          "/story/*",
+          "/hashtag/*"
+        ]
+      }
+    ]
+  }
+}
