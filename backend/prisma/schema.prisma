@@ -239,6 +239,7 @@ model ChatChannel {
   archivedBy          String        @default("[]") // JSON array
   restrictMessaging   Boolean       @default(false)
   restrictInfoUpdates Boolean       @default(false)
+  allowSnaps          Boolean       @default(true)
   createdAt           DateTime      @default(now())
 
   messages            ChatMessage[]

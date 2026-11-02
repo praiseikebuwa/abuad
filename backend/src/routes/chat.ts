@@ -145,6 +145,12 @@ async function formatChannel(ch: any, currentUserId: string, userCache?: Map<str
     archived_by: archivedBy,
     typingUsers,
     typing_users: typingUsers,
+    restrictMessaging: ch.restrictMessaging ?? false,
+    restrict_messaging: ch.restrictMessaging ?? false,
+    restrictInfoUpdates: ch.restrictInfoUpdates ?? false,
+    restrict_info_updates: ch.restrictInfoUpdates ?? false,
+    allowSnaps: ch.allowSnaps ?? true,
+    allow_snaps: ch.allowSnaps ?? true,
     unreadCounts: {},
     unread_counts: {},
   };
@@ -470,17 +476,18 @@ router.get('/channels/:id', authenticateToken, async (req: AuthenticatedRequest,
  */
 router.patch('/channels/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { name, restrictMessaging, restrictInfoUpdates } = req.body;
+    const { name, restrictMessaging, restrictInfoUpdates, allowSnaps } = req.body;
     const channel = await prisma.chatChannel.update({
       where: { id: String(req.params.id) },
       data: {
         ...(name !== undefined && { name }),
         ...(restrictMessaging !== undefined && { restrictMessaging }),
         ...(restrictInfoUpdates !== undefined && { restrictInfoUpdates }),
+        ...(allowSnaps !== undefined && { allowSnaps: Boolean(allowSnaps) }),
       },
     });
     const formatted = await formatChannel(channel, req.user!.id);
-    emitToChannel(channel.id, 'channel:updated', {});
+    emitToChannel(channel.id, 'channel:updated', { channel: formatted });
     return res.json({ success: true, data: formatted });
   } catch (error) {
     return res.status(500).json({ error: 'Failed to update channel' });
@@ -1058,6 +1065,8 @@ router.post('/send', authenticateToken, async (req: AuthenticatedRequest, res: R
             lastMessageTime: new Date(),
           },
         });
+      } else if (existingChannel.isGroup && isSnapMessage && existingChannel.allowSnaps === false) {
+        return res.status(403).json({ error: 'Snaps are disabled in this group by admins' });
       }
     }
 
@@ -1453,6 +1462,13 @@ router.post('/messages/:id/view-snap', authenticateToken, async (req: Authentica
         const memberFormatted = formatMessage(updated, mId);
         emitToUsers([mId], 'message:updated', { message: memberFormatted });
       }
+
+      emitToChannel(updated.channelId, 'snap:viewed', {
+        messageId: updated.id,
+        channelId: updated.channelId,
+        viewerId: userId,
+        snapViews,
+      });
 
       const formatted = formatMessage(updated, userId);
       return res.json({ success: true, data: formatted });
