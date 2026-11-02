@@ -46,10 +46,10 @@ ufw allow 5000/tcp
 
 
 
+& "C:\Program Files\Microsoft\jdk-17.0.21.21-hotspot\bin\keytool.exe" -list -v -keystore "C:\Users\pikeb\.android\debug.keystore" -alias androiddebugkey -storepass android -keypass android
 
 
-
-
+powershell -Command "Set-Item -Path env:JAVA_HOME -Value 'C:\Program Files\Microsoft\jdk-17.0.21.21-hotspot'; flutter build apk --release"
 
 
 cd ~/abuad/backend
