@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:toastification/toastification.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'src/core/router/app_router.dart';
-import 'src/core/database/local_database.dart';
 import 'src/core/theme/app_theme.dart';
 import 'src/core/services/api_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -44,11 +43,8 @@ void main() async {
   final container = ProviderContainer(
     overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
   );
-  // Initialize Hive (Legacy/Local cache) - Optional now
-  await container.read(localDatabaseProvider.future);
-
-  // Restore authenticated session tokens and user profile
-  await container.read(authRepositoryProvider).init();
+  // Restore authenticated session tokens and cached profile directly from prefs
+  await container.read(authRepositoryProvider).init(prefs);
 
   runApp(UncontrolledProviderScope(container: container, child: const MyApp()));
 }

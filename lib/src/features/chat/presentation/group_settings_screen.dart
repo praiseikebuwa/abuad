@@ -731,7 +731,7 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'https://abuadapp.com.ng/join/group/$channelId',
+                          'https://api.abuadapp.com.ng/share/join/group/$channelId',
                           style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                         ),
                       ),
@@ -741,7 +741,7 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
                           Navigator.pop(context);
                           SharePlus.instance.share(
                             ShareParams(
-                              text: 'Join our ABUAD campus group on ABUAD Life:\nhttps://abuadapp.com.ng/join/group/$channelId',
+                              text: 'Join our ABUAD campus group on ABUAD Life:\nhttps://api.abuadapp.com.ng/share/join/group/$channelId',
                               subject: 'Join ABUAD Group',
                             ),
                           );

@@ -229,8 +229,8 @@ class AudioRoomRepository {
     });
     if (res.statusCode >= 200 && res.statusCode < 300) {
       final json = jsonDecode(res.body);
-      return json['shareUrl'] as String? ?? 'https://abuadapp.com.ng/spaces/$roomId';
+      return json['shareUrl'] as String? ?? 'https://api.abuadapp.com.ng/share/spaces/$roomId';
     }
-    return 'https://abuadapp.com.ng/spaces/$roomId';
+    return 'https://api.abuadapp.com.ng/share/spaces/$roomId';
   }
 }

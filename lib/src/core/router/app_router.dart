@@ -123,14 +123,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     navigatorKey: rootNavigatorKey,
     initialLocation: '/',
-    refreshListenable: GoRouterRefreshStream(
-      // Only watch user data if logged in to avoid empty document path errors
-      authRepo.currentUser != null
-          ? ref
-                .watch(userRepositoryProvider)
-                .watchUser(authRepo.currentUser!.uid)
-          : authRepo.authStateChanges,
-    ),
+    refreshListenable: GoRouterRefreshStream(authRepo.authStateChanges),
     redirect: (context, state) {
       // 1. Normalize custom scheme 'abuad://<host>/<path>' or external URLs into internal router paths
       if (state.uri.scheme == 'abuad') {

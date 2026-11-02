@@ -20,7 +20,7 @@ class _LiveSpaceShareSheetState extends ConsumerState<LiveSpaceShareSheet> {
   final Set<String> _sharedChannelIds = {};
   String _searchQuery = '';
 
-  String get _shareUrl => 'https://abuadapp.com.ng/spaces/${widget.room.id}';
+  String get _shareUrl => 'https://api.abuadapp.com.ng/share/spaces/${widget.room.id}';
 
   String get _shareText =>
       '🎙️ Join "${widget.room.title}" on ABUAD Life Live Audio Spaces!\n'

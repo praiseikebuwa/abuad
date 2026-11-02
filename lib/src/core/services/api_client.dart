@@ -16,6 +16,14 @@ class ApiClient {
 
   static String? get accessToken => _accessToken;
 
+  static void setInMemoryTokens({
+    String? accessToken,
+    String? refreshToken,
+  }) {
+    if (accessToken != null) _accessToken = accessToken;
+    if (refreshToken != null) _refreshToken = refreshToken;
+  }
+
   static Future<void> setTokens({
     String? accessToken,
     String? refreshToken,

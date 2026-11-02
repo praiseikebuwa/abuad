@@ -22,7 +22,7 @@ class ShareProfileScreen extends ConsumerWidget {
     final isDark = theme.brightness == Brightness.dark;
 
     // Use a deep link format or web URL
-    final profileUrl = 'https://abuadapp.com.ng/user/$userId';
+    final profileUrl = 'https://api.abuadapp.com.ng/share/user/$userId';
 
     return Scaffold(
       backgroundColor: isDark ? AppColors.primaryInk : AppColors.surfaceLight,

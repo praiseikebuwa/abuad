@@ -721,7 +721,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                   SharePlus.instance.share(
                     ShareParams(
                       text:
-                          'Check out this post on Abuad life: https://abuadapp.com.ng/post/$postId',
+                          'Check out this post on Abuad life: https://api.abuadapp.com.ng/share/post/$postId',
                       subject: 'Check out this post on ABUAD',
                     ),
                   );

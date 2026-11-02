@@ -36,7 +36,7 @@ class AuthRepository {
     yield* _controller.stream;
   }
 
-  Future<void> init() async {
+  Future<void> init([SharedPreferences? prefInstance]) async {
     try {
       ApiClient.onSessionExpired = () {
         if (!_isSigningOut) {
@@ -45,7 +45,7 @@ class AuthRepository {
         }
       };
 
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = prefInstance ?? await SharedPreferences.getInstance();
       final accessToken = prefs.getString('accessToken');
       final refreshToken = prefs.getString('refreshToken');
       final cachedUserRaw = prefs.getString('cachedUser');
@@ -60,9 +60,13 @@ class AuthRepository {
           } catch (_) {}
         }
 
-        await ApiClient.setTokens(accessToken: accessToken, refreshToken: refreshToken);
-        SocketService.instance.connect();
-        // 2. Refresh profile in background without stalling the UI
+        // Set in-memory tokens immediately (no duplicate disk writes)
+        ApiClient.setInMemoryTokens(accessToken: accessToken, refreshToken: refreshToken);
+        
+        // Connect socket asynchronously in background without delaying startup
+        unawaited(SocketService.instance.connect());
+        
+        // Refresh profile in background without stalling the UI
         unawaited(_syncUserProfile(prefs));
       } else {
         // No valid token stored; ensure session is clean

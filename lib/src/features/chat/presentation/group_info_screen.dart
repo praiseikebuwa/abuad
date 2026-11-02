@@ -1115,7 +1115,7 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
   }
 
   Future<void> _shareGroupLink(String displayName) async {
-    final link = 'https://abuadapp.com.ng/join/group/${widget.channelId}';
+    final link = 'https://api.abuadapp.com.ng/share/join/group/${widget.channelId}';
     await SharePlus.instance.share(
       ShareParams(
         text: 'Join our ABUAD campus group "$displayName" on ABUAD Life:\n$link',
