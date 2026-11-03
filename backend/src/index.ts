@@ -83,6 +83,7 @@ app.use('/api/notifications', utilityRoutes);
 app.use('/api/presence', utilityRoutes);
 
 import { scheduleAiAutonomousPosting } from './services/aiBotService';
+import { startBackgroundProcessor } from './services/resourceProcessorService';
 
 // Global Error Handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -96,4 +97,5 @@ initSocket(server);
 server.listen(PORT, () => {
   console.log(`🚀 ABUAD Backend Server running on http://localhost:${PORT}`);
   scheduleAiAutonomousPosting();
+  startBackgroundProcessor();
 });

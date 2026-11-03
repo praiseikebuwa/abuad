@@ -384,9 +384,40 @@ class ResourcesController {
 
         if (activeJobs.length > 0) {
             if (banner) {
-                banner.style.display = 'block';
-                const stages = activeJobs.map(j => `${j.title.slice(0, 15)}... (${j.processingStatus})`).join(', ');
-                bannerText.innerText = `OCR & AI background worker processing ${activeJobs.length} document(s): ${stages}`;
+                banner.style.display = 'flex';
+                banner.style.alignItems = 'center';
+                banner.style.justifyContent = 'space-between';
+                banner.style.flexWrap = 'wrap';
+                banner.style.gap = '8px';
+
+                const inProgress = activeJobs.filter(j => ['EXTRACTING', 'RUNNING_OCR', 'UPLOADING'].includes(j.processingStatus));
+                const pendingCount = activeJobs.filter(j => j.processingStatus === 'PENDING').length;
+
+                let statusMsg = '';
+                if (inProgress.length > 0) {
+                    const current = inProgress[0];
+                    statusMsg = `<strong>Actively Processing:</strong> ${current.title.slice(0, 25)}... (${current.processingStatus} ${current.processingProgress || 0}%)`;
+                    if (pendingCount > 0) statusMsg += ` • ${pendingCount} more queued`;
+                } else {
+                    statusMsg = `<strong>${activeJobs.length} document(s) queued for OCR & AI extraction.</strong>`;
+                }
+
+                banner.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <i class="fas ${inProgress.length > 0 ? 'fa-cog fa-spin' : 'fa-clock'}" style="color: #4F46E5;"></i>
+                        <span>${statusMsg}</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <button id="btn-process-all-pending" style="background: #4F46E5; color: white; border: none; border-radius: 6px; padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-play"></i> Start OCR for All (${activeJobs.length})
+                        </button>
+                    </div>
+                `;
+
+                const btnProcess = document.getElementById('btn-process-all-pending');
+                if (btnProcess) {
+                    btnProcess.onclick = () => this.processAllPending();
+                }
             }
 
             if (!this.pollTimer) {
@@ -400,6 +431,32 @@ class ResourcesController {
                 clearInterval(this.pollTimer);
                 this.pollTimer = null;
             }
+        }
+    }
+
+    async processAllPending() {
+        const btn = document.getElementById('btn-process-all-pending');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Triggering OCR...';
+        }
+
+        try {
+            const res = await ApiClientAdmin.fetch('/resources/process-all-pending', {
+                method: 'POST'
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.success) {
+                alert(`Started background OCR processing for ${data.count} document(s)! You will see live progress update.`);
+                this.fetchResources(true);
+            } else {
+                alert(data.error || 'Server is processing pending jobs.');
+                this.fetchResources(true);
+            }
+        } catch (err) {
+            alert('Failed to trigger pending OCR: ' + err.message);
+        } finally {
+            if (btn) btn.disabled = false;
         }
     }
 

@@ -3,6 +3,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.startBackgroundProcessor = startBackgroundProcessor;
+exports.processAllPendingResources = processAllPendingResources;
 exports.enqueueResourceProcessing = enqueueResourceProcessing;
 exports.getResourceExtractedText = getResourceExtractedText;
 const fs_1 = __importDefault(require("fs"));
@@ -17,17 +19,119 @@ function getPythonExecutable() {
     if (process.env.PYTHON_PATH && fs_1.default.existsSync(process.env.PYTHON_PATH)) {
         return process.env.PYTHON_PATH;
     }
-    // Standard Windows WindowsApps Python 3.12 path where PyMuPDF/pytesseract are installed
-    const windowsAppsPython = path_1.default.join(process.env.LOCALAPPDATA || 'C:\\Users\\pikeb\\AppData\\Local', 'Microsoft\\WindowsApps\\python.exe');
-    if (fs_1.default.existsSync(windowsAppsPython)) {
-        return windowsAppsPython;
+    if (process.platform === 'win32') {
+        const windowsAppsPython = path_1.default.join(process.env.LOCALAPPDATA || 'C:\\Users\\pikeb\\AppData\\Local', 'Microsoft\\WindowsApps\\python.exe');
+        if (fs_1.default.existsSync(windowsAppsPython)) {
+            return windowsAppsPython;
+        }
+        return 'python.exe';
     }
-    // Fallbacks
-    return process.platform === 'win32' ? 'python.exe' : 'python3';
+    // Linux / macOS candidate paths
+    const linuxCandidates = ['/usr/bin/python3', '/usr/local/bin/python3', 'python3', 'python'];
+    for (const c of linuxCandidates) {
+        if (fs_1.default.existsSync(c))
+            return c;
+    }
+    return 'python3';
+}
+function getScriptPath() {
+    const candidates = [
+        path_1.default.resolve(__dirname, '../../scripts/pdf_processor.py'),
+        path_1.default.resolve(__dirname, '../scripts/pdf_processor.py'),
+        path_1.default.resolve(process.cwd(), 'scripts/pdf_processor.py'),
+        path_1.default.resolve(process.cwd(), 'backend/scripts/pdf_processor.py'),
+    ];
+    for (const c of candidates) {
+        if (fs_1.default.existsSync(c))
+            return c;
+    }
+    return path_1.default.resolve(__dirname, '../../scripts/pdf_processor.py');
 }
 const activeJobIds = new Set();
 const jobQueue = [];
 let isQueueWorkerRunning = false;
+let backgroundPollerStarted = false;
+/**
+ * Start background worker loop that automatically polls DB for pending jobs
+ */
+function startBackgroundProcessor() {
+    if (backgroundPollerStarted)
+        return;
+    backgroundPollerStarted = true;
+    console.log('[ResourceProcessor] Initializing background document processing worker...');
+    // Run initial scan 4 seconds after server boot
+    setTimeout(() => {
+        processAllPendingResources().catch((err) => {
+            console.warn('[ResourceProcessor] Startup pending resources scan error:', err);
+        });
+    }, 4000);
+    // Periodic check every 20 seconds to pick up any newly queued or orphaned PENDING jobs
+    setInterval(() => {
+        if (!isQueueWorkerRunning && jobQueue.length === 0) {
+            processAllPendingResources().catch(() => { });
+        }
+    }, 20000);
+}
+/**
+ * Enqueue all pending or unextracted resources from the database
+ */
+async function processAllPendingResources() {
+    try {
+        const pendingResources = await db_1.prisma.resource.findMany({
+            where: {
+                processingStatus: {
+                    in: ['PENDING', 'EXTRACTING', 'RUNNING_OCR'],
+                },
+            },
+            select: { id: true, title: true, fileUrl: true, processingStatus: true, extractedText: true },
+            orderBy: { createdAt: 'desc' },
+            take: 50,
+        });
+        let enqueued = 0;
+        for (const r of pendingResources) {
+            // If document already has meaningful text extracted, mark as COMPLETED
+            if (r.extractedText && r.extractedText.trim().length > 60) {
+                await db_1.prisma.resource.update({
+                    where: { id: r.id },
+                    data: {
+                        processingStatus: 'COMPLETED',
+                        processingProgress: 100,
+                    },
+                }).catch(() => { });
+                continue;
+            }
+            // Check if it's a PDF
+            const url = (r.fileUrl || '').toLowerCase();
+            const isPdf = url.includes('.pdf') || url.includes('/resources/');
+            if (!isPdf) {
+                // Non-PDF documents don't need OCR, mark COMPLETED
+                await db_1.prisma.resource.update({
+                    where: { id: r.id },
+                    data: {
+                        processingStatus: 'COMPLETED',
+                        extractionMethod: 'DIGITAL_TEXT',
+                        processingProgress: 100,
+                        processedAt: new Date(),
+                    },
+                }).catch(() => { });
+                continue;
+            }
+            if (!activeJobIds.has(r.id) && !jobQueue.some(j => j.resourceId === r.id)) {
+                jobQueue.push({ resourceId: r.id });
+                enqueued++;
+            }
+        }
+        if (enqueued > 0) {
+            console.log(`[ResourceProcessor] Enqueued ${enqueued} pending resource(s) for background OCR processing.`);
+            triggerQueueWorker();
+        }
+        return enqueued;
+    }
+    catch (err) {
+        console.error('[ResourceProcessor] Error querying pending resources from DB:', err);
+        return 0;
+    }
+}
 /**
  * Enqueue a resource for asynchronous OCR and text processing
  */
@@ -149,7 +253,7 @@ async function executeProcessing(resourceId, fileBuffer, options) {
             },
         });
         // Stage 4: Run python PDF & OCR script
-        const scriptPath = path_1.default.resolve(__dirname, '../../scripts/pdf_processor.py');
+        const scriptPath = getScriptPath();
         const pythonExe = getPythonExecutable();
         await runPythonProcessor(pythonExe, scriptPath, inputPdfPath, outputJsonPath, resourceId);
         // Stage 5: Read and parse output JSON

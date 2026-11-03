@@ -105,6 +105,18 @@ function formatResource(res) {
         }
         catch (_) { }
     }
+    // Determine definitive processing status
+    let resolvedStatus = res.processingStatus;
+    const isPdf = (res.fileUrl || '').toLowerCase().includes('.pdf');
+    if (res.extractedText || res.extractedTextStorageKey) {
+        resolvedStatus = 'COMPLETED';
+    }
+    else if (!isPdf && (!resolvedStatus || resolvedStatus === 'PENDING')) {
+        resolvedStatus = 'COMPLETED';
+    }
+    else if (!resolvedStatus) {
+        resolvedStatus = 'PENDING';
+    }
     return {
         id: res.id,
         title: res.title,
@@ -121,11 +133,11 @@ function formatResource(res) {
         created_at: res.createdAt ? res.createdAt.toISOString() : new Date().toISOString(),
         timestamp: res.createdAt ? res.createdAt.toISOString() : new Date().toISOString(),
         // Automatic OCR & Processing fields
-        processingStatus: res.processingStatus || 'PENDING',
+        processingStatus: resolvedStatus,
         extractionMethod: res.extractionMethod || null,
         totalPages: res.totalPages || 0,
         processedPages: res.processedPages || 0,
-        processingProgress: res.processingProgress || 0,
+        processingProgress: resolvedStatus === 'COMPLETED' ? 100 : (res.processingProgress || 0),
         processingError: res.processingError || null,
         processedAt: res.processedAt ? res.processedAt.toISOString() : null,
         processingMetadata: parsedMetadata,
@@ -517,6 +529,24 @@ const handleReprocess = async (req, res) => {
 };
 router.post('/:id/reprocess', auth_1.authenticateToken, handleReprocess);
 router.post('/:id/retry', auth_1.authenticateToken, handleReprocess);
+/**
+ * POST /api/resources/process-all-pending
+ * Trigger background processing for all pending documents
+ */
+router.post('/process-all-pending', auth_1.optionalAuth, async (_req, res) => {
+    try {
+        const count = await (0, resourceProcessorService_1.processAllPendingResources)();
+        return res.json({
+            success: true,
+            count,
+            message: `Enqueued ${count} pending document(s) for background OCR processing.`,
+        });
+    }
+    catch (err) {
+        console.error('Error in process-all-pending:', err);
+        return res.status(500).json({ success: false, error: err.message });
+    }
+});
 /**
  * DELETE /api/resources/:id
  * Delete resource from database and storage
