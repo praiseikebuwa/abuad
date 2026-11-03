@@ -107,6 +107,48 @@ def main():
         }
         print(f"__PROGRESS__{json.dumps(progress_data)}__PROGRESS__", flush=True)
 
+    def run_ocr_on_pixmap(pix, page_num):
+        # 1. Try pytesseract with PIL if available
+        if pytesseract_available and pil_available and Image:
+            try:
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                gray = img.convert('L')
+                enhancer = ImageEnhance.Contrast(gray) if ImageEnhance else None
+                processed_img = enhancer.enhance(1.4) if enhancer else gray
+                ocr_result = pytesseract.image_to_string(processed_img, config=r'--oem 3 --psm 3').strip()
+                del img
+                del gray
+                if enhancer: del processed_img
+                return ocr_result
+            except Exception as e:
+                sys.stderr.write(f"pytesseract fallback to CLI: {e}\n")
+
+        # 2. Direct Tesseract CLI fallback (works with just tesseract-ocr apt package)
+        active_tess = tess_bin or find_tesseract()
+        if active_tess:
+            import subprocess
+            import tempfile
+            tmp_png = os.path.join(tempfile.gettempdir(), f"abuad_ocr_{page_num}_{os.getpid()}_{int(time.time()*1000)}.png")
+            try:
+                pix.save(tmp_png)
+                proc = subprocess.run(
+                    [active_tess, tmp_png, "stdout", "-l", "eng", "--oem", "3", "--psm", "3"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=60
+                )
+                if proc.returncode == 0 and proc.stdout:
+                    return proc.stdout.strip()
+            except Exception as cli_err:
+                sys.stderr.write(f"Tesseract CLI execution error on page {page_num}: {cli_err}\n")
+            finally:
+                if os.path.exists(tmp_png):
+                    try: os.unlink(tmp_png)
+                    except Exception: pass
+
+        return ""
+
     try:
         if not pymupdf_available:
             raise RuntimeError("PyMuPDF (fitz) is not installed.")
@@ -168,36 +210,11 @@ def main():
                 # Text is empty or insufficient: Scanned page!
                 emit_progress("RUNNING_OCR", page_num, pages_to_process, f"Running OCR on scanned page {page_num} of {pages_to_process}")
                 
-                if not pytesseract_available or not pil_available:
-                    # OCR/PIL not available, keep whatever minimal digital text exists
-                    if raw_digital_text:
-                        page_texts.append(f"--- Page {page_num} ---\n{raw_digital_text}")
-                    else:
-                        page_texts.append(f"--- Page {page_num} ---\n[Scanned image page - OCR unavailable]")
-                    warnings.append(f"Page {page_num} contains scanned content but OCR/imaging engine was unavailable.")
-                    continue
-
                 try:
-                    # Render page to high-res image
+                    # Render page to high-res image pixmap
                     pix = page.get_pixmap(dpi=args.dpi)
-                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                    
-                    # Preprocess image for OCR readability (grayscale + mild contrast enhancement)
-                    gray = img.convert('L')
-                    enhancer = ImageEnhance.Contrast(gray)
-                    processed_img = enhancer.enhance(1.4)
-
-                    # Run Tesseract with automatic page segmentation layout
-                    # psm 3: Fully automatic page segmentation (default)
-                    # oem 3: Default LSTM + legacy engine
-                    custom_config = r'--oem 3 --psm 3'
-                    ocr_text = pytesseract.image_to_string(processed_img, config=custom_config).strip()
-
-                    # Free pixmap memory immediately
+                    ocr_text = run_ocr_on_pixmap(pix, page_num)
                     del pix
-                    del img
-                    del gray
-                    del processed_img
 
                     if len(ocr_text) > 10:
                         ocr_pages_count += 1
@@ -207,13 +224,13 @@ def main():
                         if raw_digital_text:
                             page_texts.append(f"--- Page {page_num} ---\n{raw_digital_text}")
                         else:
-                            page_texts.append(f"--- Page {page_num} ---\n[No readable text detected]")
-                            warnings.append(f"Page {page_num}: No readable text detected via digital extraction or OCR.")
+                            page_texts.append(f"--- Page {page_num} ---\n[Scanned image page - minimal text detected]")
                 except Exception as ocr_err:
-                    sys.stderr.write(f"OCR error on page {page_num}: {ocr_err}\n")
-                    warnings.append(f"Page {page_num}: OCR error - {str(ocr_err)}")
+                    warnings.append(f"Page {page_num} OCR failed: {ocr_err}")
                     if raw_digital_text:
                         page_texts.append(f"--- Page {page_num} ---\n{raw_digital_text}")
+                    else:
+                        page_texts.append(f"--- Page {page_num} ---\n[Scanned image page - OCR error]")
 
         doc.close()
 
