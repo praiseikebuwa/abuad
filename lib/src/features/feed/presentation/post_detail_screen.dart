@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../chat/domain/sticker_item.dart';
+import '../../chat/data/sticker_repository.dart';
 import '../../chat/presentation/sticker_creator_screen.dart';
 import '../../../core/utils/url_validator.dart';
 import '../../../shared/widgets/user_avatar.dart';
@@ -91,6 +92,26 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
       _replyToCommentId = null;
       _replyToUserName = null;
     });
+  }
+
+  Future<void> _openFavoriteStickersSheet(BuildContext context) async {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final repo = ref.read(stickerRepositoryProvider);
+
+    final chosen = await showModalBottomSheet<StickerItem>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _FavoriteStickersBottomSheet(
+        repo: repo,
+        isDark: isDark,
+      ),
+    );
+
+    if (chosen != null && mounted) {
+      setState(() => _selectedSticker = chosen);
+    }
   }
 
   Future<void> _postComment() async {
@@ -1407,40 +1428,80 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                               ],
                             ),
                           ),
-                        // Selected Sticker Preview Banner
+                        // Selected Sticker Attached Card (Holds sticker with text)
                         if (_selectedSticker != null)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            color: isDark
-                                ? const Color(0xFF1E293B)
-                                : const Color(0xFFF1F5F9),
+                            margin: const EdgeInsets.fromLTRB(16, 6, 16, 4),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: AppColors.secondaryTeal.withValues(alpha: 0.35),
+                                width: 1.5,
+                              ),
+                            ),
                             child: Row(
                               children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
+                                Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    color: isDark ? Colors.black26 : Colors.white,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  padding: const EdgeInsets.all(4),
                                   child: CachedNetworkImage(
                                     imageUrl: _selectedSticker!.imageUrl,
-                                    width: 42,
-                                    height: 42,
                                     fit: BoxFit.contain,
-                                    errorWidget: (_, __, ___) => const Icon(Icons.sticky_note_2_rounded),
+                                    placeholder: (_, __) => const CupertinoActivityIndicator(radius: 8),
+                                    errorWidget: (_, __, ___) => const Icon(Icons.sticky_note_2_rounded, size: 20),
                                   ),
                                 ),
-                                const SizedBox(width: 10),
+                                const SizedBox(width: 12),
                                 Expanded(
-                                  child: Text(
-                                    _selectedSticker!.title,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                      color: isDark ? Colors.white : Colors.black87,
-                                    ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: AppColors.secondaryTeal.withValues(alpha: 0.15),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: const Text(
+                                              'Sticker Attached',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w700,
+                                                color: AppColors.secondaryTeal,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        _selectedSticker!.title.isNotEmpty ? _selectedSticker!.title : 'Sticker',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: isDark ? Colors.white : Colors.black87,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.close, size: 18),
+                                  icon: const Icon(Icons.close_rounded, size: 20),
+                                  tooltip: 'Remove Sticker',
                                   padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
+                                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                                   onPressed: () => setState(() => _selectedSticker = null),
                                 ),
                               ],
@@ -1500,22 +1561,17 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                               IconButton(
                                 padding: EdgeInsets.zero,
                                 constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-                                icon: const Icon(
-                                  Icons.sticky_note_2_outlined,
-                                  color: AppColors.secondaryTeal,
+                                icon: Icon(
+                                  _selectedSticker != null
+                                      ? Icons.sticky_note_2_rounded
+                                      : Icons.sticky_note_2_outlined,
+                                  color: _selectedSticker != null
+                                      ? const Color(0xFFFF2A55)
+                                      : AppColors.secondaryTeal,
                                   size: 24,
                                 ),
-                                tooltip: 'Add Sticker',
-                                onPressed: () async {
-                                  final chosen = await Navigator.of(context).push<StickerItem>(
-                                    MaterialPageRoute(
-                                      builder: (context) => const StickerCreatorScreen(initialMode: 'MY'),
-                                    ),
-                                  );
-                                  if (chosen != null && mounted) {
-                                    setState(() => _selectedSticker = chosen);
-                                  }
-                                },
+                                tooltip: 'Favorite Stickers',
+                                onPressed: () => _openFavoriteStickersSheet(context),
                               ),
                               const SizedBox(width: 4),
                               Expanded(
@@ -1545,7 +1601,11 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                           : Colors.black87,
                                     ),
                                     decoration: InputDecoration(
-                                      hintText: 'Post your reply',
+                                      hintText: _selectedSticker != null
+                                          ? 'Add text to your sticker (optional)...'
+                                          : (_replyToUserName != null
+                                              ? 'Reply to @$_replyToUserName...'
+                                              : 'Post your reply'),
                                       hintStyle: TextStyle(
                                         fontSize: 14,
                                         color: isDark
@@ -1725,6 +1785,242 @@ class _StatText extends StatelessWidget {
         const SizedBox(width: 4),
         Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 15)),
       ],
+    );
+  }
+}
+
+class _FavoriteStickersBottomSheet extends StatefulWidget {
+  final StickerRepository repo;
+  final bool isDark;
+
+  const _FavoriteStickersBottomSheet({
+    required this.repo,
+    required this.isDark,
+  });
+
+  @override
+  State<_FavoriteStickersBottomSheet> createState() => _FavoriteStickersBottomSheetState();
+}
+
+class _FavoriteStickersBottomSheetState extends State<_FavoriteStickersBottomSheet> {
+  late Future<List<StickerItem>> _stickersFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _stickersFuture = widget.repo.getMyStickers();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = widget.isDark;
+    final bg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final cardBorder = isDark ? Colors.white12 : const Color(0xFFE2E8F0);
+    final textPrimary = isDark ? Colors.white : const Color(0xFF0F172A);
+    final textMuted = isDark ? Colors.white60 : const Color(0xFF64748B);
+
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.65,
+      ),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        border: Border(top: BorderSide(color: cardBorder, width: 1)),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 16,
+            offset: Offset(0, -4),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Drag Handle
+            const SizedBox(height: 10),
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white24 : Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Header Row
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFF2A55).withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.favorite_rounded,
+                      color: Color(0xFFFF2A55),
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Favorite Stickers',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: textPrimary,
+                    ),
+                  ),
+                  const Spacer(),
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: () async {
+                      Navigator.of(context).pop();
+                      final chosen = await Navigator.of(context).push<StickerItem>(
+                        MaterialPageRoute(
+                          builder: (context) => const StickerCreatorScreen(initialMode: 'COMMUNITY'),
+                        ),
+                      );
+                      if (chosen != null && context.mounted) {
+                        Navigator.of(context).pop(chosen);
+                      }
+                    },
+                    icon: const Icon(Icons.add_circle_outline_rounded, size: 16, color: AppColors.secondaryTeal),
+                    label: const Text(
+                      'More',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.secondaryTeal,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Divider(height: 1, color: cardBorder),
+
+            // Content Grid
+            Expanded(
+              child: FutureBuilder<List<StickerItem>>(
+                future: _stickersFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: CircularProgressIndicator(color: AppColors.secondaryTeal),
+                    );
+                  }
+                  final items = snapshot.data ?? [];
+                  if (items.isEmpty) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.auto_awesome_motion_outlined, size: 48, color: textMuted),
+                            const SizedBox(height: 12),
+                            Text(
+                              'No favorite stickers yet',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Explore community sticker packs to add your favorites here for 1-tap comments.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 12, color: textMuted),
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.secondaryTeal,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                              ),
+                              onPressed: () async {
+                                Navigator.of(context).pop();
+                                final chosen = await Navigator.of(context).push<StickerItem>(
+                                  MaterialPageRoute(
+                                    builder: (context) => const StickerCreatorScreen(initialMode: 'COMMUNITY'),
+                                  ),
+                                );
+                                if (chosen != null && context.mounted) {
+                                  Navigator.of(context).pop(chosen);
+                                }
+                              },
+                              icon: const Icon(Icons.explore_rounded, size: 18),
+                              label: const Text('Browse Stickers', style: TextStyle(fontWeight: FontWeight.bold)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+
+                  return GridView.builder(
+                    padding: const EdgeInsets.all(16),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 4,
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
+                      childAspectRatio: 1,
+                    ),
+                    itemCount: items.length,
+                    itemBuilder: (context, index) {
+                      final item = items[index];
+                      return Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => Navigator.of(context).pop(item),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[100],
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
+                              ),
+                            ),
+                            padding: const EdgeInsets.all(8),
+                            child: CachedNetworkImage(
+                              imageUrl: item.imageUrl,
+                              fit: BoxFit.contain,
+                              placeholder: (_, __) => const Center(
+                                child: CupertinoActivityIndicator(radius: 8),
+                              ),
+                              errorWidget: (_, __, ___) => const Icon(
+                                Icons.broken_image_outlined,
+                                size: 24,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

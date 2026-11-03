@@ -3,11 +3,15 @@ class ResourcesController {
         this.tableBody = document.querySelector('#resources-table tbody');
         this.formListenerAttached = false;
         this.modeListenerAttached = false;
+        this.modalsInitialized = false;
+        this.pollTimer = null;
+        this.cachedText = '';
     }
 
     load() {
-        console.log("Resources Controller: Loading academic resources from backend...");
+        console.log("Resources Controller: Loading academic resources & OCR manager...");
         this.initUploadModeToggle();
+        this.initModals();
         this.fetchResources();
 
         // Add form listener
@@ -20,7 +24,7 @@ class ResourcesController {
         // Add refresh button listener
         const refreshBtn = document.getElementById('btn-refresh-resources');
         if (refreshBtn && !refreshBtn.dataset.listener) {
-            refreshBtn.addEventListener('click', () => this.fetchResources());
+            refreshBtn.addEventListener('click', () => this.fetchResources(true));
             refreshBtn.dataset.listener = 'true';
         }
 
@@ -36,7 +40,7 @@ class ResourcesController {
                     } else if (count === 1) {
                         countDisplay.innerText = `Selected 1 file: ${fileInput.files[0].name}`;
                     } else {
-                        countDisplay.innerText = `Selected ${count} files ready for upload.`;
+                        countDisplay.innerText = `Selected ${count} files ready for upload and OCR.`;
                     }
                 }
             });
@@ -78,17 +82,213 @@ class ResourcesController {
         }
     }
 
-    async fetchResources() {
-        if (!this.tableBody) return;
-        this.tableBody.innerHTML = `<tr><td colspan="5" class="loading-text"><i class="fas fa-spinner fa-spin"></i> Loading academic resources...</td></tr>`;
+    initModals() {
+        if (this.modalsInitialized) return;
+
+        const textModal = document.getElementById('modal-resource-text');
+        const previewModal = document.getElementById('modal-resource-preview');
+
+        // Close buttons for text modal
+        const closeTextBtn1 = document.getElementById('btn-close-text-modal');
+        const closeTextBtn2 = document.getElementById('btn-close-text-modal-2');
+        if (closeTextBtn1) closeTextBtn1.addEventListener('click', () => this.closeTextModal());
+        if (closeTextBtn2) closeTextBtn2.addEventListener('click', () => this.closeTextModal());
+
+        // Close buttons for preview modal
+        const closePreviewBtn = document.getElementById('btn-close-preview-modal');
+        if (closePreviewBtn) closePreviewBtn.addEventListener('click', () => this.closePreviewModal());
+
+        // Click outside overlay to close
+        if (textModal) {
+            textModal.addEventListener('click', (e) => {
+                if (e.target === textModal) this.closeTextModal();
+            });
+        }
+        if (previewModal) {
+            previewModal.addEventListener('click', (e) => {
+                if (e.target === previewModal) this.closePreviewModal();
+            });
+        }
+
+        // Copy text button
+        const copyBtn = document.getElementById('btn-copy-extracted-text');
+        if (copyBtn) {
+            copyBtn.addEventListener('click', () => {
+                const text = this.cachedText || document.getElementById('res-modal-text-content')?.innerText || '';
+                if (!text) return;
+                navigator.clipboard.writeText(text).then(() => {
+                    const origHtml = copyBtn.innerHTML;
+                    copyBtn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+                    copyBtn.style.background = '#10B981';
+                    copyBtn.style.color = '#FFF';
+                    setTimeout(() => {
+                        copyBtn.innerHTML = origHtml;
+                        copyBtn.style.background = '';
+                        copyBtn.style.color = '';
+                    }, 2000);
+                }).catch(() => {
+                    alert('Copied text to clipboard.');
+                });
+            });
+        }
+
+        // Text search filter inside modal
+        const searchInput = document.getElementById('res-text-search');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                const query = e.target.value.toLowerCase().trim();
+                const container = document.getElementById('res-modal-text-content');
+                if (!container || !this.cachedText) return;
+
+                if (!query) {
+                    container.innerText = this.cachedText;
+                    document.getElementById('res-modal-stats').innerText = `${this.cachedText.split(/\s+/).filter(Boolean).length} words`;
+                    return;
+                }
+
+                // Filter lines or count occurrences
+                const occurrences = (this.cachedText.toLowerCase().match(new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
+                document.getElementById('res-modal-stats').innerText = `Found ${occurrences} match${occurrences === 1 ? '' : 'es'}`;
+            });
+        }
+
+        // Keyboard Esc key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                this.closeTextModal();
+                this.closePreviewModal();
+            }
+        });
+
+        this.modalsInitialized = true;
+    }
+
+    closeTextModal() {
+        const textModal = document.getElementById('modal-resource-text');
+        if (textModal) textModal.style.display = 'none';
+        this.cachedText = '';
+        const searchInput = document.getElementById('res-text-search');
+        if (searchInput) searchInput.value = '';
+    }
+
+    closePreviewModal() {
+        const previewModal = document.getElementById('modal-resource-preview');
+        if (previewModal) previewModal.style.display = 'none';
+        const iframe = document.getElementById('resource-pdf-frame');
+        if (iframe) iframe.src = 'about:blank';
+    }
+
+    async openTextModal(resourceId, title, method) {
+        const textModal = document.getElementById('modal-resource-text');
+        const modalTitle = document.getElementById('res-modal-title');
+        const badgesContainer = document.getElementById('res-modal-badges');
+        const statsEl = document.getElementById('res-modal-stats');
+        const contentEl = document.getElementById('res-modal-text-content');
+
+        if (!textModal || !contentEl) return;
+
+        modalTitle.innerText = title;
+        badgesContainer.innerHTML = `<span class="badge" style="background: rgba(99, 102, 241, 0.15); color: #4F46E5;"><i class="fas fa-spinner fa-spin"></i> Loading extracted text...</span>`;
+        statsEl.innerText = '';
+        contentEl.innerText = 'Retrieving full extracted document text from database and Cloudflare R2...';
+        textModal.style.display = 'flex';
 
         try {
-            const token = ApiClientAdmin.getAccessToken();
+            const res = await ApiClientAdmin.fetch(`/resources/${resourceId}/text`);
+            const data = await res.json();
+
+            if (!res.ok || !data.success) {
+                contentEl.innerText = data.error || data.message || 'No extracted text found for this document.';
+                badgesContainer.innerHTML = `<span class="badge" style="background: #FEE2E2; color: #DC2626;"><i class="fas fa-exclamation-circle"></i> Unavailable</span>`;
+                return;
+            }
+
+            const docData = data.data;
+            this.cachedText = docData.text || '';
+            contentEl.innerText = this.cachedText;
+
+            // Badges
+            let methodBadgeColor = '#4F46E5';
+            let methodBadgeBg = '#EEF2FF';
+            let methodLabel = docData.extractionMethod || method || 'TEXT';
+            if (methodLabel === 'OCR') {
+                methodBadgeColor = '#7C3AED';
+                methodBadgeBg = '#F5F3FF';
+                methodLabel = 'Tesseract OCR';
+            } else if (methodLabel === 'HYBRID') {
+                methodBadgeColor = '#059669';
+                methodBadgeBg = '#ECFDF5';
+                methodLabel = 'Hybrid OCR + Digital';
+            } else if (methodLabel === 'DIGITAL_TEXT') {
+                methodBadgeColor = '#2563EB';
+                methodBadgeBg = '#EFF6FF';
+                methodLabel = 'Digital Text';
+            }
+
+            badgesContainer.innerHTML = `
+                <span class="badge" style="background: ${methodBadgeBg}; color: ${methodBadgeColor}; font-weight: 600; padding: 2px 8px; border-radius: 6px;">
+                    <i class="fas fa-microchip"></i> ${methodLabel}
+                </span>
+                <span class="badge" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-secondary); padding: 2px 8px; border-radius: 6px;">
+                    ${docData.totalPages || 1} Page${docData.totalPages === 1 ? '' : 's'}
+                </span>
+                <span class="badge" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-secondary); padding: 2px 8px; border-radius: 6px;">
+                    ${docData.wordCount || 0} Words
+                </span>
+            `;
+
+            statsEl.innerText = `${docData.charCount || this.cachedText.length} characters`;
+        } catch (err) {
+            contentEl.innerText = 'Failed to load document text: ' + err.message;
+            badgesContainer.innerHTML = `<span class="badge" style="background: #FEE2E2; color: #DC2626;">Error</span>`;
+        }
+    }
+
+    openPreviewModal(title, fileUrl) {
+        const previewModal = document.getElementById('modal-resource-preview');
+        const modalTitle = document.getElementById('res-preview-title');
+        const urlDisplay = document.getElementById('res-preview-url');
+        const externalLink = document.getElementById('res-preview-external-link');
+        const iframe = document.getElementById('resource-pdf-frame');
+
+        if (!previewModal || !iframe) return;
+
+        modalTitle.innerText = title;
+        urlDisplay.innerText = fileUrl;
+        if (externalLink) externalLink.href = fileUrl;
+        iframe.src = fileUrl;
+        previewModal.style.display = 'flex';
+    }
+
+    async reprocessResource(id, title) {
+        try {
+            const res = await ApiClientAdmin.fetch(`/resources/${id}/reprocess`, {
+                method: 'POST'
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                this.fetchResources(true);
+            } else {
+                alert(`Failed to trigger reprocessing: ${data.error || 'Server error'}`);
+            }
+        } catch (err) {
+            alert(`Reprocess request failed: ${err.message}`);
+        }
+    }
+
+    async fetchResources(isManualRefresh = false) {
+        if (!this.tableBody) return;
+        if (isManualRefresh && !this.pollTimer) {
+            this.tableBody.innerHTML = `<tr><td colspan="6" class="loading-text"><i class="fas fa-spinner fa-spin"></i> Loading academic resources...</td></tr>`;
+        }
+
+        try {
             const res = await ApiClientAdmin.fetch('/resources');
             if (res.ok) {
                 const data = await res.json();
                 const resources = data.data || [];
                 this.renderResources(resources);
+                this.managePolling(resources);
                 return;
             }
         } catch (apiErr) {
@@ -109,6 +309,8 @@ class ResourcesController {
                         courseCode: data.category || 'General',
                         level: data.level || '100',
                         url: data.url || data.fileUrl || '#',
+                        processingStatus: data.processingStatus || 'COMPLETED',
+                        extractionMethod: data.extractionMethod || 'DIGITAL_TEXT',
                         date: data.uploadedAt ? new Date(data.uploadedAt.toDate ? data.uploadedAt.toDate() : data.uploadedAt).toLocaleDateString() : 'N/A'
                     });
                 });
@@ -119,7 +321,36 @@ class ResourcesController {
             }
         }
 
-        this.tableBody.innerHTML = `<tr><td colspan="5" class="error-text">Failed to connect to resources service.</td></tr>`;
+        this.tableBody.innerHTML = `<tr><td colspan="6" class="error-text">Failed to connect to resources service.</td></tr>`;
+    }
+
+    managePolling(resources) {
+        const activeJobs = resources.filter(r => 
+            ['PENDING', 'EXTRACTING', 'RUNNING_OCR', 'UPLOADING'].includes(r.processingStatus)
+        );
+
+        const banner = document.getElementById('res-processing-banner');
+        const bannerText = document.getElementById('res-banner-text');
+
+        if (activeJobs.length > 0) {
+            if (banner) {
+                banner.style.display = 'block';
+                const stages = activeJobs.map(j => `${j.title.slice(0, 15)}... (${j.processingStatus})`).join(', ');
+                bannerText.innerText = `OCR & AI background worker processing ${activeJobs.length} document(s): ${stages}`;
+            }
+
+            if (!this.pollTimer) {
+                this.pollTimer = setInterval(() => {
+                    this.fetchResources(false);
+                }, 3500);
+            }
+        } else {
+            if (banner) banner.style.display = 'none';
+            if (this.pollTimer) {
+                clearInterval(this.pollTimer);
+                this.pollTimer = null;
+            }
+        }
     }
 
     renderResources(resources) {
@@ -127,7 +358,7 @@ class ResourcesController {
         this.tableBody.innerHTML = '';
 
         if (!resources || resources.length === 0) {
-            this.tableBody.innerHTML = `<tr><td colspan="5" class="loading-text" style="text-align: center; color: var(--text-secondary); padding: 24px;">No academic resources uploaded yet. Upload lecture notes, past questions, or PDFs above to feed the app and AI.</td></tr>`;
+            this.tableBody.innerHTML = `<tr><td colspan="6" class="loading-text" style="text-align: center; color: var(--text-secondary); padding: 24px;">No academic resources uploaded yet. Upload course lecture notes, past questions, or scanned PDFs above.</td></tr>`;
             return;
         }
 
@@ -138,13 +369,82 @@ class ResourcesController {
             const fileUrl = res.fileUrl || res.url || '#';
             const level = res.level ? `${res.level}L` : 'All Levels';
             const dateStr = res.createdAt ? new Date(res.createdAt).toLocaleDateString() : (res.created_at ? new Date(res.created_at).toLocaleDateString() : (res.date || 'Recent'));
+            const status = res.processingStatus || 'COMPLETED';
+            const method = res.extractionMethod || 'DIGITAL_TEXT';
+            const progress = res.processingProgress || 0;
+            const hasText = !!res.hasExtractedText || status === 'COMPLETED';
+
+            // Determine status badge
+            let statusBadgeHtml = '';
+            if (status === 'UPLOADING') {
+                statusBadgeHtml = `<span class="badge" style="background: #EFF6FF; color: #2563EB; font-weight: 600;"><i class="fas fa-spinner fa-spin"></i> Uploading</span>`;
+            } else if (status === 'PENDING') {
+                statusBadgeHtml = `<span class="badge" style="background: #FEF3C7; color: #D97706; font-weight: 600;"><i class="fas fa-clock"></i> Queued for OCR</span>`;
+            } else if (status === 'EXTRACTING') {
+                statusBadgeHtml = `
+                    <div style="display: flex; flex-direction: column; gap: 3px;">
+                        <span class="badge" style="background: #EFF6FF; color: #1D4ED8; font-weight: 600;">
+                            <i class="fas fa-file-invoice fa-spin"></i> Extracting (${progress}%)
+                        </span>
+                        <div style="width: 100%; max-width: 110px; background: #DBEAFE; height: 4px; border-radius: 2px; overflow: hidden;">
+                            <div style="background: #2563EB; width: ${Math.max(10, progress)}%; height: 100%;"></div>
+                        </div>
+                    </div>`;
+            } else if (status === 'RUNNING_OCR') {
+                statusBadgeHtml = `
+                    <div style="display: flex; flex-direction: column; gap: 3px;">
+                        <span class="badge" style="background: #F3E8FF; color: #7E22CE; font-weight: 600;">
+                            <i class="fas fa-eye fa-spin"></i> Running OCR (${progress}%)
+                        </span>
+                        <div style="width: 100%; max-width: 110px; background: #E9D5FF; height: 4px; border-radius: 2px; overflow: hidden;">
+                            <div style="background: #9333EA; width: ${Math.max(15, progress)}%; height: 100%;"></div>
+                        </div>
+                    </div>`;
+            } else if (status === 'COMPLETED') {
+                let methodLabel = 'Digital Text';
+                let methodBg = '#EFF6FF';
+                let methodColor = '#2563EB';
+                if (method === 'OCR') {
+                    methodLabel = 'Tesseract OCR';
+                    methodBg = '#F3E8FF';
+                    methodColor = '#7E22CE';
+                } else if (method === 'HYBRID') {
+                    methodLabel = 'Hybrid OCR';
+                    methodBg = '#ECFDF5';
+                    methodColor = '#059669';
+                }
+
+                statusBadgeHtml = `
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="badge" style="background: #ECFDF5; color: #047857; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
+                            <i class="fas fa-check-circle"></i> AI Ready
+                        </span>
+                        <small style="color: var(--text-secondary); font-size: 11px;">
+                            <span style="display: inline-block; padding: 1px 4px; border-radius: 4px; background: ${methodBg}; color: ${methodColor}; font-weight: 600;">
+                                ${methodLabel}
+                            </span>
+                            ${res.totalPages ? ` • ${res.totalPages} pgs` : ''}
+                        </small>
+                    </div>`;
+            } else if (status === 'FAILED') {
+                const errMsg = res.processingError || 'Extraction failed';
+                statusBadgeHtml = `
+                    <div style="display: flex; flex-direction: column; gap: 2px;" title="${errMsg}">
+                        <span class="badge" style="background: #FEE2E2; color: #B91C1C; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
+                            <i class="fas fa-exclamation-triangle"></i> Failed
+                        </span>
+                        <small style="color: #DC2626; font-size: 11px; max-width: 130px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            ${errMsg}
+                        </small>
+                    </div>`;
+            }
 
             row.innerHTML = `
                 <td>
-                    <div style="font-weight: 600; color: var(--text-primary);">${title}</div>
+                    <div style="font-weight: 600; color: var(--text-primary); max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${title}</div>
                     <small>
                         <a href="${fileUrl}" target="_blank" rel="noopener noreferrer" style="color: var(--color-primary-600); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; margin-top: 2px;">
-                            <i class="fas fa-external-link-alt"></i> View / Download File
+                            <i class="fas fa-external-link-alt"></i> Direct Link
                         </a>
                     </small>
                 </td>
@@ -159,19 +459,62 @@ class ResourcesController {
                         ${res.category || 'Course Material'}
                     </span>
                 </td>
+                <td>
+                    ${statusBadgeHtml}
+                </td>
                 <td style="color: var(--text-secondary); font-size: 13px;">${dateStr}</td>
-                <td style="text-align: right;">
-                    <button class="btn-icon btn-delete" title="Delete Resource" style="color: #EF4444; background: transparent; border: none; cursor: pointer; padding: 6px;">
+                <td style="text-align: right; white-space: nowrap;">
+                    <button class="btn-icon btn-view-text" title="View Extracted Text for AI" style="color: #4F46E5; background: transparent; border: none; cursor: pointer; padding: 6px 8px; font-size: 14px;" ${!hasText && status !== 'COMPLETED' ? 'disabled style="opacity: 0.4; cursor: not-allowed;"' : ''}>
+                        <i class="fas fa-file-alt"></i>
+                    </button>
+                    <button class="btn-icon btn-preview-pdf" title="Preview Original Document" style="color: #0284C7; background: transparent; border: none; cursor: pointer; padding: 6px 8px; font-size: 14px;">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                    <button class="btn-icon btn-reprocess" title="Reprocess / Retry OCR" style="color: #D97706; background: transparent; border: none; cursor: pointer; padding: 6px 8px; font-size: 14px;">
+                        <i class="fas fa-redo"></i>
+                    </button>
+                    <button class="btn-icon btn-delete" title="Delete Resource" style="color: #EF4444; background: transparent; border: none; cursor: pointer; padding: 6px 8px; font-size: 14px;">
                         <i class="fas fa-trash-alt"></i>
                     </button>
                 </td>
             `;
 
-            row.querySelector('.btn-delete').addEventListener('click', () => {
-                if (confirm(`Are you sure you want to delete "${title}"? This will remove it from student study materials and AI context.`)) {
-                    this.deleteResource(res.id, title);
-                }
-            });
+            // Action: View Extracted Text
+            const viewTextBtn = row.querySelector('.btn-view-text');
+            if (viewTextBtn && !viewTextBtn.disabled) {
+                viewTextBtn.addEventListener('click', () => {
+                    this.openTextModal(res.id, title, method);
+                });
+            }
+
+            // Action: Preview PDF
+            const previewPdfBtn = row.querySelector('.btn-preview-pdf');
+            if (previewPdfBtn) {
+                previewPdfBtn.addEventListener('click', () => {
+                    this.openPreviewModal(title, fileUrl);
+                });
+            }
+
+            // Action: Reprocess / Retry
+            const reprocessBtn = row.querySelector('.btn-reprocess');
+            if (reprocessBtn) {
+                reprocessBtn.addEventListener('click', () => {
+                    if (confirm(`Trigger OCR reprocessing for "${title}"?`)) {
+                        reprocessBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                        this.reprocessResource(res.id, title);
+                    }
+                });
+            }
+
+            // Action: Delete
+            const deleteBtn = row.querySelector('.btn-delete');
+            if (deleteBtn) {
+                deleteBtn.addEventListener('click', () => {
+                    if (confirm(`Are you sure you want to delete "${title}"? This will remove it from student study materials and AI context.`)) {
+                        this.deleteResource(res.id, title);
+                    }
+                });
+            }
 
             this.tableBody.appendChild(row);
         });
@@ -212,7 +555,7 @@ class ResourcesController {
                     return;
                 }
 
-                progressText.innerText = `Uploading ${files.length} file(s) to Cloudflare R2 & creating resources...`;
+                progressText.innerText = `Uploading ${files.length} file(s) to Cloudflare R2 & initiating background OCR...`;
 
                 const formData = new FormData();
                 for (let i = 0; i < files.length; i++) {
@@ -270,30 +613,14 @@ class ResourcesController {
                                     method: 'POST',
                                     body: JSON.stringify(payload)
                                 });
-                                if (regRes.ok) {
-                                    createdCount++;
-                                } else if (typeof db !== 'undefined' && db && db.collection) {
-                                    await db.collection('resources').add({
-                                        ...payload,
-                                        uploadedAt: firebase.firestore.FieldValue.serverTimestamp()
-                                    });
-                                    createdCount++;
-                                }
-                            } catch (_) {
-                                if (typeof db !== 'undefined' && db && db.collection) {
-                                    await db.collection('resources').add({
-                                        ...payload,
-                                        uploadedAt: firebase.firestore.FieldValue.serverTimestamp()
-                                    });
-                                    createdCount++;
-                                }
-                            }
+                                if (regRes.ok) createdCount++;
+                            } catch (_) {}
                         }
-                        alert(`Successfully uploaded ${createdCount || uploadedFiles.length} resource(s) for ${courseCode}!`);
+                        alert(`Successfully uploaded ${createdCount || uploadedFiles.length} resource(s) for ${courseCode}! Background OCR processing started.`);
                         e.target.reset();
                         document.getElementById('res-file-count').innerText = '';
                         this.initUploadModeToggle();
-                        this.fetchResources();
+                        this.fetchResources(true);
                         return;
                     }
                 }
@@ -304,11 +631,11 @@ class ResourcesController {
                 }
 
                 const result = await uploadRes.json();
-                alert(`Successfully uploaded ${result.count || files.length} resource(s) for ${courseCode}!`);
+                alert(`Successfully uploaded ${result.count || files.length} resource(s) for ${courseCode}! Background OCR text extraction is running.`);
                 e.target.reset();
                 document.getElementById('res-file-count').innerText = '';
                 this.initUploadModeToggle();
-                this.fetchResources();
+                this.fetchResources(true);
             } else {
                 // Single Link URL upload
                 const titleInput = document.getElementById('res-title');
@@ -321,7 +648,7 @@ class ResourcesController {
                     return;
                 }
 
-                progressText.innerText = "Registering resource URL with backend...";
+                progressText.innerText = "Registering resource URL and queuing OCR...";
 
                 const payload = {
                     title: titleInput.value.trim() || `${courseCode} Course Material`,
@@ -341,10 +668,10 @@ class ResourcesController {
                     throw new Error(errData.error || `Failed with status ${res.status}`);
                 }
 
-                alert(`Successfully added resource "${payload.title}"!`);
+                alert(`Successfully registered resource "${payload.title}"! OCR extraction initiated.`);
                 e.target.reset();
                 this.initUploadModeToggle();
-                this.fetchResources();
+                this.fetchResources(true);
             }
         } catch (err) {
             console.error("Resource upload error:", err);
@@ -362,16 +689,14 @@ class ResourcesController {
             });
 
             if (res.ok) {
-                alert(`Deleted "${title}" successfully.`);
-                this.fetchResources();
+                this.fetchResources(true);
                 return;
             }
 
             // Fallback to Firestore delete
             if (typeof db !== 'undefined' && db && db.collection) {
                 await db.collection('resources').doc(id).delete();
-                alert(`Deleted "${title}".`);
-                this.fetchResources();
+                this.fetchResources(true);
                 return;
             }
 

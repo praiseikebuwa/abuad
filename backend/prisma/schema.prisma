@@ -381,13 +381,25 @@ model GroupMember {
 }
 
 model Resource {
-  id          String   @id @default(uuid())
-  title       String
-  description String?
-  category    String
-  fileUrl     String
-  uploaderId  String
-  createdAt   DateTime @default(now())
+  id                      String    @id @default(uuid())
+  title                   String
+  description             String?
+  category                String
+  fileUrl                 String
+  uploaderId              String
+  createdAt               DateTime  @default(now())
+
+  // Automatic PDF OCR & AI Document Processing fields
+  processingStatus        String    @default("PENDING") // UPLOADING, UPLOADED, PENDING, EXTRACTING, RUNNING_OCR, COMPLETED, FAILED
+  extractionMethod        String?   // DIGITAL_TEXT, OCR, HYBRID, NONE
+  extractedText           String?   @db.Text
+  extractedTextStorageKey String?
+  totalPages              Int       @default(0)
+  processedPages          Int       @default(0)
+  processingProgress      Int       @default(0)
+  processingError         String?
+  processedAt             DateTime?
+  processingMetadata      String?   @db.Text // JSON with details: wordCount, confidence, detectedType, warnings, durationMs
 
   uploader    User     @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
 }

@@ -19,6 +19,18 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   configureUrlStrategy();
 
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    debugPrint('🔴 Flutter Framework Error: ' + details.exceptionAsString());
+    if (details.stack != null) {
+      debugPrint(details.stack.toString());
+    }
+  };
+
+  WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+    debugPrint('🔴 Uncaught Platform Error: ' + error.toString());
+    return true;
+  };
   try {
     // Configure System UI for Edge-to-Edge
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);

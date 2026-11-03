@@ -52,10 +52,17 @@ export function extractR2Key(urlOrKey: string): string | null {
   if (!urlOrKey || typeof urlOrKey !== 'string') return null;
   const trimmed = urlOrKey.trim();
   if (trimmed.startsWith('uploads/')) return trimmed;
+  if (trimmed.startsWith('resources/')) return trimmed;
   if (trimmed.includes('/uploads/')) {
     const parts = trimmed.split('/uploads/');
     if (parts.length > 1 && parts[1]) {
       return `uploads/${parts[1].split('?')[0]}`;
+    }
+  }
+  if (trimmed.includes('/resources/')) {
+    const parts = trimmed.split('/resources/');
+    if (parts.length > 1 && parts[1]) {
+      return `resources/${parts[1].split('?')[0]}`;
     }
   }
   return null;
