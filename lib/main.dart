@@ -15,12 +15,24 @@ import 'src/features/utilities/broadcast_listener.dart';
 import 'src/features/settings/presentation/settings_screen.dart';
 import 'src/features/auth/data/auth_repository.dart';
 import 'src/core/utils/url_strategy_helper.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+  FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
+
+  // Safety fallback: guarantee native splash is removed within 1.2s regardless of network or device speed
+  Timer(const Duration(milliseconds: 1200), () {
+    FlutterNativeSplash.remove();
+  });
+
   if (kIsWeb) {
     configureUrlStrategy();
   }
+
+  // Prevent GoogleFonts from blocking main isolate
+  GoogleFonts.config.allowRuntimeFetching = true;
 
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
@@ -59,8 +71,9 @@ void main() async {
 
   runApp(UncontrolledProviderScope(container: container, child: const MyApp()));
 
-  // Defer notification initialization to after initial frame so splash dismisses instantly
+  // Dismiss native splash as soon as the first frame renders
   WidgetsBinding.instance.addPostFrameCallback((_) {
+    FlutterNativeSplash.remove();
     NotificationService().initialize().catchError((e) {
       debugPrint("Notification initialization failed: $e");
     });
