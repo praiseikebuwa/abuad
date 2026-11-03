@@ -558,15 +558,16 @@ router.post('/:id/retry', authenticateToken, handleReprocess);
 
 /**
  * POST /api/resources/process-all-pending
- * Trigger background processing for all pending documents
+ * Trigger background processing for all pending or failed documents
  */
-router.post('/process-all-pending', optionalAuth, async (_req: Request, res: Response) => {
+router.post('/process-all-pending', optionalAuth, async (req: Request, res: Response) => {
   try {
-    const count = await processAllPendingResources();
+    const includeFailed = req.query.includeFailed !== 'false';
+    const count = await processAllPendingResources(includeFailed);
     return res.json({
       success: true,
       count,
-      message: `Enqueued ${count} pending document(s) for background OCR processing.`,
+      message: `Enqueued ${count} pending/failed document(s) for background OCR processing.`,
     });
   } catch (err: any) {
     console.error('Error in process-all-pending:', err);

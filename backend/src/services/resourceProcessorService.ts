@@ -60,15 +60,15 @@ export function startBackgroundProcessor(): void {
 
   // Run initial scan 4 seconds after server boot
   setTimeout(() => {
-    processAllPendingResources().catch((err) => {
+    processAllPendingResources(true).catch((err) => {
       console.warn('[ResourceProcessor] Startup pending resources scan error:', err);
     });
   }, 4000);
 
-  // Periodic check every 20 seconds to pick up any newly queued or orphaned PENDING jobs
+  // Periodic check every 20 seconds to pick up any newly queued, orphaned, or failed jobs
   setInterval(() => {
     if (!isQueueWorkerRunning && jobQueue.length === 0) {
-      processAllPendingResources().catch(() => {});
+      processAllPendingResources(true).catch(() => {});
     }
   }, 20000);
 }
@@ -76,12 +76,16 @@ export function startBackgroundProcessor(): void {
 /**
  * Enqueue all pending or unextracted resources from the database
  */
-export async function processAllPendingResources(): Promise<number> {
+export async function processAllPendingResources(includeFailed: boolean = true): Promise<number> {
   try {
+    const statuses: ('PENDING' | 'EXTRACTING' | 'RUNNING_OCR' | 'FAILED')[] = includeFailed
+      ? ['PENDING', 'EXTRACTING', 'RUNNING_OCR', 'FAILED']
+      : ['PENDING', 'EXTRACTING', 'RUNNING_OCR'];
+
     const pendingResources = await prisma.resource.findMany({
       where: {
         processingStatus: {
-          in: ['PENDING', 'EXTRACTING', 'RUNNING_OCR'],
+          in: statuses,
         },
       },
       select: { id: true, title: true, fileUrl: true, processingStatus: true, extractedText: true },
@@ -121,13 +125,23 @@ export async function processAllPendingResources(): Promise<number> {
       }
 
       if (!activeJobIds.has(r.id) && !jobQueue.some(j => j.resourceId === r.id)) {
-        jobQueue.push({ resourceId: r.id });
+        // Reset status to PENDING so UI shows it's queued
+        await prisma.resource.update({
+          where: { id: r.id },
+          data: {
+            processingStatus: 'PENDING',
+            processingProgress: 0,
+            processingError: null,
+          },
+        }).catch(() => {});
+
+        jobQueue.push({ resourceId: r.id, force: true });
         enqueued++;
       }
     }
 
     if (enqueued > 0) {
-      console.log(`[ResourceProcessor] Enqueued ${enqueued} pending resource(s) for background OCR processing.`);
+      console.log(`[ResourceProcessor] Enqueued ${enqueued} resource(s) for background OCR processing.`);
       triggerQueueWorker();
     }
 

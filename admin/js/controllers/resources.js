@@ -378,9 +378,9 @@ class ResourcesController {
         const activeJobs = resources.filter(r => 
             ['PENDING', 'EXTRACTING', 'RUNNING_OCR', 'UPLOADING'].includes(r.processingStatus)
         );
+        const failedJobs = resources.filter(r => r.processingStatus === 'FAILED');
 
         const banner = document.getElementById('res-processing-banner');
-        const bannerText = document.getElementById('res-banner-text');
 
         if (activeJobs.length > 0) {
             if (banner) {
@@ -389,6 +389,9 @@ class ResourcesController {
                 banner.style.justifyContent = 'space-between';
                 banner.style.flexWrap = 'wrap';
                 banner.style.gap = '8px';
+                banner.style.background = '#EEF2FF';
+                banner.style.border = '1px solid #C7D2FE';
+                banner.style.color = '#3730A3';
 
                 const inProgress = activeJobs.filter(j => ['EXTRACTING', 'RUNNING_OCR', 'UPLOADING'].includes(j.processingStatus));
                 const pendingCount = activeJobs.filter(j => j.processingStatus === 'PENDING').length;
@@ -409,7 +412,7 @@ class ResourcesController {
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <button id="btn-process-all-pending" style="background: #4F46E5; color: white; border: none; border-radius: 6px; padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
-                            <i class="fas fa-play"></i> Start OCR for All (${activeJobs.length})
+                            <i class="fas fa-play"></i> Process All (${activeJobs.length})
                         </button>
                     </div>
                 `;
@@ -424,6 +427,39 @@ class ResourcesController {
                 this.pollTimer = setInterval(() => {
                     this.fetchResources(false);
                 }, 3500);
+            }
+        } else if (failedJobs.length > 0) {
+            if (banner) {
+                banner.style.display = 'flex';
+                banner.style.alignItems = 'center';
+                banner.style.justifyContent = 'space-between';
+                banner.style.flexWrap = 'wrap';
+                banner.style.gap = '8px';
+                banner.style.background = '#FEF2F2';
+                banner.style.border = '1px solid #FECACA';
+                banner.style.color = '#991B1B';
+
+                banner.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-exclamation-triangle" style="color: #DC2626;"></i>
+                        <span><strong>${failedJobs.length} document(s)</strong> failed initial extraction (e.g. before OCR tools were installed on server).</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <button id="btn-process-all-pending" style="background: #DC2626; color: white; border: none; border-radius: 6px; padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-redo"></i> Retry All Failed OCR (${failedJobs.length})
+                        </button>
+                    </div>
+                `;
+
+                const btnProcess = document.getElementById('btn-process-all-pending');
+                if (btnProcess) {
+                    btnProcess.onclick = () => this.processAllPending();
+                }
+            }
+
+            if (this.pollTimer) {
+                clearInterval(this.pollTimer);
+                this.pollTimer = null;
             }
         } else {
             if (banner) banner.style.display = 'none';
