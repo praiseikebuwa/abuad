@@ -82,7 +82,13 @@ class ApiClient {
     bool canRetry = true,
   }) async {
     await ensureTokensLoaded();
-    var response = await requestFn();
+    var response = await requestFn().timeout(
+      const Duration(seconds: 12),
+      onTimeout: () => http.Response(
+        jsonEncode({'success': false, 'error': 'Request timed out'}),
+        408,
+      ),
+    );
     if (canRetry &&
         response.statusCode == 401 &&
         _refreshToken != null &&
@@ -93,7 +99,13 @@ class ApiClient {
       final refreshed = await refreshToken();
       if (refreshed) {
         debugPrint('✅ Token refresh successful. Retrying request...');
-        response = await requestFn();
+        response = await requestFn().timeout(
+          const Duration(seconds: 12),
+          onTimeout: () => http.Response(
+            jsonEncode({'success': false, 'error': 'Retry request timed out'}),
+            408,
+          ),
+        );
       } else {
         debugPrint('❌ Token refresh failed. User session may have expired.');
       }

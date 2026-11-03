@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:abuad/src/core/services/notification_service.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,7 +18,9 @@ import 'src/core/utils/url_strategy_helper.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  configureUrlStrategy();
+  if (kIsWeb) {
+    configureUrlStrategy();
+  }
 
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
@@ -31,6 +34,7 @@ void main() async {
     debugPrint('🔴 Uncaught Platform Error: ' + error.toString());
     return true;
   };
+
   try {
     // Configure System UI for Edge-to-Edge
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -41,11 +45,6 @@ void main() async {
         statusBarColor: Colors.transparent,
       ),
     );
-
-    // Initialize Notifications asynchronously without blocking UI startup
-    unawaited(NotificationService().initialize().catchError((e) {
-      debugPrint("Notification initialization failed: $e");
-    }));
   } catch (e) {
     debugPrint("Initialization failed: $e");
   }
@@ -59,6 +58,13 @@ void main() async {
   await container.read(authRepositoryProvider).init(prefs);
 
   runApp(UncontrolledProviderScope(container: container, child: const MyApp()));
+
+  // Defer notification initialization to after initial frame so splash dismisses instantly
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    NotificationService().initialize().catchError((e) {
+      debugPrint("Notification initialization failed: $e");
+    });
+  });
 }
 
 class MyApp extends ConsumerWidget {
@@ -103,11 +109,11 @@ class _ConnectivityListenerState extends State<_ConnectivityListener>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // Process any pending notification tap from terminated state
+    // Process post frame calls so initial build renders without network contention
     WidgetsBinding.instance.addPostFrameCallback((_) {
       NotificationService().consumePendingInitialMessage();
+      _updateStatus('online');
     });
-    _updateStatus('online');
     Connectivity().onConnectivityChanged.listen((result) {
       if (!mounted) return;
       if (result.contains(ConnectivityResult.none)) {

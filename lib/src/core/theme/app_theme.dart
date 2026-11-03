@@ -21,6 +21,7 @@ class AppTheme {
 
       // Typography
       fontFamily: GoogleFonts.spaceGrotesk().fontFamily,
+      fontFamilyFallback: const ['Roboto', 'sans-serif'],
       textTheme: AppTypography.lightTextTheme,
 
       // AppBar
@@ -167,6 +168,7 @@ class AppTheme {
 
       // Typography
       fontFamily: GoogleFonts.spaceGrotesk().fontFamily,
+      fontFamilyFallback: const ['Roboto', 'sans-serif'],
       textTheme: AppTypography.darkTextTheme,
 
       // AppBar
