@@ -83,7 +83,17 @@ def main():
         except Exception:
             pymupdf_available = False
 
-    from PIL import Image, ImageEnhance, ImageFilter
+    # Import PIL / Pillow (optional for scanned image preprocessing)
+    pil_available = False
+    Image = None
+    ImageEnhance = None
+    try:
+        from PIL import Image as PilImage, ImageEnhance as PilEnhance
+        Image = PilImage
+        ImageEnhance = PilEnhance
+        pil_available = True
+    except Exception as e:
+        sys.stderr.write(f"Warning: PIL (Pillow) not installed: {e}\n")
 
     def emit_progress(stage, current_page, total_pages, extra=""):
         pct = int((current_page / max(1, total_pages)) * 100) if total_pages > 0 else 0
@@ -158,13 +168,13 @@ def main():
                 # Text is empty or insufficient: Scanned page!
                 emit_progress("RUNNING_OCR", page_num, pages_to_process, f"Running OCR on scanned page {page_num} of {pages_to_process}")
                 
-                if not pytesseract_available:
-                    # OCR not available, keep whatever minimal digital text exists
+                if not pytesseract_available or not pil_available:
+                    # OCR/PIL not available, keep whatever minimal digital text exists
                     if raw_digital_text:
                         page_texts.append(f"--- Page {page_num} ---\n{raw_digital_text}")
                     else:
                         page_texts.append(f"--- Page {page_num} ---\n[Scanned image page - OCR unavailable]")
-                    warnings.append(f"Page {page_num} contains scanned content but OCR engine was unavailable.")
+                    warnings.append(f"Page {page_num} contains scanned content but OCR/imaging engine was unavailable.")
                     continue
 
                 try:
