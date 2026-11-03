@@ -1,4 +1,5 @@
 import 'widgets/dynamic_group_avatar.dart';
+import 'widgets/snap_arrow_icon.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
@@ -1955,7 +1956,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   ) {
     final currentUserId = repo.currentUserId;
     final viewCount = message.getViewCountFor(currentUserId);
-    final isSaved = message.isSavedBy(currentUserId);
     final isExpired = message.isSnapExpiredFor(currentUserId);
     final canReplay = message.canReplay(currentUserId);
 
@@ -2020,16 +2020,53 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       );
     }
 
-    // State B: Opened / Replay / Save (Image 6 - media_1793641707381_de3d7383.png)
-    final String labelText;
+    // State B: Sender Card (Image 2 - media_1793691587810_3ad02186.png)
     if (isMe) {
       final isOpenedByRecipient = message.readBy.length > 1;
-      labelText = isOpenedByRecipient ? 'Opened' : 'Delivered';
-    } else if (isExpired) {
-      labelText = 'Expired';
-    } else {
-      labelText = 'Right click to replay or save';
+      final snapColor = const Color(0xFFF22543);
+      final labelText = isOpenedByRecipient ? 'Opened' : 'Delivered';
+
+      return GestureDetector(
+        onLongPress: () => _showSnapOptionsSheet(message, repo),
+        child: Container(
+          constraints: const BoxConstraints(minWidth: 140, maxWidth: 240),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF18181B) : const Color(0xFFF4F4F5),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isDark ? Colors.white12 : Colors.black12,
+              width: 1.0,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SnapArrowIcon(
+                size: 16,
+                color: snapColor,
+                isFilled: !isOpenedByRecipient,
+              ),
+              const SizedBox(width: 10),
+              Flexible(
+                child: Text(
+                  labelText,
+                  style: TextStyle(
+                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
     }
+
+    // State C: Recipient Opened / Replay / Save (Image 6 - media_1793641707381_de3d7383.png)
+    final String labelText = isExpired ? 'Expired' : 'Right click to replay or save';
 
     return GestureDetector(
       onTap: () {

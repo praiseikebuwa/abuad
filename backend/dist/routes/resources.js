@@ -8,6 +8,7 @@ const auth_1 = require("../middleware/auth");
 const db_1 = require("../config/db");
 const cloudflare_1 = require("../config/cloudflare");
 const client_s3_1 = require("@aws-sdk/client-s3");
+const resourceProcessorService_1 = require("../services/resourceProcessorService");
 const multer_1 = __importDefault(require("multer"));
 const router = (0, express_1.Router)();
 const upload = (0, multer_1.default)({
@@ -95,6 +96,15 @@ function formatResource(res) {
         else if (['jpg', 'jpeg', 'png', 'webp'].includes(ext || ''))
             fileType = 'image';
     }
+    let parsedMetadata = null;
+    if (res.processingMetadata) {
+        try {
+            parsedMetadata = typeof res.processingMetadata === 'string'
+                ? JSON.parse(res.processingMetadata)
+                : res.processingMetadata;
+        }
+        catch (_) { }
+    }
     return {
         id: res.id,
         title: res.title,
@@ -108,8 +118,18 @@ function formatResource(res) {
         downloads,
         uploaderId: res.uploaderId,
         uploaderName: res.uploader?.fullName || 'Admin',
-        created_at: res.createdAt.toISOString(),
-        timestamp: res.createdAt.toISOString(),
+        created_at: res.createdAt ? res.createdAt.toISOString() : new Date().toISOString(),
+        timestamp: res.createdAt ? res.createdAt.toISOString() : new Date().toISOString(),
+        // Automatic OCR & Processing fields
+        processingStatus: res.processingStatus || 'PENDING',
+        extractionMethod: res.extractionMethod || null,
+        totalPages: res.totalPages || 0,
+        processedPages: res.processedPages || 0,
+        processingProgress: res.processingProgress || 0,
+        processingError: res.processingError || null,
+        processedAt: res.processedAt ? res.processedAt.toISOString() : null,
+        processingMetadata: parsedMetadata,
+        hasExtractedText: !!(res.extractedText || res.extractedTextStorageKey),
     };
 }
 /**
@@ -225,11 +245,18 @@ router.post('/', auth_1.authenticateToken, async (req, res) => {
                 fileUrl: String(activeUrl).trim(),
                 description: JSON.stringify(metaObj),
                 uploaderId: req.user.id,
+                processingStatus: 'PENDING',
             },
             include: {
                 uploader: { select: { fullName: true, username: true } },
             },
         });
+        // Enqueue background processing if it's a PDF
+        if (activeUrl.toLowerCase().includes('.pdf')) {
+            (0, resourceProcessorService_1.enqueueResourceProcessing)(newResource.id).catch((err) => {
+                console.warn(`[Resources] Failed to enqueue processing for ${newResource.id}:`, err);
+            });
+        }
         return res.status(201).json({
             success: true,
             data: formatResource(newResource),
@@ -281,10 +308,15 @@ router.post('/upload-multiple', auth_1.authenticateToken, upload.array('files', 
                     fileUrl: publicUrl,
                     description: JSON.stringify(metaObj),
                     uploaderId: req.user.id,
+                    processingStatus: 'PENDING',
                 },
                 include: {
                     uploader: { select: { fullName: true, username: true } },
                 },
+            });
+            // Enqueue background OCR and document extraction immediately
+            (0, resourceProcessorService_1.enqueueResourceProcessing)(record.id, file.buffer).catch((procErr) => {
+                console.warn(`[Resources] Failed to enqueue background OCR for ${record.id}:`, procErr);
             });
             uploadedResources.push(formatResource(record));
         }
@@ -292,7 +324,7 @@ router.post('/upload-multiple', auth_1.authenticateToken, upload.array('files', 
             success: true,
             data: uploadedResources,
             count: uploadedResources.length,
-            message: `Successfully uploaded and saved ${uploadedResources.length} resource${uploadedResources.length > 1 ? 's' : ''}.`,
+            message: `Successfully uploaded and saved ${uploadedResources.length} resource${uploadedResources.length > 1 ? 's' : ''}. Background OCR processing initiated.`,
         });
     }
     catch (error) {
@@ -300,6 +332,191 @@ router.post('/upload-multiple', auth_1.authenticateToken, upload.array('files', 
         return res.status(500).json({ success: false, error: 'Failed to upload resources: ' + error.message });
     }
 });
+/**
+ * GET /api/resources/:id
+ * Retrieve single resource with its processing metadata
+ */
+router.get('/:id', auth_1.optionalAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const resource = await db_1.prisma.resource.findUnique({
+            where: { id: String(id) },
+            include: {
+                uploader: { select: { id: true, fullName: true, username: true, role: true } },
+            },
+        });
+        if (!resource) {
+            return res.status(404).json({ success: false, error: 'Resource not found' });
+        }
+        return res.json({
+            success: true,
+            data: formatResource(resource),
+        });
+    }
+    catch (error) {
+        console.error('Error fetching resource details:', error);
+        return res.status(500).json({ success: false, error: 'Failed to fetch resource details' });
+    }
+});
+/**
+ * GET /api/resources/:id/status
+ * Pollable endpoint to check real-time OCR/extraction processing progress
+ */
+router.get('/:id/status', auth_1.optionalAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const resource = await db_1.prisma.resource.findUnique({
+            where: { id: String(id) },
+            select: {
+                id: true,
+                title: true,
+                processingStatus: true,
+                extractionMethod: true,
+                processingProgress: true,
+                totalPages: true,
+                processedPages: true,
+                processingError: true,
+                processedAt: true,
+                processingMetadata: true,
+            },
+        });
+        if (!resource) {
+            return res.status(404).json({ success: false, error: 'Resource not found' });
+        }
+        let parsedMeta = null;
+        if (resource.processingMetadata) {
+            try {
+                parsedMeta = typeof resource.processingMetadata === 'string'
+                    ? JSON.parse(resource.processingMetadata)
+                    : resource.processingMetadata;
+            }
+            catch (_) { }
+        }
+        return res.json({
+            success: true,
+            data: {
+                id: resource.id,
+                title: resource.title,
+                status: resource.processingStatus,
+                method: resource.extractionMethod,
+                progress: resource.processingProgress,
+                totalPages: resource.totalPages,
+                processedPages: resource.processedPages,
+                error: resource.processingError,
+                processedAt: resource.processedAt ? resource.processedAt.toISOString() : null,
+                metadata: parsedMeta,
+            },
+        });
+    }
+    catch (error) {
+        console.error('Error fetching resource processing status:', error);
+        return res.status(500).json({ success: false, error: 'Failed to fetch processing status' });
+    }
+});
+/**
+ * GET /api/resources/:id/text
+ * Retrieve extracted plain text of the document for AI, study view, or admin preview
+ */
+router.get('/:id/text', auth_1.optionalAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const resource = await db_1.prisma.resource.findUnique({
+            where: { id: String(id) },
+            select: {
+                id: true,
+                title: true,
+                category: true,
+                processingStatus: true,
+                extractionMethod: true,
+                totalPages: true,
+                processingError: true,
+                processingMetadata: true,
+            },
+        });
+        if (!resource) {
+            return res.status(404).json({ success: false, error: 'Resource not found' });
+        }
+        if (resource.processingStatus === 'PENDING' || resource.processingStatus === 'EXTRACTING' || resource.processingStatus === 'RUNNING_OCR') {
+            return res.status(202).json({
+                success: false,
+                status: resource.processingStatus,
+                message: 'Document is currently being processed by OCR. Please try again shortly.',
+            });
+        }
+        const fullText = await (0, resourceProcessorService_1.getResourceExtractedText)(resource.id);
+        if (!fullText || fullText.trim().length === 0) {
+            return res.status(404).json({
+                success: false,
+                status: resource.processingStatus,
+                error: resource.processingError || 'No extracted text is available for this resource.',
+            });
+        }
+        let parsedMeta = null;
+        if (resource.processingMetadata) {
+            try {
+                parsedMeta = typeof resource.processingMetadata === 'string'
+                    ? JSON.parse(resource.processingMetadata)
+                    : resource.processingMetadata;
+            }
+            catch (_) { }
+        }
+        return res.json({
+            success: true,
+            data: {
+                id: resource.id,
+                title: resource.title,
+                category: resource.category,
+                extractionMethod: resource.extractionMethod,
+                totalPages: resource.totalPages,
+                text: fullText,
+                charCount: fullText.length,
+                wordCount: fullText.split(/\s+/).filter(Boolean).length,
+                metadata: parsedMeta,
+            },
+        });
+    }
+    catch (error) {
+        console.error('Error fetching resource text:', error);
+        return res.status(500).json({ success: false, error: 'Failed to retrieve extracted text' });
+    }
+});
+/**
+ * POST /api/resources/:id/reprocess (or /retry)
+ * Trigger background reprocessing or retry of a failed or existing resource
+ */
+const handleReprocess = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const resource = await db_1.prisma.resource.findUnique({
+            where: { id: String(id) },
+        });
+        if (!resource) {
+            return res.status(404).json({ success: false, error: 'Resource not found' });
+        }
+        const isAdmin = req.user?.role?.toUpperCase() === 'ADMIN';
+        if (!isAdmin && resource.uploaderId !== req.user.id) {
+            return res.status(403).json({ success: false, error: 'Unauthorized to reprocess this resource' });
+        }
+        (0, resourceProcessorService_1.enqueueResourceProcessing)(resource.id, undefined, { force: true }).catch((err) => {
+            console.warn(`[Resources] Failed to trigger reprocessing for ${resource.id}:`, err);
+        });
+        return res.json({
+            success: true,
+            message: `Reprocessing queued for "${resource.title}".`,
+            data: {
+                id: resource.id,
+                processingStatus: 'PENDING',
+                processingProgress: 0,
+            },
+        });
+    }
+    catch (error) {
+        console.error('Error reprocessing resource:', error);
+        return res.status(500).json({ success: false, error: 'Failed to trigger reprocessing' });
+    }
+};
+router.post('/:id/reprocess', auth_1.authenticateToken, handleReprocess);
+router.post('/:id/retry', auth_1.authenticateToken, handleReprocess);
 /**
  * DELETE /api/resources/:id
  * Delete resource from database and storage

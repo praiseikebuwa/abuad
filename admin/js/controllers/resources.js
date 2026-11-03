@@ -194,16 +194,62 @@ class ResourcesController {
         textModal.style.display = 'flex';
 
         try {
-            const res = await ApiClientAdmin.fetch(`/resources/${resourceId}/text`);
-            const data = await res.json();
+            let docData = null;
+            let res = null;
+            try {
+                res = await ApiClientAdmin.fetch(`/resources/${resourceId}/text`);
+                const contentType = res.headers ? (res.headers.get('content-type') || '') : '';
+                if (res.ok && contentType.includes('application/json')) {
+                    const data = await res.json();
+                    if (data.success && data.data) {
+                        docData = data.data;
+                    }
+                }
+            } catch (netErr) {
+                console.warn("Direct API /resources/:id/text fetch failed:", netErr);
+            }
 
-            if (!res.ok || !data.success) {
-                contentEl.innerText = data.error || data.message || 'No extracted text found for this document.';
-                badgesContainer.innerHTML = `<span class="badge" style="background: #FEE2E2; color: #DC2626;"><i class="fas fa-exclamation-circle"></i> Unavailable</span>`;
+            // Fallback 1: Local resources map
+            if (!docData) {
+                const cachedRes = this.resourcesMap?.get(resourceId);
+                if (cachedRes && cachedRes.extractedText) {
+                    docData = {
+                        text: cachedRes.extractedText,
+                        extractionMethod: cachedRes.extractionMethod || method || 'TEXT',
+                        totalPages: cachedRes.totalPages || 1,
+                        wordCount: cachedRes.extractedText.trim().split(/\s+/).length,
+                        charCount: cachedRes.extractedText.length
+                    };
+                }
+            }
+
+            // Fallback 2: Firestore
+            if (!docData && typeof db !== 'undefined' && db && db.collection) {
+                try {
+                    const snap = await db.collection('resources').doc(resourceId).get();
+                    if (snap.exists) {
+                        const data = snap.data();
+                        if (data.extractedText) {
+                            docData = {
+                                text: data.extractedText,
+                                extractionMethod: data.extractionMethod || method || 'DIGITAL_TEXT',
+                                totalPages: data.totalPages || 1,
+                                wordCount: data.extractedText.trim().split(/\s+/).length,
+                                charCount: data.extractedText.length
+                            };
+                        }
+                    }
+                } catch (fsErr) {
+                    console.warn("Firestore text fetch failed:", fsErr);
+                }
+            }
+
+            if (!docData || !docData.text) {
+                contentEl.innerText = 'Extracted text is not yet available for this document.\n\nPossible reasons:\n1. The document is currently queued or being processed by the OCR engine.\n2. The backend server is pending deployment with the new OCR worker.\n3. The PDF was uploaded prior to OCR extraction.\n\nYou can click "Reprocess / Retry OCR" in the actions menu once the backend is updated.';
+                badgesContainer.innerHTML = `<span class="badge" style="background: #FEF3C7; color: #D97706;"><i class="fas fa-clock"></i> Not Ready</span>`;
                 return;
             }
 
-            const docData = data.data;
             this.cachedText = docData.text || '';
             contentEl.innerText = this.cachedText;
 
@@ -265,14 +311,18 @@ class ResourcesController {
             const res = await ApiClientAdmin.fetch(`/resources/${id}/reprocess`, {
                 method: 'POST'
             });
-            const data = await res.json();
-            if (res.ok && data.success) {
-                this.fetchResources(true);
-            } else {
-                alert(`Failed to trigger reprocessing: ${data.error || 'Server error'}`);
+            const contentType = res.headers ? (res.headers.get('content-type') || '') : '';
+            if (res.ok && contentType.includes('application/json')) {
+                const data = await res.json();
+                if (data.success) {
+                    alert(`Reprocessing queued for "${title}". OCR worker will re-extract text in background.`);
+                    this.fetchResources(true);
+                    return;
+                }
             }
+            alert(`Reprocessing endpoint returned status ${res.status}. Note that if backend changes have not been deployed to the remote VPS server yet, please deploy the backend code first.`);
         } catch (err) {
-            alert(`Reprocess request failed: ${err.message}`);
+            alert(`Reprocess request failed: ${err.message}. If the remote server is not yet updated with the new OCR routes, please deploy the backend to your VPS.`);
         }
     }
 
@@ -356,6 +406,7 @@ class ResourcesController {
     renderResources(resources) {
         if (!this.tableBody) return;
         this.tableBody.innerHTML = '';
+        this.resourcesMap = new Map();
 
         if (!resources || resources.length === 0) {
             this.tableBody.innerHTML = `<tr><td colspan="6" class="loading-text" style="text-align: center; color: var(--text-secondary); padding: 24px;">No academic resources uploaded yet. Upload course lecture notes, past questions, or scanned PDFs above.</td></tr>`;
@@ -363,6 +414,9 @@ class ResourcesController {
         }
 
         resources.forEach(res => {
+            if (res.id) {
+                this.resourcesMap.set(res.id, res);
+            }
             const row = document.createElement('tr');
             const courseCode = res.courseCode || res.category || 'General';
             const title = res.title || res.name || res.fileName || `${courseCode} Course Material`;

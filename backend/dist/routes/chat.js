@@ -140,6 +140,12 @@ async function formatChannel(ch, currentUserId, userCache) {
         archived_by: archivedBy,
         typingUsers,
         typing_users: typingUsers,
+        restrictMessaging: ch.restrictMessaging ?? false,
+        restrict_messaging: ch.restrictMessaging ?? false,
+        restrictInfoUpdates: ch.restrictInfoUpdates ?? false,
+        restrict_info_updates: ch.restrictInfoUpdates ?? false,
+        allowSnaps: ch.allowSnaps ?? true,
+        allow_snaps: ch.allowSnaps ?? true,
         unreadCounts: {},
         unread_counts: {},
     };
@@ -445,17 +451,18 @@ router.get('/channels/:id', auth_1.authenticateToken, async (req, res) => {
  */
 router.patch('/channels/:id', auth_1.authenticateToken, async (req, res) => {
     try {
-        const { name, restrictMessaging, restrictInfoUpdates } = req.body;
+        const { name, restrictMessaging, restrictInfoUpdates, allowSnaps } = req.body;
         const channel = await db_1.prisma.chatChannel.update({
             where: { id: String(req.params.id) },
             data: {
                 ...(name !== undefined && { name }),
                 ...(restrictMessaging !== undefined && { restrictMessaging }),
                 ...(restrictInfoUpdates !== undefined && { restrictInfoUpdates }),
+                ...(allowSnaps !== undefined && { allowSnaps: Boolean(allowSnaps) }),
             },
         });
         const formatted = await formatChannel(channel, req.user.id);
-        (0, socket_1.emitToChannel)(channel.id, 'channel:updated', {});
+        (0, socket_1.emitToChannel)(channel.id, 'channel:updated', { channel: formatted });
         return res.json({ success: true, data: formatted });
     }
     catch (error) {
@@ -1013,6 +1020,9 @@ router.post('/send', auth_1.authenticateToken, async (req, res) => {
                     },
                 });
             }
+            else if (existingChannel.isGroup && isSnapMessage && existingChannel.allowSnaps === false) {
+                return res.status(403).json({ error: 'Snaps are disabled in this group by admins' });
+            }
         }
         if (!targetChannelId) {
             return res.status(400).json({ error: 'Channel or receiver required' });
@@ -1405,6 +1415,12 @@ router.post('/messages/:id/view-snap', auth_1.authenticateToken, async (req, res
                 const memberFormatted = formatMessage(updated, mId);
                 (0, socket_1.emitToUsers)([mId], 'message:updated', { message: memberFormatted });
             }
+            (0, socket_1.emitToChannel)(updated.channelId, 'snap:viewed', {
+                messageId: updated.id,
+                channelId: updated.channelId,
+                viewerId: userId,
+                snapViews,
+            });
             const formatted = formatMessage(updated, userId);
             return res.json({ success: true, data: formatted });
         }

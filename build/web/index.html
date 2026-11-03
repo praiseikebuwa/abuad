@@ -1,4 +1,6 @@
-<!DOCTYPE html><html><head>
+<!DOCTYPE html>
+<html>
+<head>
   <!--
     If you are serving your web app in a path other than the root, change the
     href value below to reflect the base path you are serving from.
@@ -25,7 +27,7 @@
   <meta name="author" content="ABUAD Developers">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://abuadapp.com.ng/">
-  <meta name="theme-color" content="#14B8A6">
+  <meta name="theme-color" content="#0A0A0A">
 
   <!-- Font Preconnect & Noto Fallback for CanvasKit & Emojis -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -64,114 +66,305 @@
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="manifest" href="manifest.json">
 
-
   <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  
-  
   <style id="splash-screen-style">
-    html {
-      height: 100%
-    }
-
-    body {
+    html, body {
       margin: 0;
-      min-height: 100%;
-      background-color: #ffddb2;
-          background-size: 100% 100%;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background-color: #0A0A0A;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
 
-    .center {
-      margin: 0;
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      -ms-transform: translate(-50%, -50%);
-      transform: translate(-50%, -50%);
-    }
-
-    .contain {
-      display:block;
-      width:100%; height:100%;
-      object-fit: contain;
-    }
-
-    .stretch {
-      display:block;
-      width:100%; height:100%;
-    }
-
-    .cover {
-      display:block;
-      width:100%; height:100%;
-      object-fit: cover;
-    }
-
-    .bottom {
-      position: absolute;
-      bottom: 0;
-      left: 50%;
-      -ms-transform: translate(-50%, 0);
-      transform: translate(-50%, 0);
-    }
-
-    .bottomLeft {
-      position: absolute;
-      bottom: 0;
+    /* Modern Native Web Splash */
+    #splash-container {
+      position: fixed;
+      top: 0;
       left: 0;
+      width: 100vw;
+      height: 100vh;
+      background-color: #0A0A0A;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 99999;
+      user-select: none;
+      -webkit-user-select: none;
+      opacity: 1;
+      transition: opacity 0.45s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
-    .bottomRight {
+    .splash-fade-out {
+      opacity: 0 !important;
+      pointer-events: none !important;
+    }
+
+    .splash-logo-wrapper {
+      position: relative;
+      width: 120px;
+      height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .splash-logo {
+      width: 110px;
+      height: 110px;
+      object-fit: contain;
+      filter: drop-shadow(0 10px 25px rgba(20, 184, 166, 0.25));
+      animation: logoPulse 2.4s ease-in-out infinite;
+    }
+
+    @keyframes logoPulse {
+      0%, 100% {
+        transform: scale(0.97);
+        opacity: 0.92;
+      }
+      50% {
+        transform: scale(1.03);
+        opacity: 1;
+        filter: drop-shadow(0 12px 30px rgba(20, 184, 166, 0.4));
+      }
+    }
+
+    .splash-loader-bar {
+      margin-top: 32px;
+      width: 140px;
+      height: 3px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .splash-loader-progress {
+      width: 45%;
+      height: 100%;
+      background: linear-gradient(90deg, #14B8A6, #3B82F6);
+      border-radius: 6px;
       position: absolute;
-      bottom: 0;
-      right: 0;
+      animation: loaderSlide 1.5s ease-in-out infinite;
     }
 
-    @media (prefers-color-scheme: dark) {
-      body {
-        background-color: #0a0a0a;
-          }
+    @keyframes loaderSlide {
+      0% {
+        left: -45%;
+      }
+      100% {
+        left: 100%;
+      }
+    }
+
+    .splash-title {
+      margin-top: 14px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.5);
+    }
+
+    /* PWA Install Banner Styles */
+    #pwa-install-dialog {
+      display: none;
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      width: calc(100% - 32px);
+      max-width: 440px;
+      background: rgba(24, 24, 27, 0.96);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+      z-index: 10000;
+      color: #ffffff;
+      opacity: 0;
+      transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      box-sizing: border-box;
+    }
+
+    #pwa-install-dialog.pwa-visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .pwa-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: relative;
+    }
+
+    .pwa-app-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      object-fit: cover;
+      background: #000;
+      flex-shrink: 0;
+    }
+
+    .pwa-text-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .pwa-title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 700;
+      color: #ffffff;
+      letter-spacing: -0.2px;
+    }
+
+    .pwa-desc {
+      margin: 3px 0 0 0;
+      font-size: 12px;
+      color: #94A3B8;
+      line-height: 1.4;
+    }
+
+    .pwa-close-btn {
+      background: rgba(255, 255, 255, 0.1);
+      border: none;
+      color: #94A3B8;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+      flex-shrink: 0;
+    }
+
+    .pwa-close-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+      color: #ffffff;
+    }
+
+    .pwa-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .pwa-btn-install {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 10px 16px;
+      background: #14B8A6;
+      color: #ffffff;
+      border: none;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .pwa-btn-install:hover {
+      background: #0D9488;
+    }
+
+    .pwa-btn-continue {
+      padding: 10px 16px;
+      background: rgba(255, 255, 255, 0.08);
+      color: #E2E8F0;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .pwa-btn-continue:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    #ios-install-guide {
+      display: none;
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: calc(100% - 32px);
+      max-width: 440px;
+      background: rgba(24, 24, 27, 0.98);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+      z-index: 10001;
+      color: #ffffff;
+      box-sizing: border-box;
+    }
+
+    #ios-install-guide.visible {
+      display: block;
     }
   </style>
+
   <script id="splash-screen-script">
     function removeSplashFromWeb() {
-      document.getElementById("splash")?.remove();
-      document.getElementById("splash-branding")?.remove();
-      document.body.style.background = "transparent";
+      var splash = document.getElementById("splash-container");
+      if (splash && !splash.classList.contains("splash-fade-out")) {
+        splash.classList.add("splash-fade-out");
+        setTimeout(function () {
+          if (splash && splash.parentNode) {
+            splash.parentNode.removeChild(splash);
+          }
+          document.body.style.background = "transparent";
+        }, 460);
+      }
     }
+
+    // Watch for Flutter engine mounting its root element into the DOM
+    var _splashObserver = new MutationObserver(function () {
+      var flt = document.querySelector("flutter-view") || document.querySelector("flt-glass-pane") || document.querySelector("flt-scene-host");
+      if (flt) {
+        setTimeout(removeSplashFromWeb, 350);
+        _splashObserver.disconnect();
+      }
+    });
+
+    document.addEventListener("DOMContentLoaded", function () {
+      _splashObserver.observe(document.body, { childList: true, subtree: true });
+    });
+
+    // Fallback safe timeout to guarantee splash removal
+    setTimeout(removeSplashFromWeb, 7500);
   </script>
 </head>
 
 <body>
-  <picture id="splash">
-      <source srcset="splash/img/light-1x.png 1x, splash/img/light-2x.png 2x, splash/img/light-3x.png 3x, splash/img/light-4x.png 4x" media="(prefers-color-scheme: light)">
-      <source srcset="splash/img/dark-1x.png 1x, splash/img/dark-2x.png 2x, splash/img/dark-3x.png 3x, splash/img/dark-4x.png 4x" media="(prefers-color-scheme: dark)">
-      <img class="center" aria-hidden="true" src="splash/img/light-1x.png" alt="">
-  </picture>
-  
+  <!-- Native Web Splash Screen Container -->
+  <div id="splash-container">
+    <div class="splash-logo-wrapper">
+      <img class="splash-logo" src="assets/images/splash_padded.png" alt="ABUAD Logo" onerror="this.src='splash/img/dark-2x.png'">
+    </div>
+    <div class="splash-loader-bar">
+      <div class="splash-loader-progress"></div>
+    </div>
+    <div class="splash-title">Loading ABUAD...</div>
+  </div>
 
   <!-- PWA Install Dialog Banner -->
   <div id="pwa-install-dialog" role="dialog" aria-modal="true" aria-labelledby="pwa-dialog-title">
@@ -179,8 +372,7 @@
       <img src="icons/Icon-192.png" alt="ABUAD Nest" class="pwa-app-icon" onerror="this.src='favicon.png'">
       <div class="pwa-text-content">
         <h3 id="pwa-dialog-title" class="pwa-title">Install ABUAD Nest</h3>
-        <p class="pwa-desc">Install as a web app on your device for fast access, full screen, and a native app
-          experience.</p>
+        <p class="pwa-desc">Install as a web app on your device for fast access, full screen, and a native app experience.</p>
       </div>
       <button class="pwa-close-btn" id="pwa-close-x" aria-label="Close">✕</button>
     </div>
@@ -204,8 +396,7 @@
       1. Tap the <strong>Share</strong> button <span style="font-size: 16px;">⎋</span> at the bottom of Safari.<br>
       2. Scroll down and tap <strong>Add to Home Screen</strong> <span style="font-size: 14px;">➕</span>.
     </div>
-    <button id="ios-guide-close" style="background: rgba(255,255,255,0.15); border: none; color: #fff; padding: 8px 20px; border-radius: 10px; font-weight: 600; cursor: pointer;">Got
-      it</button>
+    <button id="ios-guide-close" style="background: rgba(255,255,255,0.15); border: none; color: #fff; padding: 8px 20px; border-radius: 10px; font-weight: 600; cursor: pointer;">Got it</button>
   </div>
 
   <script>
@@ -243,13 +434,12 @@
       window.addEventListener('beforeinstallprompt', function (e) {
         e.preventDefault();
         deferredPrompt = e;
-        showBanner();
       });
 
-      // Also trigger banner after 2 seconds for browsers/devices
+      // Only show PWA banner after app is fully running (6 seconds after load)
       setTimeout(function () {
         showBanner();
-      }, 2000);
+      }, 7000);
 
       if (btnInstall) {
         btnInstall.addEventListener('click', function () {
@@ -266,7 +456,6 @@
             hideBanner();
             if (iosGuide) iosGuide.classList.add('visible');
           } else {
-            // General guidance for browsers without beforeinstallprompt
             hideBanner();
             alert("To install, open your browser menu (⋮ or ...) and select 'Install app' or 'Add to Home Screen'.");
           }
@@ -312,6 +501,5 @@
   <script src="snap_camerakit_bridge.js"></script>
 
   <script src="flutter_bootstrap.js" async=""></script>
-
-
-</body></html>
+</body>
+</html>

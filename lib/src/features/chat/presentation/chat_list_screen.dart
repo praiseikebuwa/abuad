@@ -1,4 +1,5 @@
 import 'widgets/dynamic_group_avatar.dart';
+import 'widgets/snap_arrow_icon.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -744,9 +745,9 @@ class _SnapchatListItem extends ConsumerWidget {
     final type = msg['type'] ?? 'text';
     final content = msg['content'] ?? '';
     final isSnapLast = type == 'snap' || content.contains('Snap') || msg['isSnap'] == true;
-    final isLastSentByMe = msg['sender_id'] == currentUserId;
+    final isLastSentByMe = msg['sender_id'] == currentUserId || msg['senderId'] == currentUserId;
     final isVideoSnap = content.contains('Video') || msg['mediaType'] == 'video';
-    final Color snapColor = isVideoSnap ? const Color(0xFF8B5CF6) : const Color(0xFFFF0044);
+    final Color snapColor = isVideoSnap ? const Color(0xFF8B5CF6) : const Color(0xFFF22543);
 
     final unreadSnapsCount = unreadBreakdown.unreadSnaps > 0
         ? unreadBreakdown.unreadSnaps
@@ -758,11 +759,13 @@ class _SnapchatListItem extends ConsumerWidget {
             : (unreadCount > unreadSnapsCount ? unreadCount - unreadSnapsCount : 0));
     final hasUnreadSnap = unreadSnapsCount > 0;
 
-    // Format Timestamp like "9:42 AM", "Yesterday", "Monday", "Just now"
+    // Format Timestamp like "9:42 AM", "Yesterday", "Monday", "just now"
     String formatTime(DateTime time) {
       final now = DateTime.now();
       final diff = now.difference(time);
-      if (diff.inMinutes < 2) return 'Just now';
+      if (diff.inMinutes < 2) return 'just now';
+      if (diff.inHours < 1) return '${diff.inMinutes}m';
+      if (diff.inHours < 24 && now.day == time.day) return '${diff.inHours}h';
       if (now.day == time.day && now.month == time.month && now.year == time.year) {
         return DateFormat('h:mm a').format(time);
       }
@@ -899,20 +902,31 @@ class _SnapchatListItem extends ConsumerWidget {
 
       if (isSnapLast) {
         if (isLastSentByMe) {
+          final readBy = (msg['read_by'] is List)
+              ? List<String>.from(msg['read_by'])
+              : ((msg['readBy'] is List) ? List<String>.from(msg['readBy']) : <String>[]);
+          final isOpened = readBy.any((id) => id != currentUserId);
+          final timeStr = formatTime(channel.lastMessageTime);
+
           return Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.near_me_outlined,
-                size: 14,
-                color: isDark ? Colors.white54 : const Color(0xFF64748B),
+              SnapArrowIcon(
+                size: 13,
+                color: snapColor,
+                isFilled: !isOpened,
               ),
-              const SizedBox(width: 5),
-              Text(
-                'Delivered',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: isDark ? Colors.white54 : const Color(0xFF64748B),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  '${isOpened ? 'Opened' : 'Delivered'} · $timeStr',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                  ),
                 ),
               ),
             ],
@@ -930,11 +944,15 @@ class _SnapchatListItem extends ConsumerWidget {
                 ),
               ),
               const SizedBox(width: 6),
-              Text(
-                'Opened',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: isDark ? Colors.white54 : const Color(0xFF64748B),
+              Flexible(
+                child: Text(
+                  'Opened · ${formatTime(channel.lastMessageTime)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                  ),
                 ),
               ),
             ],
@@ -1147,16 +1165,17 @@ class _SnapchatListItem extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    formatTime(channel.lastMessageTime),
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: isUnread ? FontWeight.w600 : FontWeight.normal,
-                      color: isUnread
-                          ? (hasUnreadSnap ? snapColor : const Color(0xFF3B49DF))
-                          : (isDark ? Colors.white38 : Colors.grey[400]),
+                  if (!(isSnapLast && isLastSentByMe))
+                    Text(
+                      formatTime(channel.lastMessageTime),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: isUnread ? FontWeight.w600 : FontWeight.normal,
+                        color: isUnread
+                            ? (hasUnreadSnap ? snapColor : const Color(0xFF3B49DF))
+                            : (isDark ? Colors.white38 : Colors.grey[400]),
+                      ),
                     ),
-                  ),
                   const SizedBox(height: 5),
                   if (hasUnreadSnap && unreadMessagesCount > 0)
                     GestureDetector(
