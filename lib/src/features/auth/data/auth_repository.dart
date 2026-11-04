@@ -62,12 +62,6 @@ class AuthRepository {
 
         // Set in-memory tokens immediately (no duplicate disk writes)
         ApiClient.setInMemoryTokens(accessToken: accessToken, refreshToken: refreshToken);
-        
-        // Connect socket asynchronously in background without delaying startup
-        unawaited(SocketService.instance.connect());
-        
-        // Refresh profile in background without stalling the UI
-        unawaited(_syncUserProfile(prefs));
       } else {
         // No valid token stored; ensure session is clean
         _currentUser = null;
@@ -76,6 +70,15 @@ class AuthRepository {
       }
     } catch (e) {
       debugPrint('AuthRepository.init error: $e');
+    }
+  }
+
+  /// Start background realtime connections and sync profile AFTER first frame renders
+  void startBackgroundSync([SharedPreferences? prefInstance]) {
+    final token = ApiClient.accessToken;
+    if (token != null && token.isNotEmpty) {
+      unawaited(SocketService.instance.connect());
+      unawaited(_syncUserProfile(prefInstance));
     }
   }
 

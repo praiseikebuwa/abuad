@@ -15,13 +15,16 @@ import 'src/features/utilities/broadcast_listener.dart';
 import 'src/features/settings/presentation/settings_screen.dart';
 import 'src/features/auth/data/auth_repository.dart';
 import 'src/core/utils/url_strategy_helper.dart';
+import 'src/core/utils/startup_tracker.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  // Ensure native splash is immediately unblocked and dismissed as soon as Flutter renders
-  FlutterNativeSplash.remove();
+  // Start high-precision startup instrumentation
+  StartupTracker.instance.start();
+
+  final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+  StartupTracker.instance.mark('widgets_binding_initialized');
 
   if (kIsWeb) {
     configureUrlStrategy();
@@ -57,21 +60,36 @@ void main() async {
     debugPrint("Initialization failed: $e");
   }
 
+  // Initialize SharedPreferences
   final prefs = await SharedPreferences.getInstance();
+  StartupTracker.instance.mark('shared_preferences_ready');
 
   final container = ProviderContainer(
     overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
   );
-  // Restore authenticated session tokens and cached profile directly from prefs
+
+  // Restore authenticated session tokens and cached profile instantly from local memory/disk (<2ms)
   await container.read(authRepositoryProvider).init(prefs);
+  StartupTracker.instance.mark('auth_session_restored');
 
   runApp(UncontrolledProviderScope(container: container, child: const MyApp()));
+  StartupTracker.instance.mark('run_app_mounted');
 
   // Dismiss native splash as soon as the first frame renders
-  WidgetsBinding.instance.addPostFrameCallback((_) {
+  widgetsBinding.addPostFrameCallback((_) {
     FlutterNativeSplash.remove();
-    NotificationService().initialize().catchError((e) {
-      debugPrint("Notification initialization failed: $e");
+    StartupTracker.instance.mark('first_frame_rendered');
+    StartupTracker.instance.printSummary();
+
+    // Start background network syncs with micro-delays so initial UI interaction is buttery smooth
+    Timer(const Duration(milliseconds: 400), () {
+      container.read(authRepositoryProvider).startBackgroundSync(prefs);
+    });
+
+    Timer(const Duration(milliseconds: 1200), () {
+      NotificationService().initialize().catchError((e) {
+        debugPrint("Notification initialization failed: $e");
+      });
     });
   });
 }
@@ -118,10 +136,13 @@ class _ConnectivityListenerState extends State<_ConnectivityListener>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // Process post frame calls so initial build renders without network contention
+    // Defer presence sync and launch payload parsing to avoid network contention on first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      NotificationService().consumePendingInitialMessage();
-      _updateStatus('online');
+      Timer(const Duration(milliseconds: 1500), () {
+        if (!mounted) return;
+        NotificationService().consumePendingInitialMessage();
+        _updateStatus('online');
+      });
     });
     Connectivity().onConnectivityChanged.listen((result) {
       if (!mounted) return;

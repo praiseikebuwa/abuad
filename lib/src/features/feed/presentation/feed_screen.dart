@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/startup_tracker.dart';
 import '../domain/post.dart' as domain;
 import 'widgets/post_card.dart';
 import 'widgets/people_you_may_know_carousel.dart';
@@ -33,6 +34,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   @override
   void initState() {
     super.initState();
+    StartupTracker.instance.mark('home_feed_screen_mounted');
     _scrollController = ScrollController();
     _scrollController.addListener(_scrollListener);
   }

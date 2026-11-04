@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:video_player/video_player.dart';
 import '../../../core/providers/shared_preferences_provider.dart';
+import '../../../core/utils/startup_tracker.dart';
 
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
@@ -55,6 +56,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   @override
   void initState() {
     super.initState();
+    StartupTracker.instance.mark('onboarding_screen_mounted');
     _initializeVideoForPage(_currentPage);
   }
 

@@ -7,6 +7,7 @@ import '../../auth/data/auth_repository.dart';
 import '../../../core/utils/auth_error_handler.dart';
 import '../../../core/presentation/widgets/custom_snackbar.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/startup_tracker.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -21,6 +22,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
   bool _obscurePassword = true;
+
+  @override
+  void initState() {
+    super.initState();
+    StartupTracker.instance.mark('login_screen_mounted');
+  }
 
   @override
   void dispose() {
