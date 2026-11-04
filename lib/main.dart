@@ -19,19 +19,15 @@ import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 void main() async {
-  final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
-  FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
-
-  // Safety fallback: guarantee native splash is removed within 1.2s regardless of network or device speed
-  Timer(const Duration(milliseconds: 1200), () {
-    FlutterNativeSplash.remove();
-  });
+  WidgetsFlutterBinding.ensureInitialized();
+  // Ensure native splash is immediately unblocked and dismissed as soon as Flutter renders
+  FlutterNativeSplash.remove();
 
   if (kIsWeb) {
     configureUrlStrategy();
   }
 
-  // Prevent GoogleFonts from blocking main isolate
+  // Prevent GoogleFonts from blocking main isolate or delaying layout
   GoogleFonts.config.allowRuntimeFetching = true;
 
   FlutterError.onError = (details) {
