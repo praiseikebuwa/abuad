@@ -24,6 +24,7 @@ void main() async {
   StartupTracker.instance.start();
 
   final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+  FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
   StartupTracker.instance.mark('widgets_binding_initialized');
 
   if (kIsWeb) {
@@ -60,17 +61,29 @@ void main() async {
     debugPrint("Initialization failed: $e");
   }
 
-  // Initialize SharedPreferences
-  final prefs = await SharedPreferences.getInstance();
-  StartupTracker.instance.mark('shared_preferences_ready');
+  // Initialize SharedPreferences with in-memory failsafe to prevent splash deadlocks
+  late final SharedPreferences prefs;
+  try {
+    prefs = await SharedPreferences.getInstance();
+    StartupTracker.instance.mark('shared_preferences_ready');
+  } catch (e, stack) {
+    debugPrint('⚠️ Native SharedPreferences failed: $e, falling back to in-memory store');
+    SharedPreferences.setMockInitialValues({});
+    prefs = await SharedPreferences.getInstance();
+    StartupTracker.instance.mark('shared_preferences_ready (fallback)');
+  }
 
   final container = ProviderContainer(
     overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
   );
 
   // Restore authenticated session tokens and cached profile instantly from local memory/disk (<2ms)
-  await container.read(authRepositoryProvider).init(prefs);
-  StartupTracker.instance.mark('auth_session_restored');
+  try {
+    await container.read(authRepositoryProvider).init(prefs);
+    StartupTracker.instance.mark('auth_session_restored');
+  } catch (e, stack) {
+    debugPrint('⚠️ Auth session restoration error: $e');
+  }
 
   runApp(UncontrolledProviderScope(container: container, child: const MyApp()));
   StartupTracker.instance.mark('run_app_mounted');
@@ -91,6 +104,11 @@ void main() async {
         debugPrint("Notification initialization failed: $e");
       });
     });
+  });
+
+  // Failsafe timer: Ensure splash screen never freezes indefinitely under any circumstances
+  Timer(const Duration(milliseconds: 1500), () {
+    FlutterNativeSplash.remove();
   });
 }
 

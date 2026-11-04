@@ -43,7 +43,7 @@ android {
 
     packaging {
         jniLibs {
-            useLegacyPackaging = false
+            useLegacyPackaging = true
             pickFirst("**/libc++_shared.so")
             pickFirst("**/libflutter.so")
             pickFirst("**/libapp.so")
