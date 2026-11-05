@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:toastification/toastification.dart';
@@ -27,6 +28,12 @@ class NotificationService {
     if (_isInitialized) return;
 
     try {
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        try {
+          AndroidFlutterLocalNotificationsPlugin.registerWith();
+        } catch (_) {}
+      }
+
       // Android Initialization Settings
       const androidSettings =
           AndroidInitializationSettings('@mipmap/ic_launcher');

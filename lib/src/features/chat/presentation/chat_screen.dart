@@ -77,6 +77,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _showAttachmentDrawer = false;
   bool _hideAnnouncement = false;
   bool _hasText = false;
+  late ChatRepository _chatRepository;
 
   // In-Conversation Search State (Chrome / Telegram style Find in Chat)
   bool _isSearchingInConversation = false;
@@ -175,10 +176,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _messageController.text = widget.initialText!;
       _hasText = true;
     }
-    ref.read(chatRepositoryProvider).currentActiveChannelId = widget.channelId;
+    _chatRepository = ref.read(chatRepositoryProvider);
+    _chatRepository.currentActiveChannelId = widget.channelId;
     // Mark messages as read when screen loads & prefetch stickers
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(chatRepositoryProvider).markMessagesAsRead(widget.channelId);
+      if (!mounted) return;
+      _chatRepository.markMessagesAsRead(widget.channelId);
       _loadSettings();
       _loadStickers();
       if (_hasText) {
@@ -194,9 +197,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final prefs = await SharedPreferences.getInstance();
       setState(() {
         final channelWallpaper = prefs.getString('chat_wallpaper_${widget.channelId}');
-        _wallpaperPath = (channelWallpaper != null && channelWallpaper.isNotEmpty)
+        final rawWallpaper = (channelWallpaper != null && channelWallpaper.isNotEmpty)
             ? channelWallpaper
             : prefs.getString('global_chat_wallpaper');
+        if (kIsWeb && rawWallpaper != null && rawWallpaper.startsWith('blob:')) {
+          _wallpaperPath = null;
+          if (channelWallpaper != null && channelWallpaper.startsWith('blob:')) {
+            prefs.remove('chat_wallpaper_${widget.channelId}');
+          }
+          if (prefs.getString('global_chat_wallpaper')?.startsWith('blob:') ?? false) {
+            prefs.remove('global_chat_wallpaper');
+          }
+        } else {
+          _wallpaperPath = rawWallpaper;
+        }
         final themeName = prefs.getString('chat_theme_${widget.channelId}') ??
             prefs.getString('global_chat_theme') ??
             'Teal';
@@ -277,7 +291,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
 
     if (kIsWeb) {
-      if (_wallpaperPath!.startsWith('http') || _wallpaperPath!.startsWith('blob:')) {
+      if (_wallpaperPath!.startsWith('http')) {
         return Container(
           decoration: BoxDecoration(
             image: DecorationImage(
@@ -313,8 +327,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   void dispose() {
-    if (ref.read(chatRepositoryProvider).currentActiveChannelId == widget.channelId) {
-      ref.read(chatRepositoryProvider).currentActiveChannelId = null;
+    if (_chatRepository.currentActiveChannelId == widget.channelId) {
+      _chatRepository.currentActiveChannelId = null;
     }
     _messageController.dispose();
     _messageFocusNode.dispose();

@@ -10,6 +10,7 @@ import 'src/core/router/app_router.dart';
 import 'src/core/theme/app_theme.dart';
 import 'src/core/services/api_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_android/shared_preferences_android.dart';
 import 'src/core/providers/shared_preferences_provider.dart';
 import 'src/features/utilities/broadcast_listener.dart';
 import 'src/features/settings/presentation/settings_screen.dart';
@@ -61,13 +62,23 @@ void main() async {
     debugPrint("Initialization failed: $e");
   }
 
+  // Explicitly register Android Pigeon platform for SharedPreferences
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    try {
+      SharedPreferencesAndroid.registerWith();
+    } catch (e) {
+      debugPrint('SharedPreferencesAndroid.registerWith failed: $e');
+    }
+  }
+
   // Initialize SharedPreferences with in-memory failsafe to prevent splash deadlocks
   late final SharedPreferences prefs;
   try {
     prefs = await SharedPreferences.getInstance();
     StartupTracker.instance.mark('shared_preferences_ready');
-  } catch (e, stack) {
+  } catch (e) {
     debugPrint('⚠️ Native SharedPreferences failed: $e, falling back to in-memory store');
+    // ignore: invalid_use_of_visible_for_testing_member
     SharedPreferences.setMockInitialValues({});
     prefs = await SharedPreferences.getInstance();
     StartupTracker.instance.mark('shared_preferences_ready (fallback)');
@@ -81,7 +92,7 @@ void main() async {
   try {
     await container.read(authRepositoryProvider).init(prefs);
     StartupTracker.instance.mark('auth_session_restored');
-  } catch (e, stack) {
+  } catch (e) {
     debugPrint('⚠️ Auth session restoration error: $e');
   }
 

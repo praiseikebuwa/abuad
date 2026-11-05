@@ -149,6 +149,71 @@ class _CameraScreenState extends State<CameraScreen>
       previewGradient: [Color(0xFF4B5563), Color(0xFF1F2937)],
       colorMatrix: null,
     ),
+    CameraLensEffect(
+      id: 'golden_hour',
+      name: 'Golden Hour',
+      category: 'Aesthetic',
+      icon: Icons.wb_sunny_rounded,
+      previewGradient: [Color(0xFFFF8C00), Color(0xFFFFD700)],
+      colorMatrix: [
+        1.1, 0.0, 0.0, 0.0, 12.0,
+        0.0, 1.05, 0.0, 0.0, 6.0,
+        0.0, 0.0, 0.88, 0.0, -8.0,
+        0.0, 0.0, 0.0, 1.0, 0.0,
+      ],
+    ),
+    CameraLensEffect(
+      id: 'noir_bw',
+      name: 'Noir Classic',
+      category: 'Cinematic',
+      icon: Icons.filter_b_and_w_rounded,
+      previewGradient: [Color(0xFF232526), Color(0xFF414345)],
+      colorMatrix: [
+        0.33, 0.59, 0.11, 0.0, 0.0,
+        0.33, 0.59, 0.11, 0.0, 0.0,
+        0.33, 0.59, 0.11, 0.0, 0.0,
+        0.0, 0.0, 0.0, 1.0, 0.0,
+      ],
+    ),
+    CameraLensEffect(
+      id: 'cyberpunk',
+      name: 'Cyberpunk',
+      category: 'Vibrant',
+      icon: Icons.auto_awesome,
+      previewGradient: [Color(0xFF8A2387), Color(0xFFE94057)],
+      colorMatrix: [
+        1.25, 0.0, 0.1, 0.0, 10.0,
+        0.0, 0.9, 0.2, 0.0, 0.0,
+        0.15, 0.1, 1.35, 0.0, 20.0,
+        0.0, 0.0, 0.0, 1.0, 0.0,
+      ],
+    ),
+    CameraLensEffect(
+      id: 'vintage_film',
+      name: 'Vintage 90s',
+      category: 'Retro',
+      icon: Icons.camera_roll_rounded,
+      previewGradient: [Color(0xFF906952), Color(0xFFD4A373)],
+      colorMatrix: [
+        0.9, 0.1, 0.1, 0.0, 15.0,
+        0.1, 0.85, 0.1, 0.0, 10.0,
+        0.1, 0.1, 0.72, 0.0, 5.0,
+        0.0, 0.0, 0.0, 1.0, 0.0,
+      ],
+    ),
+    CameraLensEffect(
+      id: 'emerald_teal',
+      name: 'Emerald Teal',
+      category: 'Fresh',
+      icon: Icons.grass_rounded,
+      previewGradient: [Color(0xFF0F9B0F), Color(0xFF000000)],
+      colorMatrix: [
+        0.9, 0.0, 0.0, 0.0, 0.0,
+        0.0, 1.2, 0.1, 0.0, 15.0,
+        0.0, 0.1, 1.15, 0.0, 10.0,
+        0.0, 0.0, 0.0, 1.0, 0.0,
+      ],
+    ),
   ];
 
   // Lifecycle & disposal guard
@@ -175,6 +240,7 @@ class _CameraScreenState extends State<CameraScreen>
   Uint8List? _latestGallerImage;
 
   // Snapchat Lenses (CameraKit)
+  // ignore: unused_field
   late final _cameraKitFlutterImpl = CameraKitFlutterImpl(cameraKitFlutterEvents: this);
   static const String _snapLensGroupId = '4b594445-eaf3-46cd-8626-fae099b74079';
   static const String _snapWebProductionToken =
@@ -231,12 +297,6 @@ class _CameraScreenState extends State<CameraScreen>
   void _initSnapLenses() {
     if (kIsWeb) {
       _loadWebLenses();
-    } else {
-      try {
-        _cameraKitFlutterImpl.getGroupLenses(groupIds: [_snapLensGroupId]);
-      } catch (e) {
-        debugPrint('[CameraKit] Error requesting lenses: $e');
-      }
     }
   }
 
@@ -1063,8 +1123,6 @@ class _CameraScreenState extends State<CameraScreen>
                                   setSheetState(() => _isLoadingArLenses = true);
                                   if (kIsWeb) {
                                     await _loadWebLenses();
-                                  } else {
-                                    _cameraKitFlutterImpl.getGroupLenses(groupIds: [_snapLensGroupId]);
                                   }
                                   if (ctx.mounted) {
                                     setSheetState(() {});
@@ -1244,33 +1302,16 @@ class _CameraScreenState extends State<CameraScreen>
       return;
     }
 
-    try {
-      HapticFeedback.mediumImpact();
-      // Safely pause camera stream to avoid hardware conflict crash on Android
-      await _controller?.pausePreview();
-      if (targetLensId != null && targetLensId.isNotEmpty) {
-        await _cameraKitFlutterImpl.openCameraKitWithSingleLens(
-          lensId: targetLensId,
-          groupId: _snapLensGroupId,
-          isHideCloseButton: false,
-        );
-      } else {
-        await _cameraKitFlutterImpl.openCameraKit(
-          groupIds: [_snapLensGroupId],
-          isHideCloseButton: false,
-        );
-      }
-    } catch (e) {
-      debugPrint('[CameraKit] Error launching Snapchat Camera Kit: $e');
-      if (mounted) {
-        _openLensesSearchSheet();
-      }
-    } finally {
-      if (mounted) {
-        try {
-          await _controller?.resumePreview();
-        } catch (_) {}
-      }
+    // On native mobile, toggle the lenses & aesthetic filters carousel
+    setState(() {
+      _showLensesCarousel = !_showLensesCarousel;
+    });
+    if (targetLensId != null && targetLensId.isNotEmpty) {
+      final lens = _allAvailableLenses.firstWhere(
+        (l) => l.id == targetLensId || l.snapLensId == targetLensId,
+        orElse: () => _builtinLenses.first,
+      );
+      _applySelectedLens(lens);
     }
   }
 
