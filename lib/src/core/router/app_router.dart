@@ -405,6 +405,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         ],
       ),
       GoRoute(
+        path: '/user',
+        parentNavigatorKey: rootNavigatorKey,
+        redirect: (context, state) => '/profile',
+      ),
+      GoRoute(
         path: '/user/:userId',
         parentNavigatorKey: rootNavigatorKey,
         builder: (context, state) {

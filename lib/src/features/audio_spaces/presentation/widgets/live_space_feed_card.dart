@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/audio_room.dart';
-import '../controllers/audio_room_controller.dart';
-import '../live_audio_room_screen.dart';
+import 'live_space_preview_sheet.dart';
 
 class LiveSpaceFeedCard extends ConsumerWidget {
   final AudioRoom room;
@@ -42,11 +41,11 @@ class LiveSpaceFeedCard extends ConsumerWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(22),
           onTap: () {
-            ref.read(activeAudioRoomNotifierProvider.notifier).joinRoom(room.id);
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => LiveAudioRoomScreen(roomId: room.id),
-              ),
+            showModalBottomSheet(
+              context: context,
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+              builder: (_) => LiveSpacePreviewSheet(room: room),
             );
           },
           child: Padding(

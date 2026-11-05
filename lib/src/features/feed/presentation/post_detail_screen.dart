@@ -32,6 +32,7 @@ import 'widgets/document_preview_card.dart';
 import 'providers/feed_provider.dart';
 import '../../../shared/widgets/abuad_markdown.dart';
 import '../../../shared/widgets/share_sheet.dart';
+import 'widgets/post_text_utils.dart';
 // import '../../chat/presentation/widgets/attachment_preview.dart';
 
 class PostDetailScreen extends ConsumerStatefulWidget {
@@ -46,10 +47,12 @@ class PostDetailScreen extends ConsumerStatefulWidget {
 
 class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
   final _commentController = TextEditingController();
+  final FocusNode _commentFocusNode = FocusNode();
   StickerItem? _selectedSticker;
   final ScrollController _scrollController = ScrollController();
   bool _isPosting = false;
   bool _fetchFailed = false;
+  bool _isContentExpanded = false;
 
   // Reply State
   String? _replyToCommentId;
@@ -74,6 +77,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
   @override
   void dispose() {
     _commentController.dispose();
+    _commentFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -84,7 +88,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
       _replyToUserName = userName;
     });
     _commentController.text = ''; // Clear if they were typing something else
-    FocusScope.of(context).requestFocus();
+    _commentFocusNode.requestFocus();
   }
 
   void _cancelReply() {
@@ -1180,36 +1184,35 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                   ),
                                   child: Row(
                                     children: [
-                                      if (post.commentsCount > 0) ...[
-                                        _StatText(
-                                          count: post.commentsCount,
-                                          label: post.commentsCount == 1
-                                              ? 'Comment'
-                                              : 'Comments',
-                                        ),
-                                        const SizedBox(width: 20),
-                                      ],
+                                      _StatText(
+                                        count: post.commentsCount,
+                                        label: post.commentsCount == 1
+                                            ? 'Comment'
+                                            : 'Comments',
+                                      ),
+                                      const SizedBox(width: 20),
+                                      _StatText(
+                                        count: post.likesCount,
+                                        label: post.likesCount == 1
+                                            ? 'Like'
+                                            : 'Likes',
+                                      ),
                                       if (post.repostCount > 0) ...[
+                                        const SizedBox(width: 20),
                                         _StatText(
                                           count: post.repostCount,
                                           label: 'Reposts',
                                         ),
-                                        const SizedBox(width: 20),
                                       ],
-                                      if (post.likesCount > 0) ...[
-                                        _StatText(
-                                          count: post.likesCount,
-                                          label: 'Likes',
-                                        ),
+                                      if (post.savesCount > 0) ...[
                                         const SizedBox(width: 20),
-                                      ],
-                                      if (post.savesCount > 0)
                                         _StatText(
                                           count: post.savesCount,
                                           label: post.savesCount == 1
                                               ? 'Save'
                                               : 'Saves',
                                         ),
+                                      ],
                                     ],
                                   ),
                                 ),
@@ -1221,16 +1224,35 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                 mainAxisAlignment:
                                     MainAxisAlignment.spaceAround,
                                 children: [
-                                  IconButton(
-                                    icon: const Icon(
-                                      CupertinoIcons.chat_bubble,
-                                    ),
-                                    onPressed: () {
-                                      // Focus logic handled by placing focus node or just tapping the bottom field
+                                  GestureDetector(
+                                    onTap: () {
+                                      _commentFocusNode.requestFocus();
                                     },
-                                    color: isDark
-                                        ? Colors.grey[500]
-                                        : Colors.grey[600],
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          CupertinoIcons.chat_bubble,
+                                          size: 22,
+                                          color: isDark
+                                              ? Colors.grey[500]
+                                              : Colors.grey[600],
+                                        ),
+                                        if (post.commentsCount > 0) ...[
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            '${post.commentsCount}',
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                              color: isDark
+                                                  ? Colors.grey[400]
+                                                  : Colors.grey[600],
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
                                   ),
                                   IconButton(
                                     icon: const Icon(
@@ -1245,16 +1267,16 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                   StreamBuilder<bool>(
                                     stream: isLikedStream,
                                     builder: (context, snapshot) {
-                                      final isLiked = snapshot.data ?? false;
+                                      final isLiked = snapshot.data ?? post.isLiked;
                                       return AnimatedLikeButton(
                                         isLiked: isLiked,
-                                        count: 0,
-                                        showCount: false,
+                                        count: post.likesCount,
+                                        showCount: true,
                                         iconSize: 22,
                                         inactiveColor: isDark
                                             ? Colors.grey[500]
                                             : Colors.grey[600],
-                                        onTap: () => repo.toggleLike(post.id),
+                                        onTap: () => repo.toggleLike(post.id, fallbackPost: post),
                                       );
                                     },
                                   ),
@@ -1428,86 +1450,6 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                               ],
                             ),
                           ),
-                        // Selected Sticker Attached Card (Holds sticker with text)
-                        if (_selectedSticker != null)
-                          Container(
-                            margin: const EdgeInsets.fromLTRB(16, 6, 16, 4),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: AppColors.secondaryTeal.withValues(alpha: 0.35),
-                                width: 1.5,
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 44,
-                                  height: 44,
-                                  decoration: BoxDecoration(
-                                    color: isDark ? Colors.black26 : Colors.white,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  padding: const EdgeInsets.all(4),
-                                  child: CachedNetworkImage(
-                                    imageUrl: _selectedSticker!.imageUrl,
-                                    fit: BoxFit.contain,
-                                    placeholder: (_, __) => const CupertinoActivityIndicator(radius: 8),
-                                    errorWidget: (_, __, ___) => const Icon(Icons.sticky_note_2_rounded, size: 20),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: AppColors.secondaryTeal.withValues(alpha: 0.15),
-                                              borderRadius: BorderRadius.circular(6),
-                                            ),
-                                            child: const Text(
-                                              'Sticker Attached',
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w700,
-                                                color: AppColors.secondaryTeal,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        _selectedSticker!.title.isNotEmpty ? _selectedSticker!.title : 'Sticker',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: isDark ? Colors.white : Colors.black87,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.close_rounded, size: 20),
-                                  tooltip: 'Remove Sticker',
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                                  onPressed: () => setState(() => _selectedSticker = null),
-                                ),
-                              ],
-                            ),
-                          ),
-
                         // Visibility Indicator
                         if (_replyToCommentId == null)
                           Padding(
@@ -1549,29 +1491,35 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                             ),
                           ),
                           child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
-                              UserAvatar(
-                                userId: currentUserId ?? '',
-                                avatarUrl: currentUser?.avatarUrl,
-                                displayName: currentUser?.displayName,
-                                radius: 18,
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 6.0),
+                                child: UserAvatar(
+                                  userId: currentUserId ?? '',
+                                  avatarUrl: currentUser?.avatarUrl,
+                                  displayName: currentUser?.displayName,
+                                  radius: 18,
+                                ),
                               ),
                               const SizedBox(width: 8),
-                              IconButton(
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-                                icon: Icon(
-                                  _selectedSticker != null
-                                      ? Icons.sticky_note_2_rounded
-                                      : Icons.sticky_note_2_outlined,
-                                  color: _selectedSticker != null
-                                      ? const Color(0xFFFF2A55)
-                                      : AppColors.secondaryTeal,
-                                  size: 24,
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 6.0),
+                                child: IconButton(
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                  icon: Icon(
+                                    _selectedSticker != null
+                                        ? Icons.sticky_note_2_rounded
+                                        : Icons.sticky_note_2_outlined,
+                                    color: _selectedSticker != null
+                                        ? const Color(0xFFFF2A55)
+                                        : AppColors.secondaryTeal,
+                                    size: 24,
+                                  ),
+                                  tooltip: 'Favorite Stickers',
+                                  onPressed: () => _openFavoriteStickersSheet(context),
                                 ),
-                                tooltip: 'Favorite Stickers',
-                                onPressed: () => _openFavoriteStickersSheet(context),
                               ),
                               const SizedBox(width: 4),
                               Expanded(
@@ -1579,67 +1527,151 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                   decoration: BoxDecoration(
                                     color: isDark
                                         ? Colors.white.withValues(alpha: 0.08)
-                                        : Colors.grey[100],
-                                    borderRadius: BorderRadius.circular(24),
+                                        : const Color(0xFFF1F3F5),
+                                    borderRadius: BorderRadius.circular(20),
                                     border: Border.all(
                                       color: isDark
                                           ? Colors.white12
-                                          : Colors.grey[300]!,
+                                          : const Color(0xFFE2E8F0),
                                     ),
                                   ),
-                                  child: TextField(
-                                    controller: _commentController,
-                                    cursorColor: AppColors.secondaryTeal,
-                                    maxLines: 4,
-                                    minLines: 1,
-                                    textCapitalization:
-                                        TextCapitalization.sentences,
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: isDark
-                                          ? Colors.white
-                                          : Colors.black87,
-                                    ),
-                                    decoration: InputDecoration(
-                                      hintText: _selectedSticker != null
-                                          ? 'Add text to your sticker (optional)...'
-                                          : (_replyToUserName != null
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      TextField(
+                                        controller: _commentController,
+                                        focusNode: _commentFocusNode,
+                                        cursorColor: AppColors.secondaryTeal,
+                                        maxLines: 4,
+                                        minLines: 1,
+                                        textCapitalization:
+                                            TextCapitalization.sentences,
+                                        style: TextStyle(
+                                          fontSize: 14.5,
+                                          color: isDark
+                                              ? Colors.white
+                                              : Colors.black87,
+                                        ),
+                                        decoration: InputDecoration(
+                                          hintText: _replyToUserName != null
                                               ? 'Reply to @$_replyToUserName...'
-                                              : 'Post your reply'),
-                                      hintStyle: TextStyle(
-                                        fontSize: 14,
-                                        color: isDark
-                                            ? Colors.grey[400]
-                                            : Colors.grey[500],
-                                      ),
-                                      border: InputBorder.none,
-                                      isDense: true,
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                            horizontal: 16,
-                                            vertical: 10,
+                                              : 'Add comment...',
+                                          hintStyle: TextStyle(
+                                            fontSize: 14.5,
+                                            color: isDark
+                                                ? Colors.grey[400]
+                                                : const Color(0xFF94A3B8),
                                           ),
-                                    ),
+                                          border: InputBorder.none,
+                                          isDense: true,
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                horizontal: 16,
+                                                vertical: 11,
+                                              ),
+                                        ),
+                                      ),
+                                      if (_selectedSticker != null)
+                                        Padding(
+                                          padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+                                          child: Stack(
+                                            clipBehavior: Clip.none,
+                                            children: [
+                                              ClipRRect(
+                                                borderRadius: BorderRadius.circular(10),
+                                                child: Container(
+                                                  width: 76,
+                                                  height: 76,
+                                                  decoration: BoxDecoration(
+                                                    color: isDark
+                                                        ? Colors.black26
+                                                        : Colors.white,
+                                                    borderRadius: BorderRadius.circular(10),
+                                                    border: Border.all(
+                                                      color: isDark
+                                                          ? Colors.white10
+                                                          : Colors.black.withValues(alpha: 0.08),
+                                                    ),
+                                                  ),
+                                                  child: CachedNetworkImage(
+                                                    imageUrl: _selectedSticker!.imageUrl,
+                                                    fit: BoxFit.cover,
+                                                    placeholder: (context, url) => const Center(
+                                                      child: CupertinoActivityIndicator(radius: 8),
+                                                    ),
+                                                    errorWidget: (context, url, error) => const Icon(
+                                                      Icons.broken_image_rounded,
+                                                      size: 20,
+                                                      color: Colors.grey,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                              Positioned(
+                                                top: -6,
+                                                right: -6,
+                                                child: GestureDetector(
+                                                  onTap: () {
+                                                    HapticFeedback.lightImpact();
+                                                    setState(() => _selectedSticker = null);
+                                                  },
+                                                  behavior: HitTestBehavior.opaque,
+                                                  child: Container(
+                                                    width: 22,
+                                                    height: 22,
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.black.withValues(alpha: 0.7),
+                                                      shape: BoxShape.circle,
+                                                      border: Border.all(
+                                                        color: Colors.white,
+                                                        width: 1.5,
+                                                      ),
+                                                      boxShadow: [
+                                                        BoxShadow(
+                                                          color: Colors.black.withValues(alpha: 0.25),
+                                                          blurRadius: 3,
+                                                          offset: const Offset(0, 1),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                    child: const Center(
+                                                      child: Icon(
+                                                        Icons.close,
+                                                        size: 13,
+                                                        color: Colors.white,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                 ),
                               ),
                               const SizedBox(width: 6),
-                              IconButton(
-                                onPressed: _isPosting ? null : _postComment,
-                                icon: _isPosting
-                                    ? const SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 6.0),
+                                child: IconButton(
+                                  onPressed: _isPosting ? null : _postComment,
+                                  icon: _isPosting
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: AppColors.secondaryTeal,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          CupertinoIcons.arrow_up_circle_fill,
                                           color: AppColors.secondaryTeal,
+                                          size: 30,
                                         ),
-                                      )
-                                    : const Icon(
-                                        CupertinoIcons.arrow_up_circle_fill,
-                                        color: AppColors.secondaryTeal,
-                                        size: 30,
-                                      ),
+                                ),
                               ),
                             ],
                           ),
@@ -1664,14 +1696,113 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
   ) {
     if (text.isEmpty) return const SizedBox.shrink();
     final isDark = theme.brightness == Brightness.dark;
-    return AbuadMarkdownContent(
-      content: text,
-      textStyle: TextStyle(
-        fontSize: 18,
-        height: 1.4,
-        color:
-            theme.textTheme.bodyLarge?.color ??
-            (isDark ? Colors.white : Colors.black87),
+    final primaryLinkColor = isDark ? const Color(0xFF818CF8) : AppColors.primaryInk;
+    final surfaceColor = theme.scaffoldBackgroundColor;
+
+    final isExtraLong = PostTextUtils.isContentExtraLong(text, maxChars: 850, maxLines: 10);
+
+    if (!isExtraLong) {
+      return AbuadMarkdownContent(
+        content: text,
+        textStyle: TextStyle(
+          fontSize: 18,
+          height: 1.4,
+          color:
+              theme.textTheme.bodyLarge?.color ??
+              (isDark ? Colors.white : Colors.black87),
+        ),
+      );
+    }
+
+    final displayContent = _isContentExpanded
+        ? text
+        : PostTextUtils.truncatePostContent(text, maxChars: 750, maxLines: 8);
+
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeInOut,
+      alignment: Alignment.topCenter,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Stack(
+            children: [
+              AbuadMarkdownContent(
+                content: displayContent,
+                textStyle: TextStyle(
+                  fontSize: 18,
+                  height: 1.4,
+                  color:
+                      theme.textTheme.bodyLarge?.color ??
+                      (isDark ? Colors.white : Colors.black87),
+                ),
+              ),
+              if (!_isContentExpanded)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: 48,
+                  child: IgnorePointer(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            surfaceColor.withValues(alpha: 0.0),
+                            surfaceColor,
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.selectionClick();
+              setState(() {
+                _isContentExpanded = !_isContentExpanded;
+              });
+            },
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.08),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _isContentExpanded ? 'Show less' : 'Show more',
+                    style: TextStyle(
+                      color: primaryLinkColor,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    _isContentExpanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    size: 18,
+                    color: primaryLinkColor,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2002,10 +2133,10 @@ class _FavoriteStickersBottomSheetState extends State<_FavoriteStickersBottomShe
                             child: CachedNetworkImage(
                               imageUrl: item.imageUrl,
                               fit: BoxFit.contain,
-                              placeholder: (_, __) => const Center(
+                              placeholder: (context, url) => const Center(
                                 child: CupertinoActivityIndicator(radius: 8),
                               ),
-                              errorWidget: (_, __, ___) => const Icon(
+                              errorWidget: (context, url, error) => const Icon(
                                 Icons.broken_image_outlined,
                                 size: 24,
                               ),

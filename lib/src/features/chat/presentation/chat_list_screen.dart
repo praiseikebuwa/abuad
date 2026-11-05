@@ -30,7 +30,11 @@ class ChatListScreen extends ConsumerStatefulWidget {
   ConsumerState<ChatListScreen> createState() => _ChatListScreenState();
 }
 
-class _ChatListScreenState extends ConsumerState<ChatListScreen> {
+class _ChatListScreenState extends ConsumerState<ChatListScreen>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   final _searchController = TextEditingController();
   String _searchQuery = '';
   String _selectedFilter = 'All';
@@ -74,6 +78,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final repo = ref.watch(chatRepositoryProvider);
     final channelsStream = repo.watchChannels();
     final theme = Theme.of(context);
@@ -902,10 +907,10 @@ class _SnapchatListItem extends ConsumerWidget {
 
       if (isSnapLast) {
         if (isLastSentByMe) {
-          final readBy = (msg['read_by'] is List)
-              ? List<String>.from(msg['read_by'])
-              : ((msg['readBy'] is List) ? List<String>.from(msg['readBy']) : <String>[]);
-          final isOpened = readBy.any((id) => id != currentUserId);
+          final snapViews = (msg['snap_views'] is Map)
+              ? Map<String, dynamic>.from(msg['snap_views'])
+              : ((msg['snapViews'] is Map) ? Map<String, dynamic>.from(msg['snapViews']) : <String, dynamic>{});
+          final isOpened = snapViews.entries.any((e) => e.key != currentUserId && (e.value is num && e.value > 0));
           final timeStr = formatTime(channel.lastMessageTime);
 
           return Row(
@@ -1804,9 +1809,14 @@ class _StatusListView extends ConsumerStatefulWidget {
   ConsumerState<_StatusListView> createState() => _StatusListViewState();
 }
 
-class _StatusListViewState extends ConsumerState<_StatusListView> {
+class _StatusListViewState extends ConsumerState<_StatusListView>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final storiesAsync = ref.watch(allStoriesGroupedProvider);
     final currentUserId = ref.watch(currentUserIdProvider);
     final followingAsync = ref.watch(followingProvider(currentUserId ?? ''));
@@ -1971,6 +1981,7 @@ class _StatusListViewState extends ConsumerState<_StatusListView> {
                               name: user.userName,
                               avatarUrl: user.userAvatar,
                               contentUrl: user.content,
+                              story: user,
                               isDark: widget.isDark,
                               onTap: () {
                                 Navigator.push(
@@ -2036,6 +2047,7 @@ class _StatusListViewState extends ConsumerState<_StatusListView> {
                         name: user.userName,
                         avatarUrl: user.userAvatar,
                         contentUrl: user.content,
+                        story: user,
                         storyCount: userStories.length,
                         isDark: widget.isDark,
                         onTap: () {
@@ -2263,150 +2275,227 @@ class _MyStoryItem extends ConsumerWidget {
   }
 }
 
-// Status Card Widget (Following/Discover)
-class _StatusCard extends StatelessWidget {
-  final String name;
-  final String? avatarUrl;
-  final String? contentUrl;
-  final bool isDark;
-  final VoidCallback onTap;
-  final List<Color> gradient;
-  final double? width;
-  final int? storyCount;
-
-  const _StatusCard({
-    required this.name,
-    this.avatarUrl,
-    this.contentUrl,
-    required this.isDark,
-    required this.onTap,
-    required this.gradient,
-    this.width,
-    this.storyCount,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: width,
-        margin: const EdgeInsets.only(right: 12),
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: gradient,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.12),
-              blurRadius: 10,
-              offset: const Offset(0, 5),
-            ),
-          ],
-        ),
-        child: Stack(
-          children: [
-            // Story Content Image
-            if (contentUrl != null &&
-                contentUrl!.isNotEmpty &&
-                UrlValidator.isValidUrl(contentUrl))
-              Positioned.fill(
-                child: CachedNetworkImage(
-                  imageUrl: contentUrl!,
-                  fit: BoxFit.cover,
-                  placeholder: (context, url) =>
-                      Container(color: Colors.black12),
-                  errorWidget: (context, url, error) => const SizedBox.shrink(),
-                ),
-              ),
-
-            // Darker overlay
-            if (contentUrl != null && contentUrl!.isNotEmpty)
-              Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withValues(alpha: 0.2),
-                        Colors.transparent,
-                        Colors.black.withValues(alpha: 0.6),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-            // Story Count in Center
-            if (storyCount != null && storyCount! > 0)
-              Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black54,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white24, width: 1),
-                  ),
-                  child: Text(
-                    '$storyCount',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-
-            // User Info (Bottom)
-            Positioned(
-              left: 12,
-              bottom: 12,
-              right: 12,
-              child: Row(
-                children: [
-                  UserAvatar(
-                    userId: '', // ID not essential here as it's a fixed card
-                    avatarUrl: avatarUrl,
-                    radius: 16,
-                    showStoryRing: false,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      name,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        shadows: [
-                          Shadow(
-                            color: Colors.black45,
-                            blurRadius: 4,
-                            offset: Offset(0, 1),
-                          ),
-                        ],
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
+// Status Card Widget (Following/Discover)
+class _StatusCard extends StatelessWidget {
+  final String name;
+  final String? avatarUrl;
+  final String? contentUrl;
+  final Story? story;
+  final bool isDark;
+  final VoidCallback onTap;
+  final List<Color> gradient;
+  final double? width;
+  final int? storyCount;
+
+  const _StatusCard({
+    required this.name,
+    this.avatarUrl,
+    this.contentUrl,
+    this.story,
+    required this.isDark,
+    required this.onTap,
+    required this.gradient,
+    this.width,
+    this.storyCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveStory = story;
+    final isTextStory = (effectiveStory?.type == 'text') ||
+        (contentUrl != null && contentUrl!.isNotEmpty && !UrlValidator.isValidUrl(contentUrl));
+    final hasValidMedia = contentUrl != null &&
+        contentUrl!.isNotEmpty &&
+        UrlValidator.isValidUrl(contentUrl) &&
+        !isTextStory;
+
+    final bgColor = effectiveStory?.backgroundColor != null
+        ? Color(effectiveStory!.backgroundColor!)
+        : null;
+    final txtColor = effectiveStory?.textColor != null
+        ? Color(effectiveStory!.textColor!)
+        : Colors.white;
+    final textContent = (effectiveStory?.content.isNotEmpty == true
+            ? effectiveStory!.content
+            : (contentUrl ?? ''))
+        .trim();
+    final textAlign = effectiveStory?.textAlign == 'left'
+        ? TextAlign.left
+        : (effectiveStory?.textAlign == 'right' ? TextAlign.right : TextAlign.center);
+    final fontFamily = effectiveStory?.fontFamily ?? 'Roboto';
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: width,
+        margin: const EdgeInsets.only(right: 12),
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          color: isTextStory && bgColor != null ? bgColor : null,
+          gradient: (isTextStory && bgColor != null)
+              ? null
+              : LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: gradient,
+                ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.15),
+              blurRadius: 10,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            // 1. Text Status Content & Real Background
+            if (isTextStory)
+              Positioned.fill(
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(12, 20, 12, 54),
+                  alignment: Alignment.center,
+                  child: Text(
+                    textContent,
+                    textAlign: textAlign,
+                    maxLines: 5,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: txtColor,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: fontFamily,
+                      height: 1.25,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black.withValues(alpha: 0.35),
+                          blurRadius: 4,
+                          offset: const Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+            // 2. Story Content Image
+            if (hasValidMedia)
+              Positioned.fill(
+                child: CachedNetworkImage(
+                  imageUrl: contentUrl!,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) =>
+                      Container(color: Colors.black12),
+                  errorWidget: (context, url, error) => const SizedBox.shrink(),
+                ),
+              ),
+
+            // Darker overlay for media stories
+            if (hasValidMedia)
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.15),
+                        Colors.transparent,
+                        Colors.black.withValues(alpha: 0.65),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+            // Story Count badge (top right)
+            if (storyCount != null && storyCount! > 1)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white24, width: 1),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.auto_awesome_motion, size: 10, color: Colors.white70),
+                      const SizedBox(width: 4),
+                      Text(
+                        '',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // User Info (Bottom) with protected readability gradient
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(10, 16, 10, 10),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.65),
+                    ],
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    UserAvatar(
+                      userId: '',
+                      avatarUrl: avatarUrl,
+                      radius: 14,
+                      showStoryRing: false,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          shadows: [
+                            Shadow(
+                              color: Colors.black45,
+                              blurRadius: 4,
+                              offset: Offset(0, 1),
+                            ),
+                          ],
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // Filter Chip Widget

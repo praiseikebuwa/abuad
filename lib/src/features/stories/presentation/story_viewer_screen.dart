@@ -246,6 +246,18 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
       _progressAnimController.duration = dur;
       _startStoryPlayback(dur);
     }
+
+    // Preload next story image in background for instant viewing
+    try {
+      final currentUserId = (_currentUserIndex >= 0 && _currentUserIndex < _userIds.length) ? _userIds[_currentUserIndex] : null;
+      final stories = currentUserId != null ? (widget.storiesGrouped[currentUserId] ?? []) : <Story>[];
+      if (stories.isNotEmpty && _currentStoryIndex < stories.length - 1) {
+        final nextStory = stories[_currentStoryIndex + 1];
+        if (nextStory.content.startsWith('http://') || nextStory.content.startsWith('https://')) {
+          precacheImage(CachedNetworkImageProvider(nextStory.content), context).catchError((_) {});
+        }
+      }
+    } catch (_) {}
   }
 
   void _startStoryPlayback(Duration duration) {
@@ -960,7 +972,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
                             child: story.type == 'text'
                                 ? Container(
                                     color: Color(
-                                      story.backgroundColor ?? 0xFF000000,
+                                      story.backgroundColor ?? 0xFFEF5350,
                                     ),
                                     width: double.infinity,
                                     height: double.infinity,
@@ -979,6 +991,13 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
                                         fontWeight: FontWeight.bold,
                                         fontFamily:
                                             story.fontFamily ?? 'Roboto',
+                                        shadows: const [
+                                          Shadow(
+                                            color: Colors.black38,
+                                            blurRadius: 8,
+                                            offset: Offset(0, 2),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   )

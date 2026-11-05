@@ -1,3 +1,4 @@
+import '../../../core/services/notification_service.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,6 +15,8 @@ class AudioLiveActivityService {
   final LiveActivities _liveActivities = LiveActivities();
   bool _isInitialized = false;
   String? _currentActivityId;
+  String? _lastTitle;
+  String? _lastHostName;
   StreamSubscription? _urlSchemeSub;
 
   bool get _isSupportedPlatform =>
@@ -66,6 +69,18 @@ class AudioLiveActivityService {
         await _liveActivities.updateActivity(_currentActivityId!, activityData);
         return _currentActivityId;
       }
+
+      _lastTitle = title;
+      _lastHostName = hostName;
+
+      // Trigger OS-level persistent listening notification for mobile
+      NotificationService().showLiveSpaceNotification(
+        roomId: roomId,
+        title: title,
+        hostName: hostName,
+        participantCount: participantCount,
+        isMuted: isMuted,
+      );
 
       final activityId = await _liveActivities.createActivity(
         'space_$roomId',
@@ -135,6 +150,14 @@ class AudioLiveActivityService {
         updatePayload['currentSpeaker'] = currentSpeakerName;
       }
       await _liveActivities.updateActivity(_currentActivityId!, updatePayload);
+
+      NotificationService().showLiveSpaceNotification(
+        roomId: roomId,
+        title: _lastTitle ?? 'Live Audio Space',
+        hostName: currentSpeakerName ?? _lastHostName ?? 'Host',
+        participantCount: participantCount,
+        isMuted: isMuted,
+      );
     } catch (e) {
       debugPrint('[AudioLiveActivity] Error updating space activity: $e');
     }
@@ -144,6 +167,7 @@ class AudioLiveActivityService {
   Future<void> endSpaceActivity([String? roomId]) async {
     if (!_isSupportedPlatform) return;
     try {
+      NotificationService().cancelLiveSpaceNotification();
       final idToEnd = roomId != null ? 'space_$roomId' : _currentActivityId;
       if (idToEnd != null) {
         await _liveActivities.endActivity(idToEnd);

@@ -25,13 +25,37 @@ function formatStory(s) {
     let musicTitle = null;
     let musicArtist = null;
     let linkUrl = s.linkUrl;
-    if (s.linkUrl && typeof s.linkUrl === 'string' && s.linkUrl.startsWith('{') && s.linkUrl.includes('"audioUrl"')) {
+    let backgroundColor = s.backgroundColor ?? s.background_color ?? null;
+    let textColor = s.textColor ?? s.text_color ?? null;
+    let fontFamily = s.fontFamily ?? s.font_family ?? null;
+    let textAlign = s.textAlign ?? s.text_align ?? null;
+    if (s.linkUrl && typeof s.linkUrl === 'string' && s.linkUrl.startsWith('{')) {
         try {
-            const musicData = JSON.parse(s.linkUrl);
-            audioUrl = musicData.audioUrl || null;
-            musicTitle = musicData.musicTitle || null;
-            musicArtist = musicData.musicArtist || null;
-            linkUrl = musicData.linkUrl || null;
+            const meta = JSON.parse(s.linkUrl);
+            if (meta.audioUrl)
+                audioUrl = meta.audioUrl;
+            if (meta.musicTitle)
+                musicTitle = meta.musicTitle;
+            if (meta.musicArtist)
+                musicArtist = meta.musicArtist;
+            if (meta.linkUrl)
+                linkUrl = meta.linkUrl;
+            if (meta.backgroundColor !== undefined)
+                backgroundColor = meta.backgroundColor;
+            if (meta.background_color !== undefined)
+                backgroundColor = meta.background_color;
+            if (meta.textColor !== undefined)
+                textColor = meta.textColor;
+            if (meta.text_color !== undefined)
+                textColor = meta.text_color;
+            if (meta.fontFamily !== undefined)
+                fontFamily = meta.fontFamily;
+            if (meta.font_family !== undefined)
+                fontFamily = meta.font_family;
+            if (meta.textAlign !== undefined)
+                textAlign = meta.textAlign;
+            if (meta.text_align !== undefined)
+                textAlign = meta.text_align;
         }
         catch (_) { }
     }
@@ -49,6 +73,14 @@ function formatStory(s) {
         musicTitle,
         musicArtist,
         linkUrl,
+        backgroundColor,
+        background_color: backgroundColor,
+        textColor,
+        text_color: textColor,
+        fontFamily,
+        font_family: fontFamily,
+        textAlign,
+        text_align: textAlign,
         userName: s.author?.fullName || s.author?.username || '',
         userAvatar: s.author?.avatarUrl || '',
     };
@@ -87,7 +119,7 @@ router.get('/', auth_1.authenticateToken, async (req, res) => {
  */
 router.post('/', auth_1.authenticateToken, async (req, res) => {
     try {
-        const { mediaUrl, content, mediaType, type, caption, linkUrl, mentions, audioUrl, musicTitle, musicArtist } = req.body;
+        const { mediaUrl, content, mediaType, type, caption, linkUrl, mentions, audioUrl, musicTitle, musicArtist, backgroundColor, background_color, textColor, text_color, fontFamily, font_family, textAlign, text_align, } = req.body;
         const finalMediaUrl = mediaUrl || content || (type === 'text' || mediaType === 'text' ? 'text' : '');
         if (!finalMediaUrl && type !== 'text' && mediaType !== 'text') {
             return res.status(400).json({ error: 'Media URL is required for story' });
@@ -103,14 +135,29 @@ router.post('/', auth_1.authenticateToken, async (req, res) => {
         }
         const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 Hours duration
         const mentionsJson = Array.isArray(mentions) ? JSON.stringify(mentions) : (typeof mentions === 'string' ? mentions : '[]');
-        let finalLinkUrl = linkUrl || null;
+        const metaObj = {};
         if (audioUrl) {
-            finalLinkUrl = JSON.stringify({
-                audioUrl,
-                musicTitle: musicTitle || '',
-                musicArtist: musicArtist || '',
-                linkUrl: linkUrl || null,
-            });
+            metaObj.audioUrl = audioUrl;
+            metaObj.musicTitle = musicTitle || '';
+            metaObj.musicArtist = musicArtist || '';
+        }
+        if (linkUrl)
+            metaObj.linkUrl = linkUrl;
+        const finalBg = backgroundColor ?? background_color;
+        if (finalBg !== undefined && finalBg !== null)
+            metaObj.backgroundColor = finalBg;
+        const finalTxt = textColor ?? text_color;
+        if (finalTxt !== undefined && finalTxt !== null)
+            metaObj.textColor = finalTxt;
+        const finalFont = fontFamily ?? font_family;
+        if (finalFont)
+            metaObj.fontFamily = finalFont;
+        const finalAlign = textAlign ?? text_align;
+        if (finalAlign)
+            metaObj.textAlign = finalAlign;
+        let finalLinkUrl = linkUrl || null;
+        if (Object.keys(metaObj).length > 0) {
+            finalLinkUrl = JSON.stringify(metaObj);
         }
         const story = await db_1.prisma.story.create({
             data: {

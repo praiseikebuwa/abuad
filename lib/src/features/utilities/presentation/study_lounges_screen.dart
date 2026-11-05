@@ -5,8 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/services/notification_service.dart';
 import '../../audio_spaces/domain/audio_room.dart';
-import '../../audio_spaces/presentation/controllers/audio_room_controller.dart';
-import '../../audio_spaces/presentation/live_audio_room_screen.dart';
+import '../../audio_spaces/presentation/widgets/live_space_preview_sheet.dart';
 import '../data/study_lounge_repository.dart';
 import '../services/study_ai_service.dart';
 
@@ -51,23 +50,12 @@ class _StudyLoungesScreenState extends ConsumerState<StudyLoungesScreen>
 
   Future<void> _joinLounge(AudioRoom room) async {
     HapticFeedback.lightImpact();
-    try {
-      ref.read(activeAudioRoomNotifierProvider.notifier).joinRoom(room.id);
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => LiveAudioRoomScreen(roomId: room.id),
-        ),
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to join study lounge: $e'),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
-      }
-    }
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => LiveSpacePreviewSheet(room: room),
+    );
   }
 
   void _showCreateLoungeSheet() {

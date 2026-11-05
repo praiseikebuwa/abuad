@@ -5,7 +5,10 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import '../../../core/theme/app_colors.dart';
+import '../domain/campus_landmark.dart';
+import 'widgets/ai_campus_navigator_sheet.dart';
 import '../../user/data/user_repository.dart';
 
 enum MapStyle {
@@ -39,6 +42,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   bool _isTracking = false;
   bool _followUser = true;
   MapStyle _currentMapStyle = MapStyle.normal;
+  CampusLandmark? _selectedLandmark;
 
   @override
   void initState() {
@@ -304,6 +308,48 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       }
     }
 
+    // Add ABUAD Campus Landmark Pins
+    for (final landmark in CampusLandmark.all) {
+      final isSelected = _selectedLandmark?.id == landmark.id;
+      markers.add(
+        Marker(
+          point: landmark.position,
+          width: isSelected ? 44 : 36,
+          height: isSelected ? 44 : 36,
+          child: GestureDetector(
+            onTap: () {
+              HapticFeedback.lightImpact();
+              setState(() => _selectedLandmark = landmark);
+              _mapController.move(landmark.position, 17.5);
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              decoration: BoxDecoration(
+                color: landmark.category.color,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isSelected ? Colors.yellowAccent : Colors.white,
+                  width: isSelected ? 2.5 : 1.8,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.3),
+                    blurRadius: 5,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Icon(
+                landmark.category.icon,
+                size: isSelected ? 20 : 16,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return markers;
   }
 
@@ -381,7 +427,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ],
           ),
 
+          if (_selectedLandmark != null) _buildLandmarkDetailCard(theme, isDark),
           _buildFABs(theme, isDark),
+          _buildAiNavigatorFab(theme, isDark),
         ],
       ),
     );
@@ -471,4 +519,230 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       ),
     );
   }
+
+  Widget _buildAiNavigatorFab(ThemeData theme, bool isDark) {
+    return Positioned(
+      left: 16,
+      bottom: 24,
+      child: FloatingActionButton.extended(
+        heroTag: 'map_ai_navigator_fab',
+        onPressed: () {
+          HapticFeedback.mediumImpact();
+          AiCampusNavigatorSheet.show(
+            context: context,
+            userPosition: _currentPosition,
+            onSelectLandmark: (landmark) {
+              setState(() => _selectedLandmark = landmark);
+              _mapController.move(landmark.position, 17.5);
+            },
+          );
+        },
+        icon: const Icon(
+          Icons.auto_awesome_rounded,
+          color: Colors.white,
+          size: 18,
+        ),
+        label: const Text(
+          'AI Navigator',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.2,
+          ),
+        ),
+        backgroundColor: const Color(0xFF6366F1),
+        elevation: 4,
+      ),
+    );
+  }
+
+  Widget _buildLandmarkDetailCard(ThemeData theme, bool isDark) {
+    if (_selectedLandmark == null) return const SizedBox.shrink();
+    final landmark = _selectedLandmark!;
+
+    double distance = 0;
+    if (_currentPosition != null) {
+      distance = Geolocator.distanceBetween(
+        _currentPosition!.latitude,
+        _currentPosition!.longitude,
+        landmark.position.latitude,
+        landmark.position.longitude,
+      );
+    }
+    final minutes = distance > 0 ? (distance / 80).ceil() : 0;
+    final walkText = distance > 0
+        ? '$minutes min walk (${distance.toStringAsFixed(0)}m)'
+        : 'At campus core';
+
+    return Positioned(
+      left: 16,
+      right: 16,
+      bottom: 84,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF18181B) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.15),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
+          border: Border.all(
+            color: landmark.category.color.withValues(alpha: 0.35),
+            width: 1.5,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: landmark.category.color.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    landmark.category.icon,
+                    size: 20,
+                    color: landmark.category.color,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        landmark.name,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : const Color(0xFF0F172A),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        '${landmark.category.label} • $walkText',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.secondaryTeal,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: () => setState(() => _selectedLandmark = null),
+                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF27272A) : const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.auto_awesome_rounded,
+                    size: 14,
+                    color: Color(0xFF6366F1),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      landmark.aiGuideTip,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.grey[300] : Colors.grey[700],
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(
+                        color: landmark.category.color.withValues(alpha: 0.5),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                    ),
+                    icon: Icon(
+                      Icons.chat_bubble_outline_rounded,
+                      size: 15,
+                      color: landmark.category.color,
+                    ),
+                    label: Text(
+                      'Ask AI Guide',
+                      style: TextStyle(
+                        color: landmark.category.color,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    onPressed: () {
+                      context.push('/ai');
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: landmark.category.color,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      elevation: 0,
+                    ),
+                    icon: const Icon(
+                      Icons.center_focus_strong_rounded,
+                      size: 16,
+                      color: Colors.white,
+                    ),
+                    label: const Text(
+                      'Center Pin',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    onPressed: () {
+                      _mapController.move(landmark.position, 18.0);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
 }

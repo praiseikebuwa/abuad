@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:math';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -64,16 +66,65 @@ class PostPageResult {
 
 class PostRepository {
   final AuthRepository? authRepo;
-  PostRepository({this.authRepo});
+  PostRepository({this.authRepo}) {
+    _loadPersistedInteractions();
+  }
 
   String? get currentUserId => authRepo?.currentUserId;
 
   static final Map<String, Post> _postsCache = {};
+  static final List<Map<String, dynamic>> _offlinePostQueue = [];
+  static bool _isFlushingOfflinePosts = false;
   static final StreamController<Map<String, Post>> _postsController =
       StreamController<Map<String, Post>>.broadcast();
 
   static final Map<String, bool> _savedPostsMap = {};
   static final Map<String, bool> _likedPostsMap = {};
+  static final Map<String, bool> _likedCommentsMap = {};
+  static final Map<String, int> _commentLikesCountMap = {};
+  static bool _hasLoadedPersisted = false;
+
+  void _loadPersistedInteractions() async {
+    if (_hasLoadedPersisted) return;
+    _hasLoadedPersisted = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final likedList = prefs.getStringList('abuad_liked_posts') ?? [];
+      for (final id in likedList) {
+        _likedPostsMap[id] = true;
+      }
+      final savedList = prefs.getStringList('abuad_saved_posts') ?? [];
+      for (final id in savedList) {
+        _savedPostsMap[id] = true;
+      }
+      final likedComments = prefs.getStringList('abuad_liked_comments') ?? [];
+      for (final id in likedComments) {
+        _likedCommentsMap[id] = true;
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _persistLikes() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final liked = _likedPostsMap.entries
+          .where((e) => e.value == true)
+          .map((e) => e.key)
+          .toList();
+      await prefs.setStringList('abuad_liked_posts', liked);
+    } catch (_) {}
+  }
+
+  Future<void> _persistCommentLikes() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final liked = _likedCommentsMap.entries
+          .where((e) => e.value == true)
+          .map((e) => e.key)
+          .toList();
+      await prefs.setStringList('abuad_liked_comments', liked);
+    } catch (_) {}
+  }
 
   static final Map<String, List<Map<String, dynamic>>> _localComments = {};
   static final StreamController<Map<String, List<Map<String, dynamic>>>> _commentsController =
@@ -148,6 +199,15 @@ class PostRepository {
 
     final String commentId = (raw['id'] ?? raw['comment_id'] ?? DateTime.now().millisecondsSinceEpoch.toString()).toString();
 
+    final bool baseLiked = (raw['isLiked'] ?? raw['is_liked'] ?? false) as bool;
+    final int baseLikes = (raw['likesCount'] ?? raw['likes_count'] ?? raw['_count']?['likes'] ?? 0) as int;
+    final bool isLiked = _likedCommentsMap.containsKey(commentId)
+        ? _likedCommentsMap[commentId]!
+        : baseLiked;
+    final int likesCount = _commentLikesCountMap.containsKey(commentId)
+        ? _commentLikesCountMap[commentId]!
+        : (baseLikes + (_likedCommentsMap.containsKey(commentId) && _likedCommentsMap[commentId]! && !baseLiked ? 1 : 0));
+
     return {
       'id': commentId,
       'postId': (raw['postId'] ?? raw['post_id'] ?? '').toString(),
@@ -161,8 +221,8 @@ class PostRepository {
       'parentId': raw['parentId'] ?? raw['parent_id'] ?? raw['parentCommentId'] ?? raw['commentId'],
       'timestamp': timestamp,
       'createdAt': DateTime.fromMillisecondsSinceEpoch(timestamp).toIso8601String(),
-      'likesCount': (raw['likesCount'] ?? raw['likes_count'] ?? raw['_count']?['likes'] ?? 0) as int,
-      'isLiked': (raw['isLiked'] ?? raw['is_liked'] ?? false) as bool,
+      'likesCount': likesCount,
+      'isLiked': isLiked,
       'isPinned': (raw['isPinned'] == true || raw['is_pinned'] == true || raw['pinned'] == true),
       'imageUrl': raw['imageUrl'] ?? raw['image_url'],
     };
@@ -187,6 +247,12 @@ class PostRepository {
             if (_savedPostsMap.containsKey(p.id)) {
               final localSaved = _savedPostsMap[p.id]!;
               p = p.copyWith(savesCount: (p.savesCount + (localSaved ? 1 : 0)).clamp(0, 999999));
+            }
+            if (_localComments.containsKey(p.id)) {
+              final localCount = _localComments[p.id]!.length;
+              if (localCount > p.commentsCount) {
+                p = p.copyWith(commentsCount: localCount);
+              }
             }
             _postsCache[p.id] = p;
             return p;
@@ -232,6 +298,12 @@ class PostRepository {
           if (_savedPostsMap.containsKey(p.id)) {
             final localSaved = _savedPostsMap[p.id]!;
             p = p.copyWith(savesCount: (p.savesCount + (localSaved ? 1 : 0)).clamp(0, 999999));
+          }
+          if (_localComments.containsKey(p.id)) {
+            final localCount = _localComments[p.id]!.length;
+            if (localCount > p.commentsCount) {
+              p = p.copyWith(commentsCount: localCount);
+            }
           }
           _postsCache[p.id] = p;
           _postsController.add(Map<String, Post>.from(_postsCache));
@@ -370,6 +442,14 @@ class PostRepository {
           }).toList();
           
           _localComments[postId] = [...serverComments, ...pendingLocal];
+          final realCount = _localComments[postId]!.length;
+          if (_postsCache.containsKey(postId)) {
+            final p = _postsCache[postId]!;
+            if (p.commentsCount != realCount) {
+              _postsCache[postId] = p.copyWith(commentsCount: realCount);
+              _postsController.add(Map<String, Post>.from(_postsCache));
+            }
+          }
         }
       }
     } catch (_) {}
@@ -462,20 +542,49 @@ class PostRepository {
     return _postsCache.values.where((p) => savedIds.contains(p.id)).toList();
   }
 
+  static final Map<String, List<Post>> _userPostsCache = {};
+  static final Map<String, List<Post>> _userMediaCache = {};
+  static final Map<String, List<Post>> _userLikesCache = {};
+
   Future<List<Post>> getUserPosts(String userId) async {
+    final cached = _userPostsCache[userId];
+    if (cached != null && cached.isNotEmpty) {
+      // Silently refresh in background
+      _fetchUserPostsBackground(userId);
+      return cached;
+    }
+    return _fetchUserPostsInternal(userId);
+  }
+
+  Future<List<Post>> _fetchUserPostsInternal(String userId) async {
     try {
       final response = await ApiClient.get('/posts/user/$userId');
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true && data['data'] is List) {
           final List list = data['data'];
-          return list.map((item) => Post.fromMap(item as Map<String, dynamic>)).toList();
+          final posts = list.map((item) => Post.fromMap(item as Map<String, dynamic>)).toList();
+          _userPostsCache[userId] = posts;
+          return posts;
         }
       }
     } catch (e) {
       debugPrint('Error fetching user posts from backend API: $e');
     }
-    return _postsCache.values.where((p) => p.authorId == userId).toList();
+    return _userPostsCache[userId] ?? _postsCache.values.where((p) => p.authorId == userId).toList();
+  }
+
+  void _fetchUserPostsBackground(String userId) async {
+    try {
+      final response = await ApiClient.get('/posts/user/$userId');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] is List) {
+          final List list = data['data'];
+          _userPostsCache[userId] = list.map((item) => Post.fromMap(item as Map<String, dynamic>)).toList();
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> addPost(Post post) async {
@@ -511,33 +620,66 @@ class PostRepository {
       'pollData': post.pollData,
     };
 
-    final res = await ApiClient.post('/posts', payload);
-    if (res.statusCode == 200 || res.statusCode == 201) {
-      try {
-        final data = jsonDecode(res.body);
-        if (data['data'] != null) {
-          final created = Post.fromMap(data['data']);
-          _postsCache[created.id] = created;
-          _postsController.add(_postsCache);
-        }
-      } catch (_) {}
-    } else {
-      try {
-        final errData = jsonDecode(res.body);
-        if (errData is Map && errData['error'] != null) {
-          throw Exception(errData['error']);
-        }
-      } catch (e) {
-        if (e is Exception && !e.toString().contains('Failed to create post')) rethrow;
+    // Optimistically insert post into feed cache immediately
+    _postsCache[post.id] = post;
+    _postsController.add(Map<String, Post>.from(_postsCache));
+
+    try {
+      final res = await ApiClient.post('/posts', payload);
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        try {
+          final data = jsonDecode(res.body);
+          if (data['data'] != null) {
+            final created = Post.fromMap(data['data']);
+            _postsCache.remove(post.id);
+            _postsCache[created.id] = created;
+            _postsController.add(Map<String, Post>.from(_postsCache));
+          }
+        } catch (_) {}
+      } else {
+        _queueOfflinePost(payload);
       }
-      throw Exception('Failed to create post: ${res.body}');
+    } catch (e) {
+      debugPrint('⚠️ [PostRepository] Offline/network delay, post queued in background: $e');
+      _queueOfflinePost(payload);
     }
   }
 
-  Future<void> toggleLike(String postId) async {
+
+  void _queueOfflinePost(Map<String, dynamic> payload) {
+    _offlinePostQueue.add(payload);
+    Timer(const Duration(seconds: 5), () => _flushOfflinePosts());
+  }
+
+  Future<void> _flushOfflinePosts() async {
+    if (_isFlushingOfflinePosts || _offlinePostQueue.isEmpty) return;
+    _isFlushingOfflinePosts = true;
+    try {
+      final toProcess = List<Map<String, dynamic>>.from(_offlinePostQueue);
+      for (final payload in toProcess) {
+        try {
+          final res = await ApiClient.post('/posts', payload);
+          if (res.statusCode == 200 || res.statusCode == 201) {
+            _offlinePostQueue.remove(payload);
+          }
+        } catch (_) {
+          break; // still offline
+        }
+      }
+    } finally {
+      _isFlushingOfflinePosts = false;
+    }
+  }
+
+  Future<void> toggleLike(String postId, {Post? fallbackPost}) async {
+    if (!_postsCache.containsKey(postId) && fallbackPost != null) {
+      _postsCache[postId] = fallbackPost;
+    }
+
     final currentLiked = isPostLikedSync(postId);
     final newLiked = !currentLiked;
     _likedPostsMap[postId] = newLiked;
+    _persistLikes();
 
     if (_postsCache.containsKey(postId)) {
       final p = _postsCache[postId]!;
@@ -555,6 +697,7 @@ class PostRepository {
         if (data['success'] == true && data['isLiked'] != null) {
           final bool serverIsLiked = data['isLiked'] == true;
           _likedPostsMap[postId] = serverIsLiked;
+          _persistLikes();
           if (_postsCache.containsKey(postId)) {
             final p = _postsCache[postId]!;
             _postsCache[postId] = p.copyWith(isLiked: serverIsLiked);
@@ -600,9 +743,11 @@ class PostRepository {
     _commentsController.add(Map.from(_localComments));
 
     // Update Post comment count instantly
+    final realCount = (_localComments[postId]?.length ?? 0);
     if (_postsCache.containsKey(postId)) {
       final p = _postsCache[postId]!;
-      _postsCache[postId] = p.copyWith(commentsCount: p.commentsCount + 1);
+      final newCount = max(p.commentsCount + 1, realCount);
+      _postsCache[postId] = p.copyWith(commentsCount: newCount);
       _postsController.add(Map<String, Post>.from(_postsCache));
     }
 
@@ -657,14 +802,18 @@ class PostRepository {
   }
 
   Future<void> toggleCommentLike(String postId, String commentId) async {
+    final currentLiked = _likedCommentsMap[commentId] ?? false;
+    final newLiked = !currentLiked;
+    _likedCommentsMap[commentId] = newLiked;
+    _persistCommentLikes();
+
     if (_localComments.containsKey(postId)) {
       final list = _localComments[postId]!;
       final idx = list.indexWhere((c) => c['id'] == commentId);
       if (idx != -1) {
-        final currentLiked = list[idx]['isLiked'] == true;
-        final newLiked = !currentLiked;
         final currentLikes = (list[idx]['likesCount'] as int? ?? 0);
         final newCount = (currentLikes + (newLiked ? 1 : -1)).clamp(0, 999999);
+        _commentLikesCountMap[commentId] = newCount;
 
         list[idx]['isLiked'] = newLiked;
         list[idx]['likesCount'] = newCount;
@@ -1013,19 +1162,43 @@ class PostRepository {
   }
 
   Future<List<Post>> getUserLikes(String userId) async {
+    final cached = _userLikesCache[userId];
+    if (cached != null && cached.isNotEmpty) {
+      _fetchUserLikesBackground(userId);
+      return cached;
+    }
+    return _fetchUserLikesInternal(userId);
+  }
+
+  Future<List<Post>> _fetchUserLikesInternal(String userId) async {
     try {
       final response = await ApiClient.get('/posts/user/$userId/likes');
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true && data['data'] is List) {
           final List list = data['data'];
-          return list.map((item) => Post.fromMap(item as Map<String, dynamic>)).toList();
+          final posts = list.map((item) => Post.fromMap(item as Map<String, dynamic>)).toList();
+          _userLikesCache[userId] = posts;
+          return posts;
         }
       }
     } catch (e) {
       debugPrint('Error fetching user likes from backend API: $e');
     }
-    return [];
+    return _userLikesCache[userId] ?? [];
+  }
+
+  void _fetchUserLikesBackground(String userId) async {
+    try {
+      final response = await ApiClient.get('/posts/user/$userId/likes');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] is List) {
+          final List list = data['data'];
+          _userLikesCache[userId] = list.map((item) => Post.fromMap(item as Map<String, dynamic>)).toList();
+        }
+      }
+    } catch (_) {}
   }
 
   Future<List<Map<String, dynamic>>> getUserReplies(String userId) async {
@@ -1045,20 +1218,48 @@ class PostRepository {
   }
 
   Future<List<Post>> getUserMedia(String userId) async {
+    final cached = _userMediaCache[userId];
+    if (cached != null && cached.isNotEmpty) {
+      _fetchUserMediaBackground(userId);
+      return cached;
+    }
+    return _fetchUserMediaInternal(userId);
+  }
+
+  Future<List<Post>> _fetchUserMediaInternal(String userId) async {
     try {
       final response = await ApiClient.get('/posts/user/$userId/media');
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true && data['data'] is List) {
           final List list = data['data'];
-          return list.map((item) => Post.fromMap(item as Map<String, dynamic>)).toList();
+          final posts = list.map((item) => Post.fromMap(item as Map<String, dynamic>)).toList();
+          _userMediaCache[userId] = posts;
+          return posts;
         }
       }
     } catch (e) {
       debugPrint('Error fetching user media from backend API: $e');
     }
     final posts = await getUserPosts(userId);
-    return posts.where((p) => p.mediaUrl.isNotEmpty).toList();
+    final filtered = posts.where((p) => p.mediaUrl.isNotEmpty).toList();
+    if (filtered.isNotEmpty) {
+      _userMediaCache[userId] = filtered;
+    }
+    return filtered;
+  }
+
+  void _fetchUserMediaBackground(String userId) async {
+    try {
+      final response = await ApiClient.get('/posts/user/$userId/media');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] is List) {
+          final List list = data['data'];
+          _userMediaCache[userId] = list.map((item) => Post.fromMap(item as Map<String, dynamic>)).toList();
+        }
+      }
+    } catch (_) {}
   }
 
   Stream<List<Post>> watchUserPosts(String userId) {

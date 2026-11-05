@@ -294,11 +294,16 @@ class UserAvatar extends ConsumerWidget {
 
     if (internalTap) return avatar;
 
-    final canTap = onTap != null || enableDefaultTap;
+    final canTap = (onTap != null || enableDefaultTap) && (onTap != null || userId.isNotEmpty);
     if (!canTap) return avatar;
 
     return GestureDetector(
-      onTap: onTap ?? () => context.push('/user/$userId'),
+      onTap: onTap ??
+          () {
+            if (userId.isNotEmpty) {
+              context.push('/user/$userId');
+            }
+          },
       child: avatar,
     );
   }

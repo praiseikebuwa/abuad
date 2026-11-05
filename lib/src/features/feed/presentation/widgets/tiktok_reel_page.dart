@@ -394,7 +394,7 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
             : null;
         final isLiked = optimisticOverride ?? apiLiked;
         final likeDelta = optimisticMap.containsKey(livePost.id)
-            ? (optimisticMap[livePost.id]! ? 1 : -1)
+            ? (optimisticMap[livePost.id]! ? (apiLiked ? 0 : 1) : (apiLiked ? -1 : 0))
             : 0;
         final likeCount = (livePost.likesCount + likeDelta).clamp(0, 9999999);
 
@@ -1056,7 +1056,7 @@ class _TikTokReelPageState extends ConsumerState<TikTokReelPage>
                 ref.watch(isPostLikedProvider(post.id)).value ?? false;
             ref.read(optimisticLikeProvider.notifier).toggle(post.id, apiLiked);
             try {
-              await ref.read(postRepositoryProvider).toggleLike(post.id);
+              await ref.read(postRepositoryProvider).toggleLike(post.id, fallbackPost: post);
               ref.read(optimisticLikeProvider.notifier).confirm(post.id);
             } catch (_) {
               ref

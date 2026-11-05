@@ -357,6 +357,8 @@ final feedLimitProvider = NotifierProvider<FeedLimitNotifier, int>(
 // ──────────────────────────────────────────────────────────────────────────────
 
 class PaginatedFeedNotifier extends AsyncNotifier<List<Post>> {
+  static final Map<String, List<Post>> _feedMemoryCache = {};
+
   String? _nextCursor;
   bool _hasMore = true;
   bool _isLoadingMore = false;
@@ -364,12 +366,36 @@ class PaginatedFeedNotifier extends AsyncNotifier<List<Post>> {
   bool get hasMore => _hasMore;
   bool get isLoadingMore => _isLoadingMore;
 
+  String _getCacheKey() {
+    final feedType = ref.watch(feedTypeProvider);
+    final selectedChannel = ref.watch(feedChannelProvider);
+    return '${feedType.name}_$selectedChannel';
+  }
+
   @override
   FutureOr<List<Post>> build() async {
     _nextCursor = null;
     _hasMore = true;
     _isLoadingMore = false;
-    return _fetchInitial();
+
+    final key = _getCacheKey();
+    final cached = _feedMemoryCache[key];
+    if (cached != null && cached.isNotEmpty) {
+      // Return cached posts instantly (0ms latency, no loading skeleton flicker)
+      // and silently fetch fresh posts in the background.
+      Future.microtask(() async {
+        try {
+          final fresh = await _fetchBatch(isInitial: true);
+          _feedMemoryCache[key] = fresh;
+          state = AsyncData(fresh);
+        } catch (_) {}
+      });
+      return cached;
+    }
+
+    final initialPosts = await _fetchInitial();
+    _feedMemoryCache[key] = initialPosts;
+    return initialPosts;
   }
 
   Future<List<Post>> _fetchInitial() async {
@@ -392,7 +418,9 @@ class PaginatedFeedNotifier extends AsyncNotifier<List<Post>> {
       final existingIds = currentPosts.map((p) => p.id).toSet();
       final fresh = newPosts.where((p) => !existingIds.contains(p.id)).toList();
 
-      state = AsyncData([...currentPosts, ...fresh]);
+      final updated = [...currentPosts, ...fresh];
+      _feedMemoryCache[_getCacheKey()] = updated;
+      state = AsyncData(updated);
     } catch (e) {
       // Keep existing state intact on error
     } finally {
@@ -405,8 +433,9 @@ class PaginatedFeedNotifier extends AsyncNotifier<List<Post>> {
     _nextCursor = null;
     _hasMore = true;
     _isLoadingMore = false;
-    state = const AsyncLoading();
-    state = await AsyncValue.guard(() => _fetchInitial());
+    final fresh = await _fetchInitial();
+    _feedMemoryCache[_getCacheKey()] = fresh;
+    state = AsyncData(fresh);
   }
 
   Future<List<Post>> _fetchBatch({required bool isInitial}) async {

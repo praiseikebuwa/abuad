@@ -532,6 +532,7 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
     List<AppUser> recipients, [
     XFile? preExportedFile,
     List<ChatChannel> groups = const [],
+    String? caption,
   ]) async {
     if (recipients.isEmpty && groups.isEmpty) return;
     HapticFeedback.mediumImpact();
@@ -589,9 +590,12 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
               otherUserAvatar: recipient.avatarUrl,
             );
 
+            final effectiveCaption = (caption != null && caption.trim().isNotEmpty)
+                ? caption.trim()
+                : (isVideo ? '🎥 Video Snap' : '📸 Snap');
             await chatRepo.sendMessage(
               channelId,
-              isVideo ? '🎥 Video Snap' : '📸 Snap',
+              effectiveCaption,
               type: isVideo ? 'video' : 'image',
               imageUrl: result.url,
               imageWidth: result.width,
@@ -608,9 +612,12 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
         // Dispatch snaps concurrently to each allowed group
         final groupDispatches = groups.map((group) async {
           try {
+            final effectiveCaption = (caption != null && caption.trim().isNotEmpty)
+                ? caption.trim()
+                : (isVideo ? '🎥 Video Snap' : '📸 Snap');
             await chatRepo.sendMessage(
               group.id,
-              isVideo ? '🎥 Video Snap' : '📸 Snap',
+              effectiveCaption,
               type: isVideo ? 'video' : 'image',
               imageUrl: result.url,
               imageWidth: result.width,
@@ -666,14 +673,14 @@ class _MediaEditorScreenState extends ConsumerState<MediaEditorScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => _SendToSheet(
-        onSend: (recipients, groups, postToStory) async {
+        onSend: (recipients, groups, postToStory, caption) async {
           Navigator.pop(ctx);
           final exportedFile = await _exportCompositedMedia();
           if (postToStory) {
             _handleMyStory(exportedFile);
           }
           if (recipients.isNotEmpty || groups.isNotEmpty) {
-            _sendSnapToRecipients(recipients, exportedFile, groups);
+            _sendSnapToRecipients(recipients, exportedFile, groups, caption);
           }
         },
       ),
@@ -2688,7 +2695,7 @@ const List<EditorFilter> kEditorFilters = [
 // ── Send to Friends Bottom Sheet ─────────────────────────────────────────────
 
 class _SendToSheet extends ConsumerStatefulWidget {
-  final Function(List<AppUser> recipients, List<ChatChannel> groups, bool postToStory) onSend;
+  final Function(List<AppUser> recipients, List<ChatChannel> groups, bool postToStory, String? caption) onSend;
 
   const _SendToSheet({required this.onSend});
 
@@ -2698,6 +2705,7 @@ class _SendToSheet extends ConsumerStatefulWidget {
 
 class _SendToSheetState extends ConsumerState<_SendToSheet> {
   final TextEditingController _searchCtrl = TextEditingController();
+  final TextEditingController _captionCtrl = TextEditingController();
   final Map<String, AppUser> _selectedUsers = {};
   final Map<String, ChatChannel> _selectedGroups = {};
   int _activeCategory = 0; // 0: Friends, 1: Allowed Groups
@@ -2720,6 +2728,7 @@ class _SendToSheetState extends ConsumerState<_SendToSheet> {
   @override
   void dispose() {
     _searchCtrl.dispose();
+    _captionCtrl.dispose();
     _debounce?.cancel();
     super.dispose();
   }
@@ -2952,6 +2961,53 @@ class _SendToSheetState extends ConsumerState<_SendToSheet> {
                   ),
                 );
               },
+            ),
+            // Caption / Text message input
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF27272A),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: _captionCtrl,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    maxLines: 2,
+                    minLines: 1,
+                    decoration: const InputDecoration(
+                      hintText: 'Add a message or caption to this Snap...',
+                      hintStyle: TextStyle(color: Colors.white38, fontSize: 13),
+                      prefixIcon: Icon(Icons.edit_note_rounded, color: Color(0xFF8B5CF6), size: 22),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                    child: Row(
+                      children: [
+                        const Text('Quick: ', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                        for (final emoji in ['🔥', '🎓', '📸', '🙌', '💯', '✨'])
+                          InkWell(
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              _captionCtrl.text = '${_captionCtrl.text} $emoji'.trim();
+                            },
+                            borderRadius: BorderRadius.circular(6),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                              child: Text(emoji, style: const TextStyle(fontSize: 16)),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
             // Search field
             TextField(
@@ -3254,6 +3310,7 @@ class _SendToSheetState extends ConsumerState<_SendToSheet> {
                         _selectedUsers.values.toList(),
                         _selectedGroups.values.toList(),
                         _postToMyStory,
+                        _captionCtrl.text.trim().isNotEmpty ? _captionCtrl.text.trim() : null,
                       );
                     },
                   ),

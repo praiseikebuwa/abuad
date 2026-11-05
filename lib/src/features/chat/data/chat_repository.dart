@@ -35,6 +35,8 @@ class ChatRepository {
   final Map<String, DateTime> _negativeChannelCache = {};
 
   final Map<String, List<ChatMessage>> _cachedMessages = {};
+  final List<Map<String, dynamic>> _offlineChatQueue = [];
+  bool _isFlushingOfflineChat = false;
   final Map<String, ChatChannel> _cachedChannels = {};
   List<ChatChannel> _channelsList = [];
   final Map<String, StreamController<Map<String, bool>>> _typingControllers = {};
@@ -269,6 +271,38 @@ class ChatRepository {
       final channelId = data['channelId']?.toString();
       if (channelId != null) {
         _fetchMessages(channelId);
+      }
+    });
+
+    SocketService.instance.onSnapOpened.listen((data) {
+      final channelId = data['channelId']?.toString();
+      final messageId = data['messageId']?.toString();
+      final openedUserId = data['userId']?.toString();
+      if (channelId != null && messageId != null && openedUserId != null) {
+        final list = _cachedMessages[channelId];
+        if (list != null) {
+          final idx = list.indexWhere((m) => m.id == messageId);
+          if (idx != -1) {
+            final m = list[idx];
+            final updatedViews = Map<String, int>.from(m.snapViews);
+            updatedViews[openedUserId] = (updatedViews[openedUserId] ?? 0) + 1;
+            list[idx] = m.copyWith(snapViews: updatedViews);
+            if (_messageControllers.containsKey(channelId) && !_messageControllers[channelId]!.isClosed) {
+              _messageControllers[channelId]!.add(List.from(list));
+            }
+          }
+        }
+        final ch = getCachedChannel(channelId);
+        if (ch != null && ch.lastMessage.isNotEmpty) {
+          final lastMsg = Map<String, dynamic>.from(ch.lastMessage);
+          final snapViews = Map<String, dynamic>.from(lastMsg['snap_views'] ?? lastMsg['snapViews'] ?? {});
+          snapViews[openedUserId] = (snapViews[openedUserId] is num ? (snapViews[openedUserId] as num).toInt() : 0) + 1;
+          lastMsg['snap_views'] = snapViews;
+          lastMsg['snapViews'] = snapViews;
+          final updatedCh = ch.copyWith(lastMessage: lastMsg);
+          _updateChannelCache(updatedCh);
+          _emitChannels();
+        }
       }
     });
 
@@ -652,6 +686,62 @@ class ChatRepository {
       final effectiveMediaUrl = mediaUrl ?? imageUrl ?? audioUrl ?? (sharedPostId != null ? 'post:$sharedPostId' : null);
 
       final clientMsgId = 'msg_${DateTime.now().microsecondsSinceEpoch}_${channelId.hashCode}';
+      final tempId = 'temp_${DateTime.now().microsecondsSinceEpoch}';
+      final uid = currentUserId ?? 'me';
+
+      // 1. Immediately create optimistic message with tempId so it appears with the clock icon right away!
+      final optimisticMsg = ChatMessage(
+        id: tempId,
+        senderId: uid,
+        content: content,
+        type: effectiveType,
+        timestamp: DateTime.now(),
+        imageUrl: (type == 'image' || isSnap == true) ? effectiveMediaUrl : null,
+        audioUrl: type == 'voice' ? effectiveMediaUrl : null,
+        duration: duration,
+        imageWidth: imageWidth,
+        imageHeight: imageHeight,
+        isSnap: isSnap ?? false,
+        replyToId: replyToId,
+        replyToContent: replyToContent,
+        replyToSenderId: replyToSenderId,
+        sharedPostId: sharedPostId,
+      );
+
+      final list = _cachedMessages.putIfAbsent(channelId, () => []);
+      list.add(optimisticMsg);
+      if (_messageControllers.containsKey(channelId) && !_messageControllers[channelId]!.isClosed) {
+        _messageControllers[channelId]!.add(List.from(list));
+      }
+
+      // Optimistically update channel lastMessage
+      final existing = getCachedChannel(channelId);
+      if (existing != null) {
+        final updated = existing.copyWith(
+          lastMessage: {
+            'id': tempId,
+            'content': content,
+            'text': content,
+            'type': effectiveType,
+            'sender_id': uid,
+            'senderId': uid,
+            'timestamp': DateTime.now().toIso8601String(),
+            'created_at': DateTime.now().toIso8601String(),
+            'isSnap': isSnap ?? false,
+            'mediaUrl': effectiveMediaUrl,
+          },
+          lastMessageTime: DateTime.now(),
+        );
+        _updateChannelCache(updated);
+        final idx = _channelsList.indexWhere((c) => c.id == existing.id || c.id == channelId);
+        if (idx != -1) {
+          _channelsList[idx] = updated;
+        } else {
+          _channelsList.add(updated);
+        }
+        _emitChannels();
+      }
+
       final payload = <String, dynamic>{
         'clientMsgId': clientMsgId,
         'channelId': channelId,
@@ -671,42 +761,53 @@ class ChatRepository {
       if (duration != null) payload['duration'] = duration;
       payload['mediaType'] = type;
 
-      final res = await ApiClient.post('/chat/send', payload);
-
-      if (res.statusCode == 200 || res.statusCode == 201) {
-        // Optimistically update channel immediately
-        final existing = getCachedChannel(channelId);
-        if (existing != null) {
-          final updated = existing.copyWith(
-            lastMessage: {
-              'content': content,
-              'text': content,
-              'type': effectiveType,
-              'sender_id': currentUserId,
-              'senderId': currentUserId,
-              'timestamp': DateTime.now().toIso8601String(),
-              'created_at': DateTime.now().toIso8601String(),
-              'isSnap': isSnap ?? false,
-              'mediaUrl': effectiveMediaUrl,
-            },
-            lastMessageTime: DateTime.now(),
-          );
-          _updateChannelCache(updated);
-          final idx = _channelsList.indexWhere((c) => c.id == existing.id || c.id == channelId);
-          if (idx != -1) {
-            _channelsList[idx] = updated;
-          } else {
-            _channelsList.add(updated);
-          }
-          _emitChannels();
+      try {
+        final res = await ApiClient.post('/chat/send', payload);
+        if (res.statusCode == 200 || res.statusCode == 201) {
+          _fetchMessages(channelId);
+          _fetchChannels();
+          _fetchChannel(channelId);
+        } else {
+          _queueOfflineMessage(payload);
         }
-        // Immediately refresh messages and channels
-        _fetchMessages(channelId);
-        _fetchChannels();
-        _fetchChannel(channelId);
+      } catch (netErr) {
+        debugPrint('⚠️ [ChatRepository] Network hiccup sending message, queued offline: $netErr');
+        _queueOfflineMessage(payload);
       }
     } catch (e) {
       debugPrint('Error sending message: $e');
+    }
+  }
+
+
+  void _queueOfflineMessage(Map<String, dynamic> payload) {
+    _offlineChatQueue.add(payload);
+    // Periodically retry flushing when online
+    Timer(const Duration(seconds: 4), () => _flushOfflineMessages());
+  }
+
+  Future<void> _flushOfflineMessages() async {
+    if (_isFlushingOfflineChat || _offlineChatQueue.isEmpty) return;
+    _isFlushingOfflineChat = true;
+    try {
+      final toProcess = List<Map<String, dynamic>>.from(_offlineChatQueue);
+      for (final payload in toProcess) {
+        try {
+          final res = await ApiClient.post('/chat/send', payload);
+          if (res.statusCode == 200 || res.statusCode == 201) {
+            _offlineChatQueue.remove(payload);
+            final chId = payload['channelId']?.toString();
+            if (chId != null) {
+              _fetchMessages(chId);
+              _fetchChannels();
+            }
+          }
+        } catch (_) {
+          break; // still offline
+        }
+      }
+    } finally {
+      _isFlushingOfflineChat = false;
     }
   }
 
@@ -822,6 +923,26 @@ class ChatRepository {
   }
 
   Future<void> viewSnap(String channelId, String messageId) async {
+    final uid = currentUserId;
+    if (uid != null) {
+      // Optimistically record that I opened this snap
+      final list = _cachedMessages[channelId];
+      if (list != null) {
+        final idx = list.indexWhere((m) => m.id == messageId);
+        if (idx != -1) {
+          final m = list[idx];
+          final updatedViews = Map<String, int>.from(m.snapViews);
+          updatedViews[uid] = (updatedViews[uid] ?? 0) + 1;
+          list[idx] = m.copyWith(snapViews: updatedViews);
+          if (_messageControllers.containsKey(channelId) && !_messageControllers[channelId]!.isClosed) {
+            _messageControllers[channelId]!.add(List.from(list));
+          }
+        }
+      }
+      try {
+        SocketService.instance.emitSnapOpened(channelId, messageId, uid);
+      } catch (_) {}
+    }
     try {
       await ApiClient.post('/chat/messages/$messageId/view-snap', {});
       _fetchMessages(channelId);

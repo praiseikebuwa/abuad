@@ -561,34 +561,86 @@ class UserRepository {
   Future<List<AppUser>> getFollowers(String userId) async {
     if (userId.isEmpty) return [];
     final targetId = userId == 'me' ? 'me' : userId;
+    final cached = _followersCache[targetId];
+    if (cached != null && cached.isNotEmpty) {
+      _fetchFollowersBackground(targetId);
+      return cached;
+    }
+    return _fetchFollowersInternal(targetId);
+  }
+
+  Future<List<AppUser>> _fetchFollowersInternal(String targetId) async {
     try {
       final response = await ApiClient.get('/users/$targetId/followers');
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true && data['data'] is List) {
-          return (data['data'] as List).map((x) => AppUser.fromMap(x)).toList();
+          final list = (data['data'] as List).map((x) => AppUser.fromMap(x)).toList();
+          _followersCache[targetId] = list;
+          return list;
         }
       }
     } catch (e) {
       debugPrint('Error fetching followers: $e');
     }
-    return [];
+    return _followersCache[targetId] ?? [];
   }
+
+  void _fetchFollowersBackground(String targetId) async {
+    try {
+      final response = await ApiClient.get('/users/$targetId/followers');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] is List) {
+          _followersCache[targetId] = (data['data'] as List).map((x) => AppUser.fromMap(x)).toList();
+        }
+      }
+    } catch (_) {}
+  }
+
+  static final Map<String, List<AppUser>> _followingCache = {};
+  static final Map<String, List<AppUser>> _followersCache = {};
+
+  static AppUser? getCachedUser(String uid) => _userCache[uid];
 
   Future<List<AppUser>> getFollowing(String userId) async {
     final targetId = (userId.isEmpty || userId == 'me') ? 'me' : userId;
+    final cached = _followingCache[targetId];
+    if (cached != null && cached.isNotEmpty) {
+      // Silently refresh in background
+      _fetchFollowingBackground(targetId);
+      return cached;
+    }
+    return _fetchFollowingInternal(targetId);
+  }
+
+  Future<List<AppUser>> _fetchFollowingInternal(String targetId) async {
     try {
       final response = await ApiClient.get('/users/$targetId/following');
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true && data['data'] is List) {
-          return (data['data'] as List).map((x) => AppUser.fromMap(x)).toList();
+          final list = (data['data'] as List).map((x) => AppUser.fromMap(x)).toList();
+          _followingCache[targetId] = list;
+          return list;
         }
       }
     } catch (e) {
       debugPrint('Error fetching following: $e');
     }
-    return [];
+    return _followingCache[targetId] ?? [];
+  }
+
+  void _fetchFollowingBackground(String targetId) async {
+    try {
+      final response = await ApiClient.get('/users/$targetId/following');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] is List) {
+          _followingCache[targetId] = (data['data'] as List).map((x) => AppUser.fromMap(x)).toList();
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> followUser(String targetUserId) async {

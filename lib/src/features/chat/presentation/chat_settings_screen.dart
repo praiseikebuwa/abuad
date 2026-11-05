@@ -26,6 +26,7 @@ class _ChatSettingsScreenState extends ConsumerState<ChatSettingsScreen> {
   bool _enterIsSend = false;
   bool _readReceipts = true;
   bool _typingStatus = true;
+  bool _liveTypingPreview = false;
   String _mediaAutoDownload = 'Wi-Fi & Cellular';
   String _fontSize = 'Medium';
 
@@ -79,10 +80,19 @@ class _ChatSettingsScreenState extends ConsumerState<ChatSettingsScreen> {
             'Teal';
       }
 
+      if (kIsWeb && _wallpaperPath != null && _wallpaperPath!.startsWith('blob:')) {
+        _wallpaperPath = null;
+        if (!_isGlobal && widget.channelId != null) {
+          prefs.remove('chat_wallpaper_${widget.channelId}');
+        }
+        prefs.remove('global_chat_wallpaper');
+      }
+
       _wallpaperDim = prefs.getDouble('chat_wallpaper_dim') ?? 0.3;
       _enterIsSend = prefs.getBool('chat_enter_is_send') ?? false;
       _readReceipts = prefs.getBool('chat_read_receipts') ?? true;
       _typingStatus = prefs.getBool('chat_typing_status') ?? true;
+      _liveTypingPreview = prefs.getBool('chat_live_typing_preview') ?? false;
       _mediaAutoDownload = prefs.getString('chat_auto_download') ?? 'Wi-Fi & Cellular';
       _fontSize = prefs.getString('chat_font_size') ?? 'Medium';
 
@@ -452,6 +462,26 @@ class _ChatSettingsScreenState extends ConsumerState<ChatSettingsScreen> {
                         },
                       ),
                       const Divider(height: 1, indent: 16, endIndent: 16),
+                      SwitchListTile.adaptive(
+                        title: const Row(
+                          children: [
+                            Text('Real-time Live Typing', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                            SizedBox(width: 6),
+                            Icon(Icons.bolt_rounded, size: 16, color: Colors.amber),
+                          ],
+                        ),
+                        subtitle: const Text(
+                          'Opt-in live preview: When both participants enable this in 1-on-1 chat, you can see live keystrokes in real time before sending!',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        value: _liveTypingPreview,
+                        activeTrackColor: themeColor,
+                        onChanged: (val) {
+                          setState(() => _liveTypingPreview = val);
+                          _saveSettingBool('chat_live_typing_preview', val);
+                        },
+                      ),
+                      const Divider(height: 1, indent: 16, endIndent: 16),
                       ListTile(
                         title: const Text('Media Auto-Download', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
                         subtitle: Text(_mediaAutoDownload, style: TextStyle(fontSize: 12, color: themeColor)),
@@ -692,17 +722,24 @@ class _ChatSettingsScreenState extends ConsumerState<ChatSettingsScreen> {
       );
     } else if (_wallpaperPath != null) {
       if (kIsWeb) {
-        bgDecoration = BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          image: DecorationImage(
-            image: NetworkImage(_wallpaperPath!),
-            fit: BoxFit.cover,
-            colorFilter: ColorFilter.mode(
-              Colors.black.withValues(alpha: _wallpaperDim),
-              BlendMode.darken,
+        if (_wallpaperPath!.startsWith('http')) {
+          bgDecoration = BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            image: DecorationImage(
+              image: NetworkImage(_wallpaperPath!),
+              fit: BoxFit.cover,
+              colorFilter: ColorFilter.mode(
+                Colors.black.withValues(alpha: _wallpaperDim),
+                BlendMode.darken,
+              ),
             ),
-          ),
-        );
+          );
+        } else {
+          bgDecoration = BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            color: isDark ? Colors.black : const Color(0xFFF1F5F9),
+          );
+        }
       } else if (File(_wallpaperPath!).existsSync()) {
         bgDecoration = BoxDecoration(
           borderRadius: BorderRadius.circular(20),

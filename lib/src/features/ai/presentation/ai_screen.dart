@@ -12,6 +12,11 @@ import 'package:timeago/timeago.dart' as timeago;
 import 'package:cached_network_image/cached_network_image.dart';
 import '../data/ai_service.dart';
 import '../../../core/services/firebase_storage_service.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:record/record.dart';
+import 'package:path_provider/path_provider.dart';
+
+enum _AttachOption { camera, photos, files }
 
 class AiMessage {
   final String id;
@@ -132,9 +137,28 @@ class _AiScreenState extends ConsumerState<AiScreen> {
   bool _isTyping = false;
   bool _isUploadingImage = false;
   XFile? _selectedImageFile;
+  PlatformFile? _selectedDocFile;
+  String? _docFileContent;
+
+  bool _isExpandedView = false;
+  bool _isRecordingVoice = false;
+  int _recordingSeconds = 0;
+  Timer? _recordingTimer;
+  final _audioRecorder = AudioRecorder();
+  bool _stopRequested = false;
 
   final _aiService = AiService();
   final _storage = FirebaseStorageService();
+
+  @override
+  void dispose() {
+    _recordingTimer?.cancel();
+    _audioRecorder.dispose();
+    _inputController.dispose();
+    _inputFocusNode.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -243,6 +267,9 @@ class _AiScreenState extends ConsumerState<AiScreen> {
   void _startNewChat() {
     setState(() {
       _selectedImageFile = null;
+      _selectedDocFile = null;
+      _docFileContent = null;
+      _isExpandedView = false;
       _inputController.clear();
       _initDefaultChat();
     });
@@ -254,11 +281,31 @@ class _AiScreenState extends ConsumerState<AiScreen> {
       _currentMode = AiMode.fromLabel(session.mode);
       _messages = List.from(session.messages);
       _selectedImageFile = null;
+      _selectedDocFile = null;
+      _docFileContent = null;
+      _isExpandedView = false;
     });
     _scrollToBottom();
   }
 
-  Future<void> _pickImage() async {
+  Future<void> _pickFromCamera() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: ImageSource.camera,
+      maxWidth: 1024,
+      maxHeight: 1024,
+      imageQuality: 85,
+    );
+    if (picked != null) {
+      setState(() {
+        _selectedImageFile = picked;
+        _selectedDocFile = null;
+        _docFileContent = null;
+      });
+    }
+  }
+
+  Future<void> _pickFromGallery() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(
       source: ImageSource.gallery,
@@ -269,15 +316,277 @@ class _AiScreenState extends ConsumerState<AiScreen> {
     if (picked != null) {
       setState(() {
         _selectedImageFile = picked;
+        _selectedDocFile = null;
+        _docFileContent = null;
       });
     }
   }
 
+  Future<void> _pickDocumentFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'doc', 'docx', 'txt', 'csv', 'md'],
+      );
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        String? content;
+        if (!kIsWeb &&
+            file.path != null &&
+            (file.extension == 'txt' ||
+                file.extension == 'csv' ||
+                file.extension == 'md')) {
+          try {
+            content = await File(file.path!).readAsString();
+          } catch (_) {}
+        }
+        setState(() {
+          _selectedDocFile = file;
+          _docFileContent = content;
+          _selectedImageFile = null;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error picking document: $e');
+    }
+  }
+
+  Future<void> _showAttachOptions(BuildContext context) async {
+    HapticFeedback.lightImpact();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final action = await showModalBottomSheet<_AttachOption>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFE5E7EB),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.12),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              _buildAttachMenuItem(
+                icon: Icons.camera_alt_outlined,
+                title: 'Camera',
+                subtitle: 'Take a photo or scan notes',
+                isDark: isDark,
+                onTap: () => Navigator.pop(context, _AttachOption.camera),
+              ),
+              Divider(
+                height: 1,
+                color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF1F5F9),
+              ),
+              _buildAttachMenuItem(
+                icon: Icons.photo_library_outlined,
+                title: 'Photos',
+                subtitle: 'Upload images from gallery',
+                isDark: isDark,
+                onTap: () => Navigator.pop(context, _AttachOption.photos),
+              ),
+              Divider(
+                height: 1,
+                color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF1F5F9),
+              ),
+              _buildAttachMenuItem(
+                icon: Icons.attach_file_rounded,
+                title: 'Files',
+                subtitle: 'Attach documents (PDF, DOCX, TXT)',
+                isDark: isDark,
+                onTap: () => Navigator.pop(context, _AttachOption.files),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (action == null) return;
+
+    switch (action) {
+      case _AttachOption.camera:
+        _pickFromCamera();
+        break;
+      case _AttachOption.photos:
+        _pickFromGallery();
+        break;
+      case _AttachOption.files:
+        _pickDocumentFile();
+        break;
+    }
+  }
+
+  Widget _buildAttachMenuItem({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool isDark,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap();
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF1F5F9),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                size: 20,
+                color: isDark ? Colors.white : const Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 20,
+              color: isDark ? Colors.white24 : Colors.black26,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _toggleVoiceInput() async {
+    HapticFeedback.mediumImpact();
+    if (_isRecordingVoice) {
+      await _stopVoiceRecording(sendImmediately: true);
+    } else {
+      await _startVoiceRecording();
+    }
+  }
+
+  Future<void> _startVoiceRecording() async {
+    try {
+      if (!await _audioRecorder.hasPermission()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Microphone permission required')),
+          );
+        }
+        return;
+      }
+
+      final dir = await getTemporaryDirectory();
+      final path = '${dir.path}/ai_voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+
+      await _audioRecorder.start(
+        const RecordConfig(encoder: AudioEncoder.aacLc),
+        path: path,
+      );
+
+      setState(() {
+        _isRecordingVoice = true;
+        _recordingSeconds = 0;
+      });
+
+      _recordingTimer?.cancel();
+      _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (mounted && _isRecordingVoice) {
+          setState(() {
+            _recordingSeconds++;
+          });
+        }
+      });
+    } catch (e) {
+      debugPrint('Voice recording start error: $e');
+    }
+  }
+
+  Future<void> _stopVoiceRecording({bool sendImmediately = false}) async {
+    try {
+      _recordingTimer?.cancel();
+      final path = await _audioRecorder.stop();
+      final duration = _recordingSeconds;
+
+      setState(() {
+        _isRecordingVoice = false;
+        _recordingSeconds = 0;
+      });
+
+      if (sendImmediately && path != null && duration > 0) {
+        final promptText = _inputController.text.trim();
+        final voiceNoteText = promptText.isNotEmpty
+            ? '$promptText (Voice input attached, ${duration}s)'
+            : 'Voice question ($duration seconds recording)';
+        _sendMessage(overridePrompt: voiceNoteText);
+      }
+    } catch (e) {
+      debugPrint('Voice recording stop error: $e');
+    }
+  }
+
+  void _cancelVoiceRecording() async {
+    _recordingTimer?.cancel();
+    try {
+      await _audioRecorder.stop();
+    } catch (_) {}
+    setState(() {
+      _isRecordingVoice = false;
+      _recordingSeconds = 0;
+    });
+  }
+
   Future<void> _sendMessage({String? overridePrompt}) async {
     String text = (overridePrompt ?? _inputController.text).trim();
-    if (text.isEmpty && _selectedImageFile == null) return;
+    if (text.isEmpty && _selectedImageFile == null && _selectedDocFile == null) return;
+
     if (text.isEmpty && _selectedImageFile != null) {
       text = "What is in this image?";
+    } else if (text.isEmpty && _selectedDocFile != null) {
+      text = "Summarize and explain the key points of this document: ${_selectedDocFile!.name}";
+    }
+
+    if (_selectedDocFile != null && _docFileContent != null && _docFileContent!.isNotEmpty) {
+      text = "$text\n\n--- Document Content (${_selectedDocFile!.name}) ---\n$_docFileContent";
     }
 
     if (overridePrompt == null) {
@@ -289,6 +598,9 @@ class _AiScreenState extends ConsumerState<AiScreen> {
 
     setState(() {
       _selectedImageFile = null;
+      _selectedDocFile = null;
+      _docFileContent = null;
+      _isExpandedView = false;
       if (imageToUpload != null) {
         _isUploadingImage = true;
       }
@@ -328,12 +640,13 @@ class _AiScreenState extends ConsumerState<AiScreen> {
       String accumulatedText = "";
       final systemPrompt = AiService.getSystemPrompt(_currentMode.label);
 
+      _stopRequested = false;
       await for (final chunk in _aiService.streamChat(
         text,
         imageUrl: imageUrl,
         systemPrompt: systemPrompt,
       )) {
-        if (!mounted) return;
+        if (!mounted || _stopRequested) break;
 
         accumulatedText += chunk;
 
@@ -767,141 +1080,528 @@ class _AiScreenState extends ConsumerState<AiScreen> {
               ),
             ),
 
-          // Selected Image Attachment Bar
-          if (_selectedImageFile != null)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              color: isDark ? Colors.grey[950] : Colors.grey[100],
-              child: Row(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: kIsWeb
-                        ? Image.network(
-                            _selectedImageFile!.path,
-                            width: 48,
-                            height: 48,
-                            fit: BoxFit.cover,
-                          )
-                        : Image.file(
-                            File(_selectedImageFile!.path),
-                            width: 48,
-                            height: 48,
-                            fit: BoxFit.cover,
-                          ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      _selectedImageFile!.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.cancel, color: Colors.grey),
-                    onPressed: () {
-                      setState(() {
-                        _selectedImageFile = null;
-                      });
-                    },
-                  ),
-                ],
-              ),
-            ),
+          // Attachment preview chip (if any)
+          _buildAttachmentPreview(isDark),
 
-          // Input Area
+          // Quick Suggestion Chips (Features AI requested)
+          if (!_isRecordingVoice && !_isTyping)
+            _buildQuickSuggestionChips(isDark),
+
+          // ChatGPT-Style Unified Input Area
           Container(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+            padding: const EdgeInsets.fromLTRB(14, 4, 14, 12),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF000000) : Colors.white,
+              color: isDark ? const Color(0xFF0F0F0F) : Colors.white,
               border: Border(
                 top: BorderSide(
-                  color: isDark ? Colors.grey[900]! : Colors.grey[200]!,
+                  color: isDark ? const Color(0xFF1F1F1F) : const Color(0xFFF1F5F9),
                   width: 1,
                 ),
               ),
             ),
             child: SafeArea(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  // Attachment Icon Button
-                  IconButton(
-                    icon: Icon(
-                      Icons.image_outlined,
-                      color: _selectedImageFile != null
-                          ? _currentMode.color
-                          : (isDark ? Colors.grey[400] : Colors.grey[600]),
-                    ),
-                    onPressed: _pickImage,
-                    tooltip: "Attach Image",
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: isDark ? Colors.grey[900] : Colors.grey[100],
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(
-                          color: isDark
-                              ? Colors.grey[800]!
-                              : Colors.transparent,
+              top: false,
+              child: _isRecordingVoice
+                  ? _buildVoiceRecordingBar(isDark)
+                  : _buildChatGptInputContainer(isDark),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickSuggestionChips(bool isDark) {
+    final suggestions = [
+      (
+        icon: Icons.explore_rounded,
+        label: 'Campus Navigator',
+        color: const Color(0xFF6366F1),
+        action: () {
+          _sendMessage(
+            overridePrompt:
+                'Can you guide me around ABUAD campus? Show me the colleges, AMSH hospital, and best study spots.',
+          );
+        },
+      ),
+      (
+        icon: Icons.school_rounded,
+        label: 'Calculate CGPA',
+        color: const Color(0xFF0D9488),
+        action: () {
+          _sendMessage(
+            overridePrompt:
+                'How is CGPA calculated at ABUAD? What are the grade point scales and First Class cutoff?',
+          );
+        },
+      ),
+      (
+        icon: Icons.upload_file_rounded,
+        label: 'Handout / Handbook Q&A',
+        color: const Color(0xFFF59E0B),
+        action: () {
+          _pickDocumentFile();
+        },
+      ),
+      (
+        icon: Icons.restaurant_rounded,
+        label: 'Cafeteria & Buka',
+        color: const Color(0xFFEC4899),
+        action: () {
+          _sendMessage(
+            overridePrompt:
+                'What cafeteria and buka food spots are available on ABUAD campus and what do they serve?',
+          );
+        },
+      ),
+      (
+        icon: Icons.build_circle_rounded,
+        label: 'Hostel Maintenance',
+        color: const Color(0xFF3B82F6),
+        action: () {
+          _sendMessage(
+            overridePrompt:
+                'How do I log a hostel maintenance or room repair request for electrical or plumbing issues?',
+          );
+        },
+      ),
+      (
+        icon: Icons.gavel_rounded,
+        label: 'Handbook & Rules',
+        color: const Color(0xFF8B5CF6),
+        action: () {
+          _sendMessage(
+            overridePrompt:
+                'What are the key rules in the ABUAD student handbook regarding dress code and hostel curfew?',
+          );
+        },
+      ),
+    ];
+
+    return Container(
+      height: 38,
+      margin: const EdgeInsets.only(bottom: 6),
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        itemCount: suggestions.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final s = suggestions[index];
+          return ActionChip(
+            avatar: Icon(s.icon, size: 16, color: s.color),
+            label: Text(
+              s.label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white70 : Colors.black87,
+              ),
+            ),
+            backgroundColor:
+                isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF1F5F9),
+            side: BorderSide(
+              color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFE2E8F0),
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              s.action();
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildAttachmentPreview(bool isDark) {
+    if (_selectedImageFile == null && _selectedDocFile == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              padding: _selectedDocFile != null
+                  ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8)
+                  : EdgeInsets.zero,
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF262626) : const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isDark ? const Color(0xFF333333) : const Color(0xFFE2E8F0),
+                ),
+              ),
+              child: _selectedImageFile != null
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: kIsWeb
+                          ? Image.network(
+                              _selectedImageFile!.path,
+                              width: 60,
+                              height: 60,
+                              fit: BoxFit.cover,
+                            )
+                          : Image.file(
+                              File(_selectedImageFile!.path),
+                              width: 60,
+                              height: 60,
+                              fit: BoxFit.cover,
+                            ),
+                    )
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.description_rounded,
+                          size: 24,
+                          color: Color(0xFF3B82F6),
                         ),
-                      ),
-                      child: TextField(
-                        controller: _inputController,
-                        focusNode: _inputFocusNode,
-                        maxLines: null,
-                        style: TextStyle(
-                          color: isDark ? Colors.white : Colors.black87,
-                          fontSize: 15,
-                        ),
-                        decoration: InputDecoration(
-                          hintText: 'Ask ${_currentMode.label}...',
-                          hintStyle: TextStyle(
-                            color: isDark ? Colors.grey[600] : Colors.grey[500],
+                        const SizedBox(width: 8),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 180),
+                          child: Text(
+                            _selectedDocFile!.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: isDark ? Colors.white : Colors.black87,
+                            ),
                           ),
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
                         ),
-                        onSubmitted: (_) => _sendMessage(),
-                      ),
+                      ],
+                    ),
+            ),
+            Positioned(
+              top: -6,
+              right: -6,
+              child: GestureDetector(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  setState(() {
+                    _selectedImageFile = null;
+                    _selectedDocFile = null;
+                    _docFileContent = null;
+                  });
+                },
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.75),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 1.5),
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.close,
+                      size: 11,
+                      color: Colors.white,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          _currentMode.color,
-                          _currentMode.color.withValues(alpha: 0.8),
-                        ],
-                      ),
-                      shape: BoxShape.circle,
-                    ),
-                    child: IconButton(
-                      onPressed: () => _sendMessage(),
-                      icon: const Icon(
-                        Icons.arrow_upward,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                    ),
-                  ),
-                ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVoiceRecordingBar(bool isDark) {
+    final minutes = (_recordingSeconds ~/ 60).toString().padLeft(2, '0');
+    final seconds = (_recordingSeconds % 60).toString().padLeft(2, '0');
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF4F4F5),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: Colors.redAccent.withValues(alpha: 0.5),
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 10,
+            height: 10,
+            decoration: const BoxDecoration(
+              color: Colors.redAccent,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            '$minutes:$seconds',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: Colors.redAccent,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Listening... Speak your prompt',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13.5,
+                color: isDark ? Colors.grey[300] : Colors.grey[700],
               ),
             ),
           ),
+          IconButton(
+            icon: const Icon(Icons.close_rounded, size: 20, color: Colors.grey),
+            tooltip: 'Cancel',
+            onPressed: _cancelVoiceRecording,
+          ),
+          GestureDetector(
+            onTap: () => _stopVoiceRecording(sendImmediately: true),
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: _currentMode.color,
+                shape: BoxShape.circle,
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.arrow_upward_rounded,
+                  size: 20,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSendButton(bool isDark) {
+    final hasContent = _inputController.text.trim().isNotEmpty ||
+        _selectedImageFile != null ||
+        _selectedDocFile != null;
+
+    final isActive = hasContent || _isTyping;
+    final buttonColor = _isTyping
+        ? Colors.redAccent
+        : (isActive
+            ? _currentMode.color
+            : (isDark ? const Color(0xFF2E2E30) : const Color(0xFFE2E8F0)));
+    final iconColor = isActive
+        ? Colors.white
+        : (isDark ? Colors.grey[600] : Colors.grey[400]);
+
+    return GestureDetector(
+      onTap: () {
+        if (_isTyping) {
+          HapticFeedback.mediumImpact();
+          setState(() => _stopRequested = true);
+        } else if (hasContent) {
+          HapticFeedback.lightImpact();
+          _sendMessage();
+        }
+      },
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: buttonColor,
+          shape: BoxShape.circle,
+        ),
+        child: Center(
+          child: Icon(
+            _isTyping ? Icons.stop_rounded : Icons.arrow_upward_rounded,
+            size: 20,
+            color: iconColor,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChatGptInputContainer(bool isDark) {
+    final text = _inputController.text;
+    final isCardMode = _isExpandedView || text.contains('\n') || text.length > 85;
+
+    final containerBg = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF4F4F5);
+    final borderColor = isDark ? const Color(0xFF2F2F2F) : const Color(0xFFE4E4E7);
+
+    if (isCardMode) {
+      // Multiline Card Mode (Images 3 & 4)
+      return AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        decoration: BoxDecoration(
+          color: containerBg,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: borderColor, width: 1),
+        ),
+        padding: const EdgeInsets.fromLTRB(14, 8, 10, 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Top action bar with Expand/Collapse button
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                GestureDetector(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    setState(() {
+                      _isExpandedView = !_isExpandedView;
+                    });
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 2, right: 4),
+                    child: Icon(
+                      _isExpandedView
+                          ? Icons.close_fullscreen_rounded
+                          : Icons.open_in_full_rounded,
+                      size: 16,
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            // Text area
+            TextField(
+              controller: _inputController,
+              focusNode: _inputFocusNode,
+              maxLines: _isExpandedView ? 14 : 6,
+              minLines: _isExpandedView ? 7 : 3,
+              style: TextStyle(
+                fontSize: 15,
+                color: isDark ? Colors.white : Colors.black87,
+                height: 1.35,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Ask ${_currentMode.label}...',
+                hintStyle: TextStyle(
+                  color: isDark ? Colors.grey[500] : Colors.grey[400],
+                  fontSize: 15,
+                ),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: const EdgeInsets.only(bottom: 8),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 4),
+            // Bottom Action Row (+ on left, mic + send on right)
+            Row(
+              children: [
+                IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  icon: Icon(
+                    Icons.add,
+                    size: 22,
+                    color: isDark ? Colors.white70 : Colors.black87,
+                  ),
+                  tooltip: 'Attach options',
+                  onPressed: () => _showAttachOptions(context),
+                ),
+                const Spacer(),
+                IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  icon: Icon(
+                    Icons.mic_none_rounded,
+                    size: 22,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                  tooltip: 'Voice prompt',
+                  onPressed: _toggleVoiceInput,
+                ),
+                const SizedBox(width: 8),
+                _buildSendButton(isDark),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Single-line Pill Mode (Image 5)
+    return Container(
+      decoration: BoxDecoration(
+        color: containerBg,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: borderColor, width: 1),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          IconButton(
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+            icon: Icon(
+              Icons.add,
+              size: 22,
+              color: isDark ? Colors.white70 : Colors.black87,
+            ),
+            tooltip: 'Attach options',
+            onPressed: () => _showAttachOptions(context),
+          ),
+          Expanded(
+            child: TextField(
+              controller: _inputController,
+              focusNode: _inputFocusNode,
+              maxLines: 4,
+              minLines: 1,
+              style: TextStyle(
+                fontSize: 15,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Ask ${_currentMode.label}...',
+                hintStyle: TextStyle(
+                  color: isDark ? Colors.grey[500] : Colors.grey[400],
+                  fontSize: 15,
+                ),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 6,
+                  vertical: 10,
+                ),
+              ),
+              onChanged: (_) => setState(() {}),
+              onSubmitted: (_) => _sendMessage(),
+            ),
+          ),
+          IconButton(
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+            icon: Icon(
+              Icons.mic_none_rounded,
+              size: 22,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
+            tooltip: 'Voice prompt',
+            onPressed: _toggleVoiceInput,
+          ),
+          const SizedBox(width: 4),
+          _buildSendButton(isDark),
+          const SizedBox(width: 4),
         ],
       ),
     );

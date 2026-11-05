@@ -25,7 +25,11 @@ class FeedScreen extends ConsumerStatefulWidget {
   ConsumerState<FeedScreen> createState() => _FeedScreenState();
 }
 
-class _FeedScreenState extends ConsumerState<FeedScreen> {
+class _FeedScreenState extends ConsumerState<FeedScreen>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   late final ScrollController _scrollController;
   bool _isScrolledDown = false;
   bool _showNewPostsPill = false;
@@ -172,6 +176,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final selectedChannel = ref.watch(feedChannelProvider);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -414,6 +419,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                   final feedAsync = ref.watch(paginatedFeedProvider);
 
                   return feedAsync.when(
+                    skipLoadingOnReload: true,
+                    skipLoadingOnRefresh: true,
                     loading: () => const FeedLoadingSkeleton(),
                     error: (error, stack) => Center(
                       child: Column(

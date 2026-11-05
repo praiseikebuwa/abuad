@@ -63,6 +63,8 @@ class ChatMessage {
     this.sharedPostId,
   });
 
+  String? get mediaUrl => imageUrl ?? audioUrl;
+
   ChatMessage copyWith({
     String? id,
     String? senderId,
@@ -143,7 +145,14 @@ class ChatMessage {
     if (snapViews.containsKey(userId)) {
       return snapViews[userId]!;
     }
-    return readBy.contains(userId) ? 1 : 0;
+    return 0;
+  }
+
+  bool isOpenedByAnyRecipient(String? myUserId) {
+    if (snapViews.isNotEmpty) {
+      return snapViews.entries.any((e) => e.key != myUserId && e.value > 0);
+    }
+    return false;
   }
 
   bool isSavedBy(String? userId) => userId != null && savedBy.contains(userId);

@@ -11,7 +11,13 @@ import 'widgets/live_space_closing_sheet.dart';
 
 class LiveAudioRoomScreen extends ConsumerStatefulWidget {
   final String roomId;
-  const LiveAudioRoomScreen({super.key, required this.roomId});
+  final AudioRoom? initialRoom;
+
+  const LiveAudioRoomScreen({
+    super.key,
+    required this.roomId,
+    this.initialRoom,
+  });
 
   @override
   ConsumerState<LiveAudioRoomScreen> createState() => _LiveAudioRoomScreenState();
@@ -32,7 +38,10 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final activeState = ref.read(activeAudioRoomNotifierProvider);
       if (activeState.room == null || activeState.room!.id != widget.roomId) {
-        ref.read(activeAudioRoomNotifierProvider.notifier).joinRoom(widget.roomId);
+        ref.read(activeAudioRoomNotifierProvider.notifier).joinRoom(
+              widget.roomId,
+              initialRoom: widget.initialRoom,
+            );
       }
       ref.read(liveKitAudioServiceProvider).startAudio();
     });
@@ -126,7 +135,7 @@ class _LiveAudioRoomScreenState extends ConsumerState<LiveAudioRoomScreen>
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(activeAudioRoomNotifierProvider);
-    final room = state.room;
+    final room = state.room ?? widget.initialRoom;
 
     ref.listen<ActiveAudioRoomState>(activeAudioRoomNotifierProvider, (previous, next) {
       if (next.pendingTransferProposal != null &&

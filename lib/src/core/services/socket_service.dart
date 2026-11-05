@@ -19,6 +19,8 @@ class SocketService {
   final _typingController = StreamController<Map<String, dynamic>>.broadcast();
   final _presenceController = StreamController<Map<String, dynamic>>.broadcast();
   final _snapSavedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _snapOpenedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _liveTypingController = StreamController<Map<String, dynamic>>.broadcast();
   final _notificationController = StreamController<Map<String, dynamic>>.broadcast();
   final _configUpdatedController = StreamController<Map<String, dynamic>>.broadcast();
 
@@ -52,6 +54,8 @@ class SocketService {
   Stream<Map<String, dynamic>> get onTyping => _typingController.stream;
   Stream<Map<String, dynamic>> get onPresence => _presenceController.stream;
   Stream<Map<String, dynamic>> get onSnapSaved => _snapSavedController.stream;
+  Stream<Map<String, dynamic>> get onSnapOpened => _snapOpenedController.stream;
+  Stream<Map<String, dynamic>> get onLiveTyping => _liveTypingController.stream;
   Stream<Map<String, dynamic>> get onNotification => _notificationController.stream;
   Stream<Map<String, dynamic>> get onConfigUpdated => _configUpdatedController.stream;
 
@@ -228,6 +232,18 @@ class SocketService {
       }
     });
 
+    _socket!.on('snap:opened', (data) {
+      if (data is Map) {
+        _snapOpenedController.add(Map<String, dynamic>.from(data));
+      }
+    });
+
+    _socket!.on('chat:live_typing', (data) {
+      if (data is Map) {
+        _liveTypingController.add(Map<String, dynamic>.from(data));
+      }
+    });
+
     _socket!.on('config:updated', (data) {
       if (data is Map) {
         _configUpdatedController.add(Map<String, dynamic>.from(data));
@@ -365,6 +381,26 @@ class SocketService {
   void sendAudioRoomReaction(String roomId, String emoji) {
     if (_socket != null && _socket!.connected) {
       _socket!.emit('audio_room:reaction', {'roomId': roomId, 'emoji': emoji});
+    }
+  }
+
+  void sendLiveTyping(String channelId, String userId, String text) {
+    if (_socket != null && _socket!.connected) {
+      _socket!.emit('chat:live_typing', {
+        'channelId': channelId,
+        'userId': userId,
+        'text': text,
+      });
+    }
+  }
+
+  void emitSnapOpened(String channelId, String messageId, String userId) {
+    if (_socket != null && _socket!.connected) {
+      _socket!.emit('snap:opened', {
+        'channelId': channelId,
+        'messageId': messageId,
+        'userId': userId,
+      });
     }
   }
 

@@ -63,6 +63,10 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
         final adminIds = channel?.adminIds ?? [];
         final adminNames = adminIds.map((id) => channel?.memberNames[id] ?? 'Admin').toList();
         final adminSubtext = adminNames.isNotEmpty ? adminNames.join(', ') : 'Admins';
+        final currentUserId = repo.currentUserId;
+        final isAdmin = adminIds.contains(currentUserId) ||
+            channel?.createdBy == currentUserId ||
+            (adminIds.isEmpty && channel?.memberIds.isNotEmpty == true && channel?.memberIds.first == currentUserId);
 
         final avatars = channel?.memberAvatars.values
                 .where((a) => a != null && a.isNotEmpty && UrlValidator.isValidUrl(a))
@@ -90,10 +94,23 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
             ),
             centerTitle: true,
             actions: [
-              IconButton(
-                icon: Icon(Icons.edit_outlined, color: textPrimary, size: 22),
-                onPressed: () => _showEditGroupNameDialog(displayName),
-              ),
+              if (isAdmin)
+                IconButton(
+                  icon: Icon(Icons.edit_outlined, color: textPrimary, size: 22),
+                  onPressed: () => _showEditGroupNameDialog(displayName),
+                )
+              else
+                IconButton(
+                  icon: const Icon(Icons.lock_outline_rounded, color: Colors.amber, size: 20),
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Only group admins can edit group settings and info.'),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  },
+                ),
               const SizedBox(width: 4),
             ],
           ),
@@ -115,6 +132,30 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
                   isDark: isDark,
                 ),
 
+                if (!isAdmin) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.shield_outlined, color: Colors.amber, size: 20),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'View-Only Mode: Only group admins have permission to change group settings.',
+                            style: TextStyle(color: Colors.amber, fontSize: 12.5, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
                 const SizedBox(height: 24),
 
                 // SECTION 1: GROUP INFO & PERMISSIONS
@@ -128,6 +169,7 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
                       title: 'Edit Group Info',
                       subtitle: 'Only admins can change group name, image, and description.',
                       value: _editGroupInfo,
+                      enabled: isAdmin,
                       onChanged: (val) {
                         setState(() => _editGroupInfo = val);
                         repo.updateGroupSettings(widget.channelId, restrictInfoUpdates: val);
@@ -150,6 +192,7 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
                       title: 'Add Other Members',
                       subtitle: 'Allow all members to add new students.',
                       value: _addOtherMembers,
+                      enabled: isAdmin,
                       onChanged: (val) {
                         setState(() => _addOtherMembers = val);
                         repo.updateGroupSettings(widget.channelId, settings: {'addOtherMembers': val});
@@ -163,6 +206,7 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
                       title: 'Allow Snaps in group',
                       subtitle: 'Allow group members to share and send disappearing snaps.',
                       value: _allowSnaps,
+                      enabled: isAdmin,
                       onChanged: (val) {
                         setState(() => _allowSnaps = val);
                         repo.updateGroupSettings(widget.channelId, settings: {'allowSnaps': val});
@@ -187,6 +231,7 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
                       title: 'Approve New Members',
                       subtitle: 'Admins must approve requests to join via link.',
                       value: _approveNewMembers,
+                      enabled: isAdmin,
                       onChanged: (val) {
                         setState(() => _approveNewMembers = val);
                         repo.updateGroupSettings(widget.channelId, settings: {'approveNewMembers': val});
@@ -200,6 +245,7 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
                       title: 'Participant History',
                       subtitle: 'New members can see past messages.',
                       value: _participantHistory,
+                      enabled: isAdmin,
                       onChanged: (val) {
                         setState(() => _participantHistory = val);
                         repo.updateGroupSettings(widget.channelId, settings: {'participantHistory': val});
@@ -471,6 +517,7 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
     required String title,
     required String subtitle,
     required bool value,
+    bool enabled = true,
     required ValueChanged<bool> onChanged,
     required Color textPrimary,
     required Color textSecondary,
@@ -485,20 +532,42 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: textPrimary,
-                  ),
+                Row(
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: enabled ? textPrimary : textPrimary.withValues(alpha: 0.5),
+                      ),
+                    ),
+                    if (!enabled) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.lock_rounded, size: 10, color: Colors.amber),
+                            SizedBox(width: 3),
+                            Text('Admin Only', style: TextStyle(color: Colors.amber, fontSize: 10, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
                   style: TextStyle(
                     fontSize: 13,
-                    color: textSecondary,
+                    color: enabled ? textSecondary : textSecondary.withValues(alpha: 0.4),
                     height: 1.25,
                   ),
                 ),
@@ -510,7 +579,16 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
             value: value,
             activeThumbColor: const Color(0xFF22C55E),
             activeTrackColor: const Color(0xFF22C55E).withValues(alpha: isDark ? 0.4 : 0.6),
-            onChanged: onChanged,
+            onChanged: enabled
+                ? onChanged
+                : (_) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Only group admins can modify this setting.'),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  },
           ),
         ],
       ),
@@ -677,6 +755,18 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
   }
 
   void _showSendMessagesDialog() {
+    final channel = ref.read(chatRepositoryProvider).getCachedChannel(widget.channelId);
+    final currentUserId = ref.read(chatRepositoryProvider).currentUserId;
+    final isAdmin = (channel?.adminIds ?? []).contains(currentUserId) || channel?.createdBy == currentUserId;
+    if (!isAdmin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Only group admins can change message permissions.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(

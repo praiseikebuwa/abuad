@@ -29,6 +29,7 @@ import '../../../../shared/widgets/abuad_markdown.dart';
 import 'link_preview_card.dart';
 import 'document_preview_card.dart';
 import 'bookmark_folder_picker_sheet.dart';
+import 'post_text_utils.dart';
 
 class PostCard extends ConsumerStatefulWidget {
   final domain.Post post;
@@ -673,21 +674,24 @@ class _PostCardState extends ConsumerState<PostCard> {
                               Consumer(
                                 builder: (context, ref, child) {
                                   final optimisticMap = ref.watch(optimisticLikeProvider);
-                                  final apiLiked = ref.watch(isPostLikedProvider(post.id)).value ?? false;
-                                  final isLiked = optimisticMap.containsKey(post.id)
+                                  final apiLiked = ref.watch(isPostLikedProvider(post.id)).value ?? livePost.isLiked;
+                                  final hasOptimistic = optimisticMap.containsKey(post.id);
+                                  final isLiked = hasOptimistic
                                       ? optimisticMap[post.id]!
                                       : apiLiked;
-                                  final optimisticCount = optimisticMap.containsKey(post.id)
-                                      ? livePost.likesCount + (optimisticMap[post.id]! ? 1 : -1)
-                                      : livePost.likesCount;
+                                  final countDiff = hasOptimistic
+                                      ? (optimisticMap[post.id]! ? (apiLiked ? 0 : 1) : (apiLiked ? -1 : 0))
+                                      : 0;
+                                  final optimisticCount = (livePost.likesCount + countDiff).clamp(0, 999999);
                                   return AnimatedLikeButton(
                                     isLiked: isLiked,
-                                    count: optimisticCount.clamp(0, 999999),
+                                    count: optimisticCount,
                                     inactiveColor: isDark ? Colors.grey[500]! : Colors.grey[600]!,
                                     onTap: () async {
+                                      HapticFeedback.lightImpact();
                                       ref.read(optimisticLikeProvider.notifier).toggle(post.id, apiLiked);
                                       try {
-                                        await ref.read(postRepositoryProvider).toggleLike(post.id);
+                                        await ref.read(postRepositoryProvider).toggleLike(post.id, fallbackPost: livePost);
                                         ref.read(optimisticLikeProvider.notifier).confirm(post.id);
                                       } catch (_) {
                                         ref.read(optimisticLikeProvider.notifier).revert(post.id, apiLiked);
@@ -1253,13 +1257,43 @@ class _PostCardState extends ConsumerState<PostCard> {
   ) {
     if (text.isEmpty) return const SizedBox.shrink();
     final isDark = theme.brightness == Brightness.dark;
-    return AbuadMarkdownContent(
-      content: text,
-      textStyle: TextStyle(
-        fontSize: 16,
-        height: 1.38,
-        color: theme.textTheme.bodyLarge?.color ?? (isDark ? Colors.white : Colors.black87),
-      ),
+    final primaryLinkColor = isDark ? const Color(0xFF818CF8) : AppColors.primaryInk;
+
+    final isLong = PostTextUtils.isContentLong(text, maxChars: 320, maxLines: 5);
+    final displayContent = isLong
+        ? PostTextUtils.truncatePostContent(text, maxChars: 280, maxLines: 4)
+        : text;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AbuadMarkdownContent(
+          content: displayContent,
+          textStyle: TextStyle(
+            fontSize: 16,
+            height: 1.38,
+            color: theme.textTheme.bodyLarge?.color ?? (isDark ? Colors.white : Colors.black87),
+          ),
+        ),
+        if (isLong)
+          Padding(
+            padding: const EdgeInsets.only(top: 4.0),
+            child: GestureDetector(
+              onTap: () => _openPostDetail(context),
+              behavior: HitTestBehavior.opaque,
+              child: Text(
+                'Show more',
+                style: TextStyle(
+                  color: primaryLinkColor,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14.5,
+                  letterSpacing: -0.1,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 

@@ -196,9 +196,19 @@ class StoryRepository {
   }
 
   Future<void> markAsViewed(String storyId) async {
+    final uid = currentUserId;
+    if (uid != null) {
+      for (var i = 0; i < _cachedStories.length; i++) {
+        if (_cachedStories[i].id == storyId && !_cachedStories[i].viewers.contains(uid)) {
+          _cachedStories[i] = _cachedStories[i].copyWith(
+            viewers: [..._cachedStories[i].viewers, uid],
+          );
+        }
+      }
+      _storiesController.add(List.from(_cachedStories));
+    }
     try {
       await ApiClient.post('/stories/$storyId/view', {});
-      await fetchStories();
     } catch (e) {
       debugPrint('Error marking story viewed: $e');
     }

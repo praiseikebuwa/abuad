@@ -30,7 +30,17 @@ class CloudStorageService {
 
   /// Upload an audio XFile.
   Future<String> uploadAudio(XFile file, {String? path}) async {
-    return _uploadXFile(file);
+    final bytes = await file.readAsBytes();
+    String fileName = file.name;
+    if (fileName.isEmpty || !fileName.contains('.')) {
+      fileName = 'voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    }
+    final contentType = _mimeFromExtension(fileName) ?? 'audio/mp4';
+    final url = await ApiClient.uploadBytes(bytes, fileName, contentType: contentType);
+    if (url == null || url.isEmpty || url == _placeholder) {
+      throw Exception('Failed to upload audio to Cloudflare R2 storage');
+    }
+    return url;
   }
 
   // ── Private helpers ───────────────────────────────────────────────────────
@@ -68,8 +78,12 @@ class CloudStorageService {
       'mp4': 'video/mp4',
       'mov': 'video/quicktime',
       'mp3': 'audio/mpeg',
+      'm4a': 'audio/mp4',
       'aac': 'audio/aac',
       'wav': 'audio/wav',
+      'opus': 'audio/opus',
+      'webm': 'audio/webm',
+      'ogg': 'audio/ogg',
       'pdf': 'application/pdf',
       'doc': 'application/msword',
       'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

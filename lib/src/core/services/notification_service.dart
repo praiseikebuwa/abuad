@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:toastification/toastification.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'api_client.dart';
 import '../../features/notifications/domain/notification.dart';
 
@@ -23,6 +24,13 @@ class NotificationService {
   static const String channelName = 'ABUAD Alerts & Notifications';
   static const String channelDescription =
       'Realtime alerts, direct messages, academic notices, and campus announcements';
+
+  static const String liveSpaceChannelId = 'abuad_live_space_v1';
+  static const String liveSpaceChannelName = 'ABUAD Live Spaces & Audio';
+  static const String liveSpaceChannelDescription =
+      'Ongoing live audio spaces, background listening, and active radio rooms';
+
+  static const int liveSpaceNotificationId = 99991;
 
   Future<void> initialize() async {
     if (_isInitialized) return;
@@ -76,8 +84,28 @@ class NotificationService {
 
         await androidImplementation.createNotificationChannel(androidChannel);
 
+        const liveSpaceChannel = AndroidNotificationChannel(
+          liveSpaceChannelId,
+          liveSpaceChannelName,
+          description: liveSpaceChannelDescription,
+          importance: Importance.low,
+          playSound: false,
+          enableVibration: false,
+          showBadge: true,
+        );
+        await androidImplementation.createNotificationChannel(liveSpaceChannel);
+
         // Request permissions on Android 13+
         await androidImplementation.requestNotificationsPermission();
+      }
+
+      if (!kIsWeb) {
+        try {
+          final status = await Permission.notification.status;
+          if (!status.isGranted) {
+            await Permission.notification.request();
+          }
+        } catch (_) {}
       }
 
       _isInitialized = true;
@@ -195,6 +223,78 @@ class NotificationService {
       });
     } catch (e) {
       debugPrint('Error sending in-app notification: $e');
+    }
+  }
+
+  /// Displays an ongoing system notification on phone lock screen & notification shade for active Live Space
+  Future<void> showLiveSpaceNotification({
+    required String roomId,
+    required String title,
+    required String hostName,
+    int participantCount = 1,
+    bool isMuted = false,
+  }) async {
+    try {
+      final androidDetails = AndroidNotificationDetails(
+        liveSpaceChannelId,
+        liveSpaceChannelName,
+        channelDescription: liveSpaceChannelDescription,
+        importance: Importance.low,
+        priority: Priority.high,
+        ongoing: true,
+        autoCancel: false,
+        showWhen: true,
+        usesChronometer: true,
+        icon: '@mipmap/ic_launcher',
+        category: AndroidNotificationCategory.status,
+        styleInformation: BigTextStyleInformation(
+          'Hosted by $hostName • $participantCount listening\nTap to open the live space',
+          contentTitle: '🎙️ LIVE Space: $title',
+          summaryText: '🔴 LIVE Audio Space',
+        ),
+        actions: const [
+          AndroidNotificationAction(
+            'open_space',
+            'Open Space',
+            showsUserInterface: true,
+          ),
+          AndroidNotificationAction(
+            'leave_space',
+            'Leave',
+            showsUserInterface: true,
+          ),
+        ],
+      );
+
+      const iosDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: false,
+      );
+
+      final details = NotificationDetails(
+        android: androidDetails,
+        iOS: iosDetails,
+      );
+
+      await _notificationsPlugin.show(
+        id: liveSpaceNotificationId,
+        title: '🎙️ LIVE Space: $title',
+        body: 'Hosted by $hostName • $participantCount listening',
+        notificationDetails: details,
+        payload: '/audio-spaces/$roomId',
+      );
+    } catch (e) {
+      debugPrint('Error showing live space notification: $e');
+    }
+  }
+
+  /// Cancels the ongoing Live Space notification
+  Future<void> cancelLiveSpaceNotification() async {
+    try {
+      await _notificationsPlugin.cancel(id: liveSpaceNotificationId);
+    } catch (e) {
+      debugPrint('Error cancelling live space notification: $e');
     }
   }
 

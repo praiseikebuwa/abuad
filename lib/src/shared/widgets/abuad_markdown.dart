@@ -60,7 +60,10 @@ class AbuadMarkdownContent extends ConsumerWidget {
             case _BlockType.code:
               return _buildCodeBlockCard(context, block.content, block.language, isDark);
             case _BlockType.image:
-              return _buildImageCard(context, block.content, isDark);
+              final isSticker = (block.meta?.toLowerCase() == 'sticker') ||
+                  block.content.contains('/stickers/') ||
+                  block.content.contains('sticker');
+              return _buildImageCard(context, block.content, isDark, isSticker: isSticker);
             case _BlockType.alert:
               return _buildAlertCard(
                 context,
@@ -489,12 +492,12 @@ class AbuadMarkdownContent extends ConsumerWidget {
           }
           final user = await ref.read(userRepositoryProvider).getUserByHandle(handle);
           if (context.mounted) {
-            if (user != null) {
-              context.push('/user/');
+            if (user != null && user.uid.isNotEmpty) {
+              context.push('/user/${user.uid}');
             } else {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('User @ not found'),
+                  content: Text('User @$handle not found'),
                   duration: const Duration(seconds: 2),
                 ),
               );
@@ -519,7 +522,7 @@ class AbuadMarkdownContent extends ConsumerWidget {
                         width: avatarSize,
                         height: avatarSize,
                         fit: BoxFit.cover,
-                        errorWidget: (_, __, ___) => _defaultMentionAvatar(handle, avatarSize),
+                        errorWidget: (context, url, error) => _defaultMentionAvatar(handle, avatarSize),
                       ),
                     );
                   }
@@ -848,7 +851,36 @@ class AbuadMarkdownContent extends ConsumerWidget {
     );
   }
 
-  Widget _buildImageCard(BuildContext context, String imageUrl, bool isDark) {
+  Widget _buildImageCard(BuildContext context, String imageUrl, bool isDark, {bool isSticker = false}) {
+    if (isSticker) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            constraints: const BoxConstraints(
+              maxWidth: 190,
+              maxHeight: 190,
+            ),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: CachedNetworkImage(
+              imageUrl: imageUrl,
+              fit: BoxFit.contain,
+              placeholder: (context, url) => Container(
+                width: 140,
+                height: 140,
+                color: isDark ? Colors.grey[900] : Colors.grey[200],
+                child: const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+              ),
+              errorWidget: (context, url, error) => const Icon(Icons.sticky_note_2_rounded, size: 28),
+            ),
+          ),
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: ClipRRect(
@@ -973,7 +1005,7 @@ class AbuadMarkdownContent extends ConsumerWidget {
           }
           final imgUrl = m.group(2) ?? '';
           if (imgUrl.isNotEmpty) {
-            blocks.add(_ParsedBlock(type: _BlockType.image, content: imgUrl));
+            blocks.add(_ParsedBlock(type: _BlockType.image, content: imgUrl, meta: m.group(1)));
           }
           cur = m.end;
         }

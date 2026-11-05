@@ -177,22 +177,53 @@ class Story {
         ? map['author'] as Map<String, dynamic>
         : null;
 
+    int? parseColor(dynamic raw) {
+      if (raw == null) return null;
+      if (raw is int) return raw;
+      if (raw is String) {
+        final s = raw.trim();
+        if (s.isEmpty) return null;
+        if (s.startsWith('#')) {
+          final hex = s.substring(1);
+          if (hex.length == 6) return int.tryParse('0xFF$hex');
+          if (hex.length == 8) return int.tryParse('0x$hex');
+        }
+        if (s.startsWith('0x') || s.startsWith('0X')) {
+          return int.tryParse(s);
+        }
+        return int.tryParse(s);
+      }
+      return null;
+    }
+
     String? audioUrl = map['audioUrl'] ?? map['audio_url'];
     String? musicTitle = map['musicTitle'] ?? map['music_title'];
     String? musicArtist = map['musicArtist'] ?? map['music_artist'];
     String? linkUrl = map['link_url'] ?? map['linkUrl'];
+    int? decodedBgColor;
+    int? decodedTxtColor;
+    String? decodedFont;
+    String? decodedAlign;
 
-    if (linkUrl != null && linkUrl.startsWith('{') && linkUrl.contains('"audioUrl"')) {
+    if (linkUrl != null && linkUrl.startsWith('{')) {
       try {
         final decoded = json.decode(linkUrl);
         if (decoded is Map) {
-          audioUrl ??= decoded['audioUrl'];
-          musicTitle ??= decoded['musicTitle'];
-          musicArtist ??= decoded['musicArtist'];
-          linkUrl = decoded['linkUrl'];
+          audioUrl ??= decoded['audioUrl'] ?? decoded['audio_url'];
+          musicTitle ??= decoded['musicTitle'] ?? decoded['music_title'];
+          musicArtist ??= decoded['musicArtist'] ?? decoded['music_artist'];
+          if (decoded.containsKey('linkUrl')) linkUrl = decoded['linkUrl'];
+          if (decoded.containsKey('link_url')) linkUrl = decoded['link_url'];
+          decodedBgColor = parseColor(decoded['backgroundColor'] ?? decoded['background_color']);
+          decodedTxtColor = parseColor(decoded['textColor'] ?? decoded['text_color']);
+          decodedFont = decoded['fontFamily'] ?? decoded['font_family'];
+          decodedAlign = decoded['textAlign'] ?? decoded['text_align'];
         }
       } catch (_) {}
     }
+
+    final rawType = (map['type'] ?? map['mediaType'] ?? 'image').toString().toLowerCase();
+    final rawContent = map['content'] ?? map['mediaUrl'] ?? map['media_url'] ?? '';
 
     return Story(
       id: map['id'] ?? map['_id'] ?? '',
@@ -201,8 +232,10 @@ class Story {
           authorMap?['id'] ??
           authorMap?['_id'] ??
           '',
-      content: UrlValidator.formatImageUrl(map['content'] ?? map['mediaUrl'] ?? map['media_url']),
-      type: map['type'] ?? map['mediaType'] ?? 'image',
+      content: rawType == 'text'
+          ? rawContent.toString()
+          : UrlValidator.formatImageUrl(rawContent),
+      type: rawType,
       caption: map['caption'],
       createdAt: parseTime(map['created_at'] ?? map['createdAt']),
       expiresAt: parseTime(map['expires_at'] ?? map['expiresAt']),
@@ -211,10 +244,10 @@ class Story {
       mentions: parseStringList(map['mentions']),
       linkUrl: linkUrl,
       visibility: map['visibility'] ?? 'everyone',
-      backgroundColor: map['background_color'] ?? map['backgroundColor'],
-      textColor: map['text_color'] ?? map['textColor'],
-      fontFamily: map['font_family'] ?? map['fontFamily'],
-      textAlign: map['text_align'] ?? map['textAlign'],
+      backgroundColor: parseColor(map['background_color'] ?? map['backgroundColor']) ?? decodedBgColor,
+      textColor: parseColor(map['text_color'] ?? map['textColor']) ?? decodedTxtColor,
+      fontFamily: map['font_family'] ?? map['fontFamily'] ?? decodedFont,
+      textAlign: map['text_align'] ?? map['textAlign'] ?? decodedAlign,
       status: map['status'] ?? 'active',
       userName: map['user_name'] ??
           map['userName'] ??

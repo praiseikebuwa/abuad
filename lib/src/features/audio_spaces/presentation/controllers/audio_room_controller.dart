@@ -588,14 +588,27 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
     _micSub?.cancel();
   }
 
-  Future<void> joinRoom(String roomId) async {
+  Future<void> joinRoom(String roomId, {AudioRoom? initialRoom}) async {
     try {
-      state = state.copyWith(isConnecting: true, clearError: true);
+      if (initialRoom != null) {
+        state = state.copyWith(room: initialRoom, isConnecting: true, clearError: true);
+      } else {
+        state = state.copyWith(isConnecting: true, clearError: true);
+      }
 
       // 1. Join room on backend to register participant in DB
-      final joinResult = await _repository.joinRoom(roomId);
-      final token = joinResult['token'] as String;
-      final role = joinResult['role'] as String;
+      String token = '';
+      String role = 'LISTENER';
+      dynamic rawPart;
+
+      try {
+        final joinResult = await _repository.joinRoom(roomId);
+        token = joinResult['token'] as String? ?? '';
+        role = joinResult['role'] as String? ?? 'LISTENER';
+        rawPart = joinResult['participant'];
+      } catch (je) {
+        debugPrint('⚠️ [AudioRoomNotifier] Remote join notice: $je');
+      }
 
       // 2. Setup subscriptions and join socket room
       _setupSubscriptions();
@@ -603,14 +616,23 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
       _startHeartbeat(roomId);
 
       // 3. Fetch fresh room details containing all participants
-      final room = await _repository.getRoomDetails(roomId);
+      AudioRoom? room;
+      try {
+        room = await _repository.getRoomDetails(roomId);
+      } catch (re) {
+        debugPrint('⚠️ [AudioRoomNotifier] getRoomDetails notice: $re');
+        room = initialRoom ?? state.room;
+      }
+
+      if (room == null) {
+        throw Exception('Audio space not available');
+      }
 
       // 4. Ensure current user is in participants list so they always see themselves
       final participants = List<AudioParticipant>.from(room.participants);
       final authRepo = _ref.read(authRepositoryProvider);
       final authUser = authRepo.currentUser;
       final selfId = authUser?.uid ?? authRepo.currentUserId;
-      final rawPart = joinResult['participant'];
 
       AudioParticipant? selfPart;
       if (rawPart is AudioParticipant) {
@@ -652,14 +674,23 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
       const livekitUrl = 'wss://abuad-cgeux9e8.livekit.cloud';
       final canPublish = role == 'HOST' || role == 'CO_HOST' || role == 'MODERATOR' || role == 'SPEAKER';
 
-      await _audioService.connect(
-        url: livekitUrl,
-        token: token,
-        canPublish: canPublish,
-        autoEnableMic: role == 'HOST',
-      );
+      if (token.isNotEmpty) {
+        try {
+          await _audioService.connect(
+            url: livekitUrl,
+            token: token,
+            canPublish: canPublish,
+            autoEnableMic: role == 'HOST',
+          );
+        } catch (lkErr) {
+          debugPrint('⚠️ [AudioRoomNotifier] LiveKit connection warning: $lkErr');
+        }
+      }
 
-      final messages = await _repository.getMessages(roomId);
+      List<AudioRoomMessageItem> messages = [];
+      try {
+        messages = await _repository.getMessages(roomId);
+      } catch (_) {}
 
       state = state.copyWith(
         room: updatedRoom,
@@ -684,9 +715,11 @@ class ActiveAudioRoomNotifier extends StateNotifier<ActiveAudioRoomState> {
       } catch (_) {}
     } catch (e) {
       debugPrint('❌ [AudioRoomNotifier] Join error: $e');
+      final fallback = initialRoom ?? state.room;
       state = state.copyWith(
+        room: fallback,
         isConnecting: false,
-        isConnected: false,
+        isConnected: fallback != null,
         errorMessage: e.toString(),
       );
     }
