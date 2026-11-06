@@ -937,31 +937,68 @@ class _SnapchatListItem extends ConsumerWidget {
             ],
           );
         } else {
-          return Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 11,
-                height: 11,
-                decoration: BoxDecoration(
-                  border: Border.all(color: snapColor, width: 1.8),
-                  borderRadius: BorderRadius.circular(3),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  'Opened · ${formatTime(channel.lastMessageTime)}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+          final snapViews = (msg['snap_views'] is Map)
+              ? Map<String, dynamic>.from(msg['snap_views'])
+              : ((msg['snapViews'] is Map) ? Map<String, dynamic>.from(msg['snapViews']) : <String, dynamic>{});
+          final isOpenedByMe = currentUserId != null &&
+              snapViews[currentUserId] != null &&
+              (snapViews[currentUserId] is num && (snapViews[currentUserId] as num) > 0);
+          final timeStr = formatTime(channel.lastMessageTime);
+
+          if (!isOpenedByMe) {
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: snapColor,
+                    borderRadius: BorderRadius.circular(3),
                   ),
                 ),
-              ),
-            ],
-          );
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    '${isVideoSnap ? "New Video Snap" : "New Snap"} · $timeStr',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: snapColor,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          } else {
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 11,
+                  height: 11,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: snapColor, width: 1.8),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    'Opened · $timeStr',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }
         }
       }
 

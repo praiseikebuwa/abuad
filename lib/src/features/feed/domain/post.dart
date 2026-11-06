@@ -39,6 +39,7 @@ class Post {
   final String? mediaAltText;
   final String? linkUrl;
   final List<String> mediaUrls;
+  final bool isOwner;
 
   Post({
     required this.id,
@@ -63,6 +64,7 @@ class Post {
     this.isVerified = false,
     this.verificationType = 'none',
     this.isAnonymous = false,
+    this.isOwner = false,
     this.pollData,
     this.repostData,
     this.hashtags = const [],
@@ -111,6 +113,8 @@ class Post {
       'is_verified': isVerified,
       'verification_type': verificationType,
       'is_anonymous': isAnonymous,
+      'is_owner': isOwner,
+      'isOwner': isOwner,
       'hashtags': hashtags,
       'mentions': mentions,
       'visibility': visibility,
@@ -228,6 +232,7 @@ class Post {
           .toString()
           .toLowerCase(),
       isAnonymous: map['is_anonymous'] ?? map['isAnonymous'] ?? false,
+      isOwner: map['is_owner'] ?? map['isOwner'] ?? false,
       content: map['content'] ?? '',
       mediaUrl: formattedMUrl.isNotEmpty ? formattedMUrl : (mUrls.isNotEmpty ? mUrls.first : ''),
       mediaUrls: mUrls,
@@ -283,6 +288,7 @@ class Post {
     bool? isVerified,
     String? verificationType,
     bool? isAnonymous,
+    bool? isOwner,
     Map<String, dynamic>? pollData,
     Map<String, dynamic>? repostData,
     List<String>? hashtags,
@@ -319,6 +325,7 @@ class Post {
       isVerified: isVerified ?? this.isVerified,
       verificationType: verificationType ?? this.verificationType,
       isAnonymous: isAnonymous ?? this.isAnonymous,
+      isOwner: isOwner ?? this.isOwner,
       pollData: pollData ?? this.pollData,
       repostData: repostData ?? this.repostData,
       hashtags: hashtags ?? this.hashtags,

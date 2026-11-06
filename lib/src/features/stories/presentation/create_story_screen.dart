@@ -461,7 +461,7 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
       } else if (isTextMode) {
         content = textContent;
         type = 'text';
-        caption = null;
+        caption = textContent;
         backgroundColor = bgColor;
         textColor = txtColor;
       }
@@ -1178,64 +1178,78 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
               child: Center(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 80.0),
-                  child: TextField(
-                    controller: _textController,
-                    textAlign: _textAlign,
-                    onChanged: (val) {
-                      setState(() {});
-                    },
-                    style: TextStyle(
-                      color: _textColor,
-                      fontSize: _fontSize,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: _fontFamily,
-                      shadows: _hasShadow
-                          ? [
-                              Shadow(
-                                color: Colors.black.withValues(alpha: 0.5),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ]
-                          : null,
-                    ),
-                    maxLines: null,
-                    decoration: InputDecoration(
-                      hintText: 'Type a status...',
-                      hintStyle: TextStyle(
-                        color: _textColor.withValues(alpha: 0.5),
-                        fontSize: _fontSize,
-                        fontFamily: _fontFamily,
+                  child: Theme(
+                    data: Theme.of(context).copyWith(
+                      inputDecorationTheme: const InputDecorationTheme(
+                        filled: false,
+                        fillColor: Colors.transparent,
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
                       ),
-                      // Clean input decoration eliminating unwanted black theme background
-                      filled: _hasTextBackground,
-                      fillColor: _hasTextBackground
-                          ? Colors.black.withValues(alpha: 0.55)
-                          : Colors.transparent,
-                      border: _hasTextBackground
-                          ? OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: BorderSide.none,
-                            )
-                          : InputBorder.none,
-                      enabledBorder: _hasTextBackground
-                          ? OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: BorderSide.none,
-                            )
-                          : InputBorder.none,
-                      focusedBorder: _hasTextBackground
-                          ? OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: BorderSide.none,
-                            )
-                          : InputBorder.none,
-                      disabledBorder: InputBorder.none,
-                      contentPadding: _hasTextBackground
-                          ? const EdgeInsets.symmetric(horizontal: 20, vertical: 14)
-                          : EdgeInsets.zero,
                     ),
-                    autofocus: true,
+                    child: TextField(
+                      controller: _textController,
+                      textAlign: _textAlign,
+                      onChanged: (val) {
+                        setState(() {});
+                      },
+                      style: TextStyle(
+                        color: _textColor,
+                        fontSize: _fontSize,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: _fontFamily,
+                        shadows: _hasShadow
+                            ? [
+                                Shadow(
+                                  color: Colors.black.withValues(alpha: 0.5),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ]
+                            : null,
+                      ),
+                      maxLines: null,
+                      decoration: InputDecoration(
+                        isDense: true,
+                        hintText: 'Type a status...',
+                        hintStyle: TextStyle(
+                          color: _textColor.withValues(alpha: 0.55),
+                          fontSize: _fontSize,
+                          fontFamily: _fontFamily,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        filled: _hasTextBackground,
+                        fillColor: _hasTextBackground
+                            ? Colors.black.withValues(alpha: 0.55)
+                            : Colors.transparent,
+                        border: _hasTextBackground
+                            ? OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: BorderSide.none,
+                              )
+                            : InputBorder.none,
+                        enabledBorder: _hasTextBackground
+                            ? OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: BorderSide.none,
+                              )
+                            : InputBorder.none,
+                        focusedBorder: _hasTextBackground
+                            ? OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: BorderSide.none,
+                              )
+                            : InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        contentPadding: _hasTextBackground
+                            ? const EdgeInsets.symmetric(horizontal: 20, vertical: 14)
+                            : EdgeInsets.zero,
+                      ),
+                      autofocus: true,
+                    ),
                   ),
                 ),
               ),

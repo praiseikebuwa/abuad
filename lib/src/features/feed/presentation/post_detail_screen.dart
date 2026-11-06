@@ -354,7 +354,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     PostRepository repo,
   ) {
     final currentUserId = repo.currentUserId;
-    final isOwnPost = post.authorId == currentUserId;
+    final isOwnPost = (currentUserId != null && post.authorId == currentUserId) || post.isOwner;
 
     final isDark = Theme.of(parentContext).brightness == Brightness.dark;
     final cardBg = isDark ? Colors.black : Colors.white;

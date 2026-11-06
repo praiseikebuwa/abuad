@@ -850,7 +850,7 @@ class _PostCardState extends ConsumerState<PostCard> {
           final currentUserId = repo.currentUserId ??
               ref.read(authRepositoryProvider).currentUser?.uid ??
               ref.read(currentUserProvider).value?.uid;
-          final isOwnPost = currentUserId != null && post.authorId == currentUserId;
+          final isOwnPost = (currentUserId != null && post.authorId == currentUserId) || post.isOwner;
 
           return SafeArea(
             top: false,

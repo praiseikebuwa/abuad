@@ -2769,10 +2769,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       source = DeviceFileSource(fullUrl);
     } else {
       if (!fullUrl.startsWith('http://') && !fullUrl.startsWith('https://')) {
+        const origin = 'https://api.abuadapp.com.ng';
         if (fullUrl.startsWith('/')) {
-          fullUrl = '${ApiConfig.baseUrl}$fullUrl';
+          fullUrl = '$origin$fullUrl';
         } else {
-          fullUrl = '${ApiConfig.baseUrl}/$fullUrl';
+          fullUrl = '$origin/$fullUrl';
         }
       }
       source = UrlSource(fullUrl);
@@ -2824,10 +2825,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       source = DeviceFileSource(fullUrl);
     } else {
       if (!fullUrl.startsWith('http://') && !fullUrl.startsWith('https://')) {
+        const origin = 'https://api.abuadapp.com.ng';
         if (fullUrl.startsWith('/')) {
-          fullUrl = '${ApiConfig.baseUrl}$fullUrl';
+          fullUrl = '$origin$fullUrl';
         } else {
-          fullUrl = '${ApiConfig.baseUrl}/$fullUrl';
+          fullUrl = '$origin/$fullUrl';
         }
       }
       source = UrlSource(fullUrl);
@@ -5115,14 +5117,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                             constraints: const BoxConstraints(minHeight: 44),
                                             decoration: BoxDecoration(
                                               color: isDark
-                                                  ? Colors.white.withValues(alpha: 0.08)
-                                                  : const Color(0xFFF1F5F9),
+                                                  ? const Color(0xFF1E293B).withValues(alpha: 0.95)
+                                                  : Colors.white,
                                               borderRadius: BorderRadius.circular(24),
                                               border: Border.all(
                                                 color: isDark
-                                                    ? Colors.white12
-                                                    : Colors.black.withValues(alpha: 0.06),
-                                                width: 1,
+                                                    ? const Color(0xFF334155)
+                                                    : const Color(0xFFE2E8F0),
+                                                width: 1.2,
                                               ),
                                             ),
                                             padding: const EdgeInsets.only(left: 14, right: 6),
@@ -6090,7 +6092,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       onTap: () => _showSaveStickerDialog(message),
       onLongPress: () => _showSaveStickerDialog(message),
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 140, maxHeight: 140),
+        constraints: const BoxConstraints(maxWidth: 105, maxHeight: 105),
         margin: const EdgeInsets.symmetric(vertical: 2),
         decoration: BoxDecoration(
           color: hasImg

@@ -134,8 +134,12 @@ class Story {
       'visibility': visibility,
       'background_color': backgroundColor,
       'text_color': textColor,
+      'backgroundColor': backgroundColor,
+      'textColor': textColor,
       'font_family': fontFamily,
+      'fontFamily': fontFamily,
       'text_align': textAlign,
+      'textAlign': textAlign,
       'status': status,
       'user_name': userName,
       'user_avatar': userAvatar,
@@ -179,7 +183,7 @@ class Story {
 
     int? parseColor(dynamic raw) {
       if (raw == null) return null;
-      if (raw is int) return raw;
+      if (raw is num) return raw.toInt();
       if (raw is String) {
         final s = raw.trim();
         if (s.isEmpty) return null;

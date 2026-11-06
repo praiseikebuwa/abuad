@@ -47,12 +47,12 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
   XFile? _selectedImage;
   Uint8List? _selectedImageBytes;
   bool _isMotionMedia = false;
-  double _cornerRadius = 28.0; // 0.0 (sharp) to 90.0 (pill/circle)
-  bool _hasWhiteContour = true;
-  double _contourWidth = 6.0;
-  final TextEditingController _captionCtrl = TextEditingController(text: 'ABUAD VIBES ✨');
-  final TextEditingController _titleCtrl = TextEditingController(text: 'Campus Sticker');
-  final TextEditingController _tagsCtrl = TextEditingController(text: 'abuad, campus, vibes');
+  double _cornerRadius = 0.0; // 0.0 (natural/no curvature) to 90.0
+  bool _hasWhiteContour = false; // No white contour border by default
+  double _contourWidth = 0.0;
+  final TextEditingController _captionCtrl = TextEditingController(text: ''); // No caption overlay by default
+  final TextEditingController _titleCtrl = TextEditingController(text: 'Sticker');
+  final TextEditingController _tagsCtrl = TextEditingController(text: 'sticker, trending');
   String _makerCategory = 'CAMPUS';
   bool _isPublic = true;
   bool _isExporting = false;

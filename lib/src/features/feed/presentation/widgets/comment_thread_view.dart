@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -88,9 +89,8 @@ class CommentThreadView extends ConsumerStatefulWidget {
 }
 
 class _CommentThreadViewState extends ConsumerState<CommentThreadView> {
-  /// Track which comment thread IDs are currently expanded to view replies
-  final Set<String> _expandedThreadIds = {};
-  final Set<String> _autoExpandedInitialized = {};
+  /// Track how many replies are currently revealed for each thread (0 = collapsed)
+  final Map<String, int> _visibleRepliesCount = {};
 
   @override
   Widget build(BuildContext context) {
@@ -202,26 +202,6 @@ class _CommentThreadViewState extends ConsumerState<CommentThreadView> {
     purpleThreads.sort(compareSecondary);
     blueThreads.sort(compareSecondary);
     otherThreads.sort(compareSecondary);
-
-    // Auto-expand threads with replies on first load and keep user/creator reply threads expanded
-    for (final thread in threads) {
-      final rootId = thread.rootComment['id']?.toString() ?? '';
-      if (rootId.isNotEmpty) {
-        if (!_autoExpandedInitialized.contains(rootId)) {
-          _autoExpandedInitialized.add(rootId);
-          if (thread.replies.isNotEmpty) {
-            _expandedThreadIds.add(rootId);
-          }
-        } else if (thread.replies.isNotEmpty) {
-          final hasUserReply = thread.replies.any((r) =>
-              (widget.currentUserId != null && r['authorId'] == widget.currentUserId) ||
-              (creatorId.isNotEmpty && r['authorId'] == creatorId));
-          if (hasUserReply) {
-            _expandedThreadIds.add(rootId);
-          }
-        }
-      }
-    }
 
     final hasVerifiedOrPinned = pinnedThreads.isNotEmpty ||
         goldThreads.isNotEmpty ||
@@ -342,7 +322,9 @@ class _CommentThreadViewState extends ConsumerState<CommentThreadView> {
   }) {
     final root = thread.rootComment;
     final rootId = root['id']?.toString() ?? '';
-    final isExpanded = _expandedThreadIds.contains(rootId);
+    final totalReplies = thread.replies.length;
+    final visibleCount = _visibleRepliesCount[rootId] ?? 0;
+    final isExpanded = visibleCount > 0;
     final creatorId = widget.post.authorId;
     final isRootByCreator = (root['authorId'] ?? root['userId'] ?? '').toString() == creatorId;
 
@@ -383,14 +365,14 @@ class _CommentThreadViewState extends ConsumerState<CommentThreadView> {
           postId: widget.post.id,
           creatorId: creatorId,
           isRoot: true,
-          replyCount: thread.replies.length,
+          replyCount: totalReplies,
           isExpanded: isExpanded,
           onToggleReplies: () {
             setState(() {
               if (isExpanded) {
-                _expandedThreadIds.remove(rootId);
+                _visibleRepliesCount[rootId] = 0;
               } else {
-                _expandedThreadIds.add(rootId);
+                _visibleRepliesCount[rootId] = math.min(3, totalReplies);
               }
             });
           },
@@ -411,7 +393,7 @@ class _CommentThreadViewState extends ConsumerState<CommentThreadView> {
           isDark: isDark,
         ),
 
-        // Nested Replies Tree with Dot connector drawing
+        // Nested Replies Tree with Dot connector drawing & 3-by-3 pagination
         if (thread.replies.isNotEmpty)
           AnimatedCrossFade(
             firstChild: const SizedBox.shrink(),
@@ -420,10 +402,21 @@ class _CommentThreadViewState extends ConsumerState<CommentThreadView> {
               postId: widget.post.id,
               creatorId: creatorId,
               replies: thread.replies,
+              visibleCount: visibleCount,
               currentUserId: widget.currentUserId,
               onReply: widget.onReply,
               onMenu: widget.onMenu,
               isDark: isDark,
+              onShowMore: () {
+                setState(() {
+                  _visibleRepliesCount[rootId] = math.min(visibleCount + 3, totalReplies);
+                });
+              },
+              onHideReplies: () {
+                setState(() {
+                  _visibleRepliesCount[rootId] = 0;
+                });
+              },
             ),
             crossFadeState: isExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
             duration: const Duration(milliseconds: 240),
@@ -446,20 +439,26 @@ class _RepliesTree extends StatelessWidget {
   final String postId;
   final String creatorId;
   final List<Map<String, dynamic>> replies;
+  final int visibleCount;
   final String? currentUserId;
   final Function(String commentId, String userName) onReply;
   final Function(BuildContext context, String commentId, bool isOwn, {String? currentContent, bool? isPinned})? onMenu;
   final bool isDark;
+  final VoidCallback onShowMore;
+  final VoidCallback onHideReplies;
 
   const _RepliesTree({
     required this.rootId,
     required this.postId,
     required this.creatorId,
     required this.replies,
+    required this.visibleCount,
     required this.currentUserId,
     required this.onReply,
     this.onMenu,
     required this.isDark,
+    required this.onShowMore,
+    required this.onHideReplies,
   });
 
   @override
@@ -468,66 +467,144 @@ class _RepliesTree extends StatelessWidget {
         ? const Color(0xFF475569).withValues(alpha: 0.6)
         : const Color(0xFFCBD5E1);
 
+    final displayedReplies = replies.take(visibleCount).toList();
+    final remaining = replies.length - displayedReplies.length;
+
     return Padding(
       padding: const EdgeInsets.only(left: 20, right: 8, bottom: 8),
       child: Column(
-        children: replies.asMap().entries.map((entry) {
-          final index = entry.key;
-          final reply = entry.value;
-          final isLast = index == replies.length - 1;
-          final replyAuthorId = (reply['authorId'] ?? reply['userId'] ?? '').toString();
-          final isCreatorReply = creatorId.isNotEmpty && replyAuthorId == creatorId;
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ...displayedReplies.asMap().entries.map((entry) {
+            final index = entry.key;
+            final reply = entry.value;
+            final isLast = index == displayedReplies.length - 1 && remaining == 0;
+            final replyAuthorId = (reply['authorId'] ?? reply['userId'] ?? '').toString();
+            final isCreatorReply = creatorId.isNotEmpty && replyAuthorId == creatorId;
 
-          return IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Custom drawn dotted/curved branch connector
-                SizedBox(
-                  width: 24,
-                  child: CustomPaint(
-                    painter: _ThreadConnectorPainter(
-                      isLast: isLast,
-                      color: isCreatorReply ? const Color(0xFF0284C7) : connectorColor,
-                      isHighlighted: isCreatorReply,
-                    ),
-                  ),
-                ),
-                // Reply content item
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: _CommentRow(
-                      comment: reply,
-                      postId: postId,
-                      creatorId: creatorId,
-                      isRoot: false,
-                      replyCount: 0,
-                      isExpanded: false,
-                      onToggleReplies: () {},
-                      onReply: () => onReply(
-                        rootId,
-                        (reply['authorName'] ?? reply['userName'] ?? 'Student').toString(),
+            return IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Custom drawn dotted/curved branch connector
+                  SizedBox(
+                    width: 24,
+                    child: CustomPaint(
+                      painter: _ThreadConnectorPainter(
+                        isLast: isLast,
+                        color: isCreatorReply ? const Color(0xFF0284C7) : connectorColor,
+                        isHighlighted: isCreatorReply,
                       ),
-                      onMenu: onMenu != null
-                          ? (ctx, id, isOwn, {content, isPinned}) => onMenu!(
-                                ctx,
-                                id,
-                                isOwn,
-                                currentContent: content,
-                                isPinned: isPinned ?? (reply['isPinned'] == true),
-                              )
-                          : null,
-                      currentUserId: currentUserId,
-                      isDark: isDark,
-                      isCreatorReply: isCreatorReply,
                     ),
                   ),
-                ),
-              ],
+                  // Reply content item
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _CommentRow(
+                        comment: reply,
+                        postId: postId,
+                        creatorId: creatorId,
+                        isRoot: false,
+                        replyCount: 0,
+                        isExpanded: false,
+                        onToggleReplies: () {},
+                        onReply: () => onReply(
+                          rootId,
+                          (reply['authorName'] ?? reply['userName'] ?? 'Student').toString(),
+                        ),
+                        onMenu: onMenu != null
+                            ? (ctx, id, isOwn, {content, isPinned}) => onMenu!(
+                                  ctx,
+                                  id,
+                                  isOwn,
+                                  currentContent: content,
+                                  isPinned: isPinned ?? (reply['isPinned'] == true),
+                                )
+                            : null,
+                        currentUserId: currentUserId,
+                        isDark: isDark,
+                        isCreatorReply: isCreatorReply,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+
+          // Pagination controls: Show more (X remaining) | Hide replies
+          if (displayedReplies.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 24, top: 2, bottom: 6),
+              child: Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 12,
+                runSpacing: 6,
+                children: [
+                  if (remaining > 0)
+                    GestureDetector(
+                      onTap: onShowMore,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF6366F1).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: const Color(0xFF6366F1).withValues(alpha: 0.25),
+                            width: 0.8,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              CupertinoIcons.arrow_turn_down_right,
+                              size: 11,
+                              color: Color(0xFF6366F1),
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              'Show more replies ($remaining remaining)',
+                              style: const TextStyle(
+                                color: Color(0xFF6366F1),
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  GestureDetector(
+                    onTap: onHideReplies,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            CupertinoIcons.chevron_up,
+                            size: 10,
+                            color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            'Hide replies',
+                            style: TextStyle(
+                              color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          );
-        }).toList(),
+        ],
       ),
     );
   }
@@ -848,7 +925,7 @@ class _CommentRow extends ConsumerWidget {
                                   Text(
                                     isExpanded
                                         ? 'Hide replies'
-                                        : 'View $replyCount ${replyCount == 1 ? 'reply' : 'replies'}',
+                                        : (replyCount == 1 ? 'Show reply' : 'Show replies ($replyCount)'),
                                     style: TextStyle(
                                       color: const Color(0xFF6366F1),
                                       fontSize: 11.5,

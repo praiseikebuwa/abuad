@@ -253,7 +253,12 @@ class ChatMessage {
     }
 
     Map<String, int> snapViewsMap = {};
-    final rawViews = map['snap_views'] ?? map['snapViews'] ?? reactionsMap['_snapViews'];
+    dynamic rawViews = map['snap_views'] ?? map['snapViews'] ?? reactionsMap['_snapViews'];
+    if (rawViews is String && rawViews.isNotEmpty) {
+      try {
+        rawViews = jsonDecode(rawViews);
+      } catch (_) {}
+    }
     if (rawViews is Map) {
       rawViews.forEach((key, val) {
         if (val is num) {

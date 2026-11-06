@@ -28,18 +28,22 @@ function sanitizePost(post: any, userRole?: string, currentUserId?: string) {
   }
 
   const isAnon = post.isAnonymous === true || post.channelId === 'confessions';
+  const isCreator = Boolean(currentUserId && post.authorId === currentUserId);
+
   if (!isAnon || userRole === 'ADMIN') {
     return {
       ...post,
       pollData,
+      isOwner: isCreator || userRole === 'ADMIN',
     };
   }
   return {
     ...post,
     pollData,
-    authorId: 'anonymous',
+    authorId: isCreator ? post.authorId : 'anonymous',
+    isOwner: isCreator,
     author: {
-      id: 'anonymous',
+      id: isCreator ? post.authorId : 'anonymous',
       username: 'anonymous',
       fullName: 'Anonymous Student',
       avatarUrl: null,

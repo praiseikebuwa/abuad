@@ -158,7 +158,7 @@ class MyStoryScreen extends ConsumerWidget {
                                 child: Padding(
                                   padding: const EdgeInsets.all(4),
                                   child: Text(
-                                    story.caption ?? 'Text',
+                                    (story.content.isNotEmpty ? story.content : (story.caption ?? 'Text')),
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
                                     textAlign: TextAlign.center,
@@ -189,10 +189,13 @@ class MyStoryScreen extends ConsumerWidget {
                                 color: isDark ? Colors.grey[100] : Colors.grey[900],
                               ),
                             ),
-                            if (story.caption != null && story.caption!.isNotEmpty) ...[
+                            final displayCaption = (story.caption != null && story.caption!.isNotEmpty)
+                                  ? story.caption!
+                                  : story.content;
+                            if (displayCaption.isNotEmpty) ...[
                               const SizedBox(height: 2),
                               Text(
-                                story.caption!,
+                                displayCaption,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(

@@ -13,7 +13,7 @@ class StickerRepository {
   static const String _savedStickersKey = 'saved_stickers_tray_v1';
   static const String _myCreationsKey = 'my_created_stickers_v1';
 
-  final List<StickerItem> _curatedSeeds = const [];
+final List<StickerItem> _curatedSeeds = const [];
 
   Future<String> _resolveUserId(String? explicitId) async {
     if (explicitId != null && explicitId.isNotEmpty) return explicitId;
@@ -32,24 +32,23 @@ class StickerRepository {
   /// Fetch trending stickers sorted by student usage count
   Future<List<StickerItem>> getTrendingStickers() async {
     try {
-      final res = await ApiClient.get('/stickers/trending');
+      final res = await ApiClient.get('/stickers/trending?limit=50');
       if (res.statusCode == 200) {
         final decoded = jsonDecode(res.body);
         if (decoded['data'] is List) {
           final list = (decoded['data'] as List)
               .map((e) => StickerItem.fromJson(e as Map<String, dynamic>))
               .toList();
-          if (list.isNotEmpty) return list;
+          if (list.isNotEmpty) {
+            list.sort((a, b) => b.usageCount.compareTo(a.usageCount));
+            return list;
+          }
         }
       }
     } catch (e) {
       debugPrint('StickerRepository.getTrendingStickers error: $e');
     }
-
-    // Fallback sorted seeds
-    final fallback = List<StickerItem>.from(_curatedSeeds)
-      ..sort((a, b) => b.usageCount.compareTo(a.usageCount));
-    return fallback;
+    return [];
   }
 
   /// Fetch community public stickers by category or search query
@@ -58,42 +57,29 @@ class StickerRepository {
     String? search,
   }) async {
     try {
-      final params = <String>[];
+      final params = <String>['limit=150'];
       if (category != null && category.isNotEmpty && category.toUpperCase() != 'ALL') {
         params.add('category=${Uri.encodeComponent(category.toUpperCase())}');
       }
       if (search != null && search.trim().isNotEmpty) {
         params.add('search=${Uri.encodeComponent(search.trim())}');
       }
-      final queryStr = params.isNotEmpty ? '?${params.join('&')}' : '';
+      final queryStr = '?' + params.join('&');
 
-      final res = await ApiClient.get('/stickers/community$queryStr');
+      final res = await ApiClient.get('/stickers/community' + queryStr);
       if (res.statusCode == 200) {
         final decoded = jsonDecode(res.body);
         if (decoded['data'] is List) {
           final list = (decoded['data'] as List)
               .map((e) => StickerItem.fromJson(e as Map<String, dynamic>))
               .toList();
-          if (list.isNotEmpty) return list;
+          return list;
         }
       }
     } catch (e) {
       debugPrint('StickerRepository.getCommunityStickers error: $e');
     }
-
-    // Fallback filtered seeds
-    var filtered = _curatedSeeds.where((s) => s.isPublic).toList();
-    if (category != null && category.isNotEmpty && category.toUpperCase() != 'ALL') {
-      filtered = filtered.where((s) => s.category.toUpperCase() == category.toUpperCase()).toList();
-    }
-    if (search != null && search.trim().isNotEmpty) {
-      final q = search.toLowerCase();
-      filtered = filtered.where((s) =>
-        s.title.toLowerCase().contains(q) ||
-        s.tags.any((t) => t.toLowerCase().contains(q))
-      ).toList();
-    }
-    return filtered;
+    return [];
   }
 
   /// Fetch user's personal saved favorites tray and creations
