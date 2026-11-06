@@ -117,7 +117,7 @@ class MyStoryScreen extends ConsumerWidget {
             separatorBuilder: (context, index) => const Divider(height: 20),
             itemBuilder: (context, index) {
               final story = myStories[index];
-              final isText = story.type == 'text' || !UrlValidator.isValidUrl(story.content);
+              final isText = story.isTextStory || story.type.toLowerCase() == 'text' || !UrlValidator.isValidUrl(story.content);
 
               return InkWell(
                 borderRadius: BorderRadius.circular(16),
@@ -158,7 +158,7 @@ class MyStoryScreen extends ConsumerWidget {
                                 child: Padding(
                                   padding: const EdgeInsets.all(4),
                                   child: Text(
-                                    (story.content.isNotEmpty ? story.content : (story.caption ?? 'Text')),
+                                    (story.displayText.isNotEmpty ? story.displayText : 'Text Status'),
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
                                     textAlign: TextAlign.center,
@@ -189,13 +189,10 @@ class MyStoryScreen extends ConsumerWidget {
                                 color: isDark ? Colors.grey[100] : Colors.grey[900],
                               ),
                             ),
-                            final displayCaption = (story.caption != null && story.caption!.isNotEmpty)
-                                  ? story.caption!
-                                  : story.content;
-                            if (displayCaption.isNotEmpty) ...[
+                            if ((story.caption != null && story.caption!.isNotEmpty) || story.content.isNotEmpty) ...[
                               const SizedBox(height: 2),
                               Text(
-                                displayCaption,
+                                story.displayText.isNotEmpty ? story.displayText : (story.caption ?? story.content),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(

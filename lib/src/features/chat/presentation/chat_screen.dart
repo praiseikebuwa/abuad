@@ -5967,7 +5967,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Future<void> _openStickerCreator() async {
     final created = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => const StickerCreatorScreen()),
+      MaterialPageRoute(builder: (context) => const StickerCreatorScreen(isPickerMode: true)),
     );
     if (created != null && mounted) {
       await _loadStickers();

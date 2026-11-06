@@ -638,7 +638,7 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        if (story.type == 'text')
+                        if (story.isTextStory || story.type.toLowerCase() == 'text')
                           Container(
                             color: Color(story.backgroundColor ?? 0xFF000000),
                             alignment: Alignment.center,

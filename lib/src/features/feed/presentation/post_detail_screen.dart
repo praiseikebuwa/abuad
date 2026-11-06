@@ -2021,7 +2021,7 @@ class _FavoriteStickersBottomSheetState extends State<_FavoriteStickersBottomShe
                       Navigator.of(context).pop();
                       final chosen = await Navigator.of(context).push<StickerItem>(
                         MaterialPageRoute(
-                          builder: (context) => const StickerCreatorScreen(initialMode: 'COMMUNITY'),
+                          builder: (context) => const StickerCreatorScreen(initialMode: 'COMMUNITY', isPickerMode: true),
                         ),
                       );
                       if (chosen != null && context.mounted) {
@@ -2089,7 +2089,7 @@ class _FavoriteStickersBottomSheetState extends State<_FavoriteStickersBottomShe
                                 Navigator.of(context).pop();
                                 final chosen = await Navigator.of(context).push<StickerItem>(
                                   MaterialPageRoute(
-                                    builder: (context) => const StickerCreatorScreen(initialMode: 'COMMUNITY'),
+                                    builder: (context) => const StickerCreatorScreen(initialMode: 'COMMUNITY', isPickerMode: true),
                                   ),
                                 );
                                 if (chosen != null && context.mounted) {

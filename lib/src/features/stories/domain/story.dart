@@ -115,6 +115,26 @@ class Story {
   bool hasViewed(String userId) => viewers.contains(userId);
   bool hasLiked(String userId) => likes.contains(userId);
 
+  bool get isTextStory {
+    final t = type.toLowerCase();
+    if (t == 'text') return true;
+    if (content.isNotEmpty && !UrlValidator.isValidUrl(content)) return true;
+    if (caption != null && caption!.trim().isNotEmpty && (content.isEmpty || content == 'text' || !UrlValidator.isValidUrl(content))) {
+      return true;
+    }
+    return false;
+  }
+
+  String get displayText {
+    if (caption != null && caption!.trim().isNotEmpty && caption != 'text') {
+      return caption!.trim();
+    }
+    if (content.isNotEmpty && content != 'text') {
+      return content.trim();
+    }
+    return '';
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'id': id,

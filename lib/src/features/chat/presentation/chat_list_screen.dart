@@ -2338,24 +2338,27 @@ class _StatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveStory = story;
-    final isTextStory = (effectiveStory?.type == 'text') ||
-        (contentUrl != null && contentUrl!.isNotEmpty && !UrlValidator.isValidUrl(contentUrl));
-    final hasValidMedia = contentUrl != null &&
-        contentUrl!.isNotEmpty &&
-        UrlValidator.isValidUrl(contentUrl) &&
-        !isTextStory;
-
-    final bgColor = effectiveStory?.backgroundColor != null
-        ? Color(effectiveStory!.backgroundColor!)
-        : null;
-    final txtColor = effectiveStory?.textColor != null
-        ? Color(effectiveStory!.textColor!)
-        : Colors.white;
-    final textContent = (effectiveStory?.content.isNotEmpty == true
-            ? effectiveStory!.content
-            : (contentUrl ?? ''))
-        .trim();
+    final effectiveStory = story;
+    final isTextStory = (effectiveStory?.isTextStory ?? false) ||
+        (effectiveStory?.type.toLowerCase() == 'text') ||
+        (contentUrl != null && contentUrl!.isNotEmpty && !UrlValidator.isValidUrl(contentUrl));
+    final hasValidMedia = contentUrl != null &&
+        contentUrl!.isNotEmpty &&
+        UrlValidator.isValidUrl(contentUrl) &&
+        !isTextStory;
+
+    final bgColor = effectiveStory?.backgroundColor != null
+        ? Color(effectiveStory!.backgroundColor!)
+        : null;
+    final txtColor = effectiveStory?.textColor != null
+        ? Color(effectiveStory!.textColor!)
+        : Colors.white;
+    final textContent = (effectiveStory != null && effectiveStory.displayText.isNotEmpty)
+        ? effectiveStory.displayText
+        : ((effectiveStory?.content.isNotEmpty == true && effectiveStory?.content != 'text')
+            ? effectiveStory!.content
+            : (contentUrl ?? ''))
+        .trim();
     final textAlign = effectiveStory?.textAlign == 'left'
         ? TextAlign.left
         : (effectiveStory?.textAlign == 'right' ? TextAlign.right : TextAlign.center);

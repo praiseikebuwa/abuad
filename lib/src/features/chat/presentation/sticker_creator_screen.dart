@@ -16,11 +16,13 @@ import '../domain/sticker_item.dart';
 class StickerCreatorScreen extends ConsumerStatefulWidget {
   final String? initialTemplateUrl;
   final String? initialMode; // 'PACKS', 'MY', 'CREATE'
+  final bool isPickerMode;
 
   const StickerCreatorScreen({
     super.key,
     this.initialTemplateUrl,
     this.initialMode,
+    this.isPickerMode = false,
   });
 
   @override
@@ -305,7 +307,27 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
               tags: parsedTags,
             );
 
-      Navigator.pop(context, resultItem);
+      if (widget.isPickerMode) {
+        Navigator.pop(context, resultItem);
+      } else {
+        setState(() {
+          _selectedImage = null;
+          _selectedImageBytes = null;
+          _titleCtrl.clear();
+          _tagsCtrl.clear();
+        });
+        await _loadMarketplaceAndTray();
+        _tabController.animateTo(1);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Sticker saved to My Tray! ⭐'),
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
     } catch (e) {
       debugPrint('Export sticker failed: $e');
       if (mounted) {
@@ -330,6 +352,9 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
     final repo = ref.read(stickerRepositoryProvider);
     final isAlreadySaved = _myStickers.any((s) => s.id == item.id);
     if (isAlreadySaved) {
+      setState(() {
+        _myStickers = _myStickers.where((s) => s.id != item.id).toList();
+      });
       await repo.unsaveSticker(item.id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -341,6 +366,9 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
         );
       }
     } else {
+      setState(() {
+        _myStickers = [..._myStickers, item];
+      });
       await repo.saveSticker(item);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -352,7 +380,142 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
         );
       }
     }
-    await _loadMarketplaceAndTray();
+    final my = await repo.getMyStickers();
+    if (mounted) {
+      setState(() {
+        _myStickers = my;
+      });
+    }
+  }
+
+  void _showStickerPreviewModal(StickerItem stk, bool isDark) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          final isSaved = _myStickers.any((s) => s.id == stk.id);
+          return Container(
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E293B) : Colors.white,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  height: 150,
+                  width: 150,
+                  child: stk.isAnimated
+                      ? AutoPlayLiveMediaWidget(
+                          url: stk.animatedUrl ?? stk.imageUrl,
+                          fit: BoxFit.contain,
+                        )
+                      : (stk.imageUrl.isNotEmpty
+                          ? CachedNetworkImage(
+                              imageUrl: stk.imageUrl,
+                              fit: BoxFit.contain,
+                              placeholder: (context, url) => const Center(
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                              errorWidget: (context, url, error) => Center(
+                                child: Text(stk.title),
+                              ),
+                            )
+                          : Center(child: Text(stk.title))),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  stk.title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppColors.secondaryTeal.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        stk.category,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: AppColors.secondaryTeal,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '🔥 ${stk.usageCount} campus uses',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.white60 : Colors.black54,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isSaved ? Colors.grey.shade800 : AppColors.secondaryTeal,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    onPressed: () async {
+                      await _toggleSaveSticker(stk);
+                      setModalState(() {});
+                    },
+                    icon: Icon(isSaved ? Icons.check_circle_rounded : Icons.star_rounded),
+                    label: Text(
+                      isSaved ? 'In My Tray (Tap to Remove)' : 'Add to My Tray ⭐',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+                if (widget.isPickerMode) ...[
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        Navigator.pop(context, stk);
+                      },
+                      icon: const Icon(Icons.send_rounded),
+                      label: const Text('Send Sticker in Chat', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+              ],
+            ),
+          );
+        },
+      ),
+    );
   }
 
   @override
@@ -634,7 +797,9 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
     final isSaved = _myStickers.any((s) => s.id == stk.id);
     return InkWell(
       borderRadius: BorderRadius.circular(14),
-      onTap: () => Navigator.pop(context, stk),
+      onTap: widget.isPickerMode
+          ? () => Navigator.pop(context, stk)
+          : () => _showStickerPreviewModal(stk, isDark),
       child: Container(
         width: 100,
         decoration: BoxDecoration(
@@ -735,7 +900,9 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
     final isSaved = _myStickers.any((s) => s.id == stk.id);
     return InkWell(
       borderRadius: BorderRadius.circular(14),
-      onTap: () => Navigator.pop(context, stk),
+      onTap: widget.isPickerMode
+          ? () => Navigator.pop(context, stk)
+          : () => _showStickerPreviewModal(stk, isDark),
       child: Container(
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E293B) : Colors.white,
@@ -916,10 +1083,12 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
   Widget _buildMyTrayTile(StickerItem stk, bool isDark) {
     return InkWell(
       borderRadius: BorderRadius.circular(12),
-      onTap: () {
-        ref.read(stickerRepositoryProvider).useSticker(stk.id);
-        Navigator.pop(context, stk);
-      },
+      onTap: widget.isPickerMode
+          ? () {
+              ref.read(stickerRepositoryProvider).useSticker(stk.id);
+              Navigator.pop(context, stk);
+            }
+          : () => _showStickerPreviewModal(stk, isDark),
       onLongPress: () => _showRemoveTrayDialog(stk),
       child: Container(
         decoration: BoxDecoration(

@@ -969,7 +969,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
                         children: [
                           // Story Content (Video, Image, or Text)
                           Center(
-                            child: story.type == 'text'
+                            child: story.isTextStory
                                 ? Container(
                                     color: Color(
                                       story.backgroundColor ?? 0xFFEF5350,
@@ -979,7 +979,9 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
                                     alignment: Alignment.center,
                                     padding: const EdgeInsets.all(32),
                                     child: Text(
-                                      story.content,
+                                      story.displayText.isNotEmpty
+                                          ? story.displayText
+                                          : (story.content != 'text' ? story.content : ''),
                                       textAlign: _parseTextAlign(
                                         story.textAlign,
                                       ),
