@@ -2405,4 +2405,14 @@ const List<DotCommand> _allDotCommands = [
     gradient: [Color(0xFFF59E0B), Color(0xFFB45309)],
     category: 'Connect & Tools',
   ),
+  DotCommand(
+    trigger: '.bulkstickers',
+    aliases: ['.bulksticker', '.uploadstickers', '.stickerpack'],
+    title: 'Bulk Sticker Upload (AI titles)',
+    subtitle: 'Upload 100+ stickers at once, AI names them, edit & publish',
+    route: '/bulk-stickers',
+    icon: Icons.collections_rounded,
+    gradient: [Color(0xFFEC4899), Color(0xFFF59E0B)],
+    category: 'Connect & Tools',
+  ),
 ];

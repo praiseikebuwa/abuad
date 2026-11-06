@@ -73,6 +73,7 @@ import '../../features/utilities/presentation/study_lounges_screen.dart';
 import '../../features/utilities/presentation/campus_sos_screen.dart';
 import '../../features/utilities/presentation/clinic_queue_screen.dart';
 import '../../features/chat/presentation/sticker_creator_screen.dart';
+import '../../features/chat/presentation/bulk_sticker_upload_screen.dart';
 import '../../features/audio_spaces/presentation/live_spaces_hub_screen.dart';
 import '../../features/audio_spaces/presentation/live_audio_room_screen.dart';
 
@@ -791,6 +792,15 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           context: context,
           state: state,
           child: const StickerCreatorScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/bulk-stickers',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => buildPageWithAnimation(
+          context: context,
+          state: state,
+          child: const BulkStickerUploadScreen(),
         ),
       ),
       GoRoute(

@@ -495,6 +495,88 @@ Respond ONLY with a valid JSON object in this exact format with no extra text:
 });
 
 /**
+ * POST /api/ai/sticker-label
+ * AI vision auto-labeling for stickers: returns a short title, category and tags.
+ * Body: { imageUrl: string, fileName?: string }
+ */
+const STICKER_CATEGORIES = ['CAMPUS', 'MEME', 'REACTION', 'STUDY', 'SPORTS', 'LIFESTYLE'];
+
+function fallbackStickerLabel(fileName?: string) {
+  const base = (fileName || '')
+    .replace(/\.[a-z0-9]+$/i, '')
+    .replace(/[_\-]+/g, ' ')
+    .replace(/\b(img|image|sticker|screenshot|whatsapp|wa|vid|gif)\b/gi, '')
+    .replace(/\d{3,}/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const title = base
+    ? base.split(' ').slice(0, 4).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
+    : 'Campus Sticker';
+  return { title, category: 'REACTION', tags: base ? base.toLowerCase().split(' ').slice(0, 5) : [] };
+}
+
+router.post('/sticker-label', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  const { imageUrl, fileName } = req.body || {};
+  try {
+    if (!imageUrl || typeof imageUrl !== 'string' || !/^https?:\/\//.test(imageUrl)) {
+      return res.json({ success: true, source: 'fallback', ...fallbackStickerLabel(fileName) });
+    }
+
+    const imageBuffer = await getImageBuffer(imageUrl.trim());
+    if (!imageBuffer) {
+      return res.json({ success: true, source: 'fallback', ...fallbackStickerLabel(fileName) });
+    }
+
+    const lower = imageUrl.toLowerCase();
+    let mimeType = 'image/jpeg';
+    if (lower.endsWith('.png')) mimeType = 'image/png';
+    else if (lower.endsWith('.webp')) mimeType = 'image/webp';
+    else if (lower.endsWith('.gif')) mimeType = 'image/gif';
+
+    const prompt = `You are naming chat stickers for a Nigerian university student app.
+Look at this sticker image and respond ONLY with JSON (no markdown):
+{"title": "2-4 word catchy sticker title in Title Case (e.g. \\"Side Eye Dog\\", \\"Crying Laughing Cat\\")",
+ "category": one of ${JSON.stringify(STICKER_CATEGORIES)},
+ "tags": ["3 to 6 short lowercase search tags"]}
+Do not include the words "sticker" or "image" in the title.`;
+
+    let text = '';
+    if (genAI && mimeType !== 'image/gif') {
+      text = (await callGemini(prompt, undefined, imageBuffer, mimeType)) || '';
+    }
+    if (!text) {
+      try {
+        const result = await runCloudflareAIVision(prompt, imageBuffer, '@cf/meta/llama-3.2-11b-vision-instruct');
+        text = result?.result?.response || result?.result?.description || result?.response || '';
+      } catch (_) {}
+    }
+
+    const cleaned = String(text).replace(/```json/gi, '').replace(/```/g, '').trim();
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        const parsed = JSON.parse(match[0]);
+        const title = String(parsed.title || '').replace(/sticker/gi, '').trim().slice(0, 40);
+        const category = STICKER_CATEGORIES.includes(String(parsed.category).toUpperCase())
+          ? String(parsed.category).toUpperCase()
+          : 'REACTION';
+        const tags = Array.isArray(parsed.tags)
+          ? parsed.tags.map((t: any) => String(t).toLowerCase().replace(/[^a-z0-9]/g, '')).filter(Boolean).slice(0, 6)
+          : [];
+        if (title) {
+          return res.json({ success: true, source: 'ai', title, category, tags });
+        }
+      } catch (_) {}
+    }
+
+    return res.json({ success: true, source: 'fallback', ...fallbackStickerLabel(fileName) });
+  } catch (error) {
+    console.error('Sticker label error:', error);
+    return res.json({ success: true, source: 'fallback', ...fallbackStickerLabel(fileName) });
+  }
+});
+
+/**
  * POST /api/ai/understand-post
  * AI-Powered Feed Algorithm Stage B: Extracts topics, category, summary & sentiment
  */

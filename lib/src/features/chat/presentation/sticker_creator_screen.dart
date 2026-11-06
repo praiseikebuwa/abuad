@@ -12,6 +12,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../shared/widgets/autoplay_live_media_widget.dart';
 import '../data/sticker_repository.dart';
 import '../domain/sticker_item.dart';
+import 'bulk_sticker_upload_screen.dart';
 
 class StickerCreatorScreen extends ConsumerStatefulWidget {
   final String? initialTemplateUrl;
@@ -518,6 +519,14 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
     );
   }
 
+  Future<void> _openBulkUpload() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const BulkStickerUploadScreen()),
+    );
+    if (mounted) await _loadMarketplaceAndTray();
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -544,6 +553,14 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
             ),
           ],
         ),
+        actions: [
+          if (!widget.isPickerMode)
+            IconButton(
+              tooltip: 'Bulk upload stickers',
+              icon: const Icon(Icons.collections_rounded, color: Color(0xFFF59E0B)),
+              onPressed: _openBulkUpload,
+            ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           labelColor: AppColors.secondaryTeal,
@@ -1203,6 +1220,44 @@ class _StickerCreatorScreenState extends ConsumerState<StickerCreatorScreen>
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        // Bulk upload banner (many stickers at once + AI titles)
+        InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: _openBulkUpload,
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: const LinearGradient(
+                colors: [Color(0xFFF59E0B), Color(0xFFEC4899)],
+              ),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.collections_rounded, color: Colors.white, size: 30),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Bulk Upload · up to 300 stickers',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'AI names them all ✨ — edit titles, tags & categories, then publish at once',
+                        style: TextStyle(color: Colors.white, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, color: Colors.white),
+              ],
+            ),
+          ),
+        ),
         // Live Sticker Preview Box with Smooth Corner Curvature
         Center(
           child: Container(
