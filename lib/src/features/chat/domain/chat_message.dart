@@ -278,10 +278,25 @@ class ChatMessage {
         (map['content']?.toString().contains('Snap') == true) ||
         (map['text']?.toString().contains('Snap') == true));
 
-    final resolvedImageUrl = map['image_url'] ??
-        map['imageUrl'] ??
-        map['media_url'] ??
-        map['mediaUrl'];
+    final messageType = map['type']?.toString().toLowerCase() ?? 'text';
+    final isVoiceType = (messageType == 'voice' || messageType == 'audio');
+
+    final resolvedAudioUrl = map['audio_url'] ??
+        map['audioUrl'] ??
+        (isVoiceType
+            ? (map['media_url'] ?? map['mediaUrl'] ?? map['image_url'] ?? map['imageUrl'] ?? map['content'])
+            : null);
+
+    final resolvedImageUrl = isVoiceType
+        ? null
+        : (map['image_url'] ??
+            map['imageUrl'] ??
+            map['media_url'] ??
+            map['mediaUrl']);
+
+    final resolvedDuration = (map['duration'] as num?)?.toInt() ??
+        (reactionsMap['_duration'] as num?)?.toInt() ??
+        (reactionsMap['_snapDuration'] as num?)?.toInt();
 
     double? parseCoord(dynamic val) {
       if (val == null) return null;
@@ -328,8 +343,8 @@ class ChatMessage {
       imageUrl: resolvedImageUrl,
       imageWidth: (map['image_width'] as num?)?.toDouble(),
       imageHeight: (map['image_height'] as num?)?.toDouble(),
-      audioUrl: map['audio_url'],
-      duration: map['duration'],
+      audioUrl: resolvedAudioUrl,
+      duration: resolvedDuration,
       latitude: parsedLat,
       longitude: parsedLng,
       replyToId: map['reply_to_id'],

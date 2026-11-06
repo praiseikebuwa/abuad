@@ -60,21 +60,96 @@ export function initSocket(server: HttpServer) {
     onlineCounts.set(userId, count);
     if (count === 1) setPresence(userId, 'online');
 
-    socket.on('typing', async (data: { channelId?: string; isTyping?: boolean }) => {
+    socket.on('typing', async (data: { channelId?: string; isTyping?: boolean; text?: string }) => {
       try {
         if (!data?.channelId) return;
         const members = await getChannelMemberIds(data.channelId);
         if (!members.includes(userId)) return;
+        const textPayload = typeof data.text === 'string' ? data.text : '';
+        const isTyping = data.isTyping ?? (textPayload.length > 0);
         for (const memberId of members) {
           if (memberId === userId) continue;
           io!.to(userRoom(memberId)).emit('typing', {
             channelId: data.channelId,
             userId,
-            isTyping: !!data.isTyping,
+            isTyping,
+            text: textPayload,
+          });
+          io!.to(userRoom(memberId)).emit('live_typing', {
+            channelId: data.channelId,
+            userId,
+            isTyping,
+            text: textPayload,
           });
         }
       } catch (e) {
         console.error('Socket typing error:', e);
+      }
+    });
+
+    socket.on('live_typing', async (data: { channelId?: string; isTyping?: boolean; text?: string; userId?: string }) => {
+      try {
+        if (!data?.channelId) return;
+        const members = await getChannelMemberIds(data.channelId);
+        if (!members.includes(userId)) return;
+        const textPayload = typeof data.text === 'string' ? data.text : '';
+        const isTyping = data.isTyping ?? (textPayload.length > 0);
+        for (const memberId of members) {
+          if (memberId === userId) continue;
+          io!.to(userRoom(memberId)).emit('live_typing', {
+            channelId: data.channelId,
+            userId,
+            isTyping,
+            text: textPayload,
+          });
+          io!.to(userRoom(memberId)).emit('chat:live_typing', {
+            channelId: data.channelId,
+            userId,
+            isTyping,
+            text: textPayload,
+          });
+          io!.to(userRoom(memberId)).emit('typing', {
+            channelId: data.channelId,
+            userId,
+            isTyping,
+            text: textPayload,
+          });
+        }
+      } catch (e) {
+        console.error('Socket live_typing error:', e);
+      }
+    });
+
+    socket.on('chat:live_typing', async (data: { channelId?: string; isTyping?: boolean; text?: string; userId?: string }) => {
+      try {
+        if (!data?.channelId) return;
+        const members = await getChannelMemberIds(data.channelId);
+        if (!members.includes(userId)) return;
+        const textPayload = typeof data.text === 'string' ? data.text : '';
+        const isTyping = data.isTyping ?? (textPayload.length > 0);
+        for (const memberId of members) {
+          if (memberId === userId) continue;
+          io!.to(userRoom(memberId)).emit('chat:live_typing', {
+            channelId: data.channelId,
+            userId,
+            isTyping,
+            text: textPayload,
+          });
+          io!.to(userRoom(memberId)).emit('live_typing', {
+            channelId: data.channelId,
+            userId,
+            isTyping,
+            text: textPayload,
+          });
+          io!.to(userRoom(memberId)).emit('typing', {
+            channelId: data.channelId,
+            userId,
+            isTyping,
+            text: textPayload,
+          });
+        }
+      } catch (e) {
+        console.error('Socket chat:live_typing error:', e);
       }
     });
 

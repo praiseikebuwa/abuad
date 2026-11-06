@@ -216,7 +216,17 @@ class SocketService {
 
     _socket!.on('typing', (data) {
       if (data is Map) {
-        _typingController.add(Map<String, dynamic>.from(data));
+        final map = Map<String, dynamic>.from(data);
+        _typingController.add(map);
+        if (map.containsKey('text') || map['isTyping'] != null) {
+          _liveTypingController.add(map);
+        }
+      }
+    });
+
+    _socket!.on('live_typing', (data) {
+      if (data is Map) {
+        _liveTypingController.add(Map<String, dynamic>.from(data));
       }
     });
 
@@ -386,11 +396,15 @@ class SocketService {
 
   void sendLiveTyping(String channelId, String userId, String text) {
     if (_socket != null && _socket!.connected) {
-      _socket!.emit('chat:live_typing', {
+      final payload = {
         'channelId': channelId,
         'userId': userId,
         'text': text,
-      });
+        'isTyping': text.trim().isNotEmpty,
+      };
+      _socket!.emit('chat:live_typing', payload);
+      _socket!.emit('live_typing', payload);
+      _socket!.emit('typing', payload);
     }
   }
 
@@ -404,9 +418,16 @@ class SocketService {
     }
   }
 
-  void sendTyping(String channelId, bool isTyping) {
+  void sendTyping(String channelId, bool isTyping, {String? text}) {
     if (_socket != null && _socket!.connected) {
-      _socket!.emit('typing', {'channelId': channelId, 'isTyping': isTyping});
+      final payload = {
+        'channelId': channelId,
+        'isTyping': isTyping,
+        'text': text ?? '',
+      };
+      _socket!.emit('typing', payload);
+      _socket!.emit('live_typing', payload);
+      _socket!.emit('chat:live_typing', payload);
     }
   }
 

@@ -228,11 +228,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final chId = data['channelId']?.toString();
       final senderId = data['userId']?.toString();
       final text = data['text']?.toString() ?? '';
+      final isTyping = data['isTyping'] == true || text.isNotEmpty;
       final currentUserId = ref.read(chatRepositoryProvider).currentUserId;
-      if (chId == widget.channelId && senderId != currentUserId && _liveTypingPreviewEnabled) {
+      if (chId == widget.channelId && senderId != currentUserId) {
         if (mounted) {
           setState(() {
-            _partnerLiveTypingText = text.isNotEmpty ? text : null;
+            _partnerLiveTypingText = (isTyping && text.isNotEmpty) ? text : null;
           });
         }
       }
@@ -544,25 +545,49 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
 
     final rawContent = message.replyToContent ?? '';
-    final isPhoto = (originalMsg?.imageUrl != null && originalMsg!.imageUrl!.isNotEmpty) ||
+    final isVoice = originalMsg?.type == 'voice' ||
+        originalMsg?.audioUrl != null ||
+        rawContent.toLowerCase().contains('voice') ||
+        rawContent.toLowerCase().contains('audio') ||
+        rawContent.contains('chat_audio');
+
+    final isPhoto = !isVoice && ((originalMsg?.imageUrl != null && originalMsg!.imageUrl!.isNotEmpty) ||
         originalMsg?.type == 'image' ||
         originalMsg?.isSnap == true ||
         rawContent.toLowerCase().contains('photo') ||
-        rawContent.startsWith('http') ||
-        rawContent.contains('chat_media') ||
         rawContent.contains('chat_snaps') ||
-        rawContent.contains('camera');
+        rawContent.contains('camera') ||
+        (rawContent.startsWith('http') && !rawContent.contains('audio')));
 
     final isSticker = originalMsg?.type == 'sticker' ||
         rawContent.toLowerCase().contains('sticker');
 
-    final isVoice = originalMsg?.type == 'voice' ||
-        originalMsg?.audioUrl != null ||
-        rawContent.toLowerCase().contains('voice') ||
-        rawContent.toLowerCase().contains('audio');
-
     Widget bodyWidget;
-    if (isPhoto) {
+    if (isVoice) {
+      bodyWidget = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 5),
+            child: Icon(
+              Icons.mic_rounded,
+              size: 14,
+              color: isMe ? Colors.white70 : themeColor,
+            ),
+          ),
+          Text(
+            'Voice message',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: isMe
+                  ? Colors.white.withValues(alpha: 0.95)
+                  : (isDark ? Colors.white : Colors.black87),
+            ),
+          ),
+        ],
+      );
+    } else if (isPhoto) {
       bodyWidget = Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -866,10 +891,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   void _onTextChanged(String text) {
     _checkMentions();
-    if (_liveTypingPreviewEnabled) {
-      final myId = ref.read(chatRepositoryProvider).currentUserId ?? 'me';
-      SocketService.instance.sendLiveTyping(widget.channelId, myId, text);
-    }
+    final myId = ref.read(chatRepositoryProvider).currentUserId ?? 'me';
+    SocketService.instance.sendLiveTyping(widget.channelId, myId, text);
+    ref.read(chatRepositoryProvider).sendTyping(widget.channelId, text.isNotEmpty, text: text);
+
     final hasText = text.trim().isNotEmpty;
     if (hasText != _hasText) {
       setState(() => _hasText = hasText);
@@ -877,11 +902,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     if (text.isNotEmpty && !_isTyping) {
       setState(() => _isTyping = true);
-      ref.read(chatRepositoryProvider).setTypingStatus(widget.channelId, true);
     }
 
     _typingTimer?.cancel();
-    _typingTimer = Timer(const Duration(seconds: 2), () {
+    _typingTimer = Timer(const Duration(seconds: 3), () {
       if (_isTyping) {
         setState(() => _isTyping = false);
         ref
@@ -1355,6 +1379,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (_inquiryProduct != null) {
       content = '🛍️ Inquiring about "${_inquiryProduct!.title}" (₦${_inquiryProduct!.price.toStringAsFixed(0)})\n$rawContent';
     }
+
+    final myId = ref.read(chatRepositoryProvider).currentUserId ?? 'me';
+    SocketService.instance.sendLiveTyping(widget.channelId, myId, '');
+    ref.read(chatRepositoryProvider).sendTyping(widget.channelId, false, text: '');
 
     if (_editingMessage != null) {
       ref
@@ -2718,8 +2746,37 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _togglePlayVoiceMessage(ChatMessage message) async {
-    final url = message.audioUrl;
-    if (url == null || url.isEmpty) return;
+    String? rawUrl = message.audioUrl;
+    if (rawUrl == null || rawUrl.isEmpty) {
+      if (message.imageUrl != null && (message.type == 'voice' || message.imageUrl!.contains('audio'))) {
+        rawUrl = message.imageUrl;
+      } else if (message.content.startsWith('http')) {
+        rawUrl = message.content;
+      }
+    }
+    if (rawUrl == null || rawUrl.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Audio not available')),
+        );
+      }
+      return;
+    }
+
+    String fullUrl = rawUrl.trim();
+    Source source;
+    if (!kIsWeb && !fullUrl.startsWith('http://') && !fullUrl.startsWith('https://') && File(fullUrl).existsSync()) {
+      source = DeviceFileSource(fullUrl);
+    } else {
+      if (!fullUrl.startsWith('http://') && !fullUrl.startsWith('https://')) {
+        if (fullUrl.startsWith('/')) {
+          fullUrl = '${ApiConfig.baseUrl}$fullUrl';
+        } else {
+          fullUrl = '${ApiConfig.baseUrl}/$fullUrl';
+        }
+      }
+      source = UrlSource(fullUrl);
+    }
 
     try {
       if (_currentlyPlayingMessageId == message.id) {
@@ -2735,7 +2792,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           _currentAudioPosition = Duration.zero;
           _currentAudioDuration = Duration(seconds: message.duration ?? 0);
         });
-        await _audioPlayer.play(UrlSource(url));
+        await _audioPlayer.play(source);
       }
     } catch (e) {
       debugPrint('Error toggling voice playback: $e');
@@ -2751,13 +2808,35 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _seekVoiceMessage(ChatMessage message, double fraction) async {
-    final url = message.audioUrl;
-    if (url == null || url.isEmpty) return;
+    String? rawUrl = message.audioUrl;
+    if (rawUrl == null || rawUrl.isEmpty) {
+      if (message.imageUrl != null && (message.type == 'voice' || message.imageUrl!.contains('audio'))) {
+        rawUrl = message.imageUrl;
+      } else if (message.content.startsWith('http')) {
+        rawUrl = message.content;
+      }
+    }
+    if (rawUrl == null || rawUrl.isEmpty) return;
+
+    String fullUrl = rawUrl.trim();
+    Source source;
+    if (!kIsWeb && !fullUrl.startsWith('http://') && !fullUrl.startsWith('https://') && File(fullUrl).existsSync()) {
+      source = DeviceFileSource(fullUrl);
+    } else {
+      if (!fullUrl.startsWith('http://') && !fullUrl.startsWith('https://')) {
+        if (fullUrl.startsWith('/')) {
+          fullUrl = '${ApiConfig.baseUrl}$fullUrl';
+        } else {
+          fullUrl = '${ApiConfig.baseUrl}/$fullUrl';
+        }
+      }
+      source = UrlSource(fullUrl);
+    }
 
     try {
       final totalSec = (message.duration != null && message.duration! > 0)
           ? message.duration!
-          : (_currentAudioDuration.inSeconds > 0 ? _currentAudioDuration.inSeconds : 14);
+          : (_currentAudioDuration.inSeconds > 0 ? _currentAudioDuration.inSeconds : 0);
       final targetMs = (totalSec * 1000 * fraction.clamp(0.0, 1.0)).round();
       final targetDuration = Duration(milliseconds: targetMs);
 
@@ -2767,7 +2846,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           _currentAudioPosition = targetDuration;
           _currentAudioDuration = Duration(seconds: totalSec);
         });
-        await _audioPlayer.play(UrlSource(url), position: targetDuration);
+        await _audioPlayer.play(source, position: targetDuration);
       } else {
         setState(() {
           _currentAudioPosition = targetDuration;
@@ -2784,7 +2863,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final isPlaying = isCurrent && _isPlaying;
     final msgDurationSec = (message.duration != null && message.duration! > 0)
         ? message.duration!
-        : 14;
+        : (isCurrent && _currentAudioDuration.inSeconds > 0 ? _currentAudioDuration.inSeconds : 0);
     final totalDuration = Duration(seconds: msgDurationSec);
 
     final currentPos = isCurrent ? _currentAudioPosition : Duration.zero;
@@ -4131,39 +4210,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                 dismissible: DismissiblePane(
                                   dismissThreshold: 0.10,
                                   onDismissed: () {
-                                    setState(() {
-                                      _replyingTo = message;
-                                      _editingMessage = null;
-                                    });
-                                    _messageFocusNode.requestFocus();
                                     HapticFeedback.heavyImpact();
+                                    _showForwardSelector(message);
                                   },
                                   closeOnCancel: true,
                                   confirmDismiss: () async {
-                                    setState(() {
-                                      _replyingTo = message;
-                                      _editingMessage = null;
-                                    });
-                                    _messageFocusNode.requestFocus();
                                     HapticFeedback.mediumImpact();
+                                    _showForwardSelector(message);
                                     return false;
                                   },
                                 ),
                                 children: [
                                   CustomSlidableAction(
                                     onPressed: (context) {
-                                      setState(() {
-                                        _replyingTo = message;
-                                        _editingMessage = null;
-                                      });
-                                      _messageFocusNode.requestFocus();
                                       HapticFeedback.lightImpact();
+                                      _showForwardSelector(message);
                                     },
                                     backgroundColor: Colors.transparent,
-                                    foregroundColor: AppColors.secondaryTeal,
+                                    foregroundColor: const Color(0xFF38BDF8),
                                     child: const Icon(
-                                      Icons.reply_rounded,
-                                      size: 28,
+                                      Icons.forward_rounded,
+                                      size: 26,
                                     ),
                                   ),
                                 ],

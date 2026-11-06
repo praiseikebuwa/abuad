@@ -41,6 +41,8 @@ class ChatRepository {
   List<ChatChannel> _channelsList = [];
   final Map<String, StreamController<Map<String, bool>>> _typingControllers = {};
   final Map<String, Map<String, bool>> _typingStatus = {};
+  final Map<String, StreamController<Map<String, String>>> _liveTypingControllers = {};
+  final Map<String, Map<String, String>> _liveTypingTexts = {};
   bool _socketInitialized = false;
   String? currentActiveChannelId;
 
@@ -384,7 +386,31 @@ class ChatRepository {
       final channelId = data['channelId']?.toString();
       final typingUserId = data['userId']?.toString();
       final isTyping = data['isTyping'] == true;
+      final text = data['text']?.toString() ?? '';
       if (channelId != null && typingUserId != null) {
+        _typingStatus.putIfAbsent(channelId, () => {})[typingUserId] = isTyping;
+        if (_typingControllers.containsKey(channelId) && !_typingControllers[channelId]!.isClosed) {
+          _typingControllers[channelId]!.add(Map.from(_typingStatus[channelId]!));
+        }
+
+        _liveTypingTexts.putIfAbsent(channelId, () => {})[typingUserId] = isTyping ? text : '';
+        if (_liveTypingControllers.containsKey(channelId) && !_liveTypingControllers[channelId]!.isClosed) {
+          _liveTypingControllers[channelId]!.add(Map.from(_liveTypingTexts[channelId]!));
+        }
+      }
+    });
+
+    SocketService.instance.onLiveTyping.listen((data) {
+      final channelId = data['channelId']?.toString();
+      final typingUserId = data['userId']?.toString();
+      final text = data['text']?.toString() ?? '';
+      final isTyping = data['isTyping'] == true || text.isNotEmpty;
+      if (channelId != null && typingUserId != null) {
+        _liveTypingTexts.putIfAbsent(channelId, () => {})[typingUserId] = isTyping ? text : '';
+        if (_liveTypingControllers.containsKey(channelId) && !_liveTypingControllers[channelId]!.isClosed) {
+          _liveTypingControllers[channelId]!.add(Map.from(_liveTypingTexts[channelId]!));
+        }
+
         _typingStatus.putIfAbsent(channelId, () => {})[typingUserId] = isTyping;
         if (_typingControllers.containsKey(channelId) && !_typingControllers[channelId]!.isClosed) {
           _typingControllers[channelId]!.add(Map.from(_typingStatus[channelId]!));
@@ -846,8 +872,12 @@ class ChatRepository {
     _fetchMessages(channelId);
   }
 
-  Future<void> setTypingStatus(String channelId, bool isTyping) async {
-    SocketService.instance.sendTyping(channelId, isTyping);
+  Future<void> setTypingStatus(String channelId, bool isTyping, {String? text}) async {
+    SocketService.instance.sendTyping(channelId, isTyping, text: text);
+  }
+
+  Future<void> sendTyping(String channelId, bool isTyping, {String? text}) async {
+    SocketService.instance.sendTyping(channelId, isTyping, text: text);
   }
 
   Future<void> togglePinChannel(String channelId, [dynamic arg2]) async {
@@ -972,14 +1002,57 @@ class ChatRepository {
     }
   }
 
-  Future<void> togglePinMessage(dynamic arg1, [dynamic arg2, dynamic arg3]) async {}
-  Future<void> forwardMessage(dynamic arg1, dynamic arg2) async {}
+  Future<void> togglePinMessage(String channelId, String messageId, [bool isPinned = true]) async {
+    try {
+      final res = await ApiClient.post('/chat/messages//pin', {'channelId': channelId, 'isPinned': isPinned});
+      if (res.statusCode == 200) {
+        final list = _cachedMessages[channelId];
+        if (list != null) {
+          final idx = list.indexWhere((m) => m.id == messageId);
+          if (idx != -1) {
+            list[idx] = list[idx].copyWith(isPinned: isPinned);
+            if (_messageControllers.containsKey(channelId) && !_messageControllers[channelId]!.isClosed) {
+              _messageControllers[channelId]!.add(List.from(list));
+            }
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> forwardMessage(String targetChannelId, ChatMessage originalMessage) async {
+    try {
+      await sendMessage(
+        targetChannelId,
+        originalMessage.content,
+        type: originalMessage.type,
+        mediaUrl: originalMessage.imageUrl ?? originalMessage.audioUrl,
+        imageUrl: originalMessage.imageUrl,
+        audioUrl: originalMessage.audioUrl,
+        duration: originalMessage.duration,
+        imageWidth: originalMessage.imageWidth,
+        imageHeight: originalMessage.imageHeight,
+        latitude: originalMessage.latitude,
+        longitude: originalMessage.longitude,
+        sharedPostId: originalMessage.sharedPostId,
+      );
+    } catch (e) {
+      debugPrint('Error in forwardMessage: ');
+    }
+  }
 
   Stream<Map<String, bool>> watchTypingStatus(String channelId) {
     if (!_typingControllers.containsKey(channelId) || _typingControllers[channelId]!.isClosed) {
       _typingControllers[channelId] = StreamController<Map<String, bool>>.broadcast();
     }
     return _typingControllers[channelId]!.stream;
+  }
+
+  Stream<Map<String, String>> watchLiveTypingText(String channelId) {
+    if (!_liveTypingControllers.containsKey(channelId) || _liveTypingControllers[channelId]!.isClosed) {
+      _liveTypingControllers[channelId] = StreamController<Map<String, String>>.broadcast();
+    }
+    return _liveTypingControllers[channelId]!.stream;
   }
 
   Future<String> createGroupChannel({

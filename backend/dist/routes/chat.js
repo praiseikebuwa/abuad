@@ -218,6 +218,8 @@ function formatMessage(msg, requestingUserId) {
             sharedPostId = msg.mediaUrl.replace('post:', '');
         }
     }
+    const isVoice = msg.type === 'voice' || msg.type === 'audio';
+    const duration = msg.duration || reactions._duration || (isSnap ? snapDuration : null);
     return {
         ...msg,
         senderId: msg.senderId,
@@ -225,9 +227,12 @@ function formatMessage(msg, requestingUserId) {
         content: msg.text || msg.content || '',
         text: msg.text || msg.content || '',
         type: isSnap ? 'snap' : (msg.type || 'text'),
+        duration: duration || null,
+        audioUrl: isVoice ? effectiveMediaUrl : (msg.audioUrl || msg.audio_url || null),
+        audio_url: isVoice ? effectiveMediaUrl : (msg.audioUrl || msg.audio_url || null),
+        imageUrl: isVoice ? null : effectiveMediaUrl,
+        image_url: isVoice ? null : effectiveMediaUrl,
         mediaUrl: effectiveMediaUrl,
-        imageUrl: effectiveMediaUrl,
-        image_url: effectiveMediaUrl,
         isSnap,
         is_snap: isSnap,
         snapViews,
@@ -967,11 +972,16 @@ router.post('/send', auth_1.authenticateToken, async (req, res) => {
             initialReactions._snapMediaType = inferredMediaType;
             initialReactions._snapDuration = duration || (inferredMediaType === 'video' ? 30 : 10);
         }
+        if (duration) {
+            initialReactions._duration = duration;
+        }
         const lastMsgSummary = isSnapMessage
             ? (initialReactions._snapMediaType === 'video' ? '🎥 Video Snap' : '📸 Snap')
             : isStoryReply
                 ? (`Replied to story: ${effectiveText || '❤️'}`)
-                : (effectiveType === 'post' ? '📎 Shared a post' : (effectiveText || '📎 Media'));
+                : effectiveType === 'voice'
+                    ? '🎤 Voice message'
+                    : (effectiveType === 'post' ? '📎 Shared a post' : (effectiveText || '📎 Media'));
         const userId = req.user.id;
         if (inferredReceiverId && inferredReceiverId !== userId) {
             const allChannels = await db_1.prisma.chatChannel.findMany({ where: { type: 'direct' } });
