@@ -275,7 +275,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     // 2. Friend/Following Markers
     for (var user in otherUsers) {
-      if (user.uid != curUid && user.latitude != null) {
+      if (user.uid != curUid && user.latitude != null && user.longitude != null) {
         markers.add(
           Marker(
             point: LatLng(user.latitude!, user.longitude!),

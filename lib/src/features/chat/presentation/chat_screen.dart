@@ -4431,11 +4431,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                                     : message.type == 'location'
                                                     ? GestureDetector(
                                                         onTap: () {
-                                                          // Offer to open in external maps
-                                                          _launchExternalMap(
-                                                            message.latitude!,
-                                                            message.longitude!,
-                                                          );
+                                                          double? lat = message.latitude;
+                                                          double? lng = message.longitude;
+                                                          if (lat == null || lng == null) {
+                                                            final raw = (message.content.isNotEmpty ? message.content : (message.imageUrl ?? '')).trim();
+                                                            if (raw.contains(',')) {
+                                                              final parts = raw.split(',');
+                                                              if (parts.length >= 2) {
+                                                                lat ??= double.tryParse(parts[0].trim());
+                                                                lng ??= double.tryParse(parts[1].trim());
+                                                              }
+                                                            }
+                                                          }
+                                                          if (lat != null && lng != null) {
+                                                            _launchExternalMap(lat, lng);
+                                                          } else {
+                                                            ScaffoldMessenger.of(context).showSnackBar(
+                                                              const SnackBar(content: Text('Location coordinates unavailable')),
+                                                            );
+                                                          }
                                                         },
                                                         child: Container(
                                                           width: 200,

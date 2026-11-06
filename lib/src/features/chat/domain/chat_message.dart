@@ -283,6 +283,40 @@ class ChatMessage {
         map['media_url'] ??
         map['mediaUrl'];
 
+    double? parseCoord(dynamic val) {
+      if (val == null) return null;
+      if (val is num) return val.toDouble();
+      if (val is String) return double.tryParse(val.trim());
+      return null;
+    }
+
+    double? parsedLat = parseCoord(map['latitude'] ?? map['lat']);
+    double? parsedLng = parseCoord(map['longitude'] ?? map['lng'] ?? map['long']);
+
+    if ((parsedLat == null || parsedLng == null) && (map['type'] == 'location')) {
+      final rawContent = (map['content'] ?? map['text'] ?? '').toString().trim();
+      final rawMedia = (map['media_url'] ?? map['mediaUrl'] ?? '').toString().trim();
+      for (final candidate in [rawContent, rawMedia]) {
+        if (candidate.isEmpty) continue;
+        if (candidate.startsWith('{') && candidate.endsWith('}')) {
+          try {
+            final decoded = jsonDecode(candidate);
+            if (decoded is Map) {
+              parsedLat ??= parseCoord(decoded['latitude'] ?? decoded['lat']);
+              parsedLng ??= parseCoord(decoded['longitude'] ?? decoded['lng'] ?? decoded['long']);
+            }
+          } catch (_) {}
+        } else if (candidate.contains(',')) {
+          final parts = candidate.split(',');
+          if (parts.length >= 2) {
+            parsedLat ??= double.tryParse(parts[0].trim());
+            parsedLng ??= double.tryParse(parts[1].trim());
+          }
+        }
+        if (parsedLat != null && parsedLng != null) break;
+      }
+    }
+
     return ChatMessage(
       id: map['id'] ?? '',
       senderId: map['sender_id'] ?? map['senderId'] ?? '',
@@ -296,8 +330,8 @@ class ChatMessage {
       imageHeight: (map['image_height'] as num?)?.toDouble(),
       audioUrl: map['audio_url'],
       duration: map['duration'],
-      latitude: (map['latitude'] as num?)?.toDouble(),
-      longitude: (map['longitude'] as num?)?.toDouble(),
+      latitude: parsedLat,
+      longitude: parsedLng,
       replyToId: map['reply_to_id'],
       replyToContent: map['reply_to_content'],
       replyToSenderId: map['reply_to_sender_id'],

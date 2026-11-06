@@ -706,6 +706,8 @@ class ChatRepository {
         replyToContent: replyToContent,
         replyToSenderId: replyToSenderId,
         sharedPostId: sharedPostId,
+        latitude: latitude,
+        longitude: longitude,
       );
 
       final list = _cachedMessages.putIfAbsent(channelId, () => []);

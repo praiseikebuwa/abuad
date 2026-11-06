@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:abuad/src/features/chat/domain/chat_message.dart';
 
 void main() {
   group('Chat Attachment Features & Formats Tests', () {
@@ -57,6 +58,54 @@ void main() {
       final parts = raw.split('|');
       expect(parts[0], 'Course_Syllabus_2026.pdf');
       expect(parts[1], '2.4 MB');
+    });
+
+    test('ChatMessage location parsing with numeric, string, comma, and JSON coordinates', () {
+      // 1. Direct numbers
+      final msg1 = ChatMessage.fromMap({
+        'id': 'm1',
+        'type': 'location',
+        'latitude': 7.6212,
+        'longitude': 5.2341,
+      });
+      expect(msg1.latitude, 7.6212);
+      expect(msg1.longitude, 5.2341);
+
+      // 2. Direct string coordinates
+      final msg2 = ChatMessage.fromMap({
+        'id': 'm2',
+        'type': 'location',
+        'latitude': '7.6212',
+        'longitude': '5.2341',
+      });
+      expect(msg2.latitude, 7.6212);
+      expect(msg2.longitude, 5.2341);
+
+      // 3. Fallback from comma-separated content
+      final msg3 = ChatMessage.fromMap({
+        'id': 'm3',
+        'type': 'location',
+        'content': '7.6212, 5.2341',
+      });
+      expect(msg3.latitude, 7.6212);
+      expect(msg3.longitude, 5.2341);
+
+      // 4. Fallback from JSON content
+      final msg4 = ChatMessage.fromMap({
+        'id': 'm4',
+        'type': 'location',
+        'content': '{"latitude": 7.6212, "longitude": 5.2341}',
+      });
+      expect(msg4.latitude, 7.6212);
+      expect(msg4.longitude, 5.2341);
+
+      // 5. Null coordinates do not crash
+      final msg5 = ChatMessage.fromMap({
+        'id': 'm5',
+        'type': 'location',
+      });
+      expect(msg5.latitude, isNull);
+      expect(msg5.longitude, isNull);
     });
   });
 }
